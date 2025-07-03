@@ -1,0 +1,238 @@
+﻿@page "/usuarios/editarUsu/{id:int}"
+@using FaceRecognitionDotNet
+@using System.IO
+@using SistemIA.Models
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Editar Usuario</PageTitle>
+<h3>Editar Usuario</h3>
+
+@if (usuario is null)
+{
+    <p><em>Cargando usuario...</em></p>
+}
+else
+{
+    <EditForm Model="usuario" OnValidSubmit="ValidarYGuardarUsuario">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="text-danger" />
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Datos Personales</h5>
+                <hr />
+                <div class="row">
+                    <div class="col-md-6 mb-3"><label class="form-label">Nombres:</label><InputText class="form-control" @bind-Value="usuario.Nombres" /></div>
+                    <div class="col-md-6 mb-3"><label class="form-label">Apellidos:</label><InputText class="form-control" @bind-Value="usuario.Apellidos" /></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3"><label class="form-label">CI:</label><InputText class="form-control" @bind-Value="usuario.CI" /></div>
+                    <div class="col-md-6 mb-3"><label class="form-label">Fecha de Nacimiento:</label><InputDate class="form-control" @bind-Value="usuario.Fecha_Nacimiento" /></div>
+                </div>
+
+                <h5 class="card-title mt-4">Información de Contacto</h5>
+                <hr />
+                <div class="row">
+                    <div class="col-md-6 mb-3"><label class="form-label">Dirección:</label><InputText class="form-control" @bind-Value="usuario.Direccion" /></div>
+                    <div class="col-md-6 mb-3"><label class="form-label">Ciudad:</label><InputText class="form-control" @bind-Value="usuario.Ciudad" /></div>
+                    <div class="col-md-6 mb-3"><label class="form-label">Teléfono:</label><InputText class="form-control" @bind-Value="usuario.Telefono" /></div>
+                    <div class="col-md-6 mb-3"><label class="form-label">Correo:</label><InputText type="email" class="form-control" @bind-Value="usuario.Correo" /></div>
+                </div>
+
+                <h5 class="card-title mt-4">Credenciales y Rol</h5>
+                <hr />
+                <div class="row">
+                    <div class="col-md-6 mb-3"><label class="form-label">Usuario:</label><InputText class="form-control" @bind-Value="usuario.UsuarioNombre" /></div>
+                    <div class="col-md-6 mb-3"><label class="form-label">Nueva Contraseña:</label><InputText class="form-control" type="password" @bind-Value="contrasena" /></div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Rol:</label>
+                        <InputSelect class="form-select" @bind-Value="usuario.Id_Rol" TValue="int">
+                            <option value="0">-- Seleccionar Rol --</option>
+                            @foreach (var rol in roles)
+                            {
+                                <option value="@rol.Id_Rol">@rol.NombreRol</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-6 mb-3 d-flex align-items-center">
+                        <div class="form-check form-switch">
+                            <InputCheckbox id="estadoUsu" class="form-check-input" @bind-Value="usuario.Estado_Usu" />
+                            <label class="form-check-label" for="estadoUsu">Usuario Activo</label>
+                        </div>
+                    </div>
+                </div>
+
+                <h5 class="card-title mt-4">Reconocimiento Facial</h5>
+                <hr />
+                <div class="mb-3">
+                    <label class="form-label">Actualizar Foto:</label>
+                    <div class="input-group">
+                        <InputFile OnChange="OnInputFileChange" class="d-none" id="file-input-usuario" accept="image/*" />
+                        <label for="file-input-usuario" class="btn btn-outline-secondary"><i class="bi bi-upload"></i> Seleccionar archivo</label>
+                        <button type="button" class="btn btn-outline-primary" @onclick="CapturarConCamara"><i class="bi bi-camera-fill"></i> Capturar con cámara</button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(errorContrasena))
+                    {
+                        <div class="text-danger mt-1">@errorContrasena</div>
+                    }
+                    @if (usuario.Foto?.Length > 0)
+                    {
+                        <div class="mt-3">
+                            <p>Foto Actual:</p>
+                            <img class="rounded border" style="width: 150px; height: 150px; object-fit: cover;" src="data:image/jpeg;base64,@Convert.ToBase64String(usuario.Foto)" />
+                        </div>
+                    }
+                </div>
+
+                <h5 class="card-title mt-4">Datos Laborales</h5>
+                <hr />
+                <div class="row">
+                    <div class="col-md-3 mb-3"><label class="form-label">Salario:</label><InputNumber class="form-control" @bind-Value="usuario.Salario" /></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">IPS:</label><InputNumber class="form-control" @bind-Value="usuario.IPS" /></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Comisión:</label><InputNumber class="form-control" @bind-Value="usuario.Comision" /></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Descuento:</label><InputNumber class="form-control" @bind-Value="usuario.Descuento" /></div>
+                </div>
+            </div>
+            <div class="card-footer text-end">
+                <button class="btn btn-secondary" type="button" @onclick="VolverAlMenuUsuarios">Cancelar</button>
+                <button class="btn btn-success ms-2" type="submit"><i class="bi bi-check-circle-fill me-2"></i>Guardar Cambios</button>
+            </div>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int id { get; set; }
+
+    private Usuario? usuario;
+    private string contrasena = "";
+    private string? errorContrasena;
+    private List<Rol> roles = new();
+    private DotNetObjectReference<EditarUsuario>? dotNetHelper;
+
+    protected override async Task OnInitializedAsync()
+    {
+        roles = await Db.Roles.Where(r => r.Estado).OrderBy(r => r.NombreRol).ToListAsync();
+        usuario = await Db.Usuarios.FirstOrDefaultAsync(u => u.Id_Usu == id);
+        if (usuario is null) Navigation.NavigateTo("/menu-usuarios");
+    }
+    private void VolverAlMenuUsuarios()
+    {
+        Navigation.NavigateTo("/menu-usuarios");
+    }
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        try
+        {
+            using var stream = file.OpenReadStream(5 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            await ProcesarImagenYGenerarEmbeddingAsync(ms.ToArray());
+        }
+        catch (IOException)
+        {
+            errorContrasena = "El archivo es demasiado grande (máx 5MB).";
+        }
+    }
+
+    private async Task CapturarConCamara()
+    {
+        dotNetHelper = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("capturarFotoConCamara", dotNetHelper);
+    }
+
+    [JSInvokable]
+    public async Task RecibirImagenDesdeCamara(string? base64Image)
+    {
+        if (!string.IsNullOrEmpty(base64Image))
+        {
+            var imageBytes = Convert.FromBase64String(base64Image.Split(',')[1]);
+            await ProcesarImagenYGenerarEmbeddingAsync(imageBytes);
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ProcesarImagenYGenerarEmbeddingAsync(byte[] imagenBytes)
+    {
+        errorContrasena = null;
+        usuario!.Foto = imagenBytes;
+
+        if (imagenBytes is null || imagenBytes.Length == 0)
+        {
+            usuario.EmbeddingFacial = Array.Empty<byte>();
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                var modeloPath = @"C:\asis\SistemIA\face_recognition_models";
+                using var faceRecognition = FaceRecognition.Create(modeloPath);
+
+                using var ms = new MemoryStream(imagenBytes);
+                using var bitmap = new System.Drawing.Bitmap(ms);
+                using var img = FaceRecognition.LoadImage(bitmap);
+
+                var faceLocations = faceRecognition.FaceLocations(img).ToArray();
+                if (faceLocations.Length != 1)
+                {
+                    errorContrasena = "La foto debe contener exactamente un rostro.";
+                    usuario.EmbeddingFacial = Array.Empty<byte>();
+                    return;
+                }
+
+                var encodings = faceRecognition.FaceEncodings(img, faceLocations).ToArray();
+                if (encodings.Length != 1)
+                {
+                    errorContrasena = "Error al procesar el rostro.";
+                    usuario.EmbeddingFacial = Array.Empty<byte>();
+                    return;
+                }
+
+                using var encoding = encodings[0];
+                usuario.EmbeddingFacial = ConvertDoubleArrayToByteArray(encoding.GetRawEncoding());
+            });
+        }
+        catch (Exception ex)
+        {
+            errorContrasena = $"Error al procesar la imagen: {ex.Message}";
+            usuario!.EmbeddingFacial = Array.Empty<byte>();
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ValidarYGuardarUsuario()
+    {
+        if (usuario is null) return;
+
+        if (!string.IsNullOrWhiteSpace(contrasena))
+        {
+            using var sha256 = System.Security.Cryptography.SHA256.Create();
+            usuario.ContrasenaHash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(contrasena));
+        }
+
+        Db.Usuarios.Update(usuario);
+        await Db.SaveChangesAsync();
+        Navigation.NavigateTo("/menu-usuarios");
+    }
+
+    private static byte[] ConvertDoubleArrayToByteArray(double[] array)
+    {
+        var result = new byte[array.Length * sizeof(double)];
+        Buffer.BlockCopy(array, 0, result, 0, result.Length);
+        return result;
+    }
+
+    public void Dispose() => dotNetHelper?.Dispose();
+}

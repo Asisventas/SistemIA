@@ -1,0 +1,292 @@
+﻿@page "/horarios"
+@using Microsoft.EntityFrameworkCore
+@inject SistemIA.Models.AppDbContext Db
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Configurar Horarios</PageTitle>
+
+<h3>Configuración de Horarios de Trabajo</h3>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Crear Nuevo Horario
+    </div>
+    <div class="card-body">
+        <EditForm Model="nuevoHorario" OnValidSubmit="GuardarHorario">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="idSucursal" class="form-label">Sucursal:</label>
+                    <InputSelect id="idSucursal" class="form-select" @bind-Value="nuevoHorario.Id_Sucursal" TValue="int">
+                        <option value="0">-- Seleccionar Sucursal --</option>
+                        @if (sucursales != null)
+                        {
+                            @foreach (var suc in sucursales)
+                            {
+                                <option value="@suc.Id">@suc.NombreSucursal</option>
+                            }
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="nombreHorario" class="form-label">Nombre del Horario:</label>
+                    <InputText id="nombreHorario" class="form-control" @bind-Value="nuevoHorario.NombreHorario" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="horaEntrada" class="form-label">Hora de Entrada:</label>
+                    <InputText id="horaEntrada" type="time" class="form-control" @bind-Value="horaEntradaStr" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="horaSalida" class="form-label">Hora de Salida:</label>
+                    <InputText id="horaSalida" type="time" class="form-control" @bind-Value="horaSalidaStr" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label for="inicioBreak" class="form-label">Inicio Break (opcional):</label>
+                    <InputText id="inicioBreak" type="time" class="form-control" @bind-Value="inicioBreakStr" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="finBreak" class="form-label">Fin Break (opcional):</label>
+                    <InputText id="finBreak" type="time" class="form-control" @bind-Value="finBreakStr" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="descripcion" class="form-label">Descripción:</label>
+                    <InputText id="descripcion" class="form-control" @bind-Value="nuevoHorario.Descripcion" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Días de la Semana:</label>
+                <div class="form-check form-check-inline">
+                    <InputCheckbox class="form-check-input" @bind-Value="nuevoHorario.Lunes" />
+                    <label class="form-check-label">Lun</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <InputCheckbox class="form-check-input" @bind-Value="nuevoHorario.Martes" />
+                    <label class="form-check-label">Mar</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <InputCheckbox class="form-check-input" @bind-Value="nuevoHorario.Miercoles" />
+                    <label class="form-check-label">Mié</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <InputCheckbox class="form-check-input" @bind-Value="nuevoHorario.Jueves" />
+                    <label class="form-check-label">Jue</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <InputCheckbox class="form-check-input" @bind-Value="nuevoHorario.Viernes" />
+                    <label class="form-check-label">Vie</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <InputCheckbox class="form-check-input" @bind-Value="nuevoHorario.Sabado" />
+                    <label class="form-check-label">Sáb</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <InputCheckbox class="form-check-input" @bind-Value="nuevoHorario.Domingo" />
+                    <label class="form-check-label">Dom</label>
+                </div>
+            </div>
+
+            <div class="mb-3 form-check">
+                <InputCheckbox id="esActivo" class="form-check-input" @bind-Value="nuevoHorario.EsActivo" />
+                <label class="form-check-label" for="esActivo">Horario Activo</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Guardar Horario</button>
+            <button type="button" class="btn btn-secondary ms-2" @onclick="LimpiarFormulario">Limpiar</button>
+        </EditForm>
+    </div>
+</div>
+
+<h4>Horarios Existentes</h4>
+@if (horarios == null)
+{
+    <p><em>Cargando horarios...</em></p>
+}
+else if (!horarios.Any())
+{
+    <p>No hay horarios registrados. ¡Crea uno nuevo!</p>
+}
+else
+{
+    <table class="table table-striped table-bordered">
+        <thead class="table-dark">
+            <tr>
+                <th>Nombre</th>
+                <th>Sucursal</th>
+                <th>Entrada</th>
+                <th>Salida</th>
+                <th>Break</th>
+                <th>Días</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var horario in horarios)
+            {
+                <tr>
+                    <td>@horario.NombreHorario</td>
+                    <td>@horario.SucursalNavigation?.NombreSucursal</td>
+                    <td>@horario.HoraEntrada.ToString(@"hh\:mm")</td>
+                    <td>@horario.HoraSalida.ToString(@"hh\:mm")</td>
+                    <td>
+                        @if (horario.InicioBreak.HasValue && horario.FinBreak.HasValue)
+                        {
+                            @($"{horario.InicioBreak.Value:hh\\:mm} - {horario.FinBreak.Value:hh\\:mm}")
+                        }
+                        else
+                        {
+                            <span>N/A</span>
+                        }
+                    </td>
+                    <td>
+                        @(horario.Lunes ? "L " : "")
+                        @(horario.Martes ? "M " : "")
+                        @(horario.Miercoles ? "X " : "")
+                        @(horario.Jueves ? "J " : "")
+                        @(horario.Viernes ? "V " : "")
+                        @(horario.Sabado ? "S " : "")
+                        @(horario.Domingo ? "D " : "")
+                    </td>
+                    <td>
+                        <span class="badge @(horario.EsActivo ? "bg-success" : "bg-secondary")">
+                            @(horario.EsActivo ? "Activo" : "Inactivo")
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-info" @onclick="() => EditarHorario(horario)">
+                            <i class="bi bi-pencil-square"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger ms-1" @onclick="() => EliminarHorario(horario.Id_Horario)">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private SistemIA.Models.HorarioTrabajo nuevoHorario = new();
+    private string? horaEntradaStr;
+    private string? horaSalidaStr;
+    private string? inicioBreakStr;
+    private string? finBreakStr;
+    private List<SistemIA.Models.HorarioTrabajo>? horarios;
+    private List<SistemIA.Models.Sucursal>? sucursales;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sucursales = await Db.Sucursal.OrderBy(s => s.NombreSucursal).ToListAsync();
+        await CargarHorarios();
+        LimpiarFormulario(); // Inicializa el modelo al cargar
+    }
+
+    private async Task CargarHorarios()
+    {
+        horarios = await Db.HorariosTrabajo
+            .Include(h => h.SucursalNavigation)
+            .OrderBy(h => h.NombreHorario)
+            .ToListAsync();
+    }
+
+    private void LimpiarFormulario()
+    {
+        nuevoHorario = new() { EsActivo = true };
+        horaEntradaStr = null;
+        horaSalidaStr = null;
+        inicioBreakStr = null;
+        finBreakStr = null;
+        StateHasChanged();
+    }
+
+    private async Task GuardarHorario()
+    {
+        if (nuevoHorario.Id_Sucursal == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar una sucursal para el horario.");
+            return;
+        }
+
+        if (TimeSpan.TryParse(horaEntradaStr, out var he)) nuevoHorario.HoraEntrada = he; else { await JS.InvokeVoidAsync("alert", "Hora de Entrada inválida."); return; }
+        if (TimeSpan.TryParse(horaSalidaStr, out var hs)) nuevoHorario.HoraSalida = hs; else { await JS.InvokeVoidAsync("alert", "Hora de Salida inválida."); return; }
+
+        nuevoHorario.InicioBreak = TimeSpan.TryParse(inicioBreakStr, out var ib) ? ib : null;
+        nuevoHorario.FinBreak = TimeSpan.TryParse(finBreakStr, out var fb) ? fb : null;
+
+        if (nuevoHorario.Id_Horario == 0)
+        {
+            Db.HorariosTrabajo.Add(nuevoHorario);
+        }
+        else
+        {
+            Db.HorariosTrabajo.Update(nuevoHorario);
+        }
+
+        await Db.SaveChangesAsync();
+        LimpiarFormulario();
+        await CargarHorarios();
+        await JS.InvokeVoidAsync("alert", "Horario guardado correctamente.");
+    }
+
+    private void EditarHorario(SistemIA.Models.HorarioTrabajo horario)
+    {
+        // Clonar el objeto para no editar directamente la referencia de la lista
+        nuevoHorario = new SistemIA.Models.HorarioTrabajo
+            {
+                Id_Horario = horario.Id_Horario,
+                Id_Sucursal = horario.Id_Sucursal,
+                NombreHorario = horario.NombreHorario,
+                HoraEntrada = horario.HoraEntrada,
+                HoraSalida = horario.HoraSalida,
+                InicioBreak = horario.InicioBreak,
+                FinBreak = horario.FinBreak,
+                Lunes = horario.Lunes,
+                Martes = horario.Martes,
+                Miercoles = horario.Miercoles,
+                Jueves = horario.Jueves,
+                Viernes = horario.Viernes,
+                Sabado = horario.Sabado,
+                Domingo = horario.Domingo,
+                EsActivo = horario.EsActivo,
+                Descripcion = horario.Descripcion
+            };
+
+        horaEntradaStr = horario.HoraEntrada.ToString(@"hh\:mm");
+        horaSalidaStr = horario.HoraSalida.ToString(@"hh\:mm");
+        inicioBreakStr = horario.InicioBreak?.ToString(@"hh\:mm");
+        finBreakStr = horario.FinBreak?.ToString(@"hh\:mm");
+        StateHasChanged();
+    }
+
+    // 🔥 CORRECCIÓN PRINCIPAL: Lógica de eliminación simplificada 🔥
+    private async Task EliminarHorario(int id)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este horario? Se eliminarán todas las asignaciones de este horario a los empleados.");
+        if (confirmed)
+        {
+            var horarioAEliminar = await Db.HorariosTrabajo.FindAsync(id);
+            if (horarioAEliminar != null)
+            {
+                // Ya no necesitamos desasignar manualmente a los usuarios.
+                // La configuración OnDelete(DeleteBehavior.Cascade) en AppDbContext
+                // se encargará de eliminar los registros en 'AsignacionHorario'
+                // que dependen de este horario.
+
+                Db.HorariosTrabajo.Remove(horarioAEliminar);
+                await Db.SaveChangesAsync();
+
+                await CargarHorarios();
+                LimpiarFormulario(); // Limpia el formulario si se estaba editando el horario eliminado
+                await JS.InvokeVoidAsync("alert", "Horario eliminado correctamente.");
+            }
+        }
+    }
+}

@@ -1,0 +1,260 @@
+﻿@page "/clientes/editar/{IdCliente:int}"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Utils
+@inject SistemIA.Models.AppDbContext Db
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<h3 class="mb-4">✏️ Editar Cliente</h3>
+
+@if (isLoading)
+{
+    <div>Cargando datos...</div>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <EditForm Model="@cliente" OnValidSubmit="ActualizarCliente">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <div class="row g-3">
+            <!-- Columna Izquierda -->
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">Razón Social</label>
+                    <InputText class="form-control" @bind-Value="cliente.RazonSocial" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tipo Documento</label>
+                    <InputSelect class="form-select" @bind-Value="cliente.TipoDocumento">
+                        <option value="">-- Seleccionar --</option>
+                        @foreach (var tipo in tiposDocumentos)
+                        {
+                            <option value="@tipo.TipoDocumento">@tipo.Descripcion</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">RUC</label>
+                    <InputText class="form-control"
+                               @bind-Value="cliente.RUC"
+                               onblur="@OnRucChanged" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">DV</label>
+                    <InputNumber class="form-control" @bind-Value="cliente.DV" readonly />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Dirección</label>
+                    <InputText class="form-control" @bind-Value="cliente.Direccion" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Teléfono</label>
+                    <InputText class="form-control" @bind-Value="cliente.Telefono" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <InputText class="form-control" @bind-Value="cliente.Email" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Fecha de Nacimiento</label>
+                    <InputDate class="form-control" @bind-Value="cliente.FechaNacimiento" />
+                </div>
+            </div>
+
+            <!-- Columna Derecha -->
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">Contacto</label>
+                    <InputText class="form-control" @bind-Value="cliente.Contacto" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Límite Crédito</label>
+                    @if (editandoLimiteCredito)
+                    {
+                        <InputNumber @bind-Value="cliente.LimiteCredito"
+                                     class="form-control"
+                                     @onblur="OnLimiteCreditoBlur"
+                                     autofocus />
+                    }
+                    else
+                    {
+                        <div class="form-control-plaintext"
+                             style="min-height:38px; cursor:pointer;"
+                             title="Haz clic para editar"
+                             @onclick="ActivarEdicionLimiteCredito">
+                            @(cliente.LimiteCredito.HasValue ? cliente.LimiteCredito.Value.ToString("N2") : "")
+                        </div>
+                    }
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Estado</label>
+                    <InputSelect class="form-select" @bind-Value="cliente.Estado">
+                        <option value="">-- Seleccionar --</option>
+                        <option value="Activo">Activo</option>
+                        <option value="Inactivo">Inactivo</option>
+                    </InputSelect>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Saldo</label>
+                    <InputNumber class="form-control" @bind-Value="cliente.Saldo" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tipo de Contribuyente</label>
+                    <InputSelect class="form-select" @bind-Value="cliente.IdTipoContribuyente">
+                        <option value="">-- Seleccionar --</option>
+                        @foreach (var tipo in tiposContribuyentes)
+                        {
+                            <option value="@tipo.IdTipoContribuyente">@tipo.NombreTipo</option>
+                        }
+                    </InputSelect>
+                    <label>Tipo de Operación</label>
+                    <InputSelect @bind-Value="cliente.TipoOperacion" class="form-select">
+                        <option value="">Seleccione...</option>
+                        @foreach (var tipo in tiposOperacion)
+                        {
+                            <option value="@tipo.Codigo">@tipo.Descripcion</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Timbrado</label>
+                    <InputText class="form-control" @bind-Value="cliente.Timbrado" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Vencimiento Timbrado</label>
+                    <InputDate class="form-control" @bind-Value="cliente.VencimientoTimbrado" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Precio Diferenciado</label>
+                    <InputCheckbox class="form-check-input" @bind-Value="cliente.PrecioDiferenciado" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Plazo Días Crédito</label>
+                    <InputNumber class="form-control" @bind-Value="cliente.PlazoDiasCredito" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">País</label>
+                    <InputSelect class="form-select" @bind-Value="cliente.CodigoPais">
+                        <option value="">-- Seleccionar --</option>
+                        @foreach (var pais in paises)
+                        {
+                            <option value="@pais.CodigoPais">@pais.Nombre</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Ciudad</label>
+                    <InputSelect class="form-select" @bind-Value="cliente.IdCiudad">
+                        <option value="">-- Seleccionar --</option>
+                        @foreach (var ciudad in ciudades)
+                        {
+                            <option value="@ciudad.IdCiudad">@ciudad.Nombre (@ciudad.Departamento)</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">¿Extranjero?</label>
+                    <InputCheckbox class="form-check-input" @bind-Value="cliente.EsExtranjero" />
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary">💾 Guardar Cambios</button>
+            <button type="button" class="btn btn-secondary ms-2" @onclick="Cancelar">Cancelar</button>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int IdCliente { get; set; }
+
+    private Cliente? cliente;
+    private List<TiposDocumentosIdentidad> tiposDocumentos = new();
+    private List<TiposContribuyentes> tiposContribuyentes = new();
+    private List<Paises> paises = new();
+    private List<Ciudades> ciudades = new();
+    private List<TipoOperacion> tiposOperacion = new();
+    private string? errorMessage;
+    private bool isLoading = true;
+    private bool editandoLimiteCredito => !cliente.LimiteCredito.HasValue || editandoLimiteCreditoInterno;
+    private bool editandoLimiteCreditoInterno = false;
+
+    private void ActivarEdicionLimiteCredito()
+    {
+        editandoLimiteCreditoInterno = true;
+    }
+
+    private void OnLimiteCreditoBlur(FocusEventArgs e)
+    {
+        editandoLimiteCreditoInterno = false;
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            tiposContribuyentes = await Db.TiposContribuyentes.ToListAsync();
+            tiposDocumentos = await Db.TiposDocumentosIdentidad.ToListAsync();
+            paises = await Db.Paises.ToListAsync();
+            ciudades = await Db.Ciudades.ToListAsync();
+            tiposOperacion = await Db.TiposOperacion.ToListAsync();
+
+            cliente = await Db.Clientes.FirstOrDefaultAsync(c => c.IdCliente == IdCliente);
+
+            if (cliente == null)
+            {
+                errorMessage = "Cliente no encontrado.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Error al cargar datos.";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+        isLoading = false;
+    }
+
+    private async Task ActualizarCliente()
+    {
+        if (cliente == null)
+            return;
+
+        try
+        {
+            Db.Clientes.Update(cliente);
+            await Db.SaveChangesAsync();
+            Navigation.NavigateTo("/clientes");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Error al actualizar el cliente.";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task OnRucChanged()
+    {
+        if (cliente == null)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(cliente.RUC) && cliente.RUC.All(char.IsDigit))
+        {
+            cliente.DV = RucHelper.CalcularDvRuc(cliente.RUC);
+        }
+        else
+        {
+            cliente.DV = 0;
+        }
+    }
+
+    private void Cancelar()
+    {
+        Navigation.NavigateTo("/clientes");
+    }
+}

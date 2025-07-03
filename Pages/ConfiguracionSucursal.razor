@@ -1,0 +1,225 @@
+﻿@page "/configuracion-sucursal"
+@page "/configuracion-sucursal/{id:int?}"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@inject AppDbContext Db
+@inject NavigationManager Navigation
+
+<h3>Configuración de Sucursal</h3>
+
+<EditForm Model="sucursal" OnValidSubmit="Guardar">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label>Num. Sucursal:</label>
+        <InputText @bind-Value="sucursal.NumSucursal" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Nombre Sucursal:</label>
+        <InputText @bind-Value="sucursal.NombreSucursal" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Nombre Empresa:</label>
+        <InputText @bind-Value="sucursal.NombreEmpresa" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Rubro Empresa:</label>
+        <InputText @bind-Value="sucursal.RubroEmpresa" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Dirección:</label>
+        <InputText @bind-Value="sucursal.Direccion" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>RUC:</label>
+        <InputText @bind-Value="sucursal.RUC" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label>Dígito Verificador (DV):</label>
+        <InputNumber @bind-Value="sucursal.DV" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Correo:</label>
+        <InputText @bind-Value="sucursal.Correo" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Teléfono:</label>
+        <InputText @bind-Value="sucursal.Telefono" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Ciudad:</label>
+        <InputSelect @bind-Value="sucursal.IdCiudad" class="form-control">
+            <option value="">-- Seleccione una ciudad --</option>
+            @foreach (var ciudad in ciudades)
+            {
+                <option value="@ciudad.IdCiudad">@ciudad.Nombre</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="mb-3">
+        <label>Ruta del certificado (.p12):</label>
+        <InputText @bind-Value="sucursal.CertificadoRuta" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Seleccionar certificado (.p12):</label>
+        <InputFile OnChange="SeleccionarCertificado" class="form-control" />
+        @if (!string.IsNullOrWhiteSpace(nombreArchivoCertificado))
+        {
+            <small class="text-muted">Archivo seleccionado: @nombreArchivoCertificado</small>
+        }
+    </div>
+
+    <div class="mb-3">
+        <label>Contraseña del certificado:</label>
+        <InputText @bind-Value="sucursal.CertificadoPassword" type="password" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Punto de Expedición:</label>
+        <InputText @bind-Value="sucursal.PuntoExpedicion" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>IP Consola:</label>
+        <InputText @bind-Value="sucursal.IpConsola" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Puerto Consola:</label>
+        <InputText @bind-Value="sucursal.PuertoConsola" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label>Cadena de Conexión:</label>
+        <InputText @bind-Value="sucursal.Conexion" class="form-control" />
+    </div>
+
+    <div class="form-check mb-3">
+        <InputCheckbox @bind-Value="sucursal.SistemaPlaya" class="form-check-input" />
+        <label class="form-check-label">¿Es sistema de playa?</label>
+    </div>
+
+    <div class="form-check mb-3">
+        <InputCheckbox @bind-Value="sucursal.Automatizado" class="form-check-input" />
+        <label class="form-check-label">¿Está automatizado?</label>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Logo (imagen):</label>
+        <InputFile OnChange="CargarLogo" class="form-control" />
+
+        @if (logoPreview != null)
+        {
+            <div class="mt-3 d-flex justify-content-center">
+                <div class="border border-2 rounded p-2 shadow-sm bg-light">
+                    <img src="@logoPreview" alt="Logo" class="img-fluid rounded" style="max-height: 200px;" />
+                </div>
+            </div>
+        }
+    </div>
+
+    <button type="submit" class="btn btn-primary">Guardar</button>
+</EditForm>
+
+@if (!string.IsNullOrEmpty(mensaje))
+{
+    <div class="alert alert-info mt-3">@mensaje</div>
+}
+
+@code {
+    [Parameter]
+    public int? id { get; set; }
+
+    private Sucursal sucursal = new();
+    private string mensaje = "";
+    private string? logoPreview;
+    private List<Ciudades> ciudades = new();
+    private string nombreArchivoCertificado = "";
+    private readonly string saveFolder = Path.Combine(Environment.CurrentDirectory, "Certificados");
+
+    protected override async Task OnInitializedAsync()
+    {
+        ciudades = await Db.Ciudades.OrderBy(c => c.Nombre).ToListAsync();
+
+        if (id.HasValue && id.Value > 0)
+        {
+            var existente = await Db.Sucursal.FirstOrDefaultAsync(s => s.Id == id.Value);
+            sucursal = existente ?? new Sucursal();
+            if (sucursal.Logo != null)
+            {
+                logoPreview = $"data:image/png;base64,{Convert.ToBase64String(sucursal.Logo)}";
+            }
+        }
+        else
+        {
+            sucursal = new Sucursal();
+        }
+    }
+
+    private async Task SeleccionarCertificado(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+
+        if (file != null && Path.GetExtension(file.Name).ToLower() == ".p12")
+        {
+            var fileName = Path.GetFileName(file.Name);
+            var savePath = Path.Combine(saveFolder, fileName);
+
+            Directory.CreateDirectory(saveFolder);
+
+            using var fs = new FileStream(savePath, FileMode.Create);
+            await file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).CopyToAsync(fs);
+
+            sucursal.CertificadoRuta = savePath;
+            nombreArchivoCertificado = fileName;
+            mensaje = "Certificado cargado correctamente.";
+        }
+        else
+        {
+            mensaje = "Debe seleccionar un archivo .p12 válido.";
+        }
+    }
+
+    private async Task CargarLogo(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+
+        if (file != null)
+        {
+            using var stream = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).CopyToAsync(stream);
+            sucursal.Logo = stream.ToArray();
+
+            logoPreview = $"data:{file.ContentType};base64,{Convert.ToBase64String(sucursal.Logo)}";
+        }
+    }
+
+    private async Task Guardar()
+    {
+        try
+        {
+            if (sucursal.Id == 0)
+                Db.Sucursal.Add(sucursal);
+            else
+                Db.Sucursal.Update(sucursal);
+
+            await Db.SaveChangesAsync();
+            mensaje = "Sucursal guardada correctamente.";
+            Navigation.NavigateTo("/sucursales");
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error: {ex.Message}";
+        }
+    }
+}

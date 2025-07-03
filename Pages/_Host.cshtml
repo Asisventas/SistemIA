@@ -1,0 +1,42 @@
+﻿@page "/"
+@using SistemIA
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Control de Asistencia</title>
+    <base href="~/" />
+
+
+    <!-- 1. Estilos base de la librería (Bootstrap) -->
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+
+    <!-- 2. Tu tema personalizado (site.css) que sobreescribe a Bootstrap -->
+    <link rel="stylesheet" href="css/site.css" />
+
+    <!-- 3. Estilos específicos de componentes (generados por Blazor) -->
+    <link href="SistemIA.styles.css" rel="stylesheet" />
+</head>
+
+<body>
+    <app>
+        <component type="typeof(App)" render-mode="ServerPrerendered" />
+    </app>
+
+    <div id="blazor-error-ui">
+        Ocurrió un error.
+        <a href="" class="reload">Recargar</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <!-- Scripts -->
+    <script src="_framework/blazor.server.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/funciones.js"></script>
+</body>
+</html>

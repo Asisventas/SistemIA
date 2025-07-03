@@ -1,0 +1,60 @@
+﻿<div class="d-flex flex-column h-100">
+    <div class="sidebar-header">
+        <i class="bi bi-amd app-logo"></i>
+        <span class="app-title">SistemIA</span>
+    </div>
+
+    <nav class="nav-container flex-grow-1">
+        @* Secciones principales *@
+        @foreach (var item in MenuItems)
+        {
+            <div class="nav-item">
+                <NavLink class="nav-link" href="@item.Href" Match="@item.Match">
+                    <i class="@item.Icon me-3"></i><span class="link-text">@item.Text</span>
+                </NavLink>
+            </div>
+        }
+
+        @* Submenú *@
+        <div class="nav-item">
+            <div class="nav-link nav-group-header" @onclick="ToggleSubMenu">
+                <i class="bi bi-people-fill me-3"></i><span class="link-text">Gestión de Personal</span>
+                <i class="bi @(isSubMenuOpen ? "bi-chevron-up" : "bi-chevron-down") ms-auto"></i>
+            </div>
+            @if (isSubMenuOpen)
+            {
+                <div class="submenu">
+                    <NavLink class="nav-link" href="/menu-usuarios"><i class="bi bi-dot"></i> Usuarios</NavLink>
+                    <NavLink class="nav-link" href="/asistencia"><i class="bi bi-dot"></i> Asistencia</NavLink>
+                    <NavLink class="nav-link" href="/horarios"><i class="bi bi-dot"></i> Horarios</NavLink>
+                    <NavLink class="nav-link" href="/asignacionhorarios"><i class="bi bi-dot"></i> Asignar</NavLink>
+                </div>
+            }
+        </div>
+    </nav>
+
+    <div class="sidebar-footer">
+        <NavLink class="nav-link" href="/sucursales">
+            <i class="bi bi-gear-fill me-3"></i><span class="link-text">Configuración</span>
+        </NavLink>
+    </div>
+</div>
+
+@code {
+    private bool isSubMenuOpen = false;
+
+    private void ToggleSubMenu() => isSubMenuOpen = !isSubMenuOpen;
+
+    private record MenuItem(string Href, string Text, string Icon, NavLinkMatch Match = NavLinkMatch.Prefix);
+
+    private List<MenuItem> MenuItems = new()
+    {
+        new("/"            , "Inicio"     , "bi bi-house-door"           , NavLinkMatch.All),
+        new("/clientes"    , "Clientes"   , "bi bi-person-lines-fill"),
+        new("/proveedores" , "Proveedores", "bi bi-briefcase-fill"),
+        new("/productos"   , "Productos"  , "bi bi-box-seam"),
+        new("/ventas"      , "Ventas"     , "bi bi-currency-dollar"),
+        new("/compras"     , "Compras"    , "bi bi-cart-fill"),
+        new("/informes"    , "Informes"   , "bi bi-file-earmark-bar-graph")
+    };
+}

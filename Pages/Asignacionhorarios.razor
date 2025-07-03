@@ -1,0 +1,184 @@
+﻿@page "/asignacionhorarios"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models 
+@inject SistemIA.Models.AppDbContext Db
+@inject IJSRuntime JS
+
+<PageTitle>Asignación de Horarios</PageTitle>
+
+<h3>Asignar Horarios a Empleados</h3>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Nueva Asignación
+    </div>
+    <div class="card-body">
+        <EditForm Model="nuevaAsignacion" OnValidSubmit="GuardarAsignacion">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Empleado:</label>
+                    <InputSelect class="form-select" @bind-Value="nuevaAsignacion.Id_Usuario" TValue="int">
+                        <option value="0">-- Seleccionar Empleado --</option>
+                        @if (usuarios != null)
+                        {
+                            @foreach (var user in usuarios)
+                            {
+                                <option value="@user.Id_Usu">@user.Nombres @user.Apellidos</option>
+                            }
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Horario a Asignar:</label>
+                    <InputSelect class="form-select" @bind-Value="nuevaAsignacion.Id_Horario" TValue="int">
+                        <option value="0">-- Seleccionar Horario --</option>
+                        @if (horarios != null)
+                        {
+                            @foreach (var h in horarios)
+                            {
+                                <option value="@h.Id_Horario">@h.NombreHorario (@h.HoraEntrada.ToString(@"hh\:mm") - @h.HoraSalida.ToString(@"hh\:mm"))</option>
+                            }
+                        }
+                    </InputSelect>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Fecha de Inicio:</label>
+                    <InputDate class="form-control" @bind-Value="nuevaAsignacion.FechaInicio" />
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Fecha de Fin:</label>
+                    <InputDate class="form-control" @bind-Value="nuevaAsignacion.FechaFin" />
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Guardar Asignación</button>
+        </EditForm>
+    </div>
+</div>
+
+<h4>Asignaciones Actuales y Futuras</h4>
+@if (asignaciones == null)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead class="table-dark">
+            <tr>
+                <th>Empleado</th>
+                <th>Horario Asignado</th>
+                <th>Sucursal del Horario</th>
+                <th>Vigente Desde</th>
+                <th>Vigente Hasta</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var asignacion in asignaciones.OrderByDescending(a => a.FechaInicio))
+            {
+                <tr>
+                    <td>@asignacion.Usuario?.Nombres @asignacion.Usuario?.Apellidos</td>
+                    <td>@asignacion.HorarioTrabajo?.NombreHorario</td>
+                    <td>@asignacion.HorarioTrabajo?.SucursalNavigation?.NombreSucursal</td>
+                    <td>@asignacion.FechaInicio.ToString("dd/MM/yyyy")</td>
+                    <td>@asignacion.FechaFin.ToString("dd/MM/yyyy")</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" @onclick="() => EliminarAsignacion(asignacion.Id_Asignacion)">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private AsignacionHorario nuevaAsignacion = new();
+    private List<AsignacionHorario>? asignaciones;
+    private List<Usuario>? usuarios;
+    private List<HorarioTrabajo>? horarios;
+
+    protected override async Task OnInitializedAsync()
+    {
+        usuarios = await Db.Usuarios.Where(u => u.Estado_Usu).OrderBy(u => u.Nombres).ToListAsync();
+        horarios = await Db.HorariosTrabajo.Where(h => h.EsActivo).OrderBy(h => h.NombreHorario).ToListAsync();
+        await CargarAsignaciones();
+        LimpiarFormulario();
+    }
+
+    private void LimpiarFormulario()
+    {
+        nuevaAsignacion = new()
+            {
+                FechaInicio = DateTime.Today,
+                FechaFin = DateTime.Today.AddMonths(1)
+            };
+    }
+
+    private async Task CargarAsignaciones()
+    {
+        asignaciones = await Db.AsignacionesHorarios
+            .Include(a => a.Usuario)
+            .Include(a => a.HorarioTrabajo)
+                .ThenInclude(h => h.SucursalNavigation)
+            .Where(a => a.FechaFin >= DateTime.Today)
+            .ToListAsync();
+    }
+
+    private async Task GuardarAsignacion()
+    {
+        if (nuevaAsignacion.Id_Usuario == 0 || nuevaAsignacion.Id_Horario == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar un empleado y un horario.");
+            return;
+        }
+
+        if (nuevaAsignacion.FechaInicio.Date > nuevaAsignacion.FechaFin.Date)
+        {
+            await JS.InvokeVoidAsync("alert", "La fecha de fin no puede ser anterior a la fecha de inicio.");
+            return;
+        }
+
+        // Validación para evitar solapamiento de fechas
+        var asignacionExistente = await Db.AsignacionesHorarios
+            .FirstOrDefaultAsync(a =>
+                a.Id_Usuario == nuevaAsignacion.Id_Usuario &&
+                a.FechaFin.Date >= nuevaAsignacion.FechaInicio.Date &&
+                a.FechaInicio.Date <= nuevaAsignacion.FechaFin.Date);
+
+        if (asignacionExistente != null)
+        {
+            await JS.InvokeVoidAsync("alert", "El empleado ya tiene un horario asignado que se solapa con estas fechas.");
+            return;
+        }
+
+
+        Db.AsignacionesHorarios.Add(nuevaAsignacion);
+        await Db.SaveChangesAsync();
+
+        await CargarAsignaciones();
+        LimpiarFormulario();
+        await JS.InvokeVoidAsync("alert", "Asignación guardada correctamente.");
+    }
+
+    private async Task EliminarAsignacion(int id)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar esta asignación?");
+        if (confirmed)
+        {
+            var asignacion = await Db.AsignacionesHorarios.FindAsync(id);
+            if (asignacion != null)
+            {
+                Db.AsignacionesHorarios.Remove(asignacion);
+                await Db.SaveChangesAsync();
+                await CargarAsignaciones();
+            }
+        }
+    }
+}

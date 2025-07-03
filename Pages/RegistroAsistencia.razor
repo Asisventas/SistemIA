@@ -1,0 +1,447 @@
+﻿@page "/asistencia"
+@using Microsoft.EntityFrameworkCore
+@using FaceRecognitionDotNet
+@using System.IO
+@using System.Drawing
+@using SistemIA.Models
+@inject AppDbContext Db
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Registro de Asistencia</PageTitle>
+
+<h3>Registro de Asistencia</h3>
+
+<!-- RECONOCIMIENTO FACIAL -->
+<div class="card mb-4">
+    <div class="card-header">Registrar por Reconocimiento Facial</div>
+    <div class="card-body text-center">
+        <div class="mb-3 mx-auto" style="max-width: 400px;">
+            <label for="sucursalReconocimiento" class="form-label"><b>Sucursal Actual:</b></label>
+            <InputSelect id="sucursalReconocimiento" class="form-select form-select-lg" @bind-Value="sucursalSeleccionadaId" TValue="int">
+                <option value="0">-- Seleccione una Sucursal --</option>
+                @foreach (var suc in sucursales)
+                {
+                    <option value="@suc.Id">@suc.NombreSucursal</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="mb-3">
+            <video id="videoElement" style="max-width: 100%; border: 1px solid #ccc;"></video>
+            <canvas id="canvasElement" class="d-none"></canvas>
+        </div>
+        @if (!string.IsNullOrEmpty(reconocimientoStatusMessage))
+        {
+            <div class="alert @(reconocimientoExitoso ? "alert-success" : "alert-danger")" role="alert">
+                @((MarkupString)reconocimientoStatusMessage.Replace(Environment.NewLine, "<br />"))
+            </div>
+        }
+        <div class="d-grid gap-2 col-6 mx-auto">
+            <button class="btn btn-success btn-lg" @onclick="ReconocerYMarcarAsistencia" disabled="@isProcessing">
+                @if (isProcessing)
+                {
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <span> Procesando...</span>
+                }
+                else
+                {
+                    <span><i class="bi bi-person-bounding-box"></i> Reconocer y Marcar Asistencia</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- REGISTRO MANUAL -->
+<div class="card mb-4">
+    <div class="card-header">Registrar Nueva Asistencia Manualmente</div>
+    <div class="card-body">
+        <EditForm Model="nuevaAsistencia" OnValidSubmit="GuardarAsistencia">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="mb-3">
+                <label class="form-label">Usuario:</label>
+                <InputSelect class="form-select" @bind-Value="nuevaAsistencia.Id_Usuario" TValue="int">
+                    <option value="0">-- Seleccionar --</option>
+                    @foreach (var u in usuarios)
+                    {
+                        <option value="@u.Id_Usu">@u.Nombres @u.Apellidos</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Sucursal:</label>
+                <InputSelect class="form-select" @bind-Value="nuevaAsistencia.Sucursal" TValue="int">
+                    <option value="0">-- Seleccionar --</option>
+                    @foreach (var s in sucursales)
+                    {
+                        <option value="@s.Id">@s.NombreSucursal</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Tipo:</label>
+                <InputSelect class="form-select" @bind-Value="nuevaAsistencia.TipoRegistro" TValue="string">
+                    <option value="">-- Seleccionar --</option>
+                    <option value="Entrada">Entrada</option>
+                    <option value="Salida">Salida</option>
+                    <option value="InicioBreak">Inicio Break</option>
+                    <option value="FinBreak">Fin Break</option>
+                </InputSelect>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Notas:</label>
+                <InputTextArea class="form-control" @bind-Value="nuevaAsistencia.Notas" />
+            </div>
+            <button type="submit" class="btn btn-primary">Guardar Asistencia</button>
+        </EditForm>
+    </div>
+</div>
+
+<!-- FILTRO Y EXPORTACIÓN -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <label class="form-label">Filtrar por Usuario:</label>
+        <InputSelect class="form-select" @bind-Value="FiltroUsuarioId" TValue="int">
+            <option value="0">Todos</option>
+            @foreach (var u in usuarios)
+            {
+                <option value="@u.Id_Usu">@u.Nombres @u.Apellidos</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">Desde:</label>
+        <InputDate class="form-control" @bind-Value="fechaDesde" />
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">Hasta:</label>
+        <InputDate class="form-control" @bind-Value="fechaHasta" />
+    </div>
+    <div class="col-md-3 d-flex align-items-end gap-2">
+        <button class="btn btn-outline-primary" @onclick="ImprimirAsistencias"><i class="bi bi-printer"></i> Imprimir</button>
+        <button class="btn btn-outline-success" @onclick="ExportarExcel"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+        <button class="btn btn-outline-danger" @onclick="ExportarPdf"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+    </div>
+</div>
+
+<!-- HISTORIAL -->
+<h4>Historial de Asistencias</h4>
+@if (asistencias == null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (!asistenciasFiltradas.Any())
+{
+    <p>No hay registros para mostrar.</p>
+}
+else
+{
+    <table class="table table-striped" id="tablaAsistencias">
+        <thead class="table-dark">
+            <tr>
+                <th>Usuario</th>
+                <th>Sucursal</th>
+                <th>Fecha/Hora</th>
+                <th>Tipo</th>
+                <th>Notas</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var asis in asistenciasFiltradas)
+            {
+                <tr>
+                    <td>@(asis.Usuario?.Nombres) @(asis.Usuario?.Apellidos)</td>
+                    <td>@(asis.SucursalNavigation?.NombreSucursal)</td>
+                    <td>@asis.FechaHora.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>@asis.TipoRegistro</td>
+                    <td>@asis.Notas</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" @onclick="() => EliminarAsistencia(asis.Id_Asistencia)">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+
+@code {
+    private SistemIA.Models.Asistencia nuevaAsistencia = new();
+    private List<SistemIA.Models.Asistencia> asistencias = new();
+    private List<SistemIA.Models.Asistencia> asistenciasFiltradas = new();
+    private List<Usuario> usuarios = new();
+    private List<Sucursal> sucursales = new();
+
+
+
+    private int _filtroUsuarioId = 0;
+    private int FiltroUsuarioId
+    {
+        get => _filtroUsuarioId;
+        set { _filtroUsuarioId = value; FiltrarAsistencias(); }
+    }
+
+    private int sucursalSeleccionadaId = 1;
+
+    // Lógica de reconocimiento directamente en la página
+    private FaceRecognition? faceRecognition;
+    private List<double[]> knownEmbeddings = new();
+    private List<int> knownUserIds = new();
+
+    private bool isProcessing = false;
+    private string? reconocimientoStatusMessage;
+    private bool reconocimientoExitoso = false;
+    private const double FACE_RECOGNITION_TOLERANCE = 0.55;
+
+    private DateTime? fechaDesde = null;
+    private DateTime? fechaHasta = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Se inicializaba todo en cada carga
+        var modeloPath = @"C:\asis\SistemIA\face_recognition_models";
+        faceRecognition = FaceRecognition.Create(modeloPath);
+
+        sucursales = await Db.Sucursal.OrderBy(s => s.NombreSucursal).ToListAsync();
+        usuarios = await Db.Usuarios.OrderBy(u => u.Nombres).ToListAsync();
+
+        await CargarEmbeddingsConocidos();
+        await CargarAsistencias();
+    }
+
+    private async Task CargarEmbeddingsConocidos()
+    {
+        knownEmbeddings.Clear();
+        knownUserIds.Clear();
+
+        // Se consultaban todos los usuarios que tenían un embedding guardado
+        var usuariosConEmbedding = await Db.Usuarios
+            .Where(u => u.EmbeddingFacial != null && u.EmbeddingFacial.Length > 0)
+            .ToListAsync();
+
+        foreach (var user in usuariosConEmbedding)
+        {
+            var doubleArray = ConvertByteArrayToDoubleArray(user.EmbeddingFacial);
+            if (doubleArray.Length > 0)
+            {
+                knownEmbeddings.Add(doubleArray);
+                knownUserIds.Add(user.Id_Usu);
+            }
+        }
+    }
+
+    private async Task IniciarCamara()
+    {
+        reconocimientoStatusMessage = "Iniciando cámara...";
+        await JS.InvokeVoidAsync("startCamera", "videoElement");
+    }
+
+    private async Task DetenerCamara()
+    {
+        await JS.InvokeVoidAsync("stopCamera", "videoElement");
+    }
+
+    private async Task ReconocerYMarcarAsistencia()
+    {
+        if (sucursalSeleccionadaId == 0) { reconocimientoStatusMessage = "Debe seleccionar una sucursal."; return; }
+
+        isProcessing = true;
+        reconocimientoExitoso = false;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await IniciarCamara();
+            await Task.Delay(1500);
+            reconocimientoStatusMessage = "Analizando rostro...";
+            await InvokeAsync(StateHasChanged);
+
+            string? base64Image = await JS.InvokeAsync<string>("captureFrame", "videoElement", "canvasElement");
+            if (string.IsNullOrEmpty(base64Image)) { reconocimientoStatusMessage = "No se pudo capturar la imagen."; return; }
+
+            var imageBytes = Convert.FromBase64String(base64Image.Split(',')[1]);
+
+            await Task.Run(async () =>
+            {
+                using var ms = new MemoryStream(imageBytes);
+                using var bitmap = new Bitmap(ms);
+                using var img = FaceRecognition.LoadImage(bitmap);
+                var faceLocations = faceRecognition.FaceLocations(img).ToArray();
+
+                if (faceLocations.Length != 1) { await InvokeAsync(() => reconocimientoStatusMessage = "No se detectó un único rostro."); return; }
+
+                var capturedEncodings = faceRecognition.FaceEncodings(img, faceLocations).ToArray();
+                if (capturedEncodings.Length == 0) { await InvokeAsync(() => reconocimientoStatusMessage = "Error al procesar el rostro."); return; }
+
+                using var capturedEncoding = capturedEncodings[0];
+                var capturedVector = capturedEncoding.GetRawEncoding();
+                var bestMatchIndex = -1;
+                var minDistance = 1.0;
+                for (int i = 0; i < knownEmbeddings.Count; i++)
+                {
+                    var distance = CalculateEuclideanDistance(knownEmbeddings[i], capturedVector);
+                    if (distance < minDistance) { minDistance = distance; bestMatchIndex = i; }
+                }
+
+                if (bestMatchIndex != -1 && minDistance <= FACE_RECOGNITION_TOLERANCE)
+                {
+                    var userId = knownUserIds[bestMatchIndex];
+                    var usuario = usuarios.FirstOrDefault(u => u.Id_Usu == userId);
+                    if (usuario != null)
+                    {
+                        await InvokeAsync(() => RegistrarAsistenciaAutomatica(usuario));
+                        await InvokeAsync(() => { reconocimientoStatusMessage = $"¡Marcación Correcta, {usuario.Nombres}!"; reconocimientoExitoso = true; });
+                    }
+                }
+                else
+                {
+                    await InvokeAsync(() => reconocimientoStatusMessage = $"Usuario no reconocido (Distancia: {minDistance:F2}).");
+                }
+            });
+        }
+        catch (Exception ex) { reconocimientoStatusMessage = $"Error: {ex.Message}"; }
+        finally
+        {
+            await Task.Delay(2500);
+            await DetenerCamara();
+            isProcessing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RegistrarAsistenciaAutomatica(Usuario usuario)
+    {
+        var ultimoRegistro = await Db.Asistencias.Where(a => a.Id_Usuario == usuario.Id_Usu).OrderByDescending(a => a.FechaHora).FirstOrDefaultAsync();
+        string tipoRegistro = (ultimoRegistro == null || ultimoRegistro.TipoRegistro == "Salida" || ultimoRegistro.TipoRegistro == "FinBreak") ? "Entrada" : "Salida";
+
+        var asistencia = new SistemIA.Models.Asistencia
+            {
+                Id_Usuario = usuario.Id_Usu,
+                FechaHora = DateTime.Now,
+                TipoRegistro = tipoRegistro,
+                Sucursal = sucursalSeleccionadaId,
+                Notas = "Reconocimiento Facial"
+            };
+
+        Db.Asistencias.Add(asistencia);
+        await Db.SaveChangesAsync();
+
+        string mensajeDeVoz = tipoRegistro == "Entrada" ? $"Hola, {usuario.Nombres}." : $"Hasta luego, {usuario.Nombres}.";
+        await JS.InvokeVoidAsync("hablarTexto", mensajeDeVoz);
+        await CargarAsistencias();
+    }
+
+    private async Task CargarAsistencias()
+    {
+        // Esta era la consulta lenta que cargaba todo el historial
+        asistencias = await Db.Asistencias
+            .Include(a => a.Usuario)
+            .Include(a => a.SucursalNavigation)
+            .OrderByDescending(a => a.FechaHora)
+            .ToListAsync();
+        FiltrarAsistencias();
+    }
+
+    private void FiltrarAsistencias()
+    {
+        if (FiltroUsuarioId == 0)
+        {
+            asistenciasFiltradas = asistencias;
+        }
+        else
+        {
+            asistenciasFiltradas = asistencias.Where(a => a.Id_Usuario == FiltroUsuarioId).ToList();
+        }
+        StateHasChanged();
+    }
+
+    private async Task GuardarAsistencia()
+    {
+        if (nuevaAsistencia.Id_Usuario == 0 || string.IsNullOrWhiteSpace(nuevaAsistencia.TipoRegistro) || nuevaAsistencia.Sucursal == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar un usuario, sucursal y tipo de registro.");
+            return;
+        }
+        nuevaAsistencia.FechaHora = DateTime.Now;
+        Db.Asistencias.Add(nuevaAsistencia);
+        await Db.SaveChangesAsync();
+        nuevaAsistencia = new();
+        await CargarAsistencias();
+        await JS.InvokeVoidAsync("alert", "Asistencia manual registrada correctamente.");
+    }
+
+    private async Task EliminarAsistencia(int id)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este registro?");
+        if (confirmed)
+        {
+            var asistenciaAEliminar = await Db.Asistencias.FindAsync(id);
+            if (asistenciaAEliminar != null)
+            {
+                Db.Asistencias.Remove(asistenciaAEliminar);
+                await Db.SaveChangesAsync();
+                await CargarAsistencias();
+            }
+        }
+    }
+
+    private double[] ConvertByteArrayToDoubleArray(byte[] byteArray)
+    {
+        if (byteArray == null || byteArray.Length % sizeof(double) != 0)
+            return Array.Empty<double>();
+
+        var doubleArray = new double[byteArray.Length / sizeof(double)];
+        Buffer.BlockCopy(byteArray, 0, doubleArray, 0, doubleArray.Length * sizeof(double));
+        return doubleArray;
+    }
+
+    private double CalculateEuclideanDistance(double[] vector1, double[] vector2)
+    {
+        if (vector1.Length != vector2.Length) throw new ArgumentException("Vectores de diferente longitud.");
+        double sum = 0;
+        for (int i = 0; i < vector1.Length; i++)
+        {
+            sum += Math.Pow(vector1[i] - vector2[i], 2);
+        }
+        return Math.Sqrt(sum);
+    }
+
+    private IEnumerable<Asistencia> AsistenciasFiltradasExport
+    => asistenciasFiltradas
+        .Where(a =>
+            (!fechaDesde.HasValue || a.FechaHora.Date >= fechaDesde.Value.Date) &&
+            (!fechaHasta.HasValue || a.FechaHora.Date <= fechaHasta.Value.Date)
+        );
+
+    private async Task ImprimirAsistencias()
+    {
+        // Prepara los datos como HTML para imprimir
+        var html = await JS.InvokeAsync<string>("getAsistenciasHtml", "tablaAsistencias");
+        await JS.InvokeVoidAsync("printHtml", html);
+    }
+    private async Task ExportarExcel()
+    {
+        var csv = "Usuario,Sucursal,Fecha/Hora,Tipo,Notas\n";
+        foreach (var asis in AsistenciasFiltradasExport)
+        {
+            csv += $"\"{asis.Usuario?.Nombres} {asis.Usuario?.Apellidos}\",\"{asis.SucursalNavigation?.NombreSucursal}\",\"{asis.FechaHora:dd/MM/yyyy HH:mm}\",\"{asis.TipoRegistro}\",\"{asis.Notas}\"\n";
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", "asistencias.csv", base64, "text/csv");
+    }
+    private async Task ExportarPdf()
+    {
+        await JS.InvokeVoidAsync("exportAsistenciasToPdf", "tablaAsistencias");
+    }
+    public void Dispose()
+    {
+        _ = DetenerCamara();
+        faceRecognition?.Dispose();
+    }
+}

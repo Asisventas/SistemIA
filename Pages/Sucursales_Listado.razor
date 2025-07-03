@@ -1,0 +1,137 @@
+﻿@page "/sucursales"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@inject AppDbContext Db
+@inject NavigationManager Navigation
+
+<h3 class="mb-4">🏢 Sucursales</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (sucursales == null)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    <table class="table table-hover table-striped align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>Id</th>
+                <th>Número</th>
+                <th>Nombre</th>
+                <th>Empresa</th>
+                <th>Ciudad</th>
+                <th>Teléfono</th>
+                <th>Email</th>
+                <th class="text-center">Opciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in sucursales)
+            {
+                <tr>
+                    <td>@s.Id</td>
+                    <td>@s.NumSucursal</td>
+                    <td>@s.NombreSucursal</td>
+                    <td>@s.NombreEmpresa</td>
+                    <td>@s.Ciudad?.Nombre</td>
+                    <td>@s.Telefono</td>
+                    <td>@s.Correo</td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="@(() => EditarSucursal(s.Id))">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <!-- Paginación -->
+    <div class="d-flex justify-content-between mt-3">
+        <button class="btn btn-secondary" @onclick="PaginaAnterior" disabled="@(!puedeRetroceder)">
+            ◀ Anterior
+        </button>
+        <span>Página @paginaActual de @totalPaginas</span>
+        <button class="btn btn-secondary" @onclick="PaginaSiguiente" disabled="@(!puedeAvanzar)">
+            Siguiente ▶
+        </button>
+    </div>
+}
+
+<!-- Botón flotante para crear nueva sucursal -->
+<button class="btn btn-primary rounded-circle position-fixed" style="bottom: 20px; right: 20px; width: 60px; height: 60px;" @onclick="NuevaSucursal">
+    <i class="bi bi-plus-lg fs-4"></i>
+</button>
+
+@code {
+    private List<Sucursal>? sucursales;
+    private string? errorMessage;
+
+    private int paginaActual = 1;
+    private int tamanioPagina = 20;
+    private int totalRegistros = 0;
+    private int totalPaginas = 1;
+
+    private bool puedeAvanzar => paginaActual < totalPaginas;
+    private bool puedeRetroceder => paginaActual > 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarSucursalesAsync();
+    }
+
+    private async Task CargarSucursalesAsync()
+    {
+        try
+        {
+            totalRegistros = await Db.Sucursal.CountAsync();
+            totalPaginas = (int)Math.Ceiling(totalRegistros / (double)tamanioPagina);
+
+            sucursales = await Db.Sucursal
+                .Include(s => s.Ciudad)
+                .OrderBy(s => s.NombreSucursal)
+                .Skip((paginaActual - 1) * tamanioPagina)
+                .Take(tamanioPagina)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "No se pudo conectar a la base de datos. Verifica la configuración.";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async void PaginaSiguiente()
+    {
+        if (puedeAvanzar)
+        {
+            paginaActual++;
+            await CargarSucursalesAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async void PaginaAnterior()
+    {
+        if (puedeRetroceder)
+        {
+            paginaActual--;
+            await CargarSucursalesAsync();
+            StateHasChanged();
+        }
+    }
+
+    private void NuevaSucursal()
+    {
+        Navigation.NavigateTo("/configuracion-sucursal");
+    }
+
+    private void EditarSucursal(int id)
+    {
+        Navigation.NavigateTo($"/configuracion-sucursal/{id}");
+    }
+}
