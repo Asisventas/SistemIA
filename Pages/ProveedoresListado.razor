@@ -1,0 +1,218 @@
+@page "/informes/proveedores"
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject NavigationManager Nav
+@using Microsoft.EntityFrameworkCore
+
+<PageProtection Modulo="/proveedores" Permiso="VIEW">
+
+<h3 class="mb-3"><i class="bi bi-file-earmark-text"></i> Listado de Proveedores</h3>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-6"><input class="form-control" placeholder="RUC o Razón Social" @bind="filtroTexto" @bind:event="oninput" @onkeyup="OnKeyUp" /></div>
+      <div class="col-md-6 d-flex gap-2 justify-content-end">
+        <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
+        <button class="btn btn-secondary" @onclick="Limpiar">Limpiar</button>
+        <button class="btn btn-outline-secondary" title="Imprimir" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir</button>
+        <button class="btn btn-outline-success" title="Exportar a Excel" @onclick="Exportar"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Razón Social</th>
+          <th>RUC</th>
+          <th>Teléfono</th>
+          <th>Email</th>
+        </tr>
+      </thead>
+      <tbody>
+        @{ int fila = 0; }
+        @foreach (var p in proveedores)
+        {
+          fila++;
+          <tr>
+            <td class="text-muted">@fila</td>
+            <td>@p.Nombre</td>
+            <td>@p.RucCompleto</td>
+            <td>@p.Telefono</td>
+            <td>@p.Correo</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (!proveedores.Any())
+  {
+    <div class="p-3 text-muted">Sin resultados</div>
+  }
+  else
+  {
+    <div class="card-footer text-muted small">
+      Mostrando @proveedores.Count registros
+    </div>
+  }
+</div>
+
+</PageProtection>
+
+@code {
+  private string filtroTexto = string.Empty;
+  private List<ItemProveedor> proveedores = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    await Buscar();
+  }
+
+  private async Task Buscar()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var q = ctx.ProveedoresSifen.AsNoTracking()
+      .Select(x => new ItemProveedor {
+        Id = x.IdProveedor,
+        Nombre = x.RazonSocial,
+        RUC = x.RUC,
+        DV = x.DV,
+        Telefono = x.Telefono ?? "",
+        Correo = x.Email ?? ""
+      });
+    if (!string.IsNullOrWhiteSpace(filtroTexto))
+      q = q.Where(x => x.Nombre.Contains(filtroTexto) || x.RUC.Contains(filtroTexto));
+
+    proveedores = await q.OrderBy(x => x.Nombre).Take(500).ToListAsync();
+  }
+
+  private async Task OnKeyUp(KeyboardEventArgs e)
+  {
+    if (e.Key == "Enter") await Buscar();
+  }
+
+  private async Task Imprimir()
+  {
+    if (!proveedores.Any()) return;
+
+    var head = new System.Text.StringBuilder();
+    head.AppendLine("<meta charset=\"utf-8\"/>");
+    head.AppendLine("<title>Listado de Proveedores</title>");
+    head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+    head.AppendLine("<style>");
+    head.AppendLine("@media print { @page { size: A4; margin: 10mm 10mm; } }");
+    head.AppendLine("body{font-size:11px;color:#111;}");
+    head.AppendLine(".hdr{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+    head.AppendLine(".logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+    head.AppendLine(".tabla th,.tabla td{padding:.35rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
+    head.AppendLine(".right{text-align:right}");
+    head.AppendLine(".muted{color:#666}");
+    head.AppendLine("</style>");
+
+    // Datos empresa/logo
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s=>s.Id).FirstOrDefaultAsync();
+    var sucIdSel = SucursalProvider.GetSucursalId();
+    if (sucIdSel.HasValue)
+    {
+      var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+      if (s2 != null) suc = s2;
+    }
+    string empresa = suc?.NombreEmpresa ?? "Empresa";
+    string sucursal = suc?.NombreSucursal ?? "Sucursal";
+    string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+    string? logoDataUri = null;
+    if (suc?.Logo != null && suc.Logo.Length>0) logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+    var filtros = System.Net.WebUtility.HtmlEncode($"Texto: {filtroTexto}");
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<div class=\"container-fluid\">");
+    sb.AppendLine("  <div class=\"hdr\">");
+    if (!string.IsNullOrEmpty(logoDataUri)) sb.AppendLine($"    <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+    sb.AppendLine("    <div>");
+    sb.AppendLine($"      <div class=\"h5 mb-0\">{empresa}</div>");
+    sb.AppendLine($"      <div class=\"small muted\">RUC: {ruc} • {sucursal}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"ms-auto text-end\">");
+    sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Listado de Proveedores</div>");
+    sb.AppendLine($"      <div class=\"small muted\">{filtros}</div>");
+    sb.AppendLine($"      <div class=\"small muted\">Fecha: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("  </div>");
+
+    sb.AppendLine("  <table class=\"table table-sm tabla\">");
+    sb.AppendLine("    <thead><tr><th>#</th><th>Razón Social</th><th>RUC</th><th>Teléfono</th><th>Email</th></tr></thead>");
+    sb.AppendLine("    <tbody>");
+    int n = 0;
+    foreach (var p in proveedores)
+    {
+      var rs = System.Net.WebUtility.HtmlEncode(p.Nombre);
+      var rucC = System.Net.WebUtility.HtmlEncode(p.RucCompleto);
+      var tel = System.Net.WebUtility.HtmlEncode(p.Telefono ?? "");
+      var mail = System.Net.WebUtility.HtmlEncode(p.Correo ?? "");
+      sb.AppendLine($"      <tr><td>{++n}</td><td>{rs}</td><td>{rucC}</td><td>{tel}</td><td>{mail}</td></tr>");
+    }
+    sb.AppendLine("    </tbody>");
+    sb.AppendLine("  </table>");
+    sb.AppendLine($"  <div class=\"text-muted small mt-2\">Total: {proveedores.Count} registros</div>");
+    sb.AppendLine("</div>");
+
+    await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+  }
+
+  private class ItemProveedor
+  {
+    public int Id { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public string RUC { get; set; } = string.Empty;
+    public int DV { get; set; }
+    public string RucCompleto => string.IsNullOrWhiteSpace(RUC) ? "" : $"{RUC}-{DV}";
+    public string Telefono { get; set; } = string.Empty;
+    public string Correo { get; set; } = string.Empty;
+  }
+
+  private async Task Limpiar()
+  {
+    filtroTexto = string.Empty;
+    await Buscar();
+  }
+
+  private async Task Exportar()
+  {
+    if (!proveedores.Any()) return;
+    var sep = ';';
+    var sb = new System.Text.StringBuilder();
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+    sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
+    sb.AppendLine(string.Join(sep, new[]{"Nro","Razón Social","RUC","Teléfono","Email"}));
+    int n=0;
+    foreach (var p in proveedores)
+    {
+      string[] cols = new[]
+      {
+        (++n).ToString(),
+        p.Nombre?.Replace("\"","'") ?? "",
+        p.RucCompleto,
+        p.Telefono ?? "",
+        p.Correo ?? ""
+      };
+      var line = string.Join(sep, cols.Select(v => v != null && (v.Contains(sep) || v.Contains('"') || v.Contains('\n')) ? $"\"{v.Replace("\"","\"\"")}\"" : v));
+      sb.AppendLine(line);
+    }
+    var utf8bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    var bytes = utf8bom.GetBytes(sb.ToString());
+    var b64 = Convert.ToBase64String(bytes);
+    var file = $"ListadoProveedores_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "text/csv;charset=utf-8");
+  }
+}

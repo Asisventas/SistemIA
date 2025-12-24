@@ -1,0 +1,77 @@
+@page "/login"
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="container mt-4" style="max-width:480px">
+	<div class="card shadow-sm">
+		<div class="card-body">
+			<h5 class="card-title mb-3">Iniciar sesión</h5>
+			@if (!string.IsNullOrWhiteSpace(_error))
+			{
+				<div class="alert alert-danger" role="alert">
+					@_error
+				</div>
+			}
+			<EditForm Model="_model" OnValidSubmit="OnSubmit">
+				<DataAnnotationsValidator />
+				<ValidationSummary />
+				<div class="mb-3">
+					<label class="form-label">Usuario</label>
+					<InputText class="form-control" @bind-Value="_model.UserName" />
+				</div>
+				<div class="mb-3">
+					<label class="form-label">Contraseña</label>
+					<InputText class="form-control" @bind-Value="_model.Password" type="password" />
+				</div>
+				<button class="btn btn-primary w-100" disabled="@_busy">
+					@_btnText
+				</button>
+			</EditForm>
+		</div>
+	</div>
+</div>
+
+@code {
+	private LoginModel _model = new();
+	private bool _busy;
+	private string _btnText => _busy ? "Ingresando…" : "Ingresar";
+	private string _returnUrl = "/";
+	private string? _error;
+
+	protected override void OnInitialized()
+	{
+		var uri = Nav.ToAbsoluteUri(Nav.Uri);
+		var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+		if (query.TryGetValue("returnUrl", out var ru) && !string.IsNullOrWhiteSpace(ru))
+		{
+			_returnUrl = ru.ToString();
+		}
+		if (query.TryGetValue("error", out var err) && !string.IsNullOrWhiteSpace(err))
+		{
+			_error = err.ToString() switch
+			{
+				"credenciales" => "Usuario o contraseña inválidos.",
+				_ => "No se pudo iniciar sesión. Intente nuevamente."
+			};
+		}
+	}
+
+	private async Task OnSubmit()
+	{
+		_busy = true;
+		try
+		{
+			var url = $"/auth/login?returnUrl={Uri.EscapeDataString(_returnUrl)}";
+			await JS.InvokeVoidAsync("blazorSubmitForm", url, new { UserName = _model.UserName, Password = _model.Password });
+		}
+		finally { _busy = false; }
+	}
+
+	private class LoginModel
+	{
+		[Required]
+		public string UserName { get; set; } = string.Empty;
+		[Required]
+		public string Password { get; set; } = string.Empty;
+	}
+}

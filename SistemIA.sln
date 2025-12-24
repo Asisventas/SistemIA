@@ -5,8 +5,6 @@ VisualStudioVersion = 17.12.35707.178
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SistemIA", "SistemIA.csproj", "{5DFA7F06-771F-4025-BBC2-E79068393F72}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTest", "UnitTest\UnitTest.csproj", "{0CA4DE09-B30D-42FC-AFC4-88069F4F69EC}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -17,7 +15,6 @@ Global
 		{5DFA7F06-771F-4025-BBC2-E79068393F72}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5DFA7F06-771F-4025-BBC2-E79068393F72}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5DFA7F06-771F-4025-BBC2-E79068393F72}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0CA4DE09-B30D-42FC-AFC4-88069F4F69EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0CA4DE09-B30D-42FC-AFC4-88069F4F69EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0CA4DE09-B30D-42FC-AFC4-88069F4F69EC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection

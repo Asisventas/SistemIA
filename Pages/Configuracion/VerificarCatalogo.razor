@@ -1,0 +1,326 @@
+@page "/configuracion/verificar-catalogo"
+@using System.Text
+@using System.Text.RegularExpressions
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Hosting
+@using SistemIA.Models
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IWebHostEnvironment Env
+
+<h3>Verificación de Catálogo SIFEN (CSV vs BD)</h3>
+
+<p class="text-muted">Fuente CSV: <code>ManualSifen/catalogo_geografico.csv</code> (en ContentRoot)</p>
+
+<div class="mb-3">
+    <button class="btn btn-primary" @onclick="VerificarAsync" disabled="@_busy">
+        Ejecutar verificación
+    </button>
+    @if (_busy)
+    {
+        <span class="ms-2">Procesando…</span>
+    }
+</div>
+
+@if (_resultado is not null)
+{
+    <div class="alert alert-info">
+        <div><strong>Departamentos CSV:</strong> @_resultado.TotalDepartamentosCsv | <strong>BD:</strong> @_resultado.TotalDepartamentosBd</div>
+        <div><strong>Distritos CSV (únicos por dep):</strong> @_resultado.TotalDistritosCsv | <strong>BD:</strong> @_resultado.TotalDistritosBd</div>
+        <div><strong>Ciudades CSV:</strong> @_resultado.TotalCiudadesCsv | <strong>BD:</strong> @_resultado.TotalCiudadesBd</div>
+    </div>
+
+    @if (_resultado.DepartamentosCodigoDifiere.Any())
+    {
+        <h5>Departamentos con código diferente (CSV vs BD)</h5>
+        <ul>
+            @foreach (var it in _resultado.DepartamentosCodigoDifiere)
+            {
+                <li>@it.Nombre: CSV=@it.CodigoCsv | BD=@it.CodigoBd</li>
+            }
+        </ul>
+    }
+
+    @if (_resultado.DepartamentosFaltantesEnBd.Any())
+    {
+        <h5>Departamentos presentes en CSV pero NO en BD</h5>
+        <ul>
+            @foreach (var it in _resultado.DepartamentosFaltantesEnBd)
+            {
+                <li>@it</li>
+            }
+        </ul>
+    }
+
+    @if (_resultado.DepartamentosSobrantesEnBd.Any())
+    {
+        <h5>Departamentos presentes en BD pero NO en CSV</h5>
+        <ul>
+            @foreach (var it in _resultado.DepartamentosSobrantesEnBd)
+            {
+                <li>@it</li>
+            }
+        </ul>
+    }
+
+    @if (_resultado.DistritosFaltantes.Any())
+    {
+        <h5>Distritos faltantes en BD (según CSV)</h5>
+        @foreach (var dep in _resultado.DistritosFaltantes.OrderBy(k => k.Key))
+        {
+            <p class="mb-1"><strong>@dep.Key</strong></p>
+            <ul class="mb-3">
+                @foreach (var dis in dep.Value)
+                {
+                    <li>@dis</li>
+                }
+            </ul>
+        }
+    }
+
+    @if (_resultado.DistritosSobrantes.Any())
+    {
+        <h5>Distritos en BD no presentes en CSV</h5>
+        @foreach (var dep in _resultado.DistritosSobrantes.OrderBy(k => k.Key))
+        {
+            <p class="mb-1"><strong>@dep.Key</strong></p>
+            <ul class="mb-3">
+                @foreach (var dis in dep.Value)
+                {
+                    <li>@dis</li>
+                }
+            </ul>
+        }
+    }
+
+    @if (_resultado.CiudadesFaltantes.Any())
+    {
+        <h5>Ciudades faltantes en BD (según CSV)</h5>
+        @foreach (var dep in _resultado.CiudadesFaltantes.OrderBy(k => k.Key))
+        {
+            <p class="mb-1"><strong>@dep.Key</strong></p>
+            <ul class="mb-3">
+                @foreach (var item in dep.Value)
+                {
+                    <li>@item.Distrito - @item.Ciudad</li>
+                }
+            </ul>
+        }
+    }
+}
+
+@code {
+    private bool _busy;
+
+    private ResultadoComparacion? _resultado;
+
+    private record CsvRow(int cDep, string dDesDep, string dDesDis, string dDesCiu);
+
+    private sealed class ResultadoComparacion
+    {
+        public int TotalDepartamentosCsv { get; set; }
+        public int TotalDepartamentosBd { get; set; }
+        public int TotalDistritosCsv { get; set; }
+        public int TotalDistritosBd { get; set; }
+        public int TotalCiudadesCsv { get; set; }
+        public int TotalCiudadesBd { get; set; }
+
+        public List<(string Nombre, int CodigoCsv, int CodigoBd)> DepartamentosCodigoDifiere { get; } = new();
+        public List<string> DepartamentosFaltantesEnBd { get; } = new();
+        public List<string> DepartamentosSobrantesEnBd { get; } = new();
+
+        public Dictionary<string, List<string>> DistritosFaltantes { get; } = new();
+        public Dictionary<string, List<string>> DistritosSobrantes { get; } = new();
+
+        public Dictionary<string, List<(string Distrito, string Ciudad)>> CiudadesFaltantes { get; } = new();
+    }
+
+    private async Task VerificarAsync()
+    {
+        _busy = true;
+        _resultado = new ResultadoComparacion();
+
+        try
+        {
+            var csvPath = Path.Combine(Env.ContentRootPath, "ManualSifen", "catalogo_geografico.csv");
+            var csvRows = LeerCsv(csvPath);
+
+            // CSV: sets normalizados por nombre
+            var depCsvByName = csvRows
+                .GroupBy(r => Normalize(r.dDesDep))
+                .ToDictionary(g => g.Key, g => g.First().cDep);
+
+            var disCsvByDep = csvRows
+                .GroupBy(r => Normalize(r.dDesDep))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(r => Normalize(r.dDesDis)).Distinct().OrderBy(x => x).ToList()
+                );
+
+            var ciudadesCsvByDep = csvRows
+                .GroupBy(r => Normalize(r.dDesDep))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(r => (Distrito: Normalize(r.dDesDis), Ciudad: Normalize(r.dDesCiu))).Distinct().ToList()
+                );
+
+            _resultado.TotalDepartamentosCsv = depCsvByName.Count;
+            _resultado.TotalDistritosCsv = disCsvByDep.Values.Sum(v => v.Count);
+            _resultado.TotalCiudadesCsv = ciudadesCsvByDep.Values.Sum(v => v.Count);
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var depsBd = await db.DepartamentosCatalogo.AsNoTracking().ToListAsync();
+            var disBd = await db.DistritosCatalogo.AsNoTracking().ToListAsync();
+            var ciuBd = await db.CiudadesCatalogo.AsNoTracking().ToListAsync();
+
+            _resultado.TotalDepartamentosBd = depsBd.Count;
+            _resultado.TotalDistritosBd = disBd.Count;
+            _resultado.TotalCiudadesBd = ciuBd.Count;
+
+            var depBdByName = depsBd.ToDictionary(d => Normalize(d.Nombre), d => d.Numero);
+
+            // 1) Departamentos: faltantes/sobrantes y códigos distintos
+            foreach (var (depNameNorm, codCsv) in depCsvByName)
+            {
+                if (!depBdByName.TryGetValue(depNameNorm, out var codBd))
+                {
+                    _resultado.DepartamentosFaltantesEnBd.Add(depNameNorm);
+                }
+                else if (codCsv != codBd)
+                {
+                    _resultado.DepartamentosCodigoDifiere.Add((Nombre: depNameNorm, CodigoCsv: codCsv, CodigoBd: codBd));
+                }
+            }
+
+            foreach (var kv in depBdByName)
+            {
+                var depNameNorm = kv.Key;
+                if (!depCsvByName.ContainsKey(depNameNorm))
+                {
+                    _resultado.DepartamentosSobrantesEnBd.Add(depNameNorm);
+                }
+            }
+
+            // 2) Distritos por departamento (por nombre)
+            foreach (var (depNameNorm, distritosCsv) in disCsvByDep)
+            {
+                if (!depBdByName.TryGetValue(depNameNorm, out var depNumBd))
+                    continue; // si el dep no está en BD, ya lo listamos arriba
+
+                var distritosBdNames = disBd
+                    .Where(d => d.Departamento == depNumBd)
+                    .Select(d => Normalize(d.Nombre))
+                    .Distinct()
+                    .ToList();
+
+                var faltantes = distritosCsv.Except(distritosBdNames).OrderBy(x => x).ToList();
+                if (faltantes.Any())
+                    _resultado.DistritosFaltantes[depNameNorm] = faltantes;
+
+                var sobrantes = distritosBdNames.Except(distritosCsv).OrderBy(x => x).ToList();
+                if (sobrantes.Any())
+                    _resultado.DistritosSobrantes[depNameNorm] = sobrantes;
+            }
+
+            // 3) Ciudades por (dep, distrito)
+            foreach (var (depNameNorm, ciudadesCsv) in ciudadesCsvByDep)
+            {
+                if (!depBdByName.TryGetValue(depNameNorm, out var depNumBd))
+                    continue;
+
+                // Map distritos BD por nombre normalizado -> Numero
+                var mapaDisBd = disBd
+                    .Where(d => d.Departamento == depNumBd)
+                    .GroupBy(d => Normalize(d.Nombre))
+                    .ToDictionary(g => g.Key, g => g.Select(x => x.Numero).ToList());
+
+                // Ciudades BD mapeadas por (dep, dis) nombre norm
+                var mapaCiuBd = ciuBd
+                    .Where(c => c.Departamento == depNumBd)
+                    .Select(c => new { c.Nombre, c.Distrito })
+                    .ToList();
+
+                var setCiudadesBd = new HashSet<(string DisNorm, string CiuNorm)>(
+                    mapaCiuBd.Select(x =>
+                    {
+                        var disNorm = disBd.FirstOrDefault(d => d.Numero == x.Distrito)?.Nombre ?? string.Empty;
+                        return (Normalize(disNorm), Normalize(x.Nombre));
+                    })
+                );
+
+                var faltantes = new List<(string Distrito, string Ciudad)>();
+                foreach (var (disCsvNorm, ciuCsvNorm) in ciudadesCsv)
+                {
+                    // Validar que el (distrito, ciudad) exista (por nombre) en BD
+                    if (!setCiudadesBd.Contains((disCsvNorm, ciuCsvNorm)))
+                    {
+                        faltantes.Add((disCsvNorm, ciuCsvNorm));
+                    }
+                }
+
+                if (faltantes.Any())
+                    _resultado.CiudadesFaltantes[depNameNorm] = faltantes;
+            }
+        }
+        catch (Exception ex)
+        {
+            _resultado = new ResultadoComparacion();
+            _resultado.DepartamentosFaltantesEnBd.Add($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static IEnumerable<CsvRow> LeerCsv(string path)
+    {
+        var lines = File.ReadAllLines(path, Encoding.UTF8);
+        var rows = new List<CsvRow>();
+        bool headerSkipped = false;
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            if (line.StartsWith("#")) continue; // comentarios
+
+            if (!headerSkipped)
+            {
+                headerSkipped = true; // cDep,dDesDep,dDesDis,dDesCiu
+                continue;
+            }
+
+            // split CSV simple (no hay comillas en el archivo)
+            var parts = line.Split(',');
+            if (parts.Length < 4) continue;
+
+            if (!int.TryParse(parts[0].Trim(), out var cDep)) continue;
+            var dDesDep = parts[1].Trim();
+            var dDesDis = parts[2].Trim();
+            var dDesCiu = parts[3].Trim();
+
+            rows.Add(new CsvRow(cDep, dDesDep, dDesDis, dDesCiu));
+        }
+        return rows;
+    }
+
+    private static string Normalize(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+        var s = input.ToUpperInvariant().Trim();
+        // quitar paréntesis y su contenido
+        s = Regex.Replace(s, "\\s*\\(.*?\\)", string.Empty);
+        // normalizar espacios
+        s = Regex.Replace(s, "\\s+", " ");
+        // quitar tildes/diacríticos
+        s = s.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder();
+        foreach (var ch in s)
+        {
+            var uc = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (uc != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(ch);
+        }
+        return sb.ToString().Normalize(NormalizationForm.FormC);
+    }
+}

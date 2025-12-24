@@ -1,0 +1,483 @@
+@page "/informes-asistencia"
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject IJSRuntime JSRuntime
+@inject SistemIA.Services.InformeAsistenciaService InformeService
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Services
+
+<PageProtection Modulo="/reportes" Permiso="VIEW">
+
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="text-primary">
+                    <i class="bi bi-file-earmark-pdf me-2"></i>
+                    Informes de Asistencia
+                </h2>
+                <small class="text-muted">@DateTime.Now.ToString("dd/MM/yyyy")</small>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger" role="alert">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    @errorMessage
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(successMessage))
+            {
+                <div class="alert alert-success" role="alert">
+                    <i class="bi bi-check-circle me-2"></i>
+                    @successMessage
+                </div>
+            }
+
+            <!-- Configuración del Informe -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-gear me-2"></i>
+                        Configuración del Informe
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Fecha Desde</label>
+                            <input type="date" class="form-control" @bind="fechaDesde" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Fecha Hasta</label>
+                            <input type="date" class="form-control" @bind="fechaHasta" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Usuario</label>
+                            <select class="form-select" @bind="usuarioSeleccionado">
+                                <option value="">Todos los usuarios</option>
+                                @foreach (var usuario in usuarios)
+                                {
+                                    <option value="@usuario.Id_Usu">@usuario.Nombres @usuario.Apellidos</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Sucursal</label>
+                            <select class="form-select" @bind="sucursalSeleccionada">
+                                <option value="">Todas las sucursales</option>
+                                @foreach (var sucursal in sucursales)
+                                {
+                                    <option value="@sucursal.Id">@sucursal.NombreSucursal</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Formato del Informe</label>
+                            <select class="form-select" @bind="formatoInforme">
+                                <option value="PDF">PDF</option>
+                                <option value="WORD">Word (DOCX)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo de Informe</label>
+                            <select class="form-select" @bind="tipoInforme">
+                                <option value="DETALLADO">Detallado</option>
+                                <option value="RESUMEN">Resumen por Usuario</option>
+                                <option value="ESTADISTICO">Estadístico</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-12">
+                            <button class="btn btn-primary btn-lg me-3" @onclick="GenerarInforme" disabled="@generandoInforme">
+                                @if (generandoInforme)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-file-earmark-arrow-down me-2"></i>
+                                }
+                                Generar Informe
+                            </button>
+                            
+                            <button class="btn btn-outline-secondary btn-lg me-3" @onclick="VistaPrevia" disabled="@generandoInforme">
+                                <i class="bi bi-eye me-2"></i>
+                                Vista Previa
+                            </button>
+                            
+                            <button class="btn btn-outline-info btn-lg" @onclick="EnviarPorEmail" disabled="@generandoInforme">
+                                <i class="bi bi-envelope me-2"></i>
+                                Enviar por Email
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vista previa -->
+            @if (mostrarVistaPrevia && asistenciasParaInforme.Any())
+            {
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-eye me-2"></i>
+                            Vista Previa del Informe
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Hora</th>
+                                        <th>Usuario</th>
+                                        <th>Tipo</th>
+                                        <th>Sucursal</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var asistencia in asistenciasParaInforme.Take(20))
+                                    {
+                                        <tr>
+                                            <td>@asistencia.FechaHora.ToString("dd/MM/yyyy")</td>
+                                            <td>@asistencia.FechaHora.ToString("HH:mm:ss")</td>
+                                            <td>@(asistencia.Usuario?.Nombres ?? "") @(asistencia.Usuario?.Apellidos ?? "")</td>
+                                            <td>
+                                                @if (asistencia.TipoRegistro == "Entrada")
+                                                {
+                                                    <span class="badge bg-success">Entrada</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-danger">Salida</span>
+                                                }
+                                            </td>
+                                            <td>@sucursales.FirstOrDefault(s => s.Id == asistencia.Sucursal)?.NombreSucursal</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (asistenciasParaInforme.Count > 20)
+                        {
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                Mostrando los primeros 20 registros de @asistenciasParaInforme.Count total.
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+</PageProtection>
+
+@code {
+    private List<Asistencia> asistenciasParaInforme = new();
+    private List<Usuario> usuarios = new();
+    private List<Sucursal> sucursales = new();
+    private bool generandoInforme = false;
+    private bool mostrarVistaPrevia = false;
+    private string? errorMessage;
+    private string? successMessage;
+
+    // Filtros
+    private DateTime fechaDesde = DateTime.Today.AddDays(-30);
+    private DateTime fechaHasta = DateTime.Today;
+    private string usuarioSeleccionado = "";
+    private string sucursalSeleccionada = "";
+    private string formatoInforme = "PDF";
+    private string tipoInforme = "DETALLADO";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Esperar un poco para que el JavaScript se cargue completamente
+            await Task.Delay(500);
+            await VerificarFuncionesJavaScript();
+            StateHasChanged();
+        }
+    }
+
+    private async Task VerificarFuncionesJavaScript()
+    {
+        try
+        {
+            // Verificar si la función downloadFile está disponible
+            var funcionExiste = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.downloadFile === 'function'");
+            if (!funcionExiste)
+            {
+                errorMessage = "Funciones JavaScript no cargadas completamente. Intentando cargar...";
+                
+                // Intentar cargar la función directamente
+                await CargarFuncionDownloadFile();
+                
+                // Verificar nuevamente
+                funcionExiste = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.downloadFile === 'function'");
+                if (funcionExiste)
+                {
+                    errorMessage = null;
+                    successMessage = "Funciones JavaScript cargadas correctamente.";
+                }
+                else
+                {
+                    errorMessage = "No se pudieron cargar las funciones JavaScript. La descarga usará método alternativo.";
+                }
+            }
+            else
+            {
+                // Limpiar cualquier mensaje de error previo
+                if (errorMessage?.Contains("JavaScript no cargadas") == true)
+                {
+                    errorMessage = null;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error verificando JavaScript: {ex.Message}");
+            errorMessage = "Error al verificar funciones JavaScript. La descarga usará método alternativo.";
+        }
+    }
+
+    private async Task CargarFuncionDownloadFile()
+    {
+        try
+        {
+            var funcionJS = @"
+                window.downloadFile = function (base64Data, fileName, contentType) {
+                    try {
+                        const byteCharacters = atob(base64Data);
+                        const byteNumbers = new Array(byteCharacters.length);
+                        
+                        for (let i = 0; i < byteCharacters.length; i++) {
+                            byteNumbers[i] = byteCharacters.charCodeAt(i);
+                        }
+                        
+                        const byteArray = new Uint8Array(byteNumbers);
+                        const blob = new Blob([byteArray], { type: contentType });
+                        
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = fileName;
+                        link.style.display = 'none';
+                        
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        window.URL.revokeObjectURL(url);
+                        console.log('Archivo descargado: ' + fileName);
+                    } catch (error) {
+                        console.error('Error al descargar archivo:', error);
+                        alert('Error al descargar el archivo: ' + error.message);
+                    }
+                };
+            ";
+            
+            await JSRuntime.InvokeVoidAsync("eval", funcionJS);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando función downloadFile: {ex.Message}");
+        }
+    }
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            usuarios = await context.Usuarios.OrderBy(u => u.Nombres).ToListAsync();
+            sucursales = await context.Sucursal.OrderBy(s => s.NombreSucursal).ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar datos: {ex.Message}";
+        }
+    }
+
+    private async Task CargarAsistenciasParaInforme()
+    {
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            var query = context.Asistencias
+                .Include(a => a.Usuario)
+                .Include(a => a.SucursalNavigation)
+                .Where(a => a.FechaHora.Date >= fechaDesde.Date && a.FechaHora.Date <= fechaHasta.Date);
+
+            if (!string.IsNullOrEmpty(usuarioSeleccionado))
+            {
+                query = query.Where(a => a.Id_Usuario.ToString() == usuarioSeleccionado);
+            }
+
+            if (!string.IsNullOrEmpty(sucursalSeleccionada))
+            {
+                query = query.Where(a => a.Sucursal.ToString() == sucursalSeleccionada);
+            }
+
+            asistenciasParaInforme = await query.OrderByDescending(a => a.FechaHora).ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar asistencias: {ex.Message}";
+        }
+    }
+
+    private async Task VistaPrevia()
+    {
+        errorMessage = null;
+        successMessage = null;
+        
+        await CargarAsistenciasParaInforme();
+        mostrarVistaPrevia = true;
+        
+        if (!asistenciasParaInforme.Any())
+        {
+            errorMessage = "No se encontraron registros de asistencia para el período seleccionado.";
+        }
+    }
+
+    private async Task GenerarInforme()
+    {
+        try
+        {
+            generandoInforme = true;
+            errorMessage = null;
+            successMessage = null;
+            
+            await CargarAsistenciasParaInforme();
+            
+            if (!asistenciasParaInforme.Any())
+            {
+                errorMessage = "No se encontraron registros de asistencia para el período seleccionado.";
+                return;
+            }
+
+            var sucursalInfo = sucursales.FirstOrDefault();
+            if (sucursalInfo == null)
+            {
+                errorMessage = "No se encontró información de la sucursal para el encabezado del informe.";
+                return;
+            }
+
+            byte[] archivoBytes;
+            string nombreArchivo;
+            string contentType;
+
+            if (formatoInforme == "PDF")
+            {
+                archivoBytes = await InformeService.GenerarInformePDF(asistenciasParaInforme, sucursalInfo, fechaDesde, fechaHasta, tipoInforme);
+                nombreArchivo = $"InformeAsistencia_{fechaDesde:yyyyMMdd}_{fechaHasta:yyyyMMdd}.pdf";
+                contentType = "application/pdf";
+            }
+            else // WORD
+            {
+                archivoBytes = await InformeService.GenerarInformeWord(asistenciasParaInforme, sucursalInfo, fechaDesde, fechaHasta, tipoInforme);
+                nombreArchivo = $"InformeAsistencia_{fechaDesde:yyyyMMdd}_{fechaHasta:yyyyMMdd}.docx";
+                contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            }
+
+            // Descargar el archivo
+            try 
+            {
+                // Primero verificar si la función existe
+                var funcionExiste = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.downloadFile === 'function'");
+                
+                if (funcionExiste)
+                {
+                    await JSRuntime.InvokeVoidAsync("downloadFile", Convert.ToBase64String(archivoBytes), nombreArchivo, contentType);
+                    successMessage = $"Informe generado exitosamente: {nombreArchivo}";
+                }
+                else
+                {
+                    // Cargar la función y intentar de nuevo
+                    await CargarFuncionDownloadFile();
+                    await Task.Delay(100); // Dar tiempo para que se cargue
+                    
+                    funcionExiste = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.downloadFile === 'function'");
+                    
+                    if (funcionExiste)
+                    {
+                        await JSRuntime.InvokeVoidAsync("downloadFile", Convert.ToBase64String(archivoBytes), nombreArchivo, contentType);
+                        successMessage = $"Informe generado exitosamente: {nombreArchivo}";
+                    }
+                    else
+                    {
+                        throw new JSException("Función downloadFile no disponible");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error con función downloadFile: {ex.Message}");
+                // Usar método de fallback directo
+                var base64Data = Convert.ToBase64String(archivoBytes);
+                await JSRuntime.InvokeVoidAsync("eval", $@"
+                    try {{
+                        const byteCharacters = atob('{base64Data}');
+                        const byteNumbers = new Array(byteCharacters.length);
+                        for (let i = 0; i < byteCharacters.length; i++) {{
+                            byteNumbers[i] = byteCharacters.charCodeAt(i);
+                        }}
+                        const byteArray = new Uint8Array(byteNumbers);
+                        const blob = new Blob([byteArray], {{ type: '{contentType}' }});
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = '{nombreArchivo}';
+                        link.style.display = 'none';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+                        console.log('Archivo descargado usando método directo: {nombreArchivo}');
+                    }} catch (error) {{
+                        console.error('Error en descarga directa:', error);
+                        alert('Error al descargar el archivo: ' + error.message);
+                    }}
+                ");
+                successMessage = $"Informe generado exitosamente (método directo): {nombreArchivo}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al generar el informe: {ex.Message}";
+        }
+        finally
+        {
+            generandoInforme = false;
+        }
+    }
+
+    private async Task EnviarPorEmail()
+    {
+        // TODO: Implementar envío por email
+        errorMessage = "Funcionalidad de envío por email en desarrollo.";
+    }
+}

@@ -1,0 +1,498 @@
+@page "/compras/explorar"
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using ClosedXML.Excel
+@using System.Security.Cryptography
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IInventarioService Inventario
+@inject AuthenticationStateProvider AuthStateProvider
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject Microsoft.AspNetCore.Components.NavigationManager NavMan
+
+<h3 class="mb-3">Explorador de Compras</h3>
+
+<!-- Modal de restricciones para anular/eliminar -->
+<div class="modal fade" id="restriccionEliminarCompraModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Restricciones para Eliminar</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-3">La compra <strong>#@_restriccionIdCompra</strong> tiene registros asociados que deben ser eliminados primero:</p>
+        
+        @if (_tienePagosConfirmados)
+        {
+          <div class="alert alert-danger">
+            <h6><i class="bi bi-cash-stack me-2"></i>Pagos registrados (@_pagosConfirmadosCount)</h6>
+            <p class="mb-2">Hay pagos <strong>confirmados</strong> asociados a esta compra. Debe ir al historial de pagos y anularlos primero.</p>
+            <a href="/pagos-proveedores/historial" class="btn btn-outline-danger btn-sm">
+              <i class="bi bi-arrow-right me-1"></i>Ir al Historial de Pagos a Proveedores
+            </a>
+          </div>
+        }
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-2"><input type="number" class="form-control" placeholder="Nº Interno" @bind="filtroIdCompra" /></div>
+      <div class="col-md-2"><input class="form-control" placeholder="RUC o Razón Social" @bind="filtroProveedor" /></div>
+      <div class="col-md-2"><input type="date" class="form-control" @bind="filtroDesde" /></div>
+      <div class="col-md-2"><input type="date" class="form-control" @bind="filtroHasta" /></div>
+      <div class="col-md-2">
+        <select class="form-select" @bind="filtroEstado">
+          <option value="">Todos</option>
+          <option>Borrador</option>
+          <option>Confirmado</option>
+          <option>Anulado</option>
+        </select>
+      </div>
+      <div class="col-md-2 d-flex gap-2">
+        <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i></button>
+        <button class="btn btn-secondary" @onclick="Limpiar">Limpiar</button>
+        <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
+        <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Nº Int.</th>
+          <th>Fecha</th>
+          <th>Proveedor</th>
+          <th>Documento</th>
+          <th class="text-end">Total</th>
+          <th>Estado</th>
+          <th class="text-end">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var c in compras)
+        {
+          <tr>
+            <td><span class="badge bg-secondary">@c.IdCompra</span></td>
+            <td>@c.Fecha.ToString("dd/MM/yyyy")</td>
+            <td>
+              <div class="fw-semibold">@c.ProveedorNombre</div>
+              <div class="text-muted small">RUC: @c.ProveedorRuc</div>
+            </td>
+            <td>
+              <div>@(string.IsNullOrWhiteSpace(c.Numero) ? "-" : c.Numero)</div>
+              <div class="text-muted small">Timbrado: @(string.IsNullOrWhiteSpace(c.Timbrado) ? "-" : c.Timbrado)</div>
+            </td>
+            <td class="text-end">@c.Total.ToString("N0")</td>
+            <td>
+              @if (c.Estado == "Anulado") { <span class="badge bg-danger">Anulado</span> }
+              else if (c.Estado == "Confirmado") { <span class="badge bg-success">Confirmado</span> }
+              else { <span class="badge bg-secondary">Borrador</span> }
+            </td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" title="Reimprimir" @onclick="() => Reimprimir(c.IdCompra)"><i class="bi bi-printer"></i></button>
+                <button class="btn btn-outline-primary" title="Ver detalles" @onclick="() => Editar(c.IdCompra)"><i class="bi bi-eye"></i></button>
+                <button class="btn btn-outline-danger" title="Eliminar" @onclick="() => Eliminar(c.IdCompra)"><i class="bi bi-trash"></i></button>
+                <button class="btn btn-outline-warning" title="Recuperar" disabled="@(c.Estado != "Anulado")" @onclick="() => Recuperar(c.IdCompra)"><i class="bi bi-arrow-counterclockwise"></i></button>
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (!compras.Any())
+  {
+    <div class="p-3 text-muted">Sin resultados</div>
+  }
+</div>
+
+@code {
+  private string filtroProveedor = string.Empty;
+  private string filtroEstado = string.Empty;
+  private int? filtroIdCompra = null;
+  private DateTime? filtroDesde;
+  private DateTime? filtroHasta;
+  private List<ItemCompra> compras = new();
+  
+  // Variables para el modal de restricciones
+  private int _restriccionIdCompra;
+  private int _restriccionIdProveedor;
+  private bool _tienePagosConfirmados;
+  private int _pagosConfirmadosCount;
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!SucursalProvider.GetSucursalId().HasValue)
+    {
+      var ret = System.Net.WebUtility.UrlEncode(NavMan.Uri);
+      NavMan.NavigateTo($"/seleccionar-sucursal?returnUrl={ret}", true);
+      return;
+    }
+    
+    // Obtener fecha de caja como predeterminada
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var caja = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+    var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
+    filtroDesde = fechaCaja;
+    filtroHasta = fechaCaja;
+    
+    await Buscar();
+  }
+
+  private async Task Buscar()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+  // Guard de esquema por si la columna aún no existe en este entorno
+  try
+  {
+    var sql = @"
+IF COL_LENGTH('dbo.Compras','MedioPago') IS NULL
+BEGIN
+  ALTER TABLE [dbo].[Compras] ADD [MedioPago] NVARCHAR(13) NULL;
+  UPDATE [dbo].[Compras] SET [MedioPago] = 'EFECTIVO' WHERE [MedioPago] IS NULL OR LTRIM(RTRIM([MedioPago]))='';
+END
+IF COL_LENGTH('dbo.Compras','TipoIngreso') IS NULL
+BEGIN
+  ALTER TABLE [dbo].[Compras] ADD [TipoIngreso] NVARCHAR(13) NOT NULL CONSTRAINT DF_Compras_TipoIngreso DEFAULT('COMPRA');
+  UPDATE [dbo].[Compras] SET [TipoIngreso] = 'COMPRA' WHERE [TipoIngreso] IS NULL OR LTRIM(RTRIM([TipoIngreso]))='';
+END";
+    await ctx.Database.ExecuteSqlRawAsync(sql);
+  }
+  catch { }
+    var sucSel = SucursalProvider.GetSucursalId();
+    var q = ctx.Compras.AsNoTracking()
+      .Where(c => !sucSel.HasValue || c.IdSucursal == sucSel.Value)
+      .Select(c => new ItemCompra {
+        IdCompra = c.IdCompra,
+        Fecha = c.Fecha,
+        ProveedorNombre = c.Proveedor != null ? c.Proveedor.RazonSocial : "",
+        ProveedorRuc = c.Proveedor != null ? (c.Proveedor.RUC + '-' + c.Proveedor.DV) : "",
+        Numero = (c.Establecimiento ?? "") + '-' + (c.PuntoExpedicion ?? "") + '-' + (c.NumeroFactura ?? ""),
+        Timbrado = c.Timbrado,
+        Total = c.Total,
+        Estado = c.Estado ?? "Borrador"
+      });
+    if (!string.IsNullOrWhiteSpace(filtroProveedor))
+      q = q.Where(x => x.ProveedorNombre.Contains(filtroProveedor) || x.ProveedorRuc.Contains(filtroProveedor));
+    if (filtroIdCompra.HasValue && filtroIdCompra.Value > 0)
+      q = q.Where(x => x.IdCompra == filtroIdCompra.Value);
+    if (filtroDesde.HasValue)
+      q = q.Where(x => x.Fecha >= filtroDesde.Value);
+    if (filtroHasta.HasValue)
+      q = q.Where(x => x.Fecha < filtroHasta.Value.AddDays(1));
+    if (!string.IsNullOrWhiteSpace(filtroEstado))
+      q = q.Where(x => x.Estado == filtroEstado);
+
+    compras = await q.OrderByDescending(x => x.Fecha).Take(200).ToListAsync();
+  }
+
+  private void Editar(int id) => Nav.NavigateTo($"/compras?id={id}"); // Abre en modo visualización
+
+  private async Task Reimprimir(int id)
+  {
+    // Redirigir a Compras con parámetros para reimpresión
+    Nav.NavigateTo($"/compras?id={id}&print=1", true);
+    await Task.CompletedTask;
+  }
+
+  private async Task Eliminar(int id)
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    
+    // 1. Obtener la compra para saber el proveedor
+    var compraInfo = await ctx.Compras.AsNoTracking()
+      .Where(c => c.IdCompra == id)
+      .Select(c => new { c.IdCompra, c.IdProveedor })
+      .FirstOrDefaultAsync();
+    
+    if (compraInfo == null)
+    {
+      await JS.InvokeVoidAsync("alert", "La compra no existe.");
+      return;
+    }
+    
+    // 2. Verificar si hay pagos CONFIRMADOS (solo estos bloquean)
+    var pagosConfirmados = await ctx.PagosProveedores
+      .Where(p => p.IdCompra == id && p.Estado != "Anulado")
+      .ToListAsync();
+    
+    if (pagosConfirmados.Any())
+    {
+      // Mostrar modal con restricciones
+      _restriccionIdCompra = id;
+      _restriccionIdProveedor = compraInfo.IdProveedor;
+      _tienePagosConfirmados = true;
+      _pagosConfirmadosCount = pagosConfirmados.Count;
+      StateHasChanged();
+      await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('restriccionEliminarCompraModal')).show()");
+      return;
+    }
+
+    // 3. Solicitar contraseña del usuario para confirmar eliminación definitiva
+    var password = await JS.InvokeAsync<string>("prompt", "⚠️ ADVERTENCIA: Esta acción eliminará PERMANENTEMENTE la compra y ajustará el stock.\n\nPara continuar, ingrese su contraseña:");
+    if (string.IsNullOrWhiteSpace(password))
+    {
+      await JS.InvokeVoidAsync("alert", "Operación cancelada.");
+      return;
+    }
+
+    // 4. Validar contraseña del usuario logueado
+    if (!await ValidarPasswordUsuarioActualAsync(password))
+    {
+      await JS.InvokeVoidAsync("alert", "❌ Contraseña incorrecta. No se realizaron cambios.");
+      return;
+    }
+
+    // 5. Obtener la compra con sus detalles
+    var compra = await ctx.Compras
+      .Include(c => c.Detalles)
+      .FirstOrDefaultAsync(c => c.IdCompra == id);
+    
+    if (compra == null)
+    {
+      await JS.InvokeVoidAsync("alert", "La compra no existe.");
+      return;
+    }
+    
+    // 6. Retroceder el stock (restar las cantidades que se habían agregado)
+    if (compra.IdDeposito.HasValue && compra.Detalles.Any())
+    {
+      try
+      {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var usuarioNombre = authState.User?.Identity?.Name ?? "Sistema";
+        
+        foreach (var d in compra.Detalles)
+        {
+          // Usar el depósito específico del item si está definido, sino el de la compra
+          var depositoAUsar = d.IdDepositoItem ?? compra.IdDeposito.Value;
+          
+          // Ajustar con SALIDA (tipo 2) para restar lo que se había agregado
+          await Inventario.AjustarStockAsync(
+            d.IdProducto, 
+            depositoAUsar, 
+            d.Cantidad, 
+            2, // 2 = SALIDA
+            $"Eliminación definitiva de Compra #{id}", 
+            usuarioNombre);
+        }
+      }
+      catch (Exception ex)
+      {
+        await JS.InvokeVoidAsync("alert", $"❌ No se pudo eliminar la compra debido a un problema con el stock:\n\n{ex.Message}\n\nVerifique que haya suficiente stock en el depósito.");
+        return;
+      }
+    }
+
+    // 7. Eliminar físicamente todos los registros relacionados
+    try
+    {
+      // Buscar cuenta por pagar asociada
+      var cuentaPorPagarEliminar = await ctx.CuentasPorPagar
+        .Include(c => c.Cuotas)
+        .FirstOrDefaultAsync(c => c.IdCompra == id);
+      
+      if (cuentaPorPagarEliminar != null)
+      {
+        // Eliminar pagos ANULADOS y sus detalles (los confirmados ya fueron verificados que no existen)
+        var pagosAnulados = await ctx.PagosProveedores
+          .Include(p => p.Detalles)
+          .Where(p => p.IdCompra == id)
+          .ToListAsync();
+        
+        foreach (var pago in pagosAnulados)
+        {
+          if (pago.Detalles != null && pago.Detalles.Any())
+            ctx.PagosProveedoresDetalles.RemoveRange(pago.Detalles);
+          ctx.PagosProveedores.Remove(pago);
+        }
+        
+        // Eliminar cuotas de la cuenta por pagar
+        if (cuentaPorPagarEliminar.Cuotas != null && cuentaPorPagarEliminar.Cuotas.Any())
+          ctx.CuentasPorPagarCuotas.RemoveRange(cuentaPorPagarEliminar.Cuotas);
+        
+        // Eliminar cuenta por pagar
+        ctx.CuentasPorPagar.Remove(cuentaPorPagarEliminar);
+      }
+      
+      // Eliminar detalles de la compra
+      ctx.ComprasDetalles.RemoveRange(compra.Detalles);
+      
+      // Eliminar la compra
+      ctx.Compras.Remove(compra);
+      
+      await ctx.SaveChangesAsync();
+      await JS.InvokeVoidAsync("alert", $"✅ Compra #{id} eliminada exitosamente. El stock ha sido ajustado correctamente.");
+      await Buscar();
+    }
+    catch (Exception ex)
+    {
+      var innerMsg = ex.InnerException?.Message ?? ex.Message;
+      await JS.InvokeVoidAsync("alert", $"❌ Error al eliminar la compra: {innerMsg}");
+    }
+  }
+
+  private async Task<bool> ValidarPasswordUsuarioActualAsync(string plain)
+  {
+    try
+    {
+      var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+      var user = auth.User;
+      if (user?.Identity == null || !user.Identity.IsAuthenticated) return false;
+      var idStr = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+      if (string.IsNullOrWhiteSpace(idStr)) return false;
+      if (!int.TryParse(idStr, out var idUsu)) return false;
+
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      var usuario = await ctx.Usuarios.AsNoTracking().FirstOrDefaultAsync(u => u.Id_Usu == idUsu && u.Estado_Usu);
+      if (usuario == null || usuario.ContrasenaHash == null || usuario.ContrasenaHash.Length == 0) return false;
+
+      using var sha = SHA256.Create();
+      var bytes = System.Text.Encoding.UTF8.GetBytes(plain);
+      var shaBytes = sha.ComputeHash(bytes);
+      return shaBytes.SequenceEqual(usuario.ContrasenaHash);
+    }
+    catch
+    {
+      return false;
+    }
+  }
+
+  private async Task Recuperar(int id)
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var compra = await ctx.Compras.AsNoTracking().FirstOrDefaultAsync(c => c.IdCompra == id);
+    if (compra == null) return;
+    if (string.Equals(compra.Estado, "Anulado", StringComparison.OrdinalIgnoreCase))
+    {
+      // Reponer stock si es posible
+      if (!compra.IdDeposito.HasValue)
+      {
+        await JS.InvokeVoidAsync("alert", "No se puede recuperar la compra porque no tiene depósito asociado para reponer el stock.");
+        return;
+      }
+      var detalles = await ctx.ComprasDetalles.AsNoTracking()
+        .Where(d => d.IdCompra == id)
+        .ToListAsync();
+      foreach (var d in detalles)
+      {
+        await Inventario.AjustarStockAsync(d.IdProducto, compra.IdDeposito.Value, d.Cantidad, 1, $"Recuperación Compra #{id}", "Sistema");
+      }
+    }
+
+    var compraToUpdate = await ctx.Compras.FirstOrDefaultAsync(c => c.IdCompra == id);
+    if (compraToUpdate == null) return;
+    compraToUpdate.Estado = "Confirmado"; // Recuperar
+    compraToUpdate.FechaModificacion = DateTime.Now;
+    compraToUpdate.UsuarioModificacion = "Sistema";
+    await ctx.SaveChangesAsync();
+    await Buscar();
+  }
+
+  private class ItemCompra
+  {
+    public int IdCompra { get; set; }
+    public DateTime Fecha { get; set; }
+    public string ProveedorNombre { get; set; } = string.Empty;
+    public string ProveedorRuc { get; set; } = string.Empty;
+    public string? Numero { get; set; }
+    public string? Timbrado { get; set; }
+    public decimal Total { get; set; }
+    public string Estado { get; set; } = "Borrador";
+  }
+
+  private async Task Limpiar()
+  {
+    filtroProveedor = string.Empty;
+    filtroEstado = string.Empty;
+    filtroIdCompra = null;
+    
+    // Obtener fecha de caja para resetear filtros
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var caja = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+    var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
+    filtroDesde = fechaCaja;
+    filtroHasta = fechaCaja;
+    
+    await Buscar();
+  }
+
+  private async Task Exportar()
+  {
+    if (!compras.Any()) return;
+    var sep = ';';
+    var sb = new System.Text.StringBuilder();
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+    sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
+    sb.AppendLine(string.Join(sep, new[]{"Nº Interno","Fecha","Proveedor","Documento","Total","Estado"}));
+    foreach (var c in compras)
+    {
+      string[] cols = new[]
+      {
+        c.IdCompra.ToString(),
+        c.Fecha.ToString("yyyy-MM-dd"),
+        c.ProveedorNombre,
+        c.Numero ?? "",
+        c.Total.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        c.Estado
+      };
+      var line = string.Join(sep, cols.Select(v => !string.IsNullOrEmpty(v) && (v.Contains(sep) || v.Contains('"') || v.Contains('\n')) ? $"\"{v.Replace("\"","\"\"")}\"" : v ?? ""));
+      sb.AppendLine(line);
+    }
+    var utf8bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    var bytes = utf8bom.GetBytes(sb.ToString());
+    var b64 = Convert.ToBase64String(bytes);
+    var file = $"ComprasExplorar_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "text/csv;charset=utf-8");
+  }
+
+  private async Task ExportarXlsx()
+  {
+    if (!compras.Any()) return;
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+    using var wb = new ClosedXML.Excel.XLWorkbook();
+    var ws = wb.AddWorksheet("Compras");
+    int row = 1;
+    ws.Cell(row,1).Value = "Generado"; ws.Cell(row,2).Value = DateTime.Now; ws.Cell(row,2).Style.DateFormat.Format = "yyyy-MM-dd HH:mm"; row++;
+    ws.Cell(row,1).Value = "Usuario"; ws.Cell(row,2).Value = usuario; row++;
+    ws.Cell(row,1).Value = "Sucursal"; ws.Cell(row,2).Value = suc; row += 2;
+    var headers = new[]{"Nº Interno","Fecha","Proveedor","Documento","Total","Estado"};
+    for (int c=0;c<headers.Length;c++) ws.Cell(row, c+1).Value = headers[c];
+    ws.Range(row,1,row,headers.Length).Style.Font.Bold = true; row++;
+    foreach (var it in compras)
+    {
+      ws.Cell(row,1).Value = it.IdCompra;
+      ws.Cell(row,2).Value = it.Fecha; ws.Cell(row,2).Style.DateFormat.Format = "yyyy-MM-dd";
+      ws.Cell(row,3).Value = it.ProveedorNombre;
+      ws.Cell(row,4).Value = it.Numero ?? "";
+      ws.Cell(row,5).Value = it.Total; ws.Cell(row,5).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,6).Value = it.Estado;
+      row++;
+    }
+    ws.Columns().AdjustToContents();
+    using var ms = new System.IO.MemoryStream();
+    wb.SaveAs(ms);
+    var b64 = Convert.ToBase64String(ms.ToArray());
+    var file = $"ComprasExplorar_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+}

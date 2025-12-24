@@ -1,0 +1,88 @@
+@page "/chart-simple"
+@inject IJSRuntime JS
+
+<h3>Test Chart.js Simple</h3>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Prueba Básica de Chart.js</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button class="btn btn-primary" @onclick="TestChart">Crear Gráfico</button>
+                        <button class="btn btn-info ms-2" @onclick="CheckLibraries">Verificar Chart.js</button>
+                        <button class="btn btn-secondary ms-2" @onclick="ClearChart">Limpiar</button>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <strong>Estado:</strong> <span>@statusMessage</span>
+                    </div>
+                    
+                    <div style="position: relative; height: 400px; width: 100%; background: #f8f9fa; border: 1px solid #dee2e6;">
+                        <canvas id="simpleChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string statusMessage = "Listo para probar";
+
+    private async Task CheckLibraries()
+    {
+        try
+        {
+            statusMessage = "Verificando librerías...";
+            StateHasChanged();
+
+            var result = await JS.InvokeAsync<string>("verificarLibrerias");
+            statusMessage = result;
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"❌ Error verificando: {ex.Message}";
+        }
+    }
+
+    private async Task TestChart()
+    {
+        try
+        {
+            statusMessage = "Creando gráfico de prueba...";
+            StateHasChanged();
+
+            var success = await JS.InvokeAsync<bool>("crearGraficoSimple");
+
+            if (success)
+            {
+                statusMessage = "✅ Gráfico creado exitosamente";
+            }
+            else
+            {
+                statusMessage = "❌ Error creando el gráfico";
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    private async Task ClearChart()
+    {
+        try
+        {
+            var success = await JS.InvokeAsync<bool>("limpiarGraficoSimple");
+            statusMessage = success ? "Gráfico eliminado" : "No había gráfico para eliminar";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error eliminando: {ex.Message}";
+        }
+    }
+}

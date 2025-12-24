@@ -28,8 +28,8 @@ namespace SistemIA.Models // ¡Este es el namespace que debe envolver tu clase!
         [MaxLength(15)]
         public string? CI { get; set; }
 
-        [Required, MaxLength(150)]
-        public string Correo { get; set; } = string.Empty; // Inicializado
+        [MaxLength(150)]
+        public string? Correo { get; set; }
 
         [MaxLength(20)]
         public string? Telefono { get; set; }
@@ -51,8 +51,7 @@ namespace SistemIA.Models // ¡Este es el namespace que debe envolver tu clase!
 
         public byte[]? Foto { get; set; }
 
-        [Required]
-        public byte[] EmbeddingFacial { get; set; } = Array.Empty<byte>();
+        public byte[]? EmbeddingFacial { get; set; }
 
         public DateTime? Fecha_Nacimiento { get; set; }
 

@@ -1,10 +1,19 @@
 ﻿@page "/clientes"
 @using Microsoft.EntityFrameworkCore
 @using SistemIA.Models
-@inject AppDbContext Db
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
 
+<PageProtection Modulo="/clientes" Permiso="VIEW">
+
 <h3 class="mb-4">📋 Listado de Clientes</h3>
+
+<div class="row mb-3">
+    <div class="col">
+        <a href="/clientes/crear" class="btn btn-primary">➕ Nuevo Cliente</a>
+        <a href="/sucursal-config" class="btn btn-outline-secondary ms-2">⚙️ Configurar DNIT</a>
+    </div>
+</div>
 
 @if (!string.IsNullOrEmpty(errorMessage))
 {
@@ -16,7 +25,7 @@ else if (clientes == null)
 }
 else
 {
-    <table class="table table-hover table-striped align-middle">
+    <table class="table table-hover table-striped align-middle clientes-table">
         <thead class="table-dark">
             <tr>
                 <th>Id</th>
@@ -32,12 +41,12 @@ else
             @foreach (var c in clientes)
             {
                 <tr>
-                    <td>@c.IdCliente</td>
-                    <td>@c.RazonSocial</td>
-                    <td>@c.RUC</td>
-                    <td>@c.Telefono</td>
-                    <td>@c.Email</td>
-                    <td class="text-end">@c.Saldo.ToString("N0")</td>
+                    <td class="col-id">@c.IdCliente</td>
+                    <td class="col-razon">@c.RazonSocial</td>
+                    <td class="col-ruc">@c.RUC</td>
+                    <td class="col-telefono">@c.Telefono</td>
+                    <td class="col-email">@c.Email</td>
+                    <td class="text-end col-saldo">@c.Saldo.ToString("N0")</td>
                     <td class="text-center">
                         <button class="btn btn-sm btn-outline-primary me-1" @onclick="@(() => EditarCliente(c.IdCliente))">
                             <i class="bi bi-pencil"></i>
@@ -84,6 +93,7 @@ else
 
     private async Task CargarClientesAsync()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         try
         {
             totalRegistros = await Db.Clientes.CountAsync();
@@ -103,7 +113,7 @@ else
         }
     }
 
-    private async void PaginaSiguiente()
+    private async Task PaginaSiguiente()
     {
         if (puedeAvanzar)
         {
@@ -113,7 +123,7 @@ else
         }
     }
 
-    private async void PaginaAnterior()
+    private async Task PaginaAnterior()
     {
         if (puedeRetroceder)
         {
@@ -132,4 +142,7 @@ else
     {
         Navigation.NavigateTo($"/clientes/editar/{id}");
     }
+}
+
+</PageProtection>
 }

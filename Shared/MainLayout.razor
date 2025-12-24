@@ -1,31 +1,198 @@
 ﻿@inherits LayoutComponentBase
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject SistemIA.Services.BackupCodigoFuenteService BackupCodigoService
+@implements IDisposable
+@using SistemIA.Shared
 
-<div class="page @SidebarCssClass">
-    <aside class="sidebar">
-        <NavMenu />
-    </aside>
-
-    <div class="main-content">
-        <header class="top-bar d-flex align-items-center p-2">
-            <button class="menu-toggler btn btn-link" @onclick="ToggleSidebar">
-                <i class="bi bi-list fs-4"></i>
-            </button>
-            <span class="ms-auto">Bienvenido</span>
-        </header>
-
-        <main class="content-container p-3">
-            @Body
-        </main>
+<div class="page @(_isSidebarOpen ? "sidebar-open" : "")" @ontouchstart="OnTouchStart" @ontouchend="OnTouchEnd">
+    <div class="sidebar @(_isSidebarCollapsed ? "" : "open")" @onmouseenter="OnSidebarMouseEnter" @onmouseleave="OnSidebarMouseLeave">
+        <NavMenu IsCollapsed="_isSidebarCollapsed" />
     </div>
+
+    <main class="main-content">
+        <div class="top-row px-4 d-flex justify-content-between align-items-center">
+            <button class="btn btn-link nav-toggle-button" title="Alternar menú" @onclick="ToggleSidebar">
+                <i class="bi @(_isSidebarCollapsed ? "bi-chevron-right" : "bi-chevron-left")"></i>
+            </button>
+            <div class="d-none d-md-block">
+                <span class="text-muted">@DateTime.Now.ToString("dddd, dd MMMM yyyy")</span>
+            </div>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary @(_isBackingUp ? "disabled" : "")" 
+                        title="Backup completo (código + BD)" 
+                        @onclick="CrearBackupAsync"
+                        disabled="@_isBackingUp">
+                    @if (_isBackingUp)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-cloud-arrow-up-fill"></i>
+                    }
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" title="Cerrar sesión" @onclick="LogoutAsync">
+                    <i class="bi bi-box-arrow-right"></i> <span class="d-none d-sm-inline">Cerrar sesión</span>
+                </button>
+            </div>
+        </div>
+
+        <article class="content">
+            @Body
+        </article>
+
+        <footer class="text-center mt-auto p-3 border-top bg-light">
+            <small>&copy; @(DateTime.Now.Year) SistemIA - Todos los derechos reservados</small>
+        </footer>
+    </main>
+
+    @if (_isSidebarOpen)
+    {
+        <div class="sidebar-overlay d-md-none" @onclick="ToggleSidebar"></div>
+    }
 </div>
 
 @code {
     private bool _isSidebarOpen = true;
+    private bool _isSidebarCollapsed = true; // Inicia colapsado (solo iconos)
+    private bool _isMouseOver = false;
+    private bool _isBackingUp = false;
+    private Timer? _collapseTimer;
+    private int _touchStartX = 0;
+    private int _touchStartY = 0;
 
-    private string SidebarCssClass => _isSidebarOpen ? "sidebar-open" : "sidebar-closed";
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Inicializar el estado del sidebar
+            StateHasChanged();
+        }
+    }
 
     private void ToggleSidebar()
     {
         _isSidebarOpen = !_isSidebarOpen;
+        StateHasChanged();
+    }
+
+    private void OnSidebarMouseEnter()
+    {
+        _isMouseOver = true;
+        _collapseTimer?.Dispose();
+        
+        if (_isSidebarCollapsed)
+        {
+            _isSidebarCollapsed = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnSidebarMouseLeave()
+    {
+        _isMouseOver = false;
+        
+        // Esperar 500ms antes de colapsar para evitar parpadeo
+        _collapseTimer?.Dispose();
+        _collapseTimer = new Timer(_ =>
+        {
+            if (!_isMouseOver)
+            {
+                InvokeAsync(() =>
+                {
+                    _isSidebarCollapsed = true;
+                    StateHasChanged();
+                });
+            }
+        }, null, 500, Timeout.Infinite);
+    }
+
+    private void OnTouchStart(TouchEventArgs e)
+    {
+        if (e.Touches.Length > 0)
+        {
+            _touchStartX = (int)e.Touches[0].ClientX;
+            _touchStartY = (int)e.Touches[0].ClientY;
+        }
+    }
+
+    private void OnTouchEnd(TouchEventArgs e)
+    {
+        if (e.ChangedTouches.Length > 0)
+        {
+            int touchEndX = (int)e.ChangedTouches[0].ClientX;
+            int touchEndY = (int)e.ChangedTouches[0].ClientY;
+            
+            int deltaX = touchEndX - _touchStartX;
+            int deltaY = touchEndY - _touchStartY;
+            
+            // Solo procesar si el movimiento es más horizontal que vertical
+            if (Math.Abs(deltaX) > Math.Abs(deltaY) && Math.Abs(deltaX) > 50)
+            {
+                if (deltaX < -50 && _isSidebarOpen)
+                {
+                    // Swipe hacia la izquierda - cerrar menú
+                    _isSidebarOpen = false;
+                    StateHasChanged();
+                }
+                else if (deltaX > 50 && !_isSidebarOpen && _touchStartX < 50)
+                {
+                    // Swipe hacia la derecha desde el borde izquierdo - abrir menú
+                    _isSidebarOpen = true;
+                    StateHasChanged();
+                }
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _collapseTimer?.Dispose();
+    }
+
+    private async Task LogoutAsync()
+    {
+        // Usamos el helper JS para enviar un POST a /auth/logout
+        try
+        {
+            await JS.InvokeVoidAsync("blazorSubmitForm", "/auth/logout", new { });
+        }
+        catch
+        {
+            // En caso de fallo con JS, fallback a navegación directa (GET también está mapeado)
+            Nav.NavigateTo("/auth/logout", forceLoad: true);
+        }
+    }
+
+    private async Task CrearBackupAsync()
+    {
+        if (_isBackingUp) return;
+        
+        _isBackingUp = true;
+        StateHasChanged();
+        
+        try
+        {
+            var result = await BackupCodigoService.CrearBackupCompleto();
+            
+            if (result.Success)
+            {
+                await JS.InvokeVoidAsync("alert", $"✅ Backup creado exitosamente\n\n� Código ZIP: {result.ZipCodigoPath}\n📊 Archivos: {result.ArchivosCopidos}\n💾 BD: {result.BackupBDPath}");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"❌ Error al crear backup:\n{result.Error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ Error: {ex.Message}");
+        }
+        finally
+        {
+            _isBackingUp = false;
+            StateHasChanged();
+        }
     }
 }

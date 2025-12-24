@@ -1,7 +1,7 @@
 ﻿@page "/sucursales"
 @using Microsoft.EntityFrameworkCore
 @using SistemIA.Models
-@inject AppDbContext Db
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
 
 <h3 class="mb-4">🏢 Sucursales</h3>
@@ -37,7 +37,7 @@ else
                     <td>@s.NumSucursal</td>
                     <td>@s.NombreSucursal</td>
                     <td>@s.NombreEmpresa</td>
-                    <td>@s.Ciudad?.Nombre</td>
+                    <td>@GetNombreCiudad(s.IdCiudad)</td>
                     <td>@s.Telefono</td>
                     <td>@s.Correo</td>
                     <td class="text-center">
@@ -69,6 +69,7 @@ else
 
 @code {
     private List<Sucursal>? sucursales;
+    private Dictionary<int, string> _ciudadesCache = new();
     private string? errorMessage;
 
     private int paginaActual = 1;
@@ -88,11 +89,31 @@ else
     {
         try
         {
-            totalRegistros = await Db.Sucursal.CountAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+
+            totalRegistros = await dbContext.Sucursal.CountAsync();
+            // precargar cache de ciudades usadas en la página actual
+            var idsCiudades = await dbContext.Sucursal
+                .OrderBy(s => s.NombreSucursal)
+                .Skip((paginaActual - 1) * tamanioPagina)
+                .Take(tamanioPagina)
+                .Select(s => s.IdCiudad)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .Distinct()
+                .ToListAsync();
+            if (idsCiudades.Count > 0)
+            {
+                var nombres = await dbContext.CiudadesCatalogo
+                    .Where(c => idsCiudades.Contains(c.Numero))
+                    .Select(c => new { c.Numero, c.Nombre })
+                    .ToListAsync();
+                _ciudadesCache = nombres.ToDictionary(x => x.Numero, x => x.Nombre);
+            }
             totalPaginas = (int)Math.Ceiling(totalRegistros / (double)tamanioPagina);
 
-            sucursales = await Db.Sucursal
-                .Include(s => s.Ciudad)
+            sucursales = await dbContext.Sucursal
+                // Ciudad navega al catálogo por IdCiudad; evitamos Include y usamos cache
                 .OrderBy(s => s.NombreSucursal)
                 .Skip((paginaActual - 1) * tamanioPagina)
                 .Take(tamanioPagina)
@@ -105,23 +126,24 @@ else
         }
     }
 
-    private async void PaginaSiguiente()
+    // CORRECCIÓN: Los manejadores de eventos asíncronos deben devolver 'Task' en lugar de 'void'.
+    // Esto asegura que cualquier excepción sea capturada correctamente por Blazor.
+    private async Task PaginaSiguiente()
     {
         if (puedeAvanzar)
         {
             paginaActual++;
             await CargarSucursalesAsync();
-            StateHasChanged();
         }
     }
 
-    private async void PaginaAnterior()
+    // CORRECCIÓN: Se aplica el mismo principio aquí.
+    private async Task PaginaAnterior()
     {
         if (puedeRetroceder)
         {
             paginaActual--;
             await CargarSucursalesAsync();
-            StateHasChanged();
         }
     }
 
@@ -133,5 +155,11 @@ else
     private void EditarSucursal(int id)
     {
         Navigation.NavigateTo($"/configuracion-sucursal/{id}");
+    }
+
+    private string? GetNombreCiudad(int? idCiudad)
+    {
+        if (!idCiudad.HasValue) return null;
+        return _ciudadesCache.TryGetValue(idCiudad.Value, out var nombre) ? nombre : idCiudad.Value.ToString();
     }
 }

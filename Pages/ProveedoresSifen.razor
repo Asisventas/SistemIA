@@ -1,0 +1,458 @@
+@page "/proveedores/sifen"
+@page "/proveedores/sifen/editar/{Id:int}"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using SistemIA.Models
+@using SistemIA.Utils
+@using System.Linq
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/proveedores" Permiso="VIEW">
+
+<h3 class="mb-4">🏢 Gestión de Proveedores</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @errorMessage
+        <button type="button" class="btn-close" @onclick="() => errorMessage = string.Empty"></button>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(successMessage))
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @successMessage
+        <button type="button" class="btn-close" @onclick="() => successMessage = string.Empty"></button>
+    </div>
+}
+
+<div class="row mb-3">
+    <div class="col">
+        <button class="btn btn-primary btn-sm" @onclick="MostrarFormularioCrear">
+            <i class="bi bi-plus-circle me-1"></i> Nuevo Proveedor
+        </button>
+        <button class="btn btn-outline-secondary btn-sm ms-2" @onclick="CargarProveedores">
+            <i class="bi bi-arrow-repeat me-1"></i> Actualizar
+        </button>
+    </div>
+</div>
+
+@if (mostrarFormulario)
+{
+    <div class="card mb-4">
+        <div class="card-header py-2">
+            <h6 class="mb-0">
+                @if (proveedorEditando.IdProveedor == 0)
+                {
+                    <i class="bi bi-plus-circle text-success"></i> <text>Nuevo Proveedor</text>
+                }
+                else
+                {
+                    <i class="bi bi-pencil-square text-warning"></i> <text>Editar Proveedor</text>
+                }
+            </h6>
+        </div>
+        <div class="card-body py-2">
+            <EditForm Model="@proveedorEditando" OnSubmit="GuardarProveedor">
+                <div class="row g-2">
+                    <!-- Fila 1: Código, RUC, DV -->
+                    <div class="col-md-2">
+                        <label class="form-label mb-0 small">Código</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.CodigoProveedor" readonly />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-0 small">RUC *</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.RUC" @onblur="OnRucChanged" />
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label mb-0 small">DV</label>
+                        <InputNumber class="form-control form-control-sm" @bind-Value="proveedorEditando.DV" readonly />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-0 small">Tipo</label>
+                        <InputSelect class="form-select form-select-sm" @bind-Value="proveedorEditando.TipoContribuyente">
+                            <option value="1">Persona Física</option>
+                            <option value="2">Persona Jurídica</option>
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-0 small">Estado</label>
+                        <InputSelect class="form-select form-select-sm" @bind-Value="proveedorEditando.Estado">
+                            <option value="true">Activo</option>
+                            <option value="false">Inactivo</option>
+                        </InputSelect>
+                    </div>
+
+                    <!-- Fila 2: Razón Social y Nombre Fantasía -->
+                    <div class="col-md-6">
+                        <label class="form-label mb-0 small">Razón Social *</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.RazonSocial" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label mb-0 small">Nombre de Fantasía</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.NombreFantasia" />
+                    </div>
+
+                    <!-- Fila 3: Dirección y Ciudad -->
+                    <div class="col-md-8">
+                        <label class="form-label mb-0 small">Dirección</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.Direccion" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label mb-0 small">Ciudad</label>
+                        <InputSelect class="form-select form-select-sm" @bind-Value="proveedorEditando.CodigoCiudad" @bind-Value:after="OnCiudadChanged">
+                            <option value="0">Seleccionar...</option>
+                            @foreach (var ciudad in ciudadesDisponibles)
+                            {
+                                <option value="@ciudad.Key">@ciudad.Value.nombre</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <!-- Fila 4: Teléfono, Celular, Email -->
+                    <div class="col-md-3">
+                        <label class="form-label mb-0 small">Teléfono</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.Telefono" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-0 small">Celular</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.Celular" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label mb-0 small">Email</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.Email" />
+                    </div>
+
+                    <!-- Fila 5: Timbrado y Vencimiento -->
+                    <div class="col-md-3">
+                        <label class="form-label mb-0 small">Timbrado</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="proveedorEditando.Timbrado" maxlength="8" placeholder="8 dígitos" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-0 small">Vencimiento Timbrado</label>
+                        <InputDate class="form-control form-control-sm" @bind-Value="proveedorEditando.VencimientoTimbrado" />
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-success btn-sm">
+                        <i class="bi bi-save me-1"></i> Guardar
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm ms-2" @onclick="CancelarEdicion">
+                        <i class="bi bi-x-lg me-1"></i> Cancelar
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<!-- Lista de Proveedores -->
+<div class="card">
+    <div class="card-header py-2">
+        <h6 class="mb-0"><i class="bi bi-list-ul me-1"></i> Proveedores Registrados (@proveedores.Count)</h6>
+    </div>
+    <div class="card-body p-0">
+        @if (proveedores.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover table-sm mb-0 align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width:80px">Código</th>
+                            <th>Razón Social</th>
+                            <th style="width:120px">RUC</th>
+                            <th style="width:100px">Teléfono</th>
+                            <th style="width:120px">Ciudad</th>
+                            <th style="width:70px">Estado</th>
+                            <th style="width:100px">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var proveedor in proveedores)
+                        {
+                            <tr>
+                                <td><code class="small">@proveedor.CodigoProveedor</code></td>
+                                <td>
+                                    <strong>@proveedor.RazonSocial</strong>
+                                    @if (!string.IsNullOrEmpty(proveedor.NombreFantasia))
+                                    {
+                                        <br><small class="text-muted">@proveedor.NombreFantasia</small>
+                                    }
+                                </td>
+                                <td><code class="small">@proveedor.RUCCompleto</code></td>
+                                <td class="small">@(proveedor.Telefono ?? proveedor.Celular ?? "-")</td>
+                                <td class="small">@(proveedor.DescripcionCiudad ?? "-")</td>
+                                <td>
+                                    <span class="badge bg-@(proveedor.Estado ? "success" : "danger")">
+                                        @(proveedor.Estado ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-warning" title="Editar" @onclick="() => EditarProveedor(proveedor.IdProveedor)">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </button>
+                                        <button class="btn btn-danger" title="Eliminar" @onclick="() => EliminarProveedor(proveedor.IdProveedor)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-4">
+                <i class="bi bi-building display-6 text-muted mb-3"></i>
+                <p class="text-muted">No hay proveedores registrados.</p>
+                <button class="btn btn-primary btn-sm" @onclick="MostrarFormularioCrear">
+                    <i class="bi bi-plus-circle me-1"></i> Crear Primer Proveedor
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+</PageProtection>
+
+@code {
+    private List<ProveedorSifenMejorado> proveedores = new();
+    private ProveedorSifenMejorado proveedorEditando = new();
+    private Dictionary<int, (string nombre, string codigoDep, string descripcionDep)> ciudadesDisponibles = new();
+    
+    private bool mostrarFormulario = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    [Parameter]
+    public int? Id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosIniciales();
+        await CargarProveedores();
+        
+        if (Id.HasValue && Id.Value > 0)
+        {
+            await CargarProveedorParaEditar(Id.Value);
+        }
+    }
+
+    private async Task CargarProveedorParaEditar(int idProveedor)
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            var proveedor = await dbContext.ProveedoresSifen
+                .FirstOrDefaultAsync(p => p.IdProveedor == idProveedor);
+            
+            if (proveedor != null)
+            {
+                proveedorEditando = proveedor;
+                mostrarFormulario = true;
+                StateHasChanged();
+            }
+            else
+            {
+                errorMessage = "Proveedor no encontrado.";
+                Navigation.NavigateTo("/proveedores/sifen");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar proveedor: {ex.Message}";
+        }
+    }
+
+    private Task CargarDatosIniciales()
+    {
+        ciudadesDisponibles = ProveedorSifenHelper.CiudadesPrincipales;
+        return Task.CompletedTask;
+    }
+
+    private async Task CargarProveedores()
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            proveedores = await dbContext.ProveedoresSifen
+                .OrderBy(p => p.RazonSocial)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Error al cargar proveedores.";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private void MostrarFormularioCrear()
+    {
+        proveedorEditando = new ProveedorSifenMejorado();
+        ProveedorSifenHelper.ConfigurarValoresPorDefecto(proveedorEditando);
+        
+        // Obtener el siguiente número correlativo
+        var ultimoNumero = proveedores.Count > 0 ? proveedores.Max(p => int.TryParse(p.CodigoProveedor, out var n) ? n : 0) + 1 : 1;
+        proveedorEditando.CodigoProveedor = ProveedorSifenHelper.GenerarCodigoProveedor(ultimoNumero);
+        
+        mostrarFormulario = true;
+        errorMessage = "";
+        successMessage = "";
+    }
+
+    private async Task EditarProveedor(int idProveedor)
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            var proveedor = await dbContext.ProveedoresSifen
+                .FirstOrDefaultAsync(p => p.IdProveedor == idProveedor);
+
+            if (proveedor != null)
+            {
+                proveedorEditando = proveedor;
+                mostrarFormulario = true;
+                errorMessage = "";
+                successMessage = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar proveedor: {ex.Message}";
+        }
+    }
+
+    private void CancelarEdicion()
+    {
+        mostrarFormulario = false;
+        proveedorEditando = new();
+        errorMessage = "";
+        successMessage = "";
+    }
+
+    private async Task GuardarProveedor()
+    {
+        try
+        {
+            // Validaciones básicas
+            if (string.IsNullOrWhiteSpace(proveedorEditando.RazonSocial))
+            {
+                errorMessage = "La Razón Social es obligatoria";
+                return;
+            }
+            
+            if (string.IsNullOrWhiteSpace(proveedorEditando.RUC))
+            {
+                errorMessage = "El RUC es obligatorio";
+                return;
+            }
+
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+
+            // Validar RUC único
+            var rucExistente = await dbContext.ProveedoresSifen
+                .AnyAsync(p => p.RUC == proveedorEditando.RUC && p.IdProveedor != proveedorEditando.IdProveedor);
+            
+            if (rucExistente)
+            {
+                errorMessage = "Ya existe un proveedor con este RUC.";
+                return;
+            }
+
+            if (proveedorEditando.IdProveedor == 0)
+            {
+                // Usar transacción para evitar códigos duplicados en concurrencia
+                using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                try
+                {
+                    // Re-generar código dentro de la transacción
+                    var maxCodigo = await dbContext.ProveedoresSifen
+                        .Where(p => p.CodigoProveedor != null)
+                        .Select(p => p.CodigoProveedor)
+                        .ToListAsync();
+                    
+                    var maxNum = maxCodigo
+                        .Select(c => int.TryParse(c, out var n) ? n : 0)
+                        .DefaultIfEmpty(0)
+                        .Max();
+                    
+                    proveedorEditando.CodigoProveedor = (maxNum + 1).ToString("D2");
+                    proveedorEditando.FechaCreacion = DateTime.Now;
+                    proveedorEditando.UsuarioCreacion = "Sistema";
+                    dbContext.ProveedoresSifen.Add(proveedorEditando);
+                    await dbContext.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    successMessage = "Proveedor creado exitosamente.";
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            else
+            {
+                proveedorEditando.FechaModificacion = DateTime.Now;
+                proveedorEditando.UsuarioModificacion = "Sistema";
+                dbContext.ProveedoresSifen.Update(proveedorEditando);
+                await dbContext.SaveChangesAsync();
+                successMessage = "Proveedor actualizado exitosamente.";
+            }
+            
+            mostrarFormulario = false;
+            await CargarProveedores();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al guardar: {ex.Message}";
+        }
+    }
+
+    private async Task EliminarProveedor(int idProveedor)
+    {
+        try
+        {
+            var confirmar = await JS.InvokeAsync<bool>("confirm", "¿Está seguro de eliminar este proveedor?");
+            if (!confirmar) return;
+
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            var proveedor = await dbContext.ProveedoresSifen.FindAsync(idProveedor);
+            
+            if (proveedor != null)
+            {
+                dbContext.ProveedoresSifen.Remove(proveedor);
+                await dbContext.SaveChangesAsync();
+                
+                successMessage = "Proveedor eliminado exitosamente.";
+                await CargarProveedores();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al eliminar: {ex.Message}";
+        }
+    }
+
+    private void OnRucChanged()
+    {
+        if (!string.IsNullOrEmpty(proveedorEditando.RUC) && ProveedorSifenHelper.ValidarRucParaguayo(proveedorEditando.RUC))
+        {
+            ProveedorSifenHelper.CalcularDvRuc(proveedorEditando);
+        }
+    }
+
+    private void OnCiudadChanged()
+    {
+        if (proveedorEditando.CodigoCiudad.HasValue && proveedorEditando.CodigoCiudad.Value > 0)
+        {
+            ProveedorSifenHelper.ConfigurarDatosGeograficos(proveedorEditando, proveedorEditando.CodigoCiudad.Value);
+        }
+    }
+}

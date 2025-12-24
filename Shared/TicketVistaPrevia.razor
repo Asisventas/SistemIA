@@ -1,0 +1,880 @@
+@* Componente de Vista Previa de Ticket para Impresión - Formato Factura Paraguay *@
+@using SistemIA.Models
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Globalization
+@using System.Text
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+@inject ImpresionDirectaService ImpresionService
+
+<div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.7);" @onclick="CerrarModal">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" @onclick:stopPropagation="true">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white py-2">
+                <h5 class="modal-title">
+                    <i class="bi bi-receipt me-2"></i>Vista Previa del Ticket
+                </h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+            </div>
+            <div class="modal-body p-0" style="max-height: 70vh; overflow-y: auto; background: #e9ecef;">
+                @if (_cargando)
+                {
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                        <p class="mt-2">Cargando datos del ticket...</p>
+                    </div>
+                }
+                else if (_venta == null)
+                {
+                    <div class="alert alert-warning m-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        No se encontró la venta especificada.
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex justify-content-center py-3">
+                        <div class="ticket-preview-container" id="ticketPreviewContent">
+                            @* ═══════════════════ ENCABEZADO ═══════════════════ *@
+                            <div class="ticket-header">
+                                @if (_caja?.MostrarLogo == true && _sucursal?.Logo?.Length > 0)
+                                {
+                                    <div class="ticket-logo">
+                                        <img src="@GetLogoBase64()" alt="Logo" />
+                                    </div>
+                                }
+                                <div class="ticket-empresa">@(_sucursal?.NombreEmpresa ?? _sociedad?.Nombre)</div>
+                                <div class="ticket-ruc">RUC: @FormatearRucConDv(_sociedad?.RUC, _sociedad?.DV)</div>
+
+                                @if (!string.IsNullOrEmpty(_sucursal?.Direccion ?? _sociedad?.Direccion))
+                                {
+                                    <div class="ticket-direccion">@(_sucursal?.Direccion ?? _sociedad?.Direccion)</div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_sucursal?.Telefono ?? _sociedad?.Telefono))
+                                {
+                                    <div class="ticket-telefono">Tel: @(_sucursal?.Telefono ?? _sociedad?.Telefono)</div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_sucursal?.RubroEmpresa))
+                                {
+                                    <div class="ticket-actividad">@_sucursal.RubroEmpresa</div>
+                                }
+                            </div>
+
+                            <div class="ticket-separator-double"></div>
+
+                            @* ═══════════════════ TIPO DOCUMENTO ═══════════════════ *@
+                            <div class="ticket-tipo-doc">
+                                @(_caja?.TipoFacturacion == "ELECTRONICA"
+                                    ? "FACTURA ELECTRÓNICA"
+                                    : (_venta.TipoDocumento?.ToUpper() ?? "FACTURA"))
+                            </div>
+
+                            <div class="ticket-separator-double"></div>
+
+                            @* ═══════════════════ DATOS FACTURA ═══════════════════ *@
+                            <div class="ticket-info">
+                                <div class="ticket-row">
+                                    <span class="ticket-label">Timbrado:</span>
+                                    <span class="ticket-value">@(_venta.Timbrado ?? _caja?.Timbrado ?? "-")</span>
+                                </div>
+                                <div class="ticket-row">
+                                    <span class="ticket-label">Fecha Inicio Vigencia:</span>
+                                    <span class="ticket-value">@(_caja?.VigenciaDel?.ToString("dd/MM/yyyy") ?? "-")</span>
+                                </div>
+                                <div class="ticket-row">
+                                    <span class="ticket-label">Válido Hasta:</span>
+                                    <span class="ticket-value">@(_caja?.VigenciaAl?.ToString("dd/MM/yyyy") ?? "-")</span>
+                                </div>
+                            </div>
+
+                            <div class="ticket-separator"></div>
+
+                            <div class="ticket-info">
+                                <div class="ticket-row">
+                                    <span class="ticket-label">Factura Nro:</span>
+                                    <span class="ticket-value ticket-factura-nro">@FormatearNumeroFactura()</span>
+                                </div>
+                                <div class="ticket-row">
+                                    <span class="ticket-label">Fecha de Emisión:</span>
+                                    <span class="ticket-value">@_venta.Fecha.ToString("dd/MM/yyyy HH:mm")</span>
+                                </div>
+                            </div>
+
+                            <div class="ticket-separator-double"></div>
+
+                            @* ═══════════════════ CLIENTE ═══════════════════ *@
+                            <div class="ticket-cliente">
+                                <div class="ticket-row">
+                                    <span class="ticket-label">Cliente:</span>
+                                    <span class="ticket-value">@(_cliente?.RazonSocial ?? "SIN NOMBRE")</span>
+                                </div>
+                                <div class="ticket-row">
+                                    <span class="ticket-label">RUC/CI:</span>
+                                    <span class="ticket-value">@(_cliente?.RUC ?? "-")</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_cliente?.Direccion))
+                                {
+                                    <div class="ticket-row">
+                                        <span class="ticket-label">Dirección:</span>
+                                        <span class="ticket-value">@_cliente.Direccion</span>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="ticket-separator"></div>
+
+                            @* ═══════════════════ CONDICIÓN DE VENTA ═══════════════════ *@
+                            <div class="ticket-condicion">
+                                <div class="ticket-row">
+                                    <span class="ticket-label">Condición de Venta:</span>
+                                    <span class="ticket-value">@(_tipoPago?.Nombre?.ToUpper() ?? "CONTADO")</span>
+                                </div>
+                            </div>
+
+                            <div class="ticket-separator-double"></div>
+
+                            @* ═══════════════════ ENCABEZADO DETALLE ═══════════════════ *@
+                            <div class="ticket-detalle-header">
+                                <span class="col-cant">CANT.</span>
+                                <span class="col-desc">DESCRIPCIÓN</span>
+                                <span class="col-precio">P.UNIT.</span>
+                                <span class="col-exenta">EXENTA</span>
+                                <span class="col-iva5">5%</span>
+                                <span class="col-iva10">10%</span>
+                            </div>
+
+                            <div class="ticket-separator"></div>
+
+                            @* ═══════════════════ DETALLE DE PRODUCTOS ═══════════════════ *@
+                            <div class="ticket-detalle">
+                                @foreach (var det in _detalles)
+                                {
+                                    <div class="ticket-detalle-item">
+                                        <span class="col-cant">@det.Cantidad</span>
+                                        <span class="col-desc" title="@det.Producto?.Descripcion">@TruncarTexto(det.Producto?.Descripcion, 18)</span>
+                                        <span class="col-precio">@FormatearImporte(det.PrecioUnitario)</span>
+                                        <span class="col-exenta">@(det.Exenta > 0 ? FormatearImporte(det.Exenta) : "-")</span>
+                                        <span class="col-iva5">@(det.Grabado5 > 0 ? FormatearImporte(det.Grabado5) : "-")</span>
+                                        <span class="col-iva10">@(det.Grabado10 > 0 ? FormatearImporte(det.Grabado10) : "-")</span>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="ticket-separator-double"></div>
+
+                            @* ═══════════════════ SUBTOTALES ═══════════════════ *@
+                            <div class="ticket-subtotales">
+                                <div class="ticket-row">
+                                    <span class="ticket-label">SUB-TOTALES:</span>
+                                    <span class="col-exenta-total">@(_totalExentas > 0 ? FormatearImporte(_totalExentas) : "-")</span>
+                                    <span class="col-iva5-total">@(_subtotalGravadas5 > 0 ? FormatearImporte(_subtotalGravadas5) : "-")</span>
+                                    <span class="col-iva10-total">@(_subtotalGravadas10 > 0 ? FormatearImporte(_subtotalGravadas10) : "-")</span>
+                                </div>
+                            </div>
+
+                            <div class="ticket-separator"></div>
+
+                            @* ═══════════════════ TOTAL GENERAL ═══════════════════ *@
+                            <div class="ticket-total-section">
+                                <div class="ticket-row ticket-total">
+                                    <span class="ticket-label">TOTAL A PAGAR:</span>
+                                    <span class="ticket-value">Gs. @FormatearImporte(_venta.Total)</span>
+                                </div>
+                            </div>
+
+                            <div class="ticket-separator-double"></div>
+
+                            @* ═══════════════════ LIQUIDACIÓN IVA ═══════════════════ *@
+                            <div class="ticket-liquidacion">
+                                <div class="ticket-row ticket-liquidacion-header">
+                                    <span>LIQUIDACIÓN DEL IVA:</span>
+                                </div>
+                                <div class="ticket-liquidacion-grid">
+                                    <div class="liquidacion-col">
+                                        <span class="liq-label">EXENTA:</span>
+                                        <span class="liq-value">@(_totalExentas > 0 ? FormatearImporte(_totalExentas) : "-")</span>
+                                    </div>
+                                    <div class="liquidacion-col">
+                                        <span class="liq-label">5%:</span>
+                                        <span class="liq-value">@(_liquidacionIva5 > 0 ? FormatearImporte(_liquidacionIva5) : "-")</span>
+                                    </div>
+                                    <div class="liquidacion-col">
+                                        <span class="liq-label">10%:</span>
+                                        <span class="liq-value">@(_liquidacionIva10 > 0 ? FormatearImporte(_liquidacionIva10) : "-")</span>
+                                    </div>
+                                    <div class="liquidacion-col">
+                                        <span class="liq-label">TOTAL:</span>
+                                        <span class="liq-value">@FormatearImporte(_totalIva5 + _totalIva10)</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="ticket-separator-double"></div>
+
+                            @* ═══════════════════ PIE ═══════════════════ *@
+                            <div class="ticket-footer">
+                                <div class="ticket-gracias">¡GRACIAS POR SU PREFERENCIA!</div>
+                                <div class="ticket-sistema">SistemIA - Sistema de Gestión</div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer bg-light">
+                <div class="d-flex w-100 justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CerrarModal">
+                            <i class="bi bi-x-lg me-1"></i>Cerrar
+                        </button>
+                        <a href="/ventas/explorar" class="btn btn-outline-primary">
+                            <i class="bi bi-journal-text me-1"></i>Ver Ventas
+                        </a>
+                    </div>
+                    <button type="button" class="btn btn-success" @onclick="ImprimirTicketWindows" disabled="@_imprimiendo" title="Imprimir ticket">
+                        @if (_imprimiendo)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-printer me-1"></i>
+                        }
+                        Imprimir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* Modal de Selección de Impresora *@
+@if (_mostrarSelectorImpresora)
+{
+    <SelectorImpresora 
+        Ticket="_datosTicketParaImpresion"
+        FormatoInicial="@(_caja?.FormatoImpresion ?? "TICKET")"
+        OnCerrar="CerrarSelectorImpresora"
+        OnImpresionCompletada="OnImpresionDirectaCompletada" />
+}
+
+<style>
+    /* ═══════════════════ CONTENEDOR PRINCIPAL ═══════════════════ */
+    .ticket-preview-container {
+        width: 360px;
+        min-width: 360px;
+        background: white;
+        padding: 15px 12px;
+        font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #000;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+        border-radius: 4px;
+        /* El ticket se expande automáticamente según el contenido */
+    }
+
+    /* ═══════════════════ ENCABEZADO ═══════════════════ */
+    .ticket-preview-container .ticket-header {
+        text-align: center;
+        margin-bottom: 6px;
+    }
+
+    .ticket-preview-container .ticket-logo {
+        text-align: center;
+        margin-bottom: 6px;
+    }
+
+    .ticket-preview-container .ticket-logo img {
+        max-width: 65%;
+        max-height: 45px;
+    }
+
+    .ticket-preview-container .ticket-empresa {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 4px;
+        word-wrap: break-word;
+    }
+
+    .ticket-preview-container .ticket-ruc {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 4px 0;
+    }
+
+    .ticket-preview-container .ticket-direccion,
+    .ticket-preview-container .ticket-telefono,
+    .ticket-preview-container .ticket-actividad {
+        font-size: 12px;
+        margin: 2px 0;
+        word-wrap: break-word;
+    }
+
+    /* ═══════════════════ TIPO DOCUMENTO ═══════════════════ */
+    .ticket-preview-container .ticket-tipo-doc {
+        text-align: center;
+        font-size: 14px;
+        font-weight: bold;
+        padding: 6px 0;
+        background: #f0f0f0;
+        border: 1px solid #ccc;
+        margin: 6px 0;
+    }
+
+    /* ═══════════════════ SEPARADORES ═══════════════════ */
+    .ticket-preview-container .ticket-separator {
+        border-bottom: 1px dashed #999;
+        margin: 6px 0;
+    }
+
+    .ticket-preview-container .ticket-separator-double {
+        border-bottom: 2px solid #333;
+        margin: 8px 0;
+    }
+
+    /* ═══════════════════ FILAS DE INFORMACIÓN ═══════════════════ */
+    .ticket-preview-container .ticket-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 3px 0;
+        font-size: 13px;
+    }
+
+    .ticket-preview-container .ticket-label {
+        font-weight: bold;
+        flex-shrink: 0;
+    }
+
+    .ticket-preview-container .ticket-value {
+        text-align: right;
+        word-break: break-word;
+    }
+
+    .ticket-preview-container .ticket-factura-nro {
+        font-weight: bold;
+        font-size: 14px;
+    }
+
+    /* ═══════════════════ ENCABEZADO DETALLE ═══════════════════ */
+    .ticket-preview-container .ticket-detalle-header {
+        display: flex;
+        justify-content: space-between;
+        font-weight: bold;
+        font-size: 12px;
+        padding: 5px 0;
+        background: #f5f5f5;
+    }
+
+    .ticket-preview-container .ticket-detalle-header .col-cant { width: 38px; text-align: center; }
+    .ticket-preview-container .ticket-detalle-header .col-desc { flex: 1; text-align: left; padding-left: 4px; }
+    .ticket-preview-container .ticket-detalle-header .col-precio { width: 58px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-header .col-exenta { width: 52px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-header .col-iva5 { width: 52px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-header .col-iva10 { width: 58px; text-align: right; }
+
+    /* ═══════════════════ DETALLE DE PRODUCTOS ═══════════════════ */
+    .ticket-preview-container .ticket-detalle {
+        /* Se expande automáticamente */
+    }
+
+    .ticket-preview-container .ticket-detalle-item {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        padding: 4px 0;
+        border-bottom: 1px dotted #ddd;
+    }
+
+    .ticket-preview-container .ticket-detalle-item:last-child {
+        border-bottom: none;
+    }
+
+    .ticket-preview-container .ticket-detalle-item .col-cant { width: 38px; text-align: center; }
+    .ticket-preview-container .ticket-detalle-item .col-desc { 
+        flex: 1; 
+        text-align: left; 
+        padding-left: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .ticket-preview-container .ticket-detalle-item .col-precio { width: 58px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-item .col-exenta { width: 52px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-item .col-iva5 { width: 52px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-item .col-iva10 { width: 58px; text-align: right; }
+
+    /* ═══════════════════ SUBTOTALES ═══════════════════ */
+    .ticket-preview-container .ticket-subtotales {
+        font-size: 13px;
+        padding: 6px 0;
+    }
+
+    .ticket-preview-container .ticket-subtotales .ticket-row {
+        display: flex;
+        align-items: center;
+    }
+
+    .ticket-preview-container .ticket-subtotales .ticket-label {
+        flex: 1;
+    }
+
+    .ticket-preview-container .col-exenta-total,
+    .ticket-preview-container .col-iva5-total,
+    .ticket-preview-container .col-iva10-total {
+        width: 60px;
+        text-align: right;
+        font-weight: bold;
+    }
+
+    /* ═══════════════════ TOTAL ═══════════════════ */
+    .ticket-preview-container .ticket-total-section {
+        padding: 10px 0;
+        margin: 6px 0;
+    }
+
+    .ticket-preview-container .ticket-total {
+        font-weight: bold;
+        font-size: 18px;
+        background: #000;
+        color: white;
+        padding: 12px 14px;
+        margin: 0 -12px;
+        border: 2px solid #000;
+    }
+
+    /* ═══════════════════ LIQUIDACIÓN IVA ═══════════════════ */
+    .ticket-preview-container .ticket-liquidacion {
+        padding: 4px 0;
+    }
+
+    .ticket-preview-container .ticket-liquidacion-header {
+        font-weight: bold;
+        font-size: 13px;
+        margin-bottom: 6px;
+        text-align: center;
+    }
+
+    .ticket-preview-container .ticket-liquidacion-grid {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+    }
+
+    .ticket-preview-container .liquidacion-col {
+        text-align: center;
+        flex: 1;
+    }
+
+    .ticket-preview-container .liq-label {
+        font-weight: bold;
+        display: block;
+    }
+
+    .ticket-preview-container .liq-value {
+        display: block;
+    }
+
+    /* ═══════════════════ PIE ═══════════════════ */
+    .ticket-preview-container .ticket-footer {
+        text-align: center;
+        padding-top: 12px;
+        padding-bottom: 10px;
+    }
+
+    .ticket-preview-container .ticket-gracias {
+        font-weight: bold;
+        font-size: 14px;
+        margin-bottom: 8px;
+    }
+
+    .ticket-preview-container .ticket-sistema {
+        font-size: 12px;
+        color: #333;
+        font-weight: 500;
+        margin-top: 6px;
+        padding-bottom: 8px;
+    }
+</style>
+
+@code {
+    [Parameter] public int IdVenta { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+    [Parameter] public EventCallback OnImprimirCompletado { get; set; }
+    [Parameter] public bool ImprimirAutomatico { get; set; } = false;
+
+    private bool _cargando = true;
+    private bool _imprimiendo = false;
+    
+    // Modal de impresión directa
+    private bool _mostrarSelectorImpresora = false;
+    private DatosTicket? _datosTicketParaImpresion;
+    
+    private Venta? _venta;
+    private Cliente? _cliente;
+    private Sociedad? _sociedad;
+    private Sucursal? _sucursal;
+    private TipoPago? _tipoPago;
+    private Caja? _caja;
+    private List<VentaDetalle> _detalles = new();
+
+    // Totales de gravadas
+    private decimal _subtotalGravadas;
+    private decimal _subtotalGravadas5;
+    private decimal _subtotalGravadas10;
+    private decimal _totalExentas;
+    
+    // IVA calculado
+    private decimal _totalIva5;
+    private decimal _totalIva10;
+    
+    // Liquidación IVA (base imponible)
+    private decimal _liquidacionIva5;
+    private decimal _liquidacionIva10;
+    
+    // Flag para evitar múltiples impresiones automáticas
+    private bool _yaImprimioAutomatico = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IdVenta > 0 && (_venta == null || _venta.IdVenta != IdVenta))
+        {
+            await CargarDatosAsync();
+        }
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        _cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            _venta = await ctx.Ventas.FindAsync(IdVenta);
+            
+            if (_venta != null)
+            {
+                _detalles = await ctx.VentasDetalles
+                    .Include(x => x.Producto)
+                    .Where(x => x.IdVenta == IdVenta)
+                    .ToListAsync();
+                    
+                _cliente = _venta.IdCliente.HasValue 
+                    ? await ctx.Clientes.FindAsync(_venta.IdCliente) 
+                    : null;
+                    
+                _sociedad = await ctx.Sociedades.FirstOrDefaultAsync();
+                _sucursal = await ctx.Sucursal.FindAsync(_venta.IdSucursal);
+                _tipoPago = _venta.IdTipoPago.HasValue 
+                    ? await ctx.TiposPago.FindAsync(_venta.IdTipoPago) 
+                    : null;
+                _caja = await ctx.Cajas.FirstOrDefaultAsync(c => c.CajaActual == 1);
+
+                // ═══════════════════ CÁLCULO DE TOTALES E IMPUESTOS ═══════════════════
+                
+                // Subtotales gravadas por tasa
+                _subtotalGravadas5 = _detalles.Sum(x => x.Grabado5);
+                _subtotalGravadas10 = _detalles.Sum(x => x.Grabado10);
+                _subtotalGravadas = _subtotalGravadas5 + _subtotalGravadas10;
+                
+                // Total exentas
+                _totalExentas = _detalles.Sum(x => x.Exenta);
+                
+                // IVA incluido en precio (para facturas con IVA incluido)
+                _totalIva10 = _detalles.Sum(x => x.IVA10);
+                _totalIva5 = _detalles.Sum(x => x.IVA5);
+                
+                // Liquidación IVA (cálculo de la base imponible)
+                // Para IVA 10%: Base = Gravado10 / 1.10, entonces IVA = Base * 0.10 = Gravado10 / 11
+                // Para IVA 5%:  Base = Gravado5 / 1.05, entonces IVA = Base * 0.05 = Gravado5 / 21
+                _liquidacionIva10 = _subtotalGravadas10 > 0 ? Math.Round(_subtotalGravadas10 / 11m, 0) : 0;
+                _liquidacionIva5 = _subtotalGravadas5 > 0 ? Math.Round(_subtotalGravadas5 / 21m, 0) : 0;
+                
+                // Preparar datos para impresión directa
+                _datosTicketParaImpresion = CrearDatosTicket();
+                
+                // Si hay impresora configurada e ImprimirAutomatico está activo, imprimir directamente con servicio Windows
+                // Solo imprimir una vez (evitar duplicados por OnInitialized + OnParametersSet)
+                if (ImprimirAutomatico && !string.IsNullOrEmpty(_caja?.NombreImpresora) && !_yaImprimioAutomatico)
+                {
+                    _yaImprimioAutomatico = true;
+                    _ = Task.Run(async () => 
+                    {
+                        await Task.Delay(200); // Pequeña espera para que el UI se renderice
+                        await InvokeAsync(async () => await ImprimirTicketWindows());
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando datos del ticket: {ex.Message}");
+        }
+        finally
+        {
+            _cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatearImporte(decimal v) => 
+        _venta?.EsMonedaExtranjera == true ? v.ToString("N2") : v.ToString("N0");
+
+    private string GetLogoBase64() => 
+        _sucursal?.Logo != null ? $"data:image/png;base64,{Convert.ToBase64String(_sucursal.Logo)}" : "";
+
+    private string FormatearRucConDv(string? ruc, int? dv)
+    {
+        if (string.IsNullOrEmpty(ruc)) return "";
+        return dv.HasValue ? $"{ruc}-{dv}" : ruc;
+    }
+
+    private string FormatearNumeroFactura()
+    {
+        var est = (_caja?.Nivel1 ?? "001").PadLeft(3, '0');
+        var pto = (_caja?.Nivel2 ?? "001").PadLeft(3, '0');
+        var num = (_venta?.NumeroFactura ?? "0000001").PadLeft(7, '0');
+        return $"{est}-{pto}-{num}";
+    }
+
+    private string TruncarTexto(string? texto, int maxLength)
+    {
+        if (string.IsNullOrEmpty(texto)) return "-";
+        return texto.Length <= maxLength ? texto : texto.Substring(0, maxLength - 2) + "..";
+    }
+
+    private async Task CerrarModal()
+    {
+        await OnCerrar.InvokeAsync();
+    }
+
+    private async Task ImprimirConServicioDirecto()
+    {
+        if (_venta == null || _datosTicketParaImpresion == null) return;
+        
+        _imprimiendo = true;
+        StateHasChanged();
+
+        try
+        {
+            // Usar el diálogo de impresión del navegador
+            await JS.InvokeVoidAsync("printTicketElement", "ticketPreviewContent");
+            await OnImprimirCompletado.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al imprimir: {ex.Message}");
+        }
+        finally
+        {
+            _imprimiendo = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ImprimirTicketWindows()
+    {
+        if (_venta == null || _datosTicketParaImpresion == null) return;
+        
+        _imprimiendo = true;
+        StateHasChanged();
+
+        try
+        {
+            // Obtener impresora configurada en la caja
+            var nombreImpresora = _caja?.NombreImpresora;
+            
+            // Siempre usar formato ticket 80mm para este botón
+            var resultado = await ImpresionService.ImprimirTicket80mm(_datosTicketParaImpresion, nombreImpresora);
+            
+            if (resultado.Exitoso)
+            {
+                await OnImprimirCompletado.InvokeAsync();
+                await JS.InvokeVoidAsync("alert", $"✅ Ticket impreso: {resultado.Mensaje}");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"❌ Error: {resultado.Mensaje}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al imprimir ticket: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"❌ Error al imprimir: {ex.Message}");
+        }
+        finally
+        {
+            _imprimiendo = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ImprimirDirecto()
+    {
+        if (_venta == null) return;
+        
+        _imprimiendo = true;
+        StateHasChanged();
+
+        try
+        {
+            // Imprimir directamente el contenido del ticket usando JavaScript
+            // Esto abre el diálogo de impresión del navegador con el contenido del ticket
+            await JS.InvokeVoidAsync("printTicketElement", "ticketPreviewContent");
+            
+            await OnImprimirCompletado.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al imprimir: {ex.Message}");
+            // Fallback: abrir página de ticket en ventana nueva
+            try
+            {
+                var url = _caja?.FormatoImpresion == "A4"
+                    ? $"/ventas/preview/{IdVenta}?print=1"
+                    : $"/ventas/ticket/{IdVenta}/1";
+                await JS.InvokeVoidAsync("safeOpen", url, "_blank");
+            }
+            catch { }
+        }
+        finally
+        {
+            _imprimiendo = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PrevisualizarPDF()
+    {
+        if (_venta == null) return;
+
+        _imprimiendo = true;
+        StateHasChanged();
+
+        try
+        {
+            // Abrir la página de ticket sin autoprint para previsualización
+            if (_caja?.FormatoImpresion == "A4")
+            {
+                var url = $"/ventas/preview/{IdVenta}";
+                await JS.InvokeVoidAsync("safeOpen", url, "_blank");
+            }
+            else
+            {
+                // Ticket sin autoprint (parámetro 0)
+                var url = $"/ventas/ticket/{IdVenta}/0";
+                await JS.InvokeVoidAsync("safeOpen", url, "_blank");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al previsualizar: {ex.Message}");
+        }
+        finally
+        {
+            _imprimiendo = false;
+            StateHasChanged();
+        }
+    }
+
+    // ═══════════════════ IMPRESIÓN DIRECTA (SIN DIÁLOGO) ═══════════════════
+    
+    private void MostrarSelectorImpresora()
+    {
+        if (_venta == null) return;
+        
+        // Crear los datos del ticket para impresión
+        _datosTicketParaImpresion = CrearDatosTicket();
+        _mostrarSelectorImpresora = true;
+        StateHasChanged();
+    }
+
+    private void CerrarSelectorImpresora()
+    {
+        _mostrarSelectorImpresora = false;
+        StateHasChanged();
+    }
+
+    private async Task OnImpresionDirectaCompletada(ResultadoImpresion resultado)
+    {
+        if (resultado.Exitoso)
+        {
+            Console.WriteLine($"[TicketVistaPrevia] Impresión directa completada: {resultado.Mensaje}");
+            _mostrarSelectorImpresora = false;
+            await OnImprimirCompletado.InvokeAsync();
+        }
+        StateHasChanged();
+    }
+
+    private DatosTicket CrearDatosTicket()
+    {
+        var ticket = new DatosTicket
+        {
+            // Logo (si está habilitado)
+            LogoBytes = (_caja?.MostrarLogo == true && _sucursal?.Logo?.Length > 0) 
+                ? _sucursal.Logo 
+                : null,
+            
+            // Datos empresa
+            NombreEmpresa = _sucursal?.NombreEmpresa ?? _sociedad?.Nombre ?? "EMPRESA",
+            RucEmpresa = FormatearRucConDv(_sociedad?.RUC, _sociedad?.DV),
+            DireccionEmpresa = _sucursal?.Direccion ?? _sociedad?.Direccion ?? "",
+            TelefonoEmpresa = _sucursal?.Telefono ?? _sociedad?.Telefono ?? "",
+            ActividadEconomica = _sucursal?.RubroEmpresa ?? "",
+            
+            // Datos factura
+            NumeroFactura = FormatearNumeroFactura(),
+            Fecha = _venta?.Fecha ?? DateTime.Now,
+            Timbrado = _venta?.Timbrado ?? _caja?.Timbrado ?? "",
+            VigenciaDel = _caja?.VigenciaDel,
+            VigenciaAl = _caja?.VigenciaAl,
+            CDC = _venta?.CDC ?? "",
+            CondicionVenta = _tipoPago?.Nombre?.ToUpper() ?? "CONTADO",
+            TipoDocumento = _venta?.TipoDocumento?.ToUpper() ?? "FACTURA",
+            EsElectronica = _caja?.TipoFacturacion == "ELECTRONICA",
+            
+            // Datos cliente
+            NombreCliente = _cliente?.RazonSocial ?? "SIN NOMBRE",
+            RucCliente = _cliente?.RUC ?? "-",
+            DvCliente = _cliente?.DV.ToString(),
+            DireccionCliente = _cliente?.Direccion ?? "",
+            
+            // Items con desglose de IVA
+            Items = _detalles.Select(d => new ItemTicket
+            {
+                Descripcion = d.Producto?.Descripcion ?? "",
+                Cantidad = d.Cantidad,
+                PrecioUnitario = d.PrecioUnitario,
+                Subtotal = d.Importe,
+                Exenta = d.Exenta,
+                Gravado5 = d.Grabado5,
+                Gravado10 = d.Grabado10
+            }).ToList(),
+            
+            // Totales
+            Subtotal = _detalles.Sum(d => d.Importe),
+            Descuento = 0,
+            Total = _venta?.Total ?? 0,
+            
+            // IVA
+            TotalExentas = _totalExentas,
+            TotalIva5 = _subtotalGravadas5,
+            TotalIva10 = _subtotalGravadas10,
+            MontoIva5 = _liquidacionIva5,
+            MontoIva10 = _liquidacionIva10,
+            TotalIva = _liquidacionIva5 + _liquidacionIva10
+        };
+        
+        return ticket;
+    }
+}

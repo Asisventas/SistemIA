@@ -49,5 +49,104 @@ namespace SistemIA.Models
         public Usuario? AprobadoPorUsuario { get; set; }
 
         public DateTime? FechaAprobacion { get; set; }
+
+        public byte[]? ImagenRegistro { get; set; }
+
+        // === CAMPOS DE CONTROL DE TIEMPO Y ASISTENCIA PROFESIONAL ===
+        
+        /// <summary>
+        /// Hora programada/esperada según el horario asignado al empleado
+        /// </summary>
+        public DateTime? HoraProgramada { get; set; }
+
+        /// <summary>
+        /// Diferencia en minutos entre la hora programada y la real
+        /// Positivo = Tardanza, Negativo = Adelanto
+        /// </summary>
+        public int? DiferenciaMinutos { get; set; }
+
+        /// <summary>
+        /// Estado de puntualidad: Puntual, Tardanza, Adelanto, Ausencia
+        /// </summary>
+        [StringLength(20)]
+        public string? EstadoPuntualidad { get; set; }
+
+        /// <summary>
+        /// Minutos de tolerancia aplicados (configurables por empresa)
+        /// </summary>
+        public int? MinutosToleranciAplicada { get; set; }
+
+        /// <summary>
+        /// ID del horario que se usó para calcular el control
+        /// </summary>
+        public int? Id_HorarioAplicado { get; set; }
+        [ForeignKey("Id_HorarioAplicado")]
+        public HorarioTrabajo? HorarioAplicado { get; set; }
+
+        /// <summary>
+        /// Día de la semana (1=Lunes, 7=Domingo) para facilitar reportes
+        /// </summary>
+        public int? DiaSemana { get; set; }
+
+        /// <summary>
+        /// Indica si es un día laborable según el horario
+        /// </summary>
+        public bool? EsDiaLaborable { get; set; }
+
+        /// <summary>
+        /// Tiempo total trabajado en minutos (calculado automáticamente)
+        /// </summary>
+        public int? TiempoTrabajadoMinutos { get; set; }
+
+        /// <summary>
+        /// Horas extra trabajadas en minutos
+        /// </summary>
+        public int? HorasExtraMinutos { get; set; }
+
+        /// <summary>
+        /// Indica si requiere justificación (tardanzas, ausencias)
+        /// </summary>
+        public bool RequiereJustificacion { get; set; } = false;
+
+        /// <summary>
+        /// Estado de la justificación: Pendiente, Aprobada, Rechazada
+        /// </summary>
+        [StringLength(20)]
+        public string? EstadoJustificacion { get; set; }
+
+        /// <summary>
+        /// Justificación del empleado o supervisor
+        /// </summary>
+        [StringLength(500)]
+        public string? TextoJustificacion { get; set; }
+
+        /// <summary>
+        /// Indica si el registro fue generado automáticamente
+        /// </summary>
+        public bool EsRegistroAutomatico { get; set; } = false;
+
+        /// <summary>
+        /// Método de registro: Facial, Manual, Tarjeta, QR, etc.
+        /// </summary>
+        [StringLength(30)]
+        public string? MetodoRegistro { get; set; }
+
+        /// <summary>
+        /// IP o ubicación desde donde se registró
+        /// </summary>
+        [StringLength(50)]
+        public string? UbicacionRegistro { get; set; }
+
+        /// <summary>
+        /// Temperatura corporal (para controles de salud)
+        /// </summary>
+        [Column(TypeName = "decimal(4,1)")]
+        public decimal? Temperatura { get; set; }
+
+        /// <summary>
+        /// Observaciones adicionales del sistema o supervisor
+        /// </summary>
+        [StringLength(500)]
+        public string? ObservacionesSistema { get; set; }
     }
 }

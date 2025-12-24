@@ -1,8 +1,6 @@
-@inherits LayoutComponentBase <div class="d-flex" style="min-height: 100vh;">
-<!-- Sidebar -->
-<nav class="nav-menu"> <div class="navbar-brand mb-4">SistemIA</div> <NavMenu /> </nav>
-<!-- Main content -->
-<div class="flex-fill">
-<!-- Topbar (opcional) -->
-<header class="bg-white shadow-sm px-4 py-3 border-bottom"> <h2 class="m-0">Panel Principal</h2> </header> <main class="container mt-4"> @Body </main> <footer class="text-center mt-auto p-3 border-top bg-light"> <small>&copy;
-@(DateTime.Now.Year) SistemIA - Todos los derechos reservados</small> </footer> </div> </div>
+@media print {
+	body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+	.sidebar, .top-row, footer, .sidebar-overlay { display: none !important; }
+	.main-content, .content, article.content { padding: 0 !important; margin: 0 !important; }
+}
+

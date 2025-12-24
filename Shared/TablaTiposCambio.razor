@@ -1,0 +1,108 @@
+@using Microsoft.AspNetCore.Components
+@inject ITipoCambioService TipoCambioService
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex align-items-center">
+    <i class="bi bi-currency-exchange me-2"></i>
+    <strong>Tipos de cambio hoy</strong>
+  </div>
+  <div class="card-body p-0">
+    @if (_cargando)
+    {
+        <div class="py-3 text-center text-muted small">Cargando tipos de cambio...</div>
+    }
+    else if (_filtrados == null || _filtrados.Count == 0)
+    {
+        <div class="py-3 text-center text-muted small">Sin datos disponibles</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr class="text-success">
+                <th class="text-uppercase small">Moneda</th>
+                <th class="text-uppercase small text-end">Compra</th>
+                <th class="text-uppercase small text-end">Venta</th>
+              </tr>
+            </thead>
+            <tbody>
+        @foreach (var row in _filtrados)
+              {
+                  <tr>
+                    <td>
+          <img src="@GetFlagUrl(row.iso)" alt="@row.iso" class="me-2" style="width:20px;height:14px;object-fit:cover;border-radius:1px;border:1px solid rgba(0,0,0,.1)" />
+          <span class="fw-semibold">@GetNombre(row.iso)</span>
+                    </td>
+                    <td class="text-end">
+                      @FormatRate(row.compra)
+                    </td>
+                    <td class="text-end">
+                      @FormatRate(row.venta)
+                    </td>
+                  </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+    }
+  </div>
+</div>
+
+@code {
+    private bool _cargando = true;
+    private List<(string iso, decimal compra, decimal venta)> _filtrados = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+      var tipos = await TipoCambioService.ObtenerTiposCambioActualesAsync();
+      // Filtrar USD, BRL, ARS hacia PYG y deduplicar por moneda origen tomando el más reciente
+      var permitidas = new[] { "USD", "BRL", "ARS" };
+      var lista = tipos
+        .Where(t => t.MonedaDestino?.CodigoISO == "PYG" && permitidas.Contains(t.MonedaOrigen?.CodigoISO ?? ""))
+        .Select(t => new {
+          iso = t.MonedaOrigen!.CodigoISO,
+          compra = (t.TasaCompra.HasValue && t.TasaCompra.Value > 0 ? t.TasaCompra.Value : t.TasaCambio),
+          venta = t.TasaCambio,
+          fecha = t.FechaTipoCambio
+        })
+        .GroupBy(x => x.iso)
+        .Select(g => g.OrderByDescending(x => x.fecha).First())
+        .ToList();
+
+            // Orden como en el ejemplo: USD, BRL, ARS
+            string Orden(string iso) => iso switch { "USD" => "1", "BRL" => "2", "ARS" => "3", _ => "9" };
+            _filtrados = lista
+                .OrderBy(x => Orden(x.iso))
+                .Select(x => (x.iso, x.compra, x.venta))
+                .ToList();
+        }
+        catch { }
+        finally { _cargando = false; }
+    }
+
+  private static string GetFlagUrl(string iso) => iso switch
+  {
+    "USD" => "/img/flags/usd.svg",
+    "BRL" => "/img/flags/brl.svg",
+    "ARS" => "/img/flags/ars.svg",
+    _ => "/img/flags/usd.svg"
+  };
+
+    private static string GetNombre(string iso) => iso switch
+    {
+        "USD" => "Dólar Americano",
+        "BRL" => "Real",
+        "ARS" => "Peso Argentino",
+        _ => iso
+    };
+
+    private static MarkupString FormatRate(decimal valor)
+    {
+        // Mostrar sin decimales (formato local) p.ej. 7.410
+        var txt = valor.ToString("N0");
+        return new MarkupString(txt);
+    }
+}

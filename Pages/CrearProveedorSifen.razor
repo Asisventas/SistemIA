@@ -1,0 +1,701 @@
+@page "/proveedores/sifen/crear"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using SistemIA.Models
+@using SistemIA.Utils
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject Sifen SifenService
+
+<h3 class="mb-4">🏢➕ Crear Nuevo Proveedor SIFEN</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @errorMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(successMessage))
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @successMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-building-fill"></i> Información del Nuevo Proveedor SIFEN
+                </h5>
+            </div>
+            <div class="card-body">
+                <EditForm Model="@nuevoProveedor" OnValidSubmit="CrearProveedor">
+                    <DataAnnotationsValidator />
+                    
+                    <!-- Información Básica -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-primary border-bottom pb-2">
+                                <i class="fas fa-info-circle"></i> Información Básica
+                            </h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Código Proveedor:</label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.CodigoProveedor" readonly />
+                                <div class="form-text">Se genera automáticamente</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Ambiente SIFEN:</label>
+                                <InputSelect class="form-select" @bind-Value="nuevoProveedor.Ambiente">
+                                    <option value="test">🧪 Pruebas (Test)</option>
+                                    <option value="prod">🚀 Producción</option>
+                                </InputSelect>
+                                <div class="form-text">Comenzar en pruebas es recomendado</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label class="form-label">Razón Social: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.RazonSocial" />
+                                <ValidationMessage For="@(() => nuevoProveedor.RazonSocial)" />
+                                <div class="form-text">Nombre oficial de la empresa según RUC</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Nombre de Fantasía:</label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.NombreFantasia" />
+                                <div class="form-text">Nombre comercial (opcional)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Información Tributaria -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-success border-bottom pb-2">
+                                <i class="fas fa-file-invoice-dollar"></i> Información Tributaria SIFEN
+                            </h6>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">RUC (8 dígitos): <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <InputText class="form-control" @bind-Value="nuevoProveedor.RUC" @bind-Value:after="OnRucChanged" />
+                                    <button type="button" class="btn btn-outline-primary" @onclick="ConsultarRucSifen" disabled="@consultandoRuc" title="Consultar datos del RUC en SIFEN">
+                                        @if (consultandoRuc)
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-search"></i>
+                                        }
+                                        SIFEN
+                                    </button>
+                                </div>
+                                <ValidationMessage For="@(() => nuevoProveedor.RUC)" />
+                                @if (!string.IsNullOrEmpty(mensajeRuc))
+                                {
+                                    <small class="@(esErrorRuc ? "text-danger" : "text-success")">@mensajeRuc</small>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="col-md-2">
+                            <div class="mb-3">
+                                <label class="form-label">DV:</label>
+                                <InputNumber class="form-control" @bind-Value="nuevoProveedor.DV" readonly />
+                                <div class="form-text">Calculado automáticamente</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">Tipo Contribuyente:</label>
+                                <InputSelect class="form-select" @bind-Value="nuevoProveedor.TipoContribuyente">
+                                    <option value="1">👤 Persona Física</option>
+                                    <option value="2">🏢 Persona Jurídica</option>
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Tipo Régimen:</label>
+                                <InputSelect class="form-select" @bind-Value="nuevoProveedor.TipoRegimen">
+                                    <option value="1">📋 Régimen General</option>
+                                    <option value="2">📄 Régimen Simplificado</option>
+                                    <option value="3">📝 Pequeño Contribuyente</option>
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Timbrado: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.Timbrado" />
+                                <ValidationMessage For="@(() => nuevoProveedor.Timbrado)" />
+                                <div class="form-text">8 dígitos numéricos</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Vencimiento Timbrado: <span class="text-danger">*</span></label>
+                                <InputDate class="form-control" @bind-Value="nuevoProveedor.VencimientoTimbrado" />
+                                <ValidationMessage For="@(() => nuevoProveedor.VencimientoTimbrado)" />
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Estado Timbrado:</label>
+                                <div class="form-control-plaintext">
+                                    <span class="badge @GetEstadoTimbradoBadgeClass()">
+                                        @GetEstadoTimbradoTexto()
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">Establecimiento:</label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.Establecimiento" maxlength="3" />
+                                <div class="form-text">3 dígitos (ej: 001)</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">Punto Expedición:</label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.PuntoExpedicion" maxlength="3" />
+                                <div class="form-text">3 dígitos (ej: 001)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actividad Económica -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-info border-bottom pb-2">
+                                <i class="fas fa-industry"></i> Actividad Económica
+                            </h6>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">Código CIIU: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.CodigoActividadEconomica" @onblur="OnActividadChanged" />
+                                <ValidationMessage For="@(() => nuevoProveedor.CodigoActividadEconomica)" />
+                                <div class="form-text">5 dígitos según CIIU</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-9">
+                            <div class="mb-3">
+                                <label class="form-label">Descripción Actividad: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.DescripcionActividadEconomica" />
+                                <ValidationMessage For="@(() => nuevoProveedor.DescripcionActividadEconomica)" />
+                                <div class="form-text">Se completa automáticamente al ingresar código</div>
+                            </div>
+                        </div>
+
+                        @if (sugerenciasActividad.Any())
+                        {
+                            <div class="col-12">
+                                <div class="alert alert-info">
+                                    <strong>💡 Sugerencias de actividades:</strong>
+                                    <div class="mt-2">
+                                        @foreach (var sugerencia in sugerenciasActividad)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-info me-2 mb-1" 
+                                                    @onclick="() => SeleccionarActividad(sugerencia.codigo, sugerencia.descripcion)">
+                                                [@sugerencia.codigo] @sugerencia.descripcion
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Ubicación y Contacto -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h6 class="text-warning border-bottom pb-2">
+                                <i class="fas fa-map-marker-alt"></i> Ubicación
+                            </h6>
+
+                            <div class="mb-3">
+                                <label class="form-label">Dirección: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.Direccion" />
+                                <ValidationMessage For="@(() => nuevoProveedor.Direccion)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Número de Casa:</label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.NumeroCasa" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Ciudad:</label>
+                                <InputSelect class="form-select" @bind-Value="nuevoProveedor.CodigoCiudad" @bind-Value:after="OnCiudadChanged">
+                                    <option value="0">Seleccionar ciudad...</option>
+                                    @foreach (var ciudad in ciudadesDisponibles)
+                                    {
+                                        <option value="@ciudad.Key">@ciudad.Value.nombre</option>
+                                    }
+                                </InputSelect>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Código Departamento:</label>
+                                        <InputText class="form-control" @bind-Value="nuevoProveedor.CodigoDepartamento" readonly />
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Departamento:</label>
+                                        <InputText class="form-control" @bind-Value="nuevoProveedor.DescripcionDepartamento" readonly />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <h6 class="text-secondary border-bottom pb-2">
+                                <i class="fas fa-phone"></i> Información de Contacto
+                            </h6>
+
+                            <div class="mb-3">
+                                <label class="form-label">Teléfono: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.Telefono" />
+                                <ValidationMessage For="@(() => nuevoProveedor.Telefono)" />
+                                <div class="form-text">Solo números, sin espacios ni guiones</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Email: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.Email" />
+                                <ValidationMessage For="@(() => nuevoProveedor.Email)" />
+                                <div class="form-text">Para recibir notificaciones de la SET</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Celular:</label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.Celular" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Persona de Contacto:</label>
+                                <InputText class="form-control" @bind-Value="nuevoProveedor.PersonaContacto" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Estado de Validación -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-danger border-bottom pb-2">
+                                <i class="fas fa-check-circle"></i> Estado de Validación SIFEN
+                            </h6>
+                            <div class="row">
+                                @foreach (var item in resumenValidacion)
+                                {
+                                    <div class="col-md-4 mb-2">
+                                        <small class="text-muted">@item</small>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Botones de Acción -->
+                    <div class="row">
+                        <div class="col-12">
+                            <hr />
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <button type="button" class="btn btn-secondary" @onclick="Cancelar">
+                                        <i class="fas fa-times"></i> Cancelar
+                                    </button>
+                                    <button type="button" class="btn btn-info ms-2" @onclick="ValidarDatos">
+                                        <i class="fas fa-check"></i> Validar Datos
+                                    </button>
+                                </div>
+                                <div>
+                                    <button type="submit" class="btn btn-success btn-lg">
+                                        <i class="fas fa-save"></i> Crear Proveedor SIFEN
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private ProveedorSifenMejorado nuevoProveedor = new();
+    private List<TiposContribuyentes> tiposContribuyentes = new();
+    private Dictionary<int, (string nombre, string codigoDep, string descripcionDep)> ciudadesDisponibles = new();
+    private List<(string codigo, string descripcion)> sugerenciasActividad = new();
+    private List<string> resumenValidacion = new();
+    
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            tiposContribuyentes = await dbContext.TiposContribuyentes.ToListAsync();
+            
+            // Cargar ciudades principales del helper
+            ciudadesDisponibles = ProveedorSifenHelper.CiudadesPrincipales;
+
+            // Configurar valores por defecto
+            ProveedorSifenHelper.ConfigurarValoresPorDefecto(nuevoProveedor);
+            
+            // Generar código automático
+            var ultimoNumero = await ObtenerUltimoNumeroProveedor();
+            nuevoProveedor.CodigoProveedor = ProveedorSifenHelper.GenerarCodigoProveedor(ultimoNumero);
+            
+            ActualizarResumenValidacion();
+            
+            Console.WriteLine("[CREAR PROVEEDOR] Componente inicializado");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Error al inicializar el formulario.";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task<int> ObtenerUltimoNumeroProveedor()
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            // Obtener el máximo código numérico existente
+            var proveedores = await dbContext.ProveedoresSifen.ToListAsync();
+            var maxNum = proveedores
+                .Select(p => int.TryParse(p.CodigoProveedor, out var n) ? n : 0)
+                .DefaultIfEmpty(0)
+                .Max();
+            return maxNum + 1;
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
+    private async Task CrearProveedor()
+    {
+        try
+        {
+            // Validaciones SIFEN
+            var (esValido, errores) = nuevoProveedor.ValidarParaSifen();
+            if (!esValido)
+            {
+                errorMessage = "❌ Errores de validación SIFEN:\n" + string.Join("\n", errores);
+                StateHasChanged();
+                return;
+            }
+
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            // Validar RUC único
+            var rucExistente = await dbContext.ProveedoresSifen
+                .AnyAsync(p => p.RUC == nuevoProveedor.RUC);
+            
+            if (rucExistente)
+            {
+                errorMessage = "❌ Ya existe un proveedor con este RUC.";
+                StateHasChanged();
+                return;
+            }
+
+            // Usar transacción para evitar códigos duplicados en concurrencia
+            using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                // Re-generar código dentro de la transacción
+                var codigos = await dbContext.ProveedoresSifen
+                    .Where(p => p.CodigoProveedor != null)
+                    .Select(p => p.CodigoProveedor)
+                    .ToListAsync();
+                
+                var maxNum = codigos
+                    .Select(c => int.TryParse(c, out var n) ? n : 0)
+                    .DefaultIfEmpty(0)
+                    .Max();
+                
+                nuevoProveedor.CodigoProveedor = (maxNum + 1).ToString("D2");
+                
+                // Establecer datos de auditoría
+                nuevoProveedor.FechaCreacion = DateTime.Now;
+                nuevoProveedor.UsuarioCreacion = "Sistema"; // TODO: Obtener usuario actual
+                nuevoProveedor.Estado = true;
+
+                // Guardar en base de datos
+                dbContext.ProveedoresSifen.Add(nuevoProveedor);
+                await dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+            
+            successMessage = $"✅ Proveedor SIFEN '{nuevoProveedor.RazonSocial}' creado exitosamente.";
+            
+            // Mostrar resumen del proveedor creado
+            await JS.InvokeVoidAsync("alert", nuevoProveedor.GenerarResumenSifen());
+            
+            // Redirigir a la lista después de 2 segundos
+            await Task.Delay(2000);
+            Navigation.NavigateTo("/proveedores/sifen");
+            
+            Console.WriteLine($"[CREAR PROVEEDOR] Proveedor creado: {nuevoProveedor.RazonSocial}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Error al crear el proveedor: {ex.Message}";
+            if (ex.InnerException != null)
+                errorMessage += $"\nDetalle: {ex.InnerException.Message}";
+                
+            Console.WriteLine($"[ERROR] {ex.Message}");
+            StateHasChanged();
+        }
+    }
+
+    private bool consultandoRuc = false;
+    private string mensajeRuc = "";
+    private bool esErrorRuc = false;
+
+    private async Task OnRucChanged()
+    {
+        if (!string.IsNullOrEmpty(nuevoProveedor.RUC) && ProveedorSifenHelper.ValidarRucParaguayo(nuevoProveedor.RUC))
+        {
+            ProveedorSifenHelper.CalcularDvRuc(nuevoProveedor);
+            ActualizarResumenValidacion();
+            Console.WriteLine($"[RUC] DV calculado: {nuevoProveedor.DV}");
+            
+            // Consultar automáticamente a SIFEN
+            await ConsultarRucSifen();
+        }
+    }
+
+    private async Task ConsultarRucSifen()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoProveedor.RUC))
+        {
+            mensajeRuc = "Ingrese un RUC para consultar";
+            esErrorRuc = true;
+            return;
+        }
+
+        consultandoRuc = true;
+        mensajeRuc = "";
+        esErrorRuc = false;
+        StateHasChanged();
+
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            var sociedad = await context.Sociedades.FirstOrDefaultAsync();
+            
+            if (sociedad == null || string.IsNullOrEmpty(sociedad.PathCertificadoP12))
+            {
+                mensajeRuc = "No hay certificado SIFEN configurado";
+                esErrorRuc = true;
+                return;
+            }
+
+            var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            var xmlRespuesta = await SifenService.Consulta(url, nuevoProveedor.RUC, "1", sociedad.PathCertificadoP12 ?? "", sociedad.PasswordCertificadoP12 ?? "");
+            
+            if (!string.IsNullOrEmpty(xmlRespuesta))
+            {
+                // Verificar si es error de conexión/formato
+                if (xmlRespuesta.Contains("0160") || xmlRespuesta.Contains("XML Mal Formado"))
+                {
+                    mensajeRuc = "⚠️ Error de conexión con SIFEN. Intente nuevamente.";
+                    esErrorRuc = true;
+                    return;
+                }
+                
+                var xmlDoc = new System.Xml.XmlDocument();
+                xmlDoc.LoadXml(xmlRespuesta);
+                
+                var codResNode = xmlDoc.SelectSingleNode("//*[local-name()='dCodRes']");
+                var msgResNode = xmlDoc.SelectSingleNode("//*[local-name()='dMsgRes']");
+                var codRes = codResNode?.InnerText ?? "";
+                var msgRes = msgResNode?.InnerText ?? "";
+                
+                if (codRes == "0502")
+                {
+                    var xContRUC = xmlDoc.SelectSingleNode("//*[local-name()='xContRUC']");
+                    if (xContRUC != null)
+                    {
+                        var dRazCons = xContRUC.SelectSingleNode(".//*[local-name()='dRazCons']")?.InnerText;
+                        var dDesEstCons = xContRUC.SelectSingleNode(".//*[local-name()='dDesEstCons']")?.InnerText;
+                        var dCodEstCons = xContRUC.SelectSingleNode(".//*[local-name()='dCodEstCons']")?.InnerText;
+                        
+                        if (!string.IsNullOrEmpty(dRazCons))
+                        {
+                            nuevoProveedor.RazonSocial = dRazCons.Trim();
+                        }
+                        
+                        // Determinar tipo contribuyente por longitud del RUC
+                        if (!string.IsNullOrEmpty(nuevoProveedor.RUC))
+                        {
+                            nuevoProveedor.TipoContribuyente = nuevoProveedor.RUC.Length >= 7 ? 2 : 1;
+                        }
+                        
+                        mensajeRuc = $"✓ {dRazCons?.Trim()} - {dDesEstCons}";
+                        esErrorRuc = false;
+                        ActualizarResumenValidacion();
+                    }
+                }
+                else if (codRes == "0501")
+                {
+                    mensajeRuc = $"RUC no encontrado en SIFEN";
+                    esErrorRuc = true;
+                }
+                else
+                {
+                    mensajeRuc = $"SIFEN: [{codRes}] {msgRes}";
+                    esErrorRuc = codRes != "0500";
+                }
+            }
+            else
+            {
+                mensajeRuc = "⚠️ Sin respuesta de SIFEN. Verifique conexión.";
+                esErrorRuc = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR ConsultarRucSifen] {ex.Message}");
+            mensajeRuc = "⚠️ Error de conexión. Intente nuevamente.";
+            esErrorRuc = true;
+        }
+        finally
+        {
+            consultandoRuc = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnCiudadChanged()
+    {
+        if (nuevoProveedor.CodigoCiudad.HasValue && nuevoProveedor.CodigoCiudad.Value > 0)
+        {
+            ProveedorSifenHelper.ConfigurarDatosGeograficos(nuevoProveedor, nuevoProveedor.CodigoCiudad.Value);
+            ActualizarResumenValidacion();
+        }
+    }
+
+    private void OnActividadChanged()
+    {
+        if (!string.IsNullOrEmpty(nuevoProveedor.CodigoActividadEconomica))
+        {
+            // Buscar descripción automática
+            if (ProveedorSifenHelper.ActividadesEconomicasComunes.TryGetValue(nuevoProveedor.CodigoActividadEconomica, out var descripcion))
+            {
+                nuevoProveedor.DescripcionActividadEconomica = descripcion;
+                sugerenciasActividad.Clear();
+            }
+            else
+            {
+                // Mostrar sugerencias basadas en texto
+                var palabrasClave = nuevoProveedor.CodigoActividadEconomica;
+                sugerenciasActividad = ProveedorSifenHelper.SugerirActividadesEconomicas(palabrasClave);
+            }
+            
+            ActualizarResumenValidacion();
+        }
+    }
+
+    private void SeleccionarActividad(string codigo, string descripcion)
+    {
+        nuevoProveedor.CodigoActividadEconomica = codigo;
+        nuevoProveedor.DescripcionActividadEconomica = descripcion;
+        sugerenciasActividad.Clear();
+        ActualizarResumenValidacion();
+        StateHasChanged();
+    }
+
+    private void ValidarDatos()
+    {
+        var (esValido, errores) = nuevoProveedor.ValidarParaSifen();
+        
+        if (esValido)
+        {
+            successMessage = "✅ El proveedor cumple con todos los requisitos SIFEN.";
+            errorMessage = "";
+        }
+        else
+        {
+            errorMessage = "❌ Errores encontrados:\n" + string.Join("\n", errores);
+            successMessage = "";
+        }
+        
+        ActualizarResumenValidacion();
+        StateHasChanged();
+    }
+
+    private void ActualizarResumenValidacion()
+    {
+        resumenValidacion = ProveedorSifenHelper.GenerarResumenValidacion(nuevoProveedor);
+    }
+
+    private void Cancelar()
+    {
+        Navigation.NavigateTo("/proveedores/sifen");
+    }
+
+    private string GetEstadoTimbradoBadgeClass()
+    {
+        if (nuevoProveedor.VencimientoTimbrado == default) return "bg-secondary";
+        
+        var (_, dias, _) = ProveedorSifenHelper.VerificarTimbrado(nuevoProveedor.VencimientoTimbrado);
+        
+        if (dias < 0) return "bg-danger";
+        if (dias <= 30) return "bg-warning";
+        return "bg-success";
+    }
+
+    private string GetEstadoTimbradoTexto()
+    {
+        if (nuevoProveedor.VencimientoTimbrado == default) return "No especificado";
+        
+        var (estado, dias, _) = ProveedorSifenHelper.VerificarTimbrado(nuevoProveedor.VencimientoTimbrado);
+        return $"{estado} ({dias} días)";
+    }
+}

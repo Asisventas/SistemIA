@@ -1,0 +1,27 @@
+@namespace SistemIA.Shared
+@inject NavigationManager Nav
+
+@if (!_navigated)
+{
+    <text>Redirigiendo al login…</text>
+}
+
+@code {
+    private bool _navigated;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && !_navigated)
+        {
+            _navigated = true;
+            var relative = Nav.ToBaseRelativePath(Nav.Uri);
+            if (relative.StartsWith("login", StringComparison.OrdinalIgnoreCase))
+            {
+                // Ya estamos en login, no hagas nada para permitir su renderizado
+                StateHasChanged();
+                return;
+            }
+            Nav.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(Nav.Uri)}", forceLoad: true);
+        }
+    }
+}

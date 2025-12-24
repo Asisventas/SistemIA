@@ -3,7 +3,7 @@
 @using System.IO
 @using SistemIA.Models
 @using Microsoft.EntityFrameworkCore
-@inject AppDbContext Db
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @implements IDisposable
@@ -117,6 +117,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         roles = await Db.Roles.Where(r => r.Estado).OrderBy(r => r.NombreRol).ToListAsync();
         usuario = await Db.Usuarios.FirstOrDefaultAsync(u => u.Id_Usu == id);
         if (usuario is null) Navigation.NavigateTo("/menu-usuarios");
@@ -214,6 +215,7 @@ else
 
     private async Task ValidarYGuardarUsuario()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         if (usuario is null) return;
 
         if (!string.IsNullOrWhiteSpace(contrasena))

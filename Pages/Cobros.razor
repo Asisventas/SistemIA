@@ -1,0 +1,922 @@
+@page "/cobros"
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject SistemIA.Services.ICajaProvider CajaProvider
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+
+<PageProtection Modulo="/clientes/cobros" Permiso="VIEW">
+
+<PageTitle>Cobros de Créditos</PageTitle>
+
+<div class="page-header">
+    <h3 class="mb-0">
+        <i class="bi bi-cash-coin text-success me-2"></i>
+        Cobros
+    </h3>
+    <div class="text-muted">
+        <i class="bi bi-clock me-1"></i>
+        Total pendiente: <span class="fw-bold text-danger">@totalPendiente.ToString("N0") Gs.</span>
+    </div>
+}
+</div>
+
+<div class="card mb-3 shadow-sm">
+    <div class="card-header bg-light">
+        <h6 class="mb-0">
+            <i class="bi bi-funnel me-2"></i>
+            Filtros de Búsqueda
+        </h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label small text-muted">Cliente</label>
+                <input class="form-control" placeholder="RUC o Razón Social" @bind="filtroCliente" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">Estado</label>
+                <select class="form-select" @bind="filtroEstado">
+                    <option value="">Todos los estados</option>
+                    <option value="PENDIENTE">Pendiente</option>
+                    <option value="VENCIDO">Vencido</option>
+                    <option value="PAGADO">Pagado</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">Acciones</label>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" @onclick="Buscar">
+                        <i class="bi bi-search me-1"></i>Buscar
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="Limpiar">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white border-bottom">
+        <h6 class="mb-0">
+            <i class="bi bi-table me-2"></i>
+            Cuentas por Cobrar
+        </h6>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 15%">Cliente</th>
+                    <th style="width: 10%">Venta</th>
+                    <th style="width: 10%">Fecha Crédito</th>
+                    <th class="text-end" style="width: 10%">Monto Total</th>
+                    <th class="text-end" style="width: 10%">Saldo Pendiente</th>
+                    <th style="width: 10%">Estado</th>
+                    <th style="width: 10%">Cuotas</th>
+                    <th class="text-end" style="width: 15%">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var cuenta in cuentas)
+                {
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">@cuenta.ClienteNombre</div>
+                            <div class="text-muted small">@cuenta.ClienteRuc</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-info">Venta #@cuenta.IdVenta</span>
+                        </td>
+                        <td>
+                            <div>@cuenta.FechaCredito.ToString("dd/MM/yyyy")</div>
+                            @if (cuenta.FechaVencimiento.HasValue)
+                            {
+                                <div class="text-muted small">Vence: @cuenta.FechaVencimiento.Value.ToString("dd/MM/yyyy")</div>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <div class="fw-bold">@FormatearPrecio(cuenta.MontoTotal, cuenta.IdMoneda)</div>
+                            <div class="text-muted small">@cuenta.MonedaSimbolo</div>
+                        </td>
+                        <td class="text-end">
+                            <div class="fw-bold text-danger">@FormatearPrecio(cuenta.SaldoPendiente, cuenta.IdMoneda)</div>
+                            <div class="text-muted small">@cuenta.MonedaSimbolo</div>
+                        </td>
+                        <td>
+                            @if (cuenta.Estado == "PAGADO")
+                            {
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle me-1"></i>Pagado
+                                </span>
+                            }
+                            else if (cuenta.Estado == "VENCIDO")
+                            {
+                                <span class="badge bg-danger">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>Vencido
+                                </span>
+                            }
+                            else if (cuenta.Estado == "PENDIENTE")
+                            {
+                                <span class="badge bg-warning text-dark">
+                                    <i class="bi bi-clock me-1"></i>Pendiente
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">@cuenta.Estado</span>
+                            }
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => ToggleCuotas(cuenta.IdCuentaPorCobrar)">
+                                <i class="bi bi-list-ol me-1"></i>
+                                Ver @cuenta.NumeroCuotas cuota(s)
+                            </button>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-success" 
+                                    disabled="@(cuenta.Estado == "PAGADO")"
+                                    @onclick="() => AbrirModalCobro(cuenta)">
+                                <i class="bi bi-cash-coin me-1"></i>Cobrar
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" 
+                                    @onclick="() => VerHistorial(cuenta.IdCuentaPorCobrar)">
+                                <i class="bi bi-clock-history me-1"></i>Historial
+                            </button>
+                        </td>
+                    </tr>
+                    @if (cuotasExpandidas.Contains(cuenta.IdCuentaPorCobrar) && cuenta.Cuotas != null)
+                    {
+                        <tr>
+                            <td colspan="8" class="bg-light">
+                                <div class="p-3">
+                                    <h6 class="mb-3">Detalle de Cuotas</h6>
+                                    <table class="table table-sm table-bordered mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Cuota #</th>
+                                                <th>Vencimiento</th>
+                                                <th class="text-end">Monto</th>
+                                                <th class="text-end">Saldo</th>
+                                                <th>Estado</th>
+                                                <th>Fecha Pago</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var cuota in cuenta.Cuotas.OrderBy(c => c.NumeroCuota))
+                                            {
+                                                <tr class="@(cuota.Estado == "PAGADO" ? "table-success" : cuota.Estado == "VENCIDO" ? "table-danger" : "")">
+                                                    <td>Cuota @cuota.NumeroCuota</td>
+                                                    <td>@cuota.FechaVencimiento.ToString("dd/MM/yyyy")</td>
+                                                    <td class="text-end">@FormatearPrecio(cuota.MontoCuota, cuenta.IdMoneda) @cuenta.MonedaSimbolo</td>
+                                                    <td class="text-end">@FormatearPrecio(cuota.SaldoCuota, cuenta.IdMoneda) @cuenta.MonedaSimbolo</td>
+                                                    <td>
+                                                        <span class="badge bg-@(cuota.Estado == "PAGADO" ? "success" : cuota.Estado == "VENCIDO" ? "danger" : "warning")">
+                                                            @cuota.Estado
+                                                        </span>
+                                                    </td>
+                                                    <td>@(cuota.FechaPago?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@* Modal de cobro *@
+@if (mostrarModalCobro && cuentaSeleccionada != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cash-coin me-2"></i>
+                        Registrar Cobro
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalCobro"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Cliente</label>
+                            <input class="form-control" value="@cuentaSeleccionada.ClienteNombre" readonly />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Saldo Pendiente</label>
+                            <input class="form-control text-danger fw-bold" value="@(FormatearPrecio(cuentaSeleccionada.SaldoPendiente, cuentaSeleccionada.IdMoneda) + " " + ObtenerSimboloMoneda(cuentaSeleccionada.IdMoneda))" readonly />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Saldo después del cobro</label>
+                            <input class="form-control text-info fw-bold" value="@(FormatearPrecio(CalcularSaldoRestante(), cuentaSeleccionada.IdMoneda) + " " + ObtenerSimboloMoneda(cuentaSeleccionada.IdMoneda))" readonly />
+                        </div>
+                        @if (cuentaSeleccionada.EsMonedaExtranjera || (detallesCobro.Any(d => d.IdMoneda != cuentaSeleccionada.IdMoneda && d.IdMoneda != null)))
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Tipo de Cambio</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">@(Monedas.FirstOrDefault(m => m.EsMonedaBase)?.Simbolo ?? "Gs.")</span>
+                                    <input type="number" step="0.01" class="form-control" @bind="tipoCambioCobro" @bind:after="OnTipoCambioChanged" />
+                                </div>
+                                <small class="text-muted">TC del día: @tipoCambioDia.ToString("N2")</small>
+                            </div>
+                        }
+                        <div class="col-12">
+                            <hr />
+                            <h6 class="mb-3">Caja y Medios de Pago</h6>
+                        </div>
+                        <!-- Selector de Caja -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-cash-stack me-1"></i>Caja
+                            </label>
+                            <select class="form-select" value="@cajaSeleccionadaId" @onchange="OnCajaSeleccionadaChanged">
+                                <option value="0">-- Sin caja (no afecta resumen) --</option>
+                                @foreach (var caja in CajasDisponibles)
+                                {
+                                    <option value="@caja.IdCaja">Caja @caja.IdCaja @(caja.CajaActual == 1 ? "(Activa)" : "")</option>
+                                }
+                            </select>
+                            @if (!afectaCaja)
+                            {
+                                <small class="text-warning"><i class="bi bi-exclamation-triangle"></i> Este cobro no afectará el resumen de caja</small>
+                            }
+                        </div>
+                        <div class="col-md-6"></div>
+                        @for (int i = 0; i < detallesCobro.Count; i++)
+                        {
+                            var detalle = detallesCobro[i];
+                            var index = i;
+                            <div class="col-12">
+                                <div class="card mb-2">
+                                    <div class="card-body">
+                                        <div class="row g-2">
+                                            <div class="col-md-3">
+                                                <label class="form-label small">Medio de Pago</label>
+                                                <select class="form-select form-select-sm" @bind="detalle.MedioPago">
+                                                    <option value="EFECTIVO">Efectivo</option>
+                                                    <option value="TARJETA">Tarjeta</option>
+                                                    <option value="CHEQUE">Cheque</option>
+                                                    <option value="TRANSFERENCIA">Transferencia</option>
+                                                    <option value="QR">QR</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small">Monto</label>
+                                                <input type="number" class="form-control form-control-sm" @bind="detalle.Monto" @bind:after="StateHasChanged" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small">Moneda</label>
+                                                <select class="form-select form-select-sm" @bind="detalle.IdMoneda" @bind:after="@(async () => { await CargarTipoCambioSiNecesario(); StateHasChanged(); })">
+                                                    @foreach (var mon in Monedas)
+                                                    {
+                                                        <option value="@mon.IdMoneda">@mon.Nombre (@mon.Simbolo)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            @if (detalle.MedioPago == "TARJETA")
+                                            {
+                                                <div class="col-md-3">
+                                                    <label class="form-label small">Banco/Tarjeta</label>
+                                                    <input class="form-control form-control-sm" @bind="detalle.BancoTarjeta" />
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <label class="form-label small">Últimos 4</label>
+                                                    <input class="form-control form-control-sm" maxlength="4" @bind="detalle.Ultimos4Tarjeta" />
+                                                </div>
+                                            }
+                                            else if (detalle.MedioPago == "CHEQUE")
+                                            {
+                                                <div class="col-md-3">
+                                                    <label class="form-label small">Nro. Cheque</label>
+                                                    <input class="form-control form-control-sm" @bind="detalle.NumeroCheque" />
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <label class="form-label small">Banco</label>
+                                                    <input class="form-control form-control-sm" @bind="detalle.BancoCheque" />
+                                                </div>
+                                            }
+                                            else if (detalle.MedioPago == "TRANSFERENCIA")
+                                            {
+                                                <div class="col-md-5">
+                                                    <label class="form-label small">Nro. Transacción</label>
+                                                    <input class="form-control form-control-sm" @bind="detalle.NumeroTransferencia" />
+                                                </div>
+                                            }
+                                            <div class="col-md-1 d-flex align-items-end">
+                                                @if (detallesCobro.Count > 1)
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => EliminarDetalle(index)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        <div class="col-12">
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AgregarDetalle">
+                                <i class="bi bi-plus-circle me-1"></i>Agregar medio de pago
+                            </button>
+                        </div>
+                        <div class="col-12">
+                            <hr />
+                            <div class="alert alert-info">
+                                @if (detallesCobro.Any(d => d.IdMoneda != cuentaSeleccionada.IdMoneda))
+                                {
+                                    var simboloCuenta = ObtenerSimboloMoneda(cuentaSeleccionada.IdMoneda);
+                                    var totalConvertido = CalcularTotalCobroConvertido();
+                                    <div class="mb-2">
+                                        <strong>Detalles del cobro:</strong>
+                                        <ul class="mb-0">
+                                            @foreach (var det in detallesCobro.Where(d => d.Monto > 0))
+                                            {
+                                                var simboloPago = ObtenerSimboloMoneda(det.IdMoneda);
+                                                <li>@det.MedioPago: @FormatearPrecio(det.Monto, det.IdMoneda) @simboloPago</li>
+                                            }
+                                        </ul>
+                                    </div>
+                                    <div class="mt-2 pt-2 border-top">
+                                        <strong>Total convertido a @simboloCuenta:</strong>
+                                        <span class="text-success fw-bold ms-1">@FormatearPrecio(totalConvertido, cuentaSeleccionada.IdMoneda) @simboloCuenta</span>
+                                        @if (tipoCambioCobro.HasValue)
+                                        {
+                                            <span class="text-muted ms-2">(TC: @tipoCambioCobro.Value.ToString("N2"))</span>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    var simboloCuenta = ObtenerSimboloMoneda(cuentaSeleccionada.IdMoneda);
+                                    <strong>Total a cobrar:</strong>
+                                    <span class="text-success fw-bold ms-1">@FormatearPrecio(CalcularTotalCobro(), cuentaSeleccionada.IdMoneda) @simboloCuenta</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Observaciones</label>
+                            <textarea class="form-control" rows="2" @bind="observacionesCobro"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalCobro">Cancelar</button>
+                    <button type="button" class="btn btn-success" @onclick="ConfirmarCobro">
+                        <i class="bi bi-check-circle me-1"></i>Confirmar Cobro
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private string filtroCliente = string.Empty;
+    private string filtroEstado = string.Empty;
+    private List<CuentaDto> cuentas = new();
+    private decimal totalPendiente = 0;
+    private HashSet<int> cuotasExpandidas = new();
+    
+    // Modal de cobro
+    private bool mostrarModalCobro = false;
+    private CuentaDto? cuentaSeleccionada = null;
+    private List<DetalleCobroDto> detallesCobro = new();
+    private string observacionesCobro = string.Empty;
+    
+    // Monedas y tipos de cambio
+    private List<Moneda> Monedas = new();
+    private decimal? tipoCambioCobro = null;
+    private decimal tipoCambioDia = 1m;
+    
+    // Caja y Sucursal
+    private SistemIA.Models.Caja? CajaActiva;
+    private int? _sucursalId;
+    private List<SistemIA.Models.Caja> CajasDisponibles = new();
+    private int? cajaSeleccionadaId;
+    private bool afectaCaja = true; // Por defecto afecta la caja
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar sucursal del provider
+        _sucursalId = SucursalProvider.GetSucursalId();
+        
+        // Cargar cajas disponibles de la sucursal
+        await CargarCajasDisponiblesAsync();
+        
+        // Cargar caja activa desde CajaProvider
+        var cajaId = CajaProvider.GetCajaId();
+        if (cajaId.HasValue)
+        {
+            CajaActiva = CajasDisponibles.FirstOrDefault(c => c.IdCaja == cajaId.Value);
+        }
+        if (CajaActiva == null)
+        {
+            // Fallback: buscar cualquier caja activa de la sucursal
+            CajaActiva = CajasDisponibles.FirstOrDefault(c => c.CajaActual == 1) 
+                      ?? CajasDisponibles.FirstOrDefault();
+        }
+        cajaSeleccionadaId = CajaActiva?.IdCaja;
+        
+        await CargarMonedasAsync();
+        await Buscar();
+    }
+    
+    private async Task CargarCajasDisponiblesAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var query = ctx.Cajas.AsNoTracking().AsQueryable();
+        
+        // Filtrar por sucursal si está definida
+        if (_sucursalId.HasValue)
+        {
+            query = query.Where(c => c.IdSucursal == _sucursalId.Value || c.IdSucursal == null);
+        }
+        
+        CajasDisponibles = await query.OrderBy(c => c.IdCaja).ToListAsync();
+    }
+    
+    private void OnCajaSeleccionadaChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+        {
+            cajaSeleccionadaId = id;
+            CajaActiva = CajasDisponibles.FirstOrDefault(c => c.IdCaja == id);
+            afectaCaja = true;
+        }
+        else
+        {
+            cajaSeleccionadaId = null;
+            CajaActiva = null;
+            afectaCaja = false;
+        }
+    }
+    
+    private async Task CargarMonedasAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        Monedas = await ctx.Monedas.Where(m => m.Estado).OrderBy(m => m.Nombre).ToListAsync();
+    }
+
+    private async Task Buscar()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        var query = ctx.CuentasPorCobrar
+            .Include(c => c.Cliente)
+            .Include(c => c.Cuotas)
+            .Include(c => c.Moneda)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(filtroCliente))
+        {
+            query = query.Where(c => c.Cliente!.RazonSocial.Contains(filtroCliente) || 
+                                    (c.Cliente.RUC + "-" + c.Cliente.DV).Contains(filtroCliente));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filtroEstado))
+        {
+            query = query.Where(c => c.Estado == filtroEstado);
+        }
+
+        var datos = await query.OrderByDescending(c => c.FechaCredito).ToListAsync();
+
+        cuentas = datos.Select(c => {
+            var moneda = c.Moneda;
+            
+            // Intentar obtener moneda de varias formas
+            if (moneda == null && c.IdMoneda.HasValue)
+            {
+                moneda = Monedas.FirstOrDefault(m => m.IdMoneda == c.IdMoneda.Value);
+            }
+            
+            // Si aún no tiene moneda, buscar en BD
+            if (moneda == null && c.IdMoneda.HasValue)
+            {
+                moneda = ctx.Monedas.FirstOrDefault(m => m.IdMoneda == c.IdMoneda.Value);
+            }
+            
+            // Fallback: si la factura no tiene moneda explícita, asumir USD (extranjera)
+            if (moneda == null && Monedas.Any())
+            {
+                moneda = Monedas.FirstOrDefault(m => !m.EsMonedaBase) ?? Monedas.FirstOrDefault();
+            }
+            
+            var simbolo = moneda?.Simbolo;
+            if (string.IsNullOrEmpty(simbolo))
+            {
+                simbolo = moneda != null && !moneda.EsMonedaBase ? "$" : "Gs.";
+            }
+            
+            return new CuentaDto
+            {
+                IdCuentaPorCobrar = c.IdCuentaPorCobrar,
+                IdVenta = c.IdVenta,
+                IdCliente = c.IdCliente,
+                ClienteNombre = c.Cliente?.RazonSocial ?? "",
+                ClienteRuc = c.Cliente != null ? $"{c.Cliente.RUC}-{c.Cliente.DV}" : "",
+                FechaCredito = c.FechaCredito,
+                FechaVencimiento = c.FechaVencimiento,
+                MontoTotal = c.MontoTotal,
+                SaldoPendiente = c.SaldoPendiente,
+                NumeroCuotas = c.NumeroCuotas,
+                Estado = c.Estado,
+                IdMoneda = c.IdMoneda,
+                MonedaSimbolo = simbolo ?? "$",
+                EsMonedaExtranjera = moneda != null && !moneda.EsMonedaBase,
+                Cuotas = c.Cuotas?.ToList()
+            };
+        }).ToList();
+
+        totalPendiente = cuentas.Where(c => c.Estado != "PAGADO").Sum(c => c.SaldoPendiente);
+        StateHasChanged();
+    }
+
+    private void Limpiar()
+    {
+        filtroCliente = string.Empty;
+        filtroEstado = string.Empty;
+    }
+
+    private void ToggleCuotas(int idCuenta)
+    {
+        if (cuotasExpandidas.Contains(idCuenta))
+            cuotasExpandidas.Remove(idCuenta);
+        else
+            cuotasExpandidas.Add(idCuenta);
+    }
+
+    private async Task AbrirModalCobro(CuentaDto cuenta)
+    {
+        cuentaSeleccionada = cuenta;
+        
+        // Determinar la moneda por defecto para el pago (la misma de la cuenta)
+        var idMonedaPago = cuenta.IdMoneda ?? Monedas.FirstOrDefault(m => m.EsMonedaBase)?.IdMoneda;
+        
+        detallesCobro = new List<DetalleCobroDto>
+        {
+            new DetalleCobroDto 
+            { 
+                MedioPago = "EFECTIVO", 
+                Monto = cuenta.SaldoPendiente,
+                IdMoneda = idMonedaPago
+            }
+        };
+        
+        // Cargar tipo de cambio SIEMPRE (sea cuenta en USD o Gs)
+        await CargarTipoCambioDelDiaAsync();
+        
+        observacionesCobro = string.Empty;
+        mostrarModalCobro = true;
+    }
+    
+    private async Task CargarTipoCambioDelDiaAsync()
+    {
+        if (cuentaSeleccionada == null)
+        {
+            tipoCambioCobro = null;
+            tipoCambioDia = 1m;
+            return;
+        }
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var monedaBase = Monedas.FirstOrDefault(m => m.EsMonedaBase);
+        var monedaExtranjera = Monedas.FirstOrDefault(m => !m.EsMonedaBase);
+        
+        if (monedaBase == null || monedaExtranjera == null) 
+        {
+            tipoCambioDia = 1m;
+            tipoCambioCobro = 1m;
+            return;
+        }
+
+        // SIEMPRE buscar TC USD->Gs (el único que existe en BD)
+        var tc = await ctx.TiposCambio
+            .Where(t => t.IdMonedaOrigen == monedaExtranjera.IdMoneda
+                     && t.IdMonedaDestino == monedaBase.IdMoneda
+                     && t.Estado
+                     && t.FechaTipoCambio.Date == DateTime.Today)
+            .OrderByDescending(t => t.FechaCreacion)
+            .FirstOrDefaultAsync();
+
+        tipoCambioDia = tc?.TasaCompra ?? tc?.TasaCambio ?? 1m;
+        tipoCambioCobro = tipoCambioDia;
+    }
+    
+    private async Task CargarTipoCambioSiNecesario()
+    {
+        // Si hay detalles con moneda diferente a la cuenta, cargar tipo de cambio
+        if (cuentaSeleccionada != null && detallesCobro.Any(d => d.IdMoneda != cuentaSeleccionada.IdMoneda && d.IdMoneda != null))
+        {
+            await CargarTipoCambioDelDiaAsync();
+        }
+    }
+
+    private void CerrarModalCobro()
+    {
+        mostrarModalCobro = false;
+        cuentaSeleccionada = null;
+        detallesCobro.Clear();
+    }
+
+    private void AgregarDetalle()
+    {
+        var idMonedaDefault = cuentaSeleccionada?.IdMoneda ?? Monedas.FirstOrDefault(m => m.EsMonedaBase)?.IdMoneda;
+        detallesCobro.Add(new DetalleCobroDto 
+        { 
+            MedioPago = "EFECTIVO", 
+            Monto = 0,
+            IdMoneda = idMonedaDefault
+        });
+    }
+
+    private void EliminarDetalle(int index)
+    {
+        detallesCobro.RemoveAt(index);
+    }
+
+    private decimal CalcularTotalCobro()
+    {
+        return detallesCobro.Sum(d => d.Monto);
+    }
+    
+    private decimal CalcularSaldoRestante()
+    {
+        if (cuentaSeleccionada == null) return 0;
+        
+        var totalCobrado = detallesCobro.All(d => d.IdMoneda == cuentaSeleccionada.IdMoneda)
+            ? CalcularTotalCobro()
+            : CalcularTotalCobroConvertido();
+        
+        return Math.Max(0, cuentaSeleccionada.SaldoPendiente - totalCobrado);
+    }
+
+    private async Task ConfirmarCobro()
+    {
+        if (cuentaSeleccionada == null) return;
+
+        // Usar el total convertido si hay monedas diferentes
+        var totalCobro = (detallesCobro.All(d => d.IdMoneda == cuentaSeleccionada.IdMoneda))
+            ? CalcularTotalCobro()
+            : CalcularTotalCobroConvertido();
+        if (totalCobro <= 0)
+        {
+            await JS.InvokeVoidAsync("alert", "El monto a cobrar debe ser mayor a cero");
+            return;
+        }
+
+        if (totalCobro > cuentaSeleccionada.SaldoPendiente)
+        {
+            var confirmar = await JS.InvokeAsync<bool>("confirm", 
+                $"El monto a cobrar ({FormatearPrecio(totalCobro, cuentaSeleccionada.IdMoneda)}) es mayor al saldo pendiente ({FormatearPrecio(cuentaSeleccionada.SaldoPendiente, cuentaSeleccionada.IdMoneda)}). ¿Desea continuar?");
+            if (!confirmar) return;
+        }
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            // Obtener usuario actual
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var username = auth.User?.Identity?.Name;
+            var usuario = await ctx.Usuarios.FirstOrDefaultAsync(u => u.UsuarioNombre == username);
+
+            // Determinar fecha de cobro (usar fecha de caja si está bloqueada y afecta caja)
+            var fechaCobro = (afectaCaja && CajaActiva?.bloquear_fechaCaja == true && CajaActiva?.FechaActualCaja.HasValue == true)
+                            ? CajaActiva.FechaActualCaja.Value
+                            : DateTime.Now;
+
+            // Crear el cobro
+            var cobro = new CobroCuota
+            {
+                IdCuentaPorCobrar = cuentaSeleccionada.IdCuentaPorCobrar,
+                IdCliente = cuentaSeleccionada.IdCliente,
+                FechaCobro = fechaCobro,
+                MontoTotal = totalCobro,
+                Estado = "CONFIRMADO",
+                Observaciones = observacionesCobro,
+                IdUsuario = usuario?.Id_Usu,
+                IdCaja = afectaCaja ? cajaSeleccionadaId : null, // Solo asignar caja si afecta el resumen
+                Turno = afectaCaja ? CajaActiva?.TurnoActual : null,
+                NumeroRecibo = await GenerarNumeroRecibo(ctx),
+                IdMoneda = cuentaSeleccionada.IdMoneda,
+                CambioDelDia = tipoCambioCobro,
+                Detalles = new List<CobroDetalle>()
+            };
+
+            // Agregar detalles de medios de pago
+            foreach (var det in detallesCobro.Where(d => d.Monto > 0))
+            {
+                cobro.Detalles.Add(new CobroDetalle
+                {
+                    MedioPago = det.MedioPago,
+                    Monto = det.Monto,
+                    IdMoneda = det.IdMoneda,
+                    CambioDelDia = (det.IdMoneda != cuentaSeleccionada.IdMoneda) ? tipoCambioCobro : null,
+                    BancoTarjeta = det.BancoTarjeta,
+                    Ultimos4Tarjeta = det.Ultimos4Tarjeta,
+                    NumeroCheque = det.NumeroCheque,
+                    BancoCheque = det.BancoCheque,
+                    NumeroTransferencia = det.NumeroTransferencia
+                });
+            }
+
+            ctx.CobrosCuotas.Add(cobro);
+
+            // Actualizar saldo de la cuenta
+            var cuenta = await ctx.CuentasPorCobrar.FindAsync(cuentaSeleccionada.IdCuentaPorCobrar);
+            if (cuenta != null)
+            {
+                cuenta.SaldoPendiente -= totalCobro;
+                if (cuenta.SaldoPendiente <= 0)
+                {
+                    cuenta.SaldoPendiente = 0;
+                    cuenta.Estado = "PAGADO";
+                }
+            }
+
+            // Actualizar cuotas (distribuir el pago en las cuotas pendientes)
+            var cuotas = await ctx.CuentasPorCobrarCuotas
+                .Where(c => c.IdCuentaPorCobrar == cuentaSeleccionada.IdCuentaPorCobrar && c.Estado != "PAGADO")
+                .OrderBy(c => c.NumeroCuota)
+                .ToListAsync();
+
+            var montoRestante = totalCobro;
+            foreach (var cuota in cuotas)
+            {
+                if (montoRestante <= 0) break;
+
+                if (montoRestante >= cuota.SaldoCuota)
+                {
+                    montoRestante -= cuota.SaldoCuota;
+                    cuota.SaldoCuota = 0;
+                    cuota.Estado = "PAGADO";
+                    cuota.FechaPago = DateTime.Now;
+                }
+                else
+                {
+                    cuota.SaldoCuota -= montoRestante;
+                    montoRestante = 0;
+                }
+            }
+
+            await ctx.SaveChangesAsync();
+
+            // Abrir recibo de cobro
+            await JS.InvokeVoidAsync("open", $"/cobros/recibo/{cobro.IdCobro}", "_blank");
+
+            CerrarModalCobro();
+            await Buscar();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al registrar el cobro: {ex.Message}");
+        }
+    }
+
+    private async Task<string> GenerarNumeroRecibo(AppDbContext ctx)
+    {
+        var ultimoCobro = await ctx.CobrosCuotas
+            .OrderByDescending(c => c.IdCobro)
+            .FirstOrDefaultAsync();
+        
+        var numero = (ultimoCobro?.IdCobro ?? 0) + 1;
+        return $"REC-{numero:D6}";
+    }
+
+    private void VerHistorial(int idCuenta)
+    {
+        Nav.NavigateTo($"/cobros/historial/{idCuenta}");
+    }
+
+    private string FormatearPrecio(decimal valor, int? idMoneda)
+    {
+        if (idMoneda.HasValue)
+        {
+            var mon = Monedas.FirstOrDefault(m => m.IdMoneda == idMoneda.Value);
+            if (mon != null && !mon.EsMonedaBase)
+                return valor.ToString("N2");
+        }
+        return valor.ToString("N0");
+    }
+    
+    private string ObtenerSimboloMoneda(int? idMoneda)
+    {
+        if (!idMoneda.HasValue) return "Gs.";
+        var mon = Monedas.FirstOrDefault(m => m.IdMoneda == idMoneda.Value);
+        if (mon != null) return mon.Simbolo ?? "$";
+        
+        // Si no encuentra por ID, asumir USD para moneda extranjera y Gs. para base
+        var monedaExtranjera = Monedas.FirstOrDefault(m => !m.EsMonedaBase);
+        var monedaBase = Monedas.FirstOrDefault(m => m.EsMonedaBase);
+        
+        // Si el ID no coincide con base, probablemente es extranjera
+        if (monedaBase != null && idMoneda.Value != monedaBase.IdMoneda)
+            return monedaExtranjera?.Simbolo ?? "$";
+        
+        return monedaBase?.Simbolo ?? "Gs.";
+    }
+
+    private void OnTipoCambioChanged()
+    {
+        StateHasChanged();
+    }
+
+    private void OnMonedaDetalleChanged(ChangeEventArgs e)
+    {
+        StateHasChanged();
+    }
+
+    private decimal CalcularTotalCobroConvertido()
+    {
+        if (cuentaSeleccionada == null) return 0;
+        // Si todas las monedas de los detalles coinciden con la cuenta, no hay conversión
+        if (detallesCobro.All(d => d.IdMoneda == cuentaSeleccionada.IdMoneda))
+            return CalcularTotalCobro();
+        
+        decimal total = 0;
+        foreach (var det in detallesCobro)
+        {
+            if (det.IdMoneda == cuentaSeleccionada.IdMoneda)
+            {
+                total += det.Monto;
+            }
+            else
+            {
+                // Si la cuenta es en moneda extranjera y el pago es en Gs, convertir
+                var monCuenta = Monedas.FirstOrDefault(m => m.IdMoneda == cuentaSeleccionada.IdMoneda);
+                var monPago = Monedas.FirstOrDefault(m => m.IdMoneda == det.IdMoneda);
+                if (monCuenta != null && monPago != null && tipoCambioCobro.HasValue)
+                {
+                    if (!monCuenta.EsMonedaBase && monPago.EsMonedaBase)
+                    {
+                        // Pago en Gs, cuenta en USD: convertir Gs a USD
+                        total += Math.Round(det.Monto / tipoCambioCobro.Value, 4);
+                    }
+                    else if (monCuenta.EsMonedaBase && !monPago.EsMonedaBase)
+                    {
+                        // Pago en USD, cuenta en Gs: convertir USD a Gs
+                        total += Math.Round(det.Monto * tipoCambioCobro.Value, 0);
+                    }
+                    else
+                    {
+                        // Otras combinaciones, sumar directo
+                        total += det.Monto;
+                    }
+                }
+                else
+                {
+                    total += det.Monto;
+                }
+            }
+        }
+        return total;
+    }
+
+    // DTOs
+    private class CuentaDto
+    {
+        public int IdCuentaPorCobrar { get; set; }
+        public int IdVenta { get; set; }
+        public int IdCliente { get; set; }
+        public string ClienteNombre { get; set; } = string.Empty;
+        public string ClienteRuc { get; set; } = string.Empty;
+        public DateTime FechaCredito { get; set; }
+        public DateTime? FechaVencimiento { get; set; }
+        public decimal MontoTotal { get; set; }
+        public decimal SaldoPendiente { get; set; }
+        public int NumeroCuotas { get; set; }
+        public string Estado { get; set; } = string.Empty;
+        public int? IdMoneda { get; set; }
+        public string? MonedaSimbolo { get; set; }
+        public bool EsMonedaExtranjera { get; set; }
+        public List<CuentaPorCobrarCuota>? Cuotas { get; set; }
+    }
+
+    private class DetalleCobroDto
+    {
+        public string MedioPago { get; set; } = "EFECTIVO";
+        public decimal Monto { get; set; }
+        public int? IdMoneda { get; set; } // Moneda en la que se paga
+        public string? BancoTarjeta { get; set; }
+        public string? Ultimos4Tarjeta { get; set; }
+        public string? NumeroCheque { get; set; }
+        public string? BancoCheque { get; set; }
+        public string? NumeroTransferencia { get; set; }
+    }
+}

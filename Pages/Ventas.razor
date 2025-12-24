@@ -1,0 +1,686 @@
+@page "/ventas"
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageProtection Modulo="/ventas" Permiso="VIEW">
+
+@if (ModoSoloVista)
+{
+  <div class="alert alert-warning d-flex align-items-center justify-content-between mb-3" role="alert">
+    <div>
+      <i class="bi bi-eye-fill me-2"></i>
+      <strong>Modo Visualización</strong> - Venta #@(VentaId) - Estado: 
+      <span class="badge @(Cab?.Estado == "Anulado" ? "bg-danger" : Cab?.Estado == "Confirmado" ? "bg-success" : "bg-secondary")">@(Cab?.Estado ?? "N/D")</span>
+      @if (!string.IsNullOrWhiteSpace(Cab?.EstadoSifen))
+      {
+        <span class="badge @(Cab.EstadoSifen == "ACEPTADO" ? "bg-success" : Cab.EstadoSifen == "RECHAZADO" ? "bg-danger" : "bg-warning text-dark") ms-1">SIFEN: @Cab.EstadoSifen</span>
+      }
+    </div>
+    <a class="btn btn-outline-primary btn-sm" href="/ventas/explorar">
+      <i class="bi bi-arrow-left me-1"></i>Volver al Explorador
+    </a>
+  </div>
+}
+
+<div class="alert alert-info border-0 d-flex flex-wrap gap-4 align-items-center mb-3">
+  <div><strong>Sucursal:</strong> @SucursalNombreUI</div>
+  <div><strong>Caja:</strong> @CajaNombreUI</div>
+  <div><strong>Fecha Caja:</strong> @FechaCajaUI</div>
+  <div><strong>Turno:</strong> @TurnoUI</div>
+  <div>
+    <span class="badge rounded-pill bg-primary">@(((Cab?.TipoDocumento) ?? "-").ToUpperInvariant())</span>
+  </div>
+  <div><strong>Timbrado:</strong> @TimbradoUI</div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(MensajeAdvertencia))
+{
+  <div class="alert alert-warning d-flex align-items-center" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <div>@MensajeAdvertencia</div>
+  </div>
+}
+
+@if ((Cab?.IdSucursal ?? 0) <= 0)
+{
+  <div class="alert alert-warning">Debe seleccionar una sucursal antes de continuar.</div>
+}
+
+<div class="d-flex align-items-center justify-content-between mb-2">
+  <h3 class="m-0">@(ModoSoloVista ? $"Detalle de Venta #{VentaId}" : "Registro de Ventas")</h3>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary btn-sm" href="/ventas/explorar" title="Explorar ventas">
+      <i class="bi bi-journal-text"></i> <span class="d-none d-sm-inline">Explorar</span>
+    </a>
+  </div>
+ </div>
+
+<fieldset disabled="@ModoSoloVista">
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2 position-relative">
+      <div class="col-md-6 position-relative">
+        <label class="form-label d-flex align-items-center justify-content-between">
+          <span>Cliente</span>
+          <button type="button" class="btn btn-sm btn-outline-primary" title="Nuevo cliente rápido" @onclick="AbrirModalNuevoCliente">
+            <i class="bi bi-plus-circle"></i>
+          </button>
+        </label>
+        @if (string.IsNullOrEmpty(ClienteSeleccionadoLabel))
+        {
+          <input class="form-control" placeholder="Buscar por Razón Social o RUC" @bind="BuscarCliente" @bind:event="oninput" @onkeydown="OnClienteKeyDown" @onfocus="OnClienteFocus" @onblur="OnClienteBlur" autocomplete="off" />
+          @if (MostrarSugClientes && ClientesFiltrados.Any())
+          {
+            <div class="list-group position-absolute w-100 shadow" style="z-index: 1000; max-height: 300px; overflow:auto;">
+              @foreach (var c in ClientesFiltrados.Take(20))
+              {
+                <button type="button" class="list-group-item list-group-item-action"
+                        @onpointerdown="() => OnClienteSuggestionMouseDownAsync(c)" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+                        @onmousedown="() => OnClienteSuggestionMouseDownAsync(c)" @onmousedown:preventDefault @onmousedown:stopPropagation
+                        @onclick="() => OnClienteSuggestionMouseDownAsync(c)" @onclick:preventDefault @onclick:stopPropagation>
+                  <div class="fw-semibold">@c.RazonSocial</div>
+                  <div class="text-muted small">RUC: @c.RUC-@c.DV</div>
+                </button>
+              }
+            </div>
+          }
+  }
+        else
+        {
+          <div class="d-flex gap-2">
+            <div class="form-control bg-dark text-white">@ClienteSeleccionadoLabel</div>
+            <button type="button" class="btn btn-outline-warning" @onclick="@(() => CambiarCliente())">Cambiar</button>
+          </div>
+          <div class="mt-1">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+              <input type="email" class="form-control form-control-sm" @bind="EmailCliente" placeholder="Email del cliente (opcional)" />
+            </div>
+          </div>
+        }
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Fecha (Caja)</label>
+        <input class="form-control" value="@((Cab?.Fecha ?? DateTime.Today).ToString("yyyy-MM-dd"))" disabled />
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">Est.</label>
+        <input class="form-control" value="@EstablecimientoUI" disabled />
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">Pto.</label>
+        <input class="form-control" value="@PuntoExpedicionUI" disabled />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Número</label>
+        <input class="form-control" value="@(((Cab?.TipoIngreso ?? "VENTAS").ToUpperInvariant()=="PRESUPUESTO" ? (NumeroPresupuestoUI ?? "Auto") : (NumeroSecuencialUI ?? "Auto")))" disabled />
+      </div>
+  <div class="col-md-2">
+  <label class="form-label">Tipo Doc.</label>
+  <select class="form-select" @bind="Cab!.IdTipoDocumentoOperacion" @bind:after="@(() => OnTipoDocumentoChanged())">
+          @if (TiposDocumento?.Any() == true)
+          {
+            @foreach (var t in TiposDocumento)
+            {
+              <option value="@t.IdTipoDocumentoOperacion">@t.Nombre</option>
+            }
+          }
+  </select>
+      </div>
+  <div class="col-md-2">
+  <label class="form-label">Tipo de pago</label>
+  <select class="form-select" @bind="Cab!.IdTipoPago" @bind:after="@(() => OnTipoPagoChanged())">
+          <option value="">Seleccione…</option>
+          @if (TiposPago?.Any() == true)
+          {
+            @foreach (var t in TiposPago)
+            {
+              <option value="@t.IdTipoPago">@t.Nombre</option>
+            }
+          }
+  </select>
+      </div>
+      
+  @if (MostrarCamposCredito)
+  {
+      <div class="col-md-2">
+          <label class="form-label">Nº Cuotas</label>
+          <input type="number" class="form-control" @bind="NumeroCuotas" min="1" max="60" placeholder="1" />
+          <small class="text-muted">Cantidad de cuotas</small>
+      </div>
+      <div class="col-md-2">
+          <label class="form-label">Plazo (días)</label>
+          <input type="number" class="form-control" @bind="Cab!.Plazo" @bind:after="OnPlazoChanged" min="1" placeholder="30" />
+          <small class="text-muted">Días hasta vencimiento</small>
+      </div>
+      <div class="col-md-2">
+          <label class="form-label">Fecha Vencimiento</label>
+          <input type="date" class="form-control" @bind="Cab!.FechaVencimiento" @bind:after="OnFechaVencimientoChanged" />
+      </div>
+  }
+      
+  <div class="col-md-2">
+  <label class="form-label">Tipo Documento</label>
+  <select class="form-select" @bind="Cab!.TipoIngreso" @bind:after="@(() => OnValidezChanged())">
+    <option value="VENTAS">VENTAS</option>
+    <option value="PRESUPUESTO">PRESUPUESTO</option>
+  </select>
+      </div>
+  <div class="col-md-2">
+  <label class="form-label">Moneda</label>
+  <select class="form-select" @bind="Cab!.IdMoneda" @bind:after="@(() => OnMonedaChanged())">
+          @if (Monedas?.Any() == true)
+          {
+            @foreach (var m in Monedas)
+            {
+              <option value="@m.IdMoneda">@m.Nombre (@m.CodigoISO)</option>
+            }
+          }
+  </select>
+      </div>
+  @if (Cab?.EsMonedaExtranjera == true)
+  {
+    <div class="col-md-2">
+      <label class="form-label">Tipo de Cambio</label>
+      <div class="input-group">
+        <span class="input-group-text">@(Monedas?.FirstOrDefault(m => m.EsMonedaBase)?.Simbolo ?? "Gs.")</span>
+        <input type="number" class="form-control" step="0.01" min="0" @bind="Cab!.CambioDelDia" @bind:after="@(() => OnCambioManualChanged())" placeholder="7000" />
+      </div>
+      <small class="text-muted">Editable para ajustar margen</small>
+    </div>
+  }
+  @if (string.Equals(Cab?.TipoIngreso, "PRESUPUESTO", StringComparison.OrdinalIgnoreCase))
+      {
+        <div class="col-md-2">
+          <label class="form-label">Validez (días)</label>
+          <input type="number" min="0" class="form-control" @bind="ValidezDias" @bind:event="oninput" @bind:after="@(() => OnValidezChanged())" />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Válido hasta</label>
+          <input class="form-control" value="@ValidoHasta?.ToString("yyyy-MM-dd")" disabled />
+        </div>
+      }
+    </div>
+  </div>
+  </div>
+
+<div class="card mb-3">
+  <div class="card-body">
+  <div class="row g-2 align-items-end">
+  <div class="col-md-6 position-relative">
+        <label class="form-label">Producto</label>
+  <input class="form-control" placeholder="Buscar por nombre, código o código de barras" @bind="BuscarProducto" @bind:event="oninput" @onkeyup="OnProductoKeyUp" @onfocus="OnProductoFocus" @onblur="OnProductoBlur" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}" />
+        @if (MostrarSugProductos && ProductosFiltrados.Any())
+        {
+          <div class="list-group position-absolute w-100 shadow" style="z-index: 1000; max-height: 300px; overflow:auto;">
+            @foreach (var p in ProductosFiltrados.Take(12))
+            {
+              <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center @(p.Stock <= 0 ? "list-group-item-warning" : "")"
+                      type="button"
+                      @onpointerdown="() => OnProductoSuggestionMouseDownAsync(p)" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+                      @onmousedown="() => OnProductoSuggestionMouseDownAsync(p)" @onmousedown:preventDefault @onmousedown:stopPropagation
+                      @onclick="() => OnProductoSuggestionMouseDownAsync(p)" @onclick:preventDefault @onclick:stopPropagation>
+                <span>
+                  <div class="fw-semibold">@p.Descripcion</div>
+                  <div class="text-muted small">Cod: @(p.CodigoInterno ?? "-") • EAN: @(p.CodigoBarras ?? "-") • <span class="@(p.Stock <= 0 ? "text-danger fw-bold" : "text-success")">Stock: @p.Stock.ToString("N0")</span></div>
+                </span>
+                <span class="badge bg-light text-dark">@p.PrecioUnitarioGs.ToString("N0")</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cantidad @(ProductoPermiteDecimal ? "(decimal)" : "")</label>
+  <input type="number" class="form-control" step="@(ProductoPermiteDecimal ? "any" : "1")" min="@(ProductoPermiteDecimal ? "0.001" : "1")" @bind="NuevoDetalle.Cantidad" @bind:event="oninput" @bind:after="@(() => OnCantidadChanged())" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Precio</label>
+        @if (PuedeEditarPrecio)
+        {
+          <input type="number" class="form-control" step="0.01" @bind="NuevoDetalle.PrecioUnitario" @bind:event="oninput" @bind:after="@(() => OnPrecioChanged())" />
+        }
+        else
+        {
+          <input type="number" class="form-control" step="0.01" value="@NuevoDetalle.PrecioUnitario" readonly style="background-color: var(--bs-secondary-bg);" />
+        }
+      </div>
+      <div class="col-md-2 d-grid">
+        <button type="button" class="btn btn-primary" @onclick="AgregarDetalleAsync">Agregar</button>
+      </div>
+    </div>
+    <div class="row mt-2">
+      <div class="col-md-6"></div>
+      <div class="col-md-6">
+        <div class="small text-muted">
+          <div>Base 10%: <span class="fw-semibold">@NuevoDetalle.Grabado10.ToString("N0")</span> • IVA 10%: <span class="fw-semibold">@NuevoDetalle.IVA10.ToString("N0")</span></div>
+          <div>Base 5%: <span class="fw-semibold">@NuevoDetalle.Grabado5.ToString("N0")</span> • IVA 5%: <span class="fw-semibold">@NuevoDetalle.IVA5.ToString("N0")</span></div>
+          <div>Exentas: <span class="fw-semibold">@NuevoDetalle.Exenta.ToString("N0")</span> • Total línea: <span class="fw-bold">@NuevoDetalle.Importe.ToString("N0")</span></div>
+          @{ 
+            var prodSel = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var mseq = Monedas ?? new List<Moneda>();
+            var idMonSel = prodSel?.IdMonedaPrecio ?? Cab?.IdMoneda ?? 0;
+            var idMonCab = Cab?.IdMoneda ?? 0;
+            var codOri = mseq.FirstOrDefault(m => m.IdMoneda == idMonSel)?.CodigoISO ?? string.Empty;
+            var codDes = mseq.FirstOrDefault(m => m.IdMoneda == idMonCab)?.CodigoISO ?? string.Empty;
+            var rateStr = NuevoDetalle.CambioDelDia.HasValue ? NuevoDetalle.CambioDelDia.Value.ToString("N4") : string.Empty;
+          }
+          @if (NuevoDetalle.CambioDelDia.HasValue)
+          {
+            <div class="mt-1 d-flex justify-content-between text-muted">
+              <span>TC usada</span>
+              <strong>@GetCurrencyFlag(codOri) @codOri/@codDes @GetCurrencyFlag(codDes) @rateStr</strong>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="row g-3 p-3">
+    <div class="col-lg-8">
+      <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Producto</th>
+          <th class="text-end">Cantidad</th>
+          <th class="text-end">Precio</th>
+          <th class="text-end">Importe</th>
+          <th class="text-end">TC</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var d in Detalles)
+        {
+          var prod = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
+          <tr @onclick="() => SeleccionarDetalleGrid(d)" style="cursor: pointer;">
+            <td>@prod?.Descripcion</td>
+            <td class="text-end">@d.Cantidad.ToString("N2")</td>
+            <td class="text-end">@FormatearPrecio(d.PrecioUnitario)</td>
+        <td class="text-end">@FormatearPrecio(d.Importe)</td>
+      @{ 
+        var prodTc = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
+        var mseq2 = Monedas ?? new List<Moneda>();
+        var idMonSel2 = prodTc?.IdMonedaPrecio ?? Cab?.IdMoneda ?? 0;
+        var idMonCab2 = Cab?.IdMoneda ?? 0;
+        var codOriTc = mseq2.FirstOrDefault(m => m.IdMoneda == idMonSel2)?.CodigoISO ?? string.Empty;
+        var codDesTc = mseq2.FirstOrDefault(m => m.IdMoneda == idMonCab2)?.CodigoISO ?? string.Empty;
+        var rateStrDet = d.CambioDelDia.HasValue ? d.CambioDelDia.Value.ToString("N4") : string.Empty;
+        var txTxt = d.CambioDelDia.HasValue 
+          ? ($"{GetCurrencyFlag(codOriTc)} {codOriTc}/{codDesTc} {GetCurrencyFlag(codDesTc)} {rateStrDet}") 
+          : "—"; 
+      }
+        <td class="text-end"><span class="text-muted">@txTxt</span></td>
+            <td class="text-end"><button class="btn btn-sm btn-outline-danger" @onclick="() => QuitarDetalle(d)">Quitar</button></td>
+          </tr>
+        }
+      </tbody>
+      <tfoot>
+        <tr>
+          <th colspan="3" class="text-end">Total</th>
+          <th class="text-end">@FormatearPrecio(Cab?.Total ?? 0M)</th>
+        </tr>
+      </tfoot>
+     </table>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      @if (!string.IsNullOrWhiteSpace(ProductoImagenUrl))
+      {
+        <div class="card mb-3 border-primary">
+          <div class="card-header bg-primary text-white py-2">
+            <small><i class="bi bi-image"></i> Imagen del Producto</small>
+          </div>
+          <div class="card-body p-2 text-center bg-white">
+            <img src="@ProductoImagenUrl" alt="Producto" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;" />
+          </div>
+        </div>
+      }
+      <div class="card bg-dark text-white shadow-sm">
+        <div class="card-body">
+          <div class="mb-2">Gravado 10%: <span class="fw-semibold">@Gravado10.ToString("N0")</span></div>
+          <div class="mb-2">Gravado 5%: <span class="fw-semibold">@Gravado5.ToString("N0")</span></div>
+          <div class="mb-2">IVA 10%: <span class="fw-semibold">@IVATotal10.ToString("N0")</span></div>
+          <div class="mb-2">IVA 5%: <span class="fw-semibold">@IVATotal5.ToString("N0")</span></div>
+          <div class="mb-2">Exentas: <span class="fw-semibold">@Exenta.ToString("N0")</span></div>
+          <hr class="border-secondary" />
+          <div class="fs-5">Total: <span class="fw-bold">@((Cab?.Total ?? 0M).ToString("N0"))</span></div>
+          <div class="small text-muted mt-2">@NumeroEnLetras(Cab?.Total ?? 0M, (Monedas?.FirstOrDefault(m => m.IdMoneda == (Cab?.IdMoneda ?? 0))?.CodigoISO ?? "PYG"))</div>
+        </div>
+      </div>
+      @if (!ModoSoloVista)
+      {
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button class="btn btn-success" @onclick="GuardarAsync"><i class="bi bi-check2-circle"></i> Guardar</button>
+          <button class="btn btn-secondary" @onclick="@(() => Limpiar())">Limpiar</button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+</fieldset>
+
+@if (_mostrarComposicionCaja)
+{
+  <div class="modal fade show" style="display:block; background: rgba(0,0,0,.5);" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Composición de Caja</h5>
+          <button type="button" class="btn-close" @onclick="CerrarComposicionCaja"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-md-3">
+              <label class="form-label">Medio</label>
+              <select class="form-select" @bind="_detalleCajaMedio">
+                <option value="EFECTIVO">EFECTIVO</option>
+                <option value="TARJETA">TARJETA</option>
+                <option value="CHEQUE">CHEQUE</option>
+                <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+                <option value="QR">QR</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Moneda</label>
+              <select class="form-select" @bind="_detalleCajaIdMoneda">
+                @foreach (var m in Monedas)
+                {
+                  <option value="@m.IdMoneda">@m.Nombre (@m.CodigoISO)</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Monto</label>
+              <input type="number" step="any" class="form-control" @ref="_montoInputRef"
+                     @bind="_detalleCajaMonto" @bind:event="oninput"
+                     @onkeydown="OnMontoKeyDown" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Nº Comprobante</label>
+              <input type="text" class="form-control" @bind="_detalleCajaComprobante" 
+                     placeholder="@(_detalleCajaMedio == "EFECTIVO" ? "N/A" : "Ingrese nº")"
+                     disabled="@(_detalleCajaMedio == "EFECTIVO")" maxlength="60" />
+            </div>
+          </div>
+    <div class="mt-2 d-flex justify-content-end gap-2">
+            @if (_cajaEditIndex.HasValue)
+            {
+        <button type="button" class="btn btn-outline-secondary" @onclick="LimpiarEdicionCaja">Cancelar edición</button>
+        <button type="button" class="btn btn-primary"
+          @onpointerdown="() => AgregarDetalleCaja()" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+          @onclick="AgregarDetalleCaja">Actualizar detalle</button>
+            }
+            else
+            {
+        <button type="button" class="btn btn-outline-primary"
+          @onpointerdown="() => AgregarDetalleCaja()" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+          @onclick="AgregarDetalleCaja">Agregar detalle</button>
+            }
+          </div>
+          <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Medio</th>
+                  <th>Nº Comprobante</th>
+                  <th>Moneda</th>
+                  <th class="text-end">Monto</th>
+                  <th class="text-end">Monto (Gs)</th>
+                  <th class="text-end">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (var i = 0; i < _cajaDetalles.Count; i++)
+                {
+                  var d = _cajaDetalles[i];
+                  var idx = i; // capturar índice en variable local para usar en eventos
+                  var mon = Monedas.FirstOrDefault(x => x.IdMoneda == d.IdMoneda);
+                  <tr @key="d">
+                    <td>@d.Medio</td>
+                    <td>@(string.IsNullOrWhiteSpace(d.NumeroComprobante) ? "-" : d.NumeroComprobante)</td>
+                    <td>@mon?.Nombre (@mon?.CodigoISO)</td>
+                    <td class="text-end">@d.Monto.ToString("N0")</td>
+                    <td class="text-end">@d.MontoGs.ToString("N0")</td>
+                    <td class="text-end">
+                      <div class="btn-group btn-group-sm" role="group">
+      <button type="button" class="btn btn-outline-warning" title="Editar"
+        @onpointerdown="() => EditarDetalleCaja(idx)" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+        @onclick="() => EditarDetalleCaja(idx)">Editar</button>
+      <button type="button" class="btn btn-outline-danger" title="Quitar"
+        @onpointerdown="() => QuitarDetalleCaja(idx)" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+        @onclick="() => QuitarDetalleCaja(idx)">Quitar</button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th colspan="4" class="text-end">Total cobrado (Gs)</th>
+                  <th class="text-end">@_cajaTotalGs.ToString("N0")</th>
+                  <th></th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          
+          @* Panel de resumen: Total venta, Cobrado, Vuelto/Faltante *@
+          <div class="card mt-3 @(_cajaTotalGs >= Cab.Total ? "border-success" : "border-warning")">
+            <div class="card-body py-2">
+              <div class="row text-center">
+                <div class="col-4">
+                  <small class="text-muted d-block">Total Venta</small>
+                  <strong class="fs-5">@Cab.Total.ToString("N0") Gs</strong>
+                </div>
+                <div class="col-4">
+                  <small class="text-muted d-block">Total Cobrado</small>
+                  <strong class="fs-5">@_cajaTotalGs.ToString("N0") Gs</strong>
+                </div>
+                <div class="col-4">
+                  @if (_cajaTotalGs >= Cab.Total)
+                  {
+                    <small class="text-success d-block">Vuelto</small>
+                    <strong class="fs-5 text-success">@((_cajaTotalGs - Cab.Total).ToString("N0")) Gs</strong>
+                  }
+                  else
+                  {
+                    <small class="text-danger d-block">Faltante</small>
+                    <strong class="fs-5 text-danger">@((Cab.Total - _cajaTotalGs).ToString("N0")) Gs</strong>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+          @if (!string.IsNullOrWhiteSpace(_cajaError))
+          {
+            <div class="alert alert-warning">@_cajaError</div>
+          }
+          @if (!string.IsNullOrWhiteSpace(_cajaInfo))
+          {
+            <div class="alert alert-info">@_cajaInfo</div>
+          }
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @onclick="CerrarComposicionCaja">Cerrar</button>
+          <button type="button" class="btn btn-success" @onclick="ConfirmarComposicionCaja">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@* Modal para crear nuevo cliente rápido *@
+@if (_mostrarModalCliente)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);" @onclick="CerrarModalCliente">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-person-add"></i> Nuevo Cliente Rápido</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalCliente"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_errorCliente))
+                    {
+                        <div class="alert alert-danger py-2">@_errorCliente</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_successCliente))
+                    {
+                        <div class="alert alert-success py-2">@_successCliente</div>
+                    }
+
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Tipo Documento <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="_nuevoCliTipoDocumento">
+                                @foreach (var tipo in _tiposDocumentosCliente)
+                                {
+                                    <option value="@tipo.TipoDocumento">@tipo.Descripcion</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-8">
+                            <label class="form-label">RUC / CI <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" @bind="_nuevoCliRuc" @bind:event="oninput" @onblur="CalcularDvCliente" placeholder="Ej: 80012345" maxlength="10" />
+                                <button type="button" class="btn btn-outline-primary" @onclick="BuscarClienteEnSifenAsync" disabled="@_buscandoClienteSifen" title="Buscar en BD local y SIFEN">
+                                    @if (_buscandoClienteSifen)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-search"></i>
+                                    }
+                                </button>
+                            </div>
+                            <small class="text-muted">Sin guión ni DV</small>
+                            @if (!string.IsNullOrEmpty(_mensajeSifenCliente))
+                            {
+                                <div class="@(_esSifenClienteError ? "text-danger" : "text-success") small mt-1">@_mensajeSifenCliente</div>
+                            }
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label">DV</label>
+                            <input type="text" class="form-control" value="@_nuevoCliDv" readonly />
+                            <small class="text-muted">Calculado</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Razón Social <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_nuevoCliRazonSocial" placeholder="Nombre o Empresa" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" @bind="_nuevoCliTelefono" placeholder="0981..." />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Email <small class="text-muted">(opcional)</small></label>
+                            <input type="email" class="form-control" @bind="_nuevoCliEmail" placeholder="correo@ejemplo.com" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalCliente">Cancelar</button>
+                    <button type="button" class="btn btn-success" @onclick="GuardarNuevoClienteAsync" disabled="@_guardandoCliente">
+                        @if (_guardandoCliente)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg"></i> Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ═══════════════════ MODAL: Vista Previa del Ticket ═══════════════════ *@
+@if (_mostrarVistaPrevia && _idVentaParaVistaPrevia > 0)
+{
+    <SistemIA.Shared.TicketVistaPrevia 
+        IdVenta="@_idVentaParaVistaPrevia" 
+        ImprimirAutomatico="true"
+        OnCerrar="CerrarVistaPrevia" 
+        OnImprimirCompletado="OnImprimirCompletado" />
+}
+
+@* Modal de error de stock cero (productos físicos) *@
+@if (_mostrarConfirmStockCero && _productoStockCeroPendiente != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>Sin Stock Disponible</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CancelarSeleccionStockCero"></button>
+                </div>
+                <div class="modal-body">
+                    <p>El producto <strong>@_productoStockCeroPendiente.Descripcion</strong> tiene <span class="text-danger fw-bold">stock 0</span>.</p>
+                    <p class="text-muted mb-0"><i class="bi bi-info-circle me-1"></i>No es posible agregar productos sin stock a la venta.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelarSeleccionStockCero">
+                        <i class="bi bi-x-lg"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal de receta médica para productos controlados *@
+@if (_mostrarModalReceta && _productoRecetaPendiente != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="bi bi-prescription2 me-2"></i>Datos de Receta Médica</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CancelarReceta"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle me-2"></i>
+                        El producto <strong>@_productoRecetaPendiente.Descripcion</strong> es un medicamento controlado y requiere datos de receta médica.
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(_recetaError))
+                    {
+                        <div class="alert alert-danger">@_recetaError</div>
+                    }
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Número de Registro <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_recetaNumeroRegistro" placeholder="Ej: REC-2024-00123" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Fecha de la Receta <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" @bind="_recetaFecha" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Médico <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_recetaNombreMedico" placeholder="Dr./Dra. Nombre Completo" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Paciente <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_recetaNombrePaciente" placeholder="Nombre completo del paciente" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelarReceta">
+                        <i class="bi bi-x-lg"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-info" @onclick="ConfirmarRecetaAsync">
+                        <i class="bi bi-check-lg"></i> Confirmar y Agregar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>

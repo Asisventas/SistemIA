@@ -361,3 +361,19 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+ManualSifen/Manual+T*cnico+Versi*n+150.xml
+*.zip
+pub_fix_decimales/
+pub_fix_decimales_v2/
+
+# Archivos grandes excluidos
+ManualSifen/Manual*Tecnico*.xml
+ManualSifen/Manual*Técnico*.xml
+*.zip
+
+# Carpetas de publicacion de prueba
+pub_fix_decimales/
+pub_fix_decimales_v2/
+
+# Modelo de reconocimiento facial grande
+face_recognition_models/shape_predictor_68_face_landmarks.dat

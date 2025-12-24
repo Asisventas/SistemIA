@@ -17,5 +17,7 @@ namespace SistemIA.Models
         public bool Estado { get; set; } = true;
 
         public ICollection<Usuario> Usuarios { get; set; } = new List<Usuario>();
+        
+        public ICollection<RolModuloPermiso> PermisosModulos { get; set; } = new List<RolModuloPermiso>();
     }
 }

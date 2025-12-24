@@ -1,0 +1,1466 @@
+@page "/ventas/explorar"
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using ClosedXML.Excel
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+
+<PageProtection Modulo="/ventas" Permiso="VIEW">
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="mb-0">
+    <i class="bi bi-receipt-cutoff text-primary me-2"></i>
+    Explorador de Ventas
+  </h3>
+  <div class="text-muted">
+    <i class="bi bi-clock me-1"></i>
+    Total: <span class="fw-bold">@ventas.Count</span> venta(s)
+  </div>
+</div>
+
+<div class="card mb-3 shadow-sm">
+  <div class="card-header bg-light">
+    <h6 class="mb-0">
+      <i class="bi bi-funnel me-2"></i>
+      Filtros de Búsqueda
+    </h6>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-1">
+        <label class="form-label small text-muted">Nº Interno</label>
+        <input type="number" class="form-control" placeholder="ID" @bind="filtroIdVenta" min="1" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small text-muted">Cliente</label>
+        <input class="form-control" placeholder="RUC o Razón Social" @bind="filtroCliente" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Desde</label>
+        <input type="date" class="form-control" @bind="filtroDesde" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Hasta</label>
+        <input type="date" class="form-control" @bind="filtroHasta" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Estado</label>
+        <select class="form-select" @bind="filtroEstado">
+          <option value="">Todos los estados</option>
+          <option>Borrador</option>
+          <option>Confirmado</option>
+          <option>Anulado</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Acciones</label>
+        <div class="d-flex gap-2">
+          <button class="btn btn-primary" @onclick="Buscar" title="Buscar ventas">
+            <i class="bi bi-search me-1"></i>Buscar
+          </button>
+          <button class="btn btn-outline-secondary" @onclick="Limpiar" title="Limpiar filtros">
+            <i class="bi bi-arrow-clockwise me-1"></i>
+          </button>
+          <div class="btn-group">
+            <button class="btn btn-outline-success" title="Exportar CSV" @onclick="ExportarCsv">
+              <i class="bi bi-filetype-csv"></i>
+            </button>
+            <button class="btn btn-outline-success" title="Exportar XLSX" @onclick="ExportarXlsx">
+              <i class="bi bi-file-earmark-excel"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header bg-white border-bottom">
+    <div class="d-flex justify-content-between align-items-center">
+      <h6 class="mb-0">
+        <i class="bi bi-table me-2"></i>
+        Resultados de la Búsqueda
+      </h6>
+      @if (ventas.Any())
+      {
+        <small class="text-muted">
+          Mostrando @ventas.Count resultado(s) | Total Gs: @ventas.Sum(v => v.TotalGs).ToString("N0") | Total $: @ventas.Sum(v => v.TotalUsd).ToString("N2")
+        </small>
+      }
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width: 5%">
+            <i class="bi bi-hash me-1"></i>Nº Int.
+          </th>
+          <th style="width: 9%">
+            <i class="bi bi-calendar3 me-1"></i>Fecha
+          </th>
+          <th style="width: 16%">
+            <i class="bi bi-person me-1"></i>Cliente
+          </th>
+          <th style="width: 13%">
+            <i class="bi bi-file-earmark-text me-1"></i>Documento
+          </th>
+          <th class="text-center" style="width: 4%">Mon</th>
+          <th class="text-end" style="width: 6%">Cambio</th>
+          <th class="text-end" style="width: 8%">Total Gs</th>
+          <th class="text-end" style="width: 7%">Total $</th>
+          <th style="width: 12%">
+            <i class="bi bi-check-circle me-1"></i>Estado
+          </th>
+          <th class="text-end" style="width: 20%">
+            <i class="bi bi-gear me-1"></i>Acciones
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var v in ventas)
+        {
+          <tr class="@(v.Estado == "Anulado" ? "table-secondary" : "")">
+            <td>
+              <span class="badge bg-light text-dark border fw-bold" title="ID Interno">@v.IdVenta</span>
+            </td>
+            <td>
+              <div class="fw-semibold">@v.Fecha.ToString("dd/MM/yyyy")</div>
+              <div class="text-muted small">@v.Fecha.ToString("HH:mm")</div>
+            </td>
+            <td>
+              <div class="fw-semibold text-truncate" style="max-width: 200px;" title="@v.ClienteNombre">
+                @v.ClienteNombre
+              </div>
+              <div class="text-muted small">
+                <i class="bi bi-credit-card-2-front me-1"></i>@v.ClienteRuc
+              </div>
+            </td>
+            <td>
+              <div class="d-flex align-items-center">
+                <i class="bi bi-file-earmark-text text-primary me-2"></i>
+                <div>
+                  <div class="fw-semibold">@(string.IsNullOrWhiteSpace(v.Numero) ? "Sin número" : v.Numero)</div>
+                  <div class="text-muted small">
+                    Timbrado: @(string.IsNullOrWhiteSpace(v.Timbrado) ? "N/A" : v.Timbrado)
+                  </div>
+                  @if (!string.IsNullOrWhiteSpace(v.IdLote))
+                  {
+                    <div class="text-muted small">
+                      <i class="bi bi-hash me-1"></i>Lote: @v.IdLote
+                    </div>
+                  }
+                </div>
+              </div>
+            </td>
+            <td class="text-center">
+              <span class="badge @(v.Moneda == "PYG" ? "bg-secondary" : "bg-info")">@v.Moneda</span>
+            </td>
+            <td class="text-end">
+              @if (v.Cambio.HasValue)
+              {
+                <span class="small">@v.Cambio.Value.ToString("N2")</span>
+              }
+              else
+              {
+                <span class="text-muted">-</span>
+              }
+            </td>
+            <td class="text-end">
+              <div class="fw-bold">@v.TotalGs.ToString("N0")</div>
+            </td>
+            <td class="text-end">
+              <div class="text-success">@v.TotalUsd.ToString("N2")</div>
+            </td>
+            <td>
+              <div class="d-flex flex-column gap-1">
+                @if (v.Estado == "Anulado") 
+                { 
+                  <span class="badge bg-danger">
+                    <i class="bi bi-x-circle me-1"></i>Anulado
+                  </span> 
+                }
+                else if (v.Estado == "Confirmado") 
+                { 
+                  <span class="badge bg-success">
+                    <i class="bi bi-check-circle me-1"></i>Confirmado
+                  </span> 
+                }
+                else 
+                { 
+                  <span class="badge bg-secondary">
+                    <i class="bi bi-pencil me-1"></i>Borrador
+                  </span> 
+                }
+                @if (v.TieneComposicion)
+                {
+                  <span class="badge bg-warning text-dark" title="Tiene composición de caja registrada">
+                    <i class="bi bi-cash-stack me-1"></i>Caja
+                  </span>
+                }
+                
+                @if (!string.IsNullOrWhiteSpace(v.EstadoSifen))
+                {
+                  @if (v.EstadoSifen == "ACEPTADO") 
+                  { 
+                    <span class="badge bg-success">
+                      <i class="bi bi-shield-check me-1"></i>SIFEN: ACEPTADO
+                    </span> 
+                  }
+                  else if (v.EstadoSifen == "ENVIADO") 
+                  { 
+                    <span class="badge bg-warning text-dark">
+                      <i class="bi bi-clock me-1"></i>SIFEN: ENVIADO
+                    </span> 
+                  }
+                  else if (v.EstadoSifen == "RECHAZADO") 
+                  { 
+                    <span class="badge bg-danger">
+                      <i class="bi bi-shield-x me-1"></i>SIFEN: RECHAZADO
+                    </span> 
+                  }
+                  else 
+                  { 
+                    <span class="badge bg-light text-dark">
+                      <i class="bi bi-info-circle me-1"></i>SIFEN: @v.EstadoSifen
+                    </span> 
+                  }
+                  
+                  @if (!string.IsNullOrWhiteSpace(v.CDC))
+                  {
+                    <div class="text-muted small mt-1" style="font-family: monospace;">
+                      <i class="bi bi-qr-code me-1"></i>
+                      <span title="Código de Control (CDC)">CDC: @(v.CDC.Length > 20 ? v.CDC.Substring(0, 20) + "..." : v.CDC)</span>
+                    </div>
+                  }
+                }
+              </div>
+            </td>
+            <td class="text-end">
+              <div class="d-flex flex-wrap gap-1 justify-content-end">
+                <div class="btn-group btn-group-sm" role="group">
+                  <a class="btn btn-outline-secondary" title="Ver Preview" href="@GetPreviewUrl(v.IdVenta)" target="_blank"><i class="bi bi-eye"></i></a>
+                  <a class="btn btn-outline-primary" title="Imprimir Láser (A4)" href="/ventas/imprimir/@v.IdVenta" target="_blank"><i class="bi bi-printer"></i></a>
+                  <button class="btn btn-info" title="Vista Previa Ticket" @onclick="() => AbrirVistaPrevia(v.IdVenta)"><i class="bi bi-receipt"></i></button>
+                  <a class="btn btn-outline-secondary" title="Editar venta" href="/ventas?id=@v.IdVenta"><i class="bi bi-pencil"></i></a>
+                </div>
+                <div class="btn-group btn-group-sm" role="group">
+                  @if (!string.IsNullOrWhiteSpace(v.CDC))
+                  {
+                    <button class="btn btn-outline-info" title="Ver QR" @onclick="() => MostrarQR(v.CDC)"><i class="bi bi-qr-code"></i></button>
+                  }
+                  <button class="btn btn-outline-primary" title="Enviar SIFEN" disabled="@(v.Estado == "Anulado" || v.EstadoSifen == "ACEPTADO")" @onclick="() => EnviarSifen(v.IdVenta)"><i class="bi bi-send"></i></button>
+                  <button class="btn btn-outline-success" title="Consultar SIFEN" disabled="@(string.IsNullOrWhiteSpace(v.IdLote))" @onclick="() => ConsultarSifen(v.IdVenta)"><i class="bi bi-cloud-check"></i></button>
+                  <a class="btn btn-outline-dark" title="Ver XML" href="/ventas/@v.IdVenta/xml" target="_blank"><i class="bi bi-filetype-xml"></i></a>
+                </div>
+                <div class="btn-group btn-group-sm" role="group">
+                  @if (v.TieneComposicion)
+                  {
+                    <button class="btn btn-success" title="Composición caja" @onclick="() => MostrarComposicion(v.IdVenta)"><i class="bi bi-cash-stack"></i></button>
+                  }
+                  <button class="btn btn-outline-danger" title="Anular" disabled="@(v.Estado == "Anulado")" @onclick="() => Anular(v.IdVenta)"><i class="bi bi-x-circle"></i></button>
+                  <button class="btn btn-outline-warning" title="Recuperar" disabled="@(v.Estado != "Anulado")" @onclick="() => Recuperar(v.IdVenta)"><i class="bi bi-arrow-counterclockwise"></i></button>
+                  <button class="btn btn-danger" title="Eliminar" disabled="@(v.EstadoSifen == "ACEPTADO")" @onclick="() => Eliminar(v.IdVenta)"><i class="bi bi-trash3"></i></button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (!ventas.Any())
+  {
+    <div class="text-center py-5">
+      <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+      <div class="mt-3">
+        <h5 class="text-muted">No se encontraron ventas</h5>
+        <p class="text-muted">Intenta ajustar los filtros de búsqueda o verifica las fechas seleccionadas.</p>
+        <button class="btn btn-outline-primary" @onclick="Limpiar">
+          <i class="bi bi-arrow-clockwise me-1"></i>
+          Limpiar Filtros
+        </button>
+      </div>
+    </div>
+  }
+</div>
+
+@* Modal para mostrar QR *@
+<div class="modal fade" id="qrModal" tabindex="-1" aria-labelledby="qrModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="qrModalLabel">
+          <i class="bi bi-qr-code me-2"></i>
+          Código QR de la Factura
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div id="qrContainer" class="mb-3">
+          <!-- El QR se generará aquí -->
+        </div>
+        <div class="alert alert-info">
+          <i class="bi bi-info-circle me-2"></i>
+          Escaneá este QR para consultar la validez de la factura en el sitio oficial de SIFEN.
+        </div>
+        <div class="text-muted small" style="font-family: monospace;">
+          CDC: <span id="cdcDisplay"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a id="consultarLink" href="#" target="_blank" class="btn btn-primary">
+          <i class="bi bi-globe me-1"></i>
+          Consultar en SIFEN
+        </a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+@* Modal para mostrar Consulta/Respuesta SIFEN *@
+<div class="modal fade" id="sifenModal" tabindex="-1" aria-labelledby="sifenModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sifenModalLabel">
+          <i class="bi bi-cloud-check me-2"></i>
+          Respuesta de SIFEN
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="alert alert-secondary py-2">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <span class="me-3"><strong>Código:</strong> <span id="sifenCodigo">-</span></span>
+                  <span class="me-3"><strong>Mensaje:</strong> <span id="sifenMensaje">-</span></span>
+                  <span class="me-3"><strong>dId:</strong> <span id="sifenDId">-</span></span>
+                  <span><strong>idLote:</strong> <span id="sifenIdLote">-</span></span>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('sifenConsultaPre').textContent)"><i class="bi bi-clipboard me-1"></i>Copiar consulta</button>
+                  <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('sifenRespuestaPre').textContent)"><i class="bi bi-clipboard me-1"></i>Copiar respuesta</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
+            <h6 class="mb-2"><i class="bi bi-box-arrow-up-right me-1"></i>Consulta enviada (SOAP)</h6>
+            <pre id="sifenConsultaPre" class="border rounded p-2 bg-light" style="max-height: 45vh; overflow:auto; white-space: pre-wrap;"></pre>
+          </div>
+          <div class="col-12">
+            <h6 class="mb-2"><i class="bi bi-box-arrow-in-down-left me-1"></i>Respuesta recibida (SOAP)</h6>
+            <pre id="sifenRespuestaPre" class="border rounded p-2 bg-light" style="max-height: 45vh; overflow:auto; white-space: pre-wrap;"></pre>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+@* Modal para mostrar Composición de Caja *@
+<div class="modal fade" id="composicionModal" tabindex="-1" aria-labelledby="composicionModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title" id="composicionModalLabel">
+          <i class="bi bi-cash-stack me-2"></i>
+          Composición de Caja - Venta #@_composicionIdVenta
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        @if (_composicionDetalles != null && _composicionDetalles.Any())
+        {
+          <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Medio de Pago</th>
+                  <th>Moneda</th>
+                  <th class="text-end">Monto</th>
+                  <th class="text-end">Monto Gs</th>
+                  <th>Comprobante</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var d in _composicionDetalles)
+                {
+                  <tr>
+                    <td>
+                      <i class="bi @ObtenerIconoMedio(d.Medio) me-2 text-success"></i>
+                      @d.Medio.ToString()
+                    </td>
+                    <td>@(d.Moneda?.CodigoISO ?? "PYG")</td>
+                    <td class="text-end">@d.Monto.ToString("N2")</td>
+                    <td class="text-end fw-bold">@d.MontoGs.ToString("N0")</td>
+                    <td>
+                      @if (!string.IsNullOrWhiteSpace(d.NumeroComprobante))
+                      {
+                        <span class="badge bg-info">@d.NumeroComprobante</span>
+                      }
+                      else if (!string.IsNullOrWhiteSpace(d.NumeroCheque))
+                      {
+                        <span class="badge bg-warning text-dark">Cheque: @d.NumeroCheque</span>
+                      }
+                      else if (!string.IsNullOrWhiteSpace(d.NumeroAutorizacion))
+                      {
+                        <span class="badge bg-primary">Auth: @d.NumeroAutorizacion</span>
+                      }
+                      else
+                      {
+                        <span class="text-muted">-</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot class="table-success">
+                <tr>
+                  <th colspan="3">Total</th>
+                  <th class="text-end">@_composicionDetalles.Sum(x => x.MontoGs).ToString("N0") Gs</th>
+                  <th></th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        }
+        else
+        {
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            No hay detalles de composición de caja para esta venta.
+          </div>
+        }
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+@* Modal para mostrar restricciones de anulación/eliminación *@
+<div class="modal fade" id="restriccionAnularModal" tabindex="-1" aria-labelledby="restriccionAnularModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title" id="restriccionAnularModalLabel">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          No se puede anular/eliminar la Venta #@_restriccionIdVenta
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning mb-3">
+          <i class="bi bi-info-circle me-2"></i>
+          Esta venta tiene elementos asociados que deben eliminarse primero.
+        </div>
+        
+        @if (_tieneComposicionCaja)
+        {
+          <div class="card border-success mb-3">
+            <div class="card-header bg-success text-white">
+              <i class="bi bi-cash-stack me-2"></i>
+              Composición de Caja
+            </div>
+            <div class="card-body">
+              <p class="mb-2">Esta venta tiene una <strong>composición de caja</strong> registrada.</p>
+              <p class="text-muted small mb-0">Debe eliminar/anular la composición de caja antes de anular la venta.</p>
+            </div>
+            <div class="card-footer bg-light">
+              <button class="btn btn-outline-success btn-sm" @onclick="() => MostrarComposicion(_restriccionIdVenta)" data-bs-dismiss="modal">
+                <i class="bi bi-eye me-1"></i>Ver Composición de Caja
+              </button>
+            </div>
+          </div>
+        }
+        
+        @if (_cobrosAsociados != null && _cobrosAsociados.Any())
+        {
+          <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+              <i class="bi bi-wallet2 me-2"></i>
+              Cobros de Cuotas (@_cobrosAsociados.Count)
+            </div>
+            <div class="card-body">
+              <p class="mb-3">Esta venta es a <strong>crédito</strong> y tiene cobros registrados que deben anularse primero.</p>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Recibo</th>
+                      <th>Fecha</th>
+                      <th>Monto</th>
+                      <th>Estado</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var cobro in _cobrosAsociados)
+                    {
+                      <tr>
+                        <td><span class="badge bg-info">@cobro.NumeroRecibo</span></td>
+                        <td>@cobro.FechaCobro.ToString("dd/MM/yyyy")</td>
+                        <td class="text-end">@cobro.MontoTotal.ToString("N0") Gs</td>
+                        <td>
+                          @if (cobro.Estado == "CONFIRMADO")
+                          {
+                            <span class="badge bg-success">Confirmado</span>
+                          }
+                          else
+                          {
+                            <span class="badge bg-danger">@cobro.Estado</span>
+                          }
+                        </td>
+                        <td>
+                          <a href="/cobros/historial/@cobro.IdCuentaPorCobrar" class="btn btn-outline-primary btn-sm" target="_blank" data-bs-dismiss="modal">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>Ver
+                          </a>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card-footer bg-light">
+              <small class="text-muted">
+                <i class="bi bi-lightbulb me-1"></i>
+                Vaya a "Cobros > Historial" para anular cada cobro individualmente.
+              </small>
+            </div>
+          </div>
+        }
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+@* Modal de Vista Previa Ticket *@
+@if (_mostrarVistaPrevia && _idVentaVistaPrevia > 0)
+{
+    <TicketVistaPrevia IdVenta="_idVentaVistaPrevia" OnCerrar="CerrarVistaPrevia" />
+}
+
+</PageProtection>
+
+@code {
+  private int? filtroIdVenta = null;
+  private string filtroCliente = string.Empty;
+  private string filtroEstado = string.Empty;
+  private DateTime? filtroDesde;
+  private DateTime? filtroHasta;
+  private List<ItemVenta> ventas = new();
+  private string? _formatoImpresion = null;
+  
+  // Variables para modal de vista previa ticket
+  private bool _mostrarVistaPrevia = false;
+  private int _idVentaVistaPrevia = 0;
+  
+  // Variables para modal de composición de caja
+  private int _composicionIdVenta = 0;
+  private List<SistemIA.Models.ComposicionCajaDetalle>? _composicionDetalles = null;
+  
+  // Variables para modal de restricciones de anulación
+  private int _restriccionIdVenta = 0;
+  private bool _tieneComposicionCaja = false;
+  private List<CobroCuotaInfo>? _cobrosAsociados = null;
+  
+  private class CobroCuotaInfo
+  {
+    public int IdCobro { get; set; }
+    public int IdCuentaPorCobrar { get; set; }
+    public string NumeroRecibo { get; set; } = "";
+    public DateTime FechaCobro { get; set; }
+    public decimal MontoTotal { get; set; }
+    public string Estado { get; set; } = "";
+  }
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!SucursalProvider.GetSucursalId().HasValue)
+    {
+      var ret = System.Net.WebUtility.UrlEncode(Nav.Uri);
+      Nav.NavigateTo($"/seleccionar-sucursal?returnUrl={ret}", true);
+      return;
+    }
+    
+    // Cargar formato de impresion de la caja actual y obtener fecha de caja
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var caja = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+    _formatoImpresion = caja?.FormatoImpresion;
+    
+    // Usar fecha de caja como predeterminada
+    var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
+    filtroDesde = fechaCaja;
+    filtroHasta = fechaCaja;
+    
+    await Buscar();
+  }
+
+  [Inject] SistemIA.Services.IInventarioService Inventario { get; set; } = default!;
+
+  private string GetPreviewUrl(int idVenta)
+  {
+    if (_formatoImpresion == "TICKET")
+    {
+      return $"/ventas/ticket/{idVenta}";
+    }
+    return $"/ventas/preview/{idVenta}";
+  }
+
+  private async Task ImprimirDirecto(int idVenta)
+  {
+    try
+    {
+      // Determinar URL según formato configurado en caja
+      string url;
+      if (_formatoImpresion == "TICKET")
+      {
+        // Pasar AutoPrint=1 para impresión automática
+        url = $"/ventas/ticket/{idVenta}/1";
+      }
+      else
+      {
+        url = $"/ventas/preview/{idVenta}?print=1";
+      }
+      
+      await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"Error al imprimir: {ex.Message}");
+    }
+  }
+
+  private async Task GenerarPdfTicketVenta(int idVenta)
+  {
+    try
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      var venta = await ctx.Ventas.FindAsync(idVenta);
+      if (venta == null) 
+      {
+        await JS.InvokeVoidAsync("alert", "Venta no encontrada");
+        return;
+      }
+
+      var detalles = await ctx.VentasDetalles
+        .Include(x => x.Producto)
+        .Where(x => x.IdVenta == idVenta)
+        .ToListAsync();
+      
+      var cliente = venta.IdCliente.HasValue ? await ctx.Clientes.FindAsync(venta.IdCliente) : null;
+      var sociedad = await ctx.Sociedades.FirstAsync();
+      var sucursal = await ctx.Sucursal.FindAsync(venta.IdSucursal);
+      var tipoPago = venta.IdTipoPago.HasValue ? await ctx.TiposPago.FindAsync(venta.IdTipoPago) : null;
+      var caja = await ctx.Cajas.FirstAsync(c => c.CajaActual == 1);
+
+      var subtotalGravadas = detalles.Sum(x => x.Grabado10 + x.Grabado5);
+      var totalIva10 = detalles.Sum(x => x.IVA10);
+      var totalIva5 = detalles.Sum(x => x.IVA5);
+
+      string FormatearImporte(decimal v) => venta.EsMonedaExtranjera == true ? v.ToString("N2") : v.ToString("N0");
+
+      var ticketData = new
+      {
+        empresa = sociedad?.Nombre ?? "",
+        ruc = sociedad?.RUC ?? "",
+        direccion = sociedad?.Direccion ?? "",
+        telefono = sociedad?.Telefono ?? "",
+        tipoDoc = caja?.TipoFacturacion == "ELECTRONICA" ? "FACTURA ELECTRÓNICA" : (venta.TipoDocumento?.ToUpper() ?? "FACTURA"),
+        numero = venta.NumeroFactura ?? "",
+        fecha = venta.Fecha.ToString("dd/MM/yyyy HH:mm"),
+        timbrado = venta.Timbrado ?? "",
+        validoHasta = venta.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "",
+        cliente = cliente?.RazonSocial ?? "",
+        clienteRuc = cliente?.RUC ?? "",
+        condicion = tipoPago?.Nombre ?? "CONTADO",
+        items = detalles.Select(d => new
+        {
+          descripcion = d.Producto?.Descripcion ?? "",
+          cantidad = d.Cantidad,
+          precio = FormatearImporte(d.PrecioUnitario),
+          total = FormatearImporte(d.Importe)
+        }).ToArray(),
+        subtotal = FormatearImporte(subtotalGravadas),
+        iva10 = totalIva10 > 0 ? FormatearImporte(totalIva10) : "",
+        iva5 = totalIva5 > 0 ? FormatearImporte(totalIva5) : "",
+        total = FormatearImporte(venta.Total),
+        ancho = caja?.AnchoTicket is > 20 ? caja.AnchoTicket.Value : 42,
+        mostrarLogo = caja?.MostrarLogo == true && sucursal?.Logo?.Length > 0,
+        logoUrl = (caja?.MostrarLogo == true && sucursal?.Logo?.Length > 0) ? $"data:image/png;base64,{Convert.ToBase64String(sucursal.Logo)}" : null
+      };
+      
+      await JS.InvokeVoidAsync("generarPdfTicket", ticketData);
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"Error al generar PDF: {ex.Message}");
+    }
+  }
+
+  private void AbrirVistaPrevia(int idVenta)
+  {
+    _idVentaVistaPrevia = idVenta;
+    _mostrarVistaPrevia = true;
+    StateHasChanged();
+  }
+
+  private void CerrarVistaPrevia()
+  {
+    _mostrarVistaPrevia = false;
+    _idVentaVistaPrevia = 0;
+    StateHasChanged();
+  }
+
+  private async Task Buscar()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var sucSel = SucursalProvider.GetSucursalId();
+    
+    // Obtener tipo de cambio USD del día para conversiones
+    var tcUsdHoy = await ctx.TiposCambio.AsNoTracking()
+      .Where(t => t.Estado && t.MonedaOrigen != null && t.MonedaOrigen.CodigoISO == "USD" && t.MonedaDestino != null && t.MonedaDestino.CodigoISO == "PYG")
+      .Where(t => t.FechaTipoCambio.Date == DateTime.Today)
+      .Select(t => t.TasaCambio)
+      .FirstOrDefaultAsync();
+    if (tcUsdHoy == 0) tcUsdHoy = 6300m; // Valor por defecto
+    
+    var q = from v in ctx.Ventas.AsNoTracking()
+            join m in ctx.Monedas.AsNoTracking() on v.IdMoneda equals m.IdMoneda into monJoin
+            from m in monJoin.DefaultIfEmpty()
+            where !sucSel.HasValue || v.IdSucursal == sucSel.Value
+            select new {
+              v.IdVenta, v.Fecha,
+              ClienteNombre = v.Cliente != null ? v.Cliente.RazonSocial : "",
+              ClienteRuc = v.Cliente != null ? (v.Cliente.RUC + "-" + v.Cliente.DV) : "",
+              Numero = (v.Establecimiento ?? "") + "-" + (v.PuntoExpedicion ?? "") + "-" + (v.NumeroFactura ?? ""),
+              v.Timbrado, v.Total,
+              Moneda = m != null ? m.CodigoISO : (v.SimboloMoneda ?? "PYG"),
+              Cambio = v.CambioDelDia,
+              v.Estado, v.EstadoSifen, v.CDC, v.IdLote
+            };
+    
+    // Filtro por ID interno
+    if (filtroIdVenta.HasValue && filtroIdVenta.Value > 0)
+      q = q.Where(x => x.IdVenta == filtroIdVenta.Value);
+    if (!string.IsNullOrWhiteSpace(filtroCliente))
+      q = q.Where(x => x.ClienteNombre.Contains(filtroCliente) || x.ClienteRuc.Contains(filtroCliente));
+    if (filtroDesde.HasValue)
+      q = q.Where(x => x.Fecha >= filtroDesde.Value);
+    if (filtroHasta.HasValue)
+      q = q.Where(x => x.Fecha <= filtroHasta.Value.Date.AddDays(1).AddTicks(-1));
+    if (!string.IsNullOrWhiteSpace(filtroEstado))
+      q = q.Where(x => x.Estado == filtroEstado);
+
+    var data = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdVenta).Take(500).ToListAsync();
+    
+    // Obtener IDs de ventas que tienen composición de caja
+    var idsVentas = data.Select(x => x.IdVenta).ToList();
+    var idsConComposicion = await ctx.ComposicionesCaja.AsNoTracking()
+      .Where(c => idsVentas.Contains(c.IdVenta))
+      .Select(c => c.IdVenta)
+      .Distinct()
+      .ToListAsync();
+    var setComposicion = new HashSet<int>(idsConComposicion);
+    
+    ventas = data.Select(x => {
+      var codMon = x.Moneda ?? "PYG";
+      var cambio = x.Cambio ?? (codMon != "PYG" ? tcUsdHoy : 1m);
+      // Calcular totales
+      decimal totalGs, totalUsd;
+      if (codMon == "PYG") {
+        totalGs = x.Total;
+        totalUsd = tcUsdHoy > 0 ? Math.Round(x.Total / tcUsdHoy, 2) : 0;
+      } else {
+        totalGs = Math.Round(x.Total * cambio, 0);
+        totalUsd = x.Total;
+      }
+      return new ItemVenta {
+        IdVenta = x.IdVenta,
+        Fecha = x.Fecha,
+        ClienteNombre = x.ClienteNombre ?? "",
+        ClienteRuc = x.ClienteRuc ?? "",
+        Numero = x.Numero,
+        Timbrado = x.Timbrado,
+        Total = x.Total,
+        Moneda = codMon,
+        Cambio = codMon != "PYG" ? cambio : (decimal?)null,
+        TotalGs = totalGs,
+        TotalUsd = totalUsd,
+        Estado = x.Estado ?? "Borrador",
+        EstadoSifen = x.EstadoSifen ?? string.Empty,
+        CDC = x.CDC ?? string.Empty,
+        IdLote = x.IdLote ?? string.Empty,
+        TieneComposicion = setComposicion.Contains(x.IdVenta)
+      };
+    }).ToList();
+  }
+
+  private async Task Limpiar()
+  {
+    filtroIdVenta = null;
+    filtroCliente = string.Empty;
+    filtroEstado = string.Empty;
+    
+    // Obtener fecha de caja para resetear filtros
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var caja = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+    var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
+    filtroDesde = fechaCaja;
+    filtroHasta = fechaCaja;
+    
+    await Buscar();
+  }
+
+  private async Task Anular(int id)
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var venta = await ctx.Ventas.FirstOrDefaultAsync(v => v.IdVenta == id);
+    if (venta == null) return;
+    if (string.Equals(venta.Estado, "Anulado", StringComparison.OrdinalIgnoreCase)) return;
+    
+    // Verificar si tiene cobros de cuotas (ventas a crédito) - solo cobros CONFIRMADOS bloquean
+    var cuentaPorCobrar = await ctx.CuentasPorCobrar
+      .FirstOrDefaultAsync(c => c.IdVenta == id && c.Estado != "CANCELADO");
+    
+    List<CobroCuotaInfo> cobrosConfirmados = new();
+    if (cuentaPorCobrar != null)
+    {
+      cobrosConfirmados = await ctx.CobrosCuotas
+        .Where(c => c.IdCuentaPorCobrar == cuentaPorCobrar.IdCuentaPorCobrar && c.Estado == "CONFIRMADO")
+        .Select(c => new CobroCuotaInfo
+        {
+          IdCobro = c.IdCobro,
+          IdCuentaPorCobrar = c.IdCuentaPorCobrar,
+          NumeroRecibo = c.NumeroRecibo ?? "-",
+          FechaCobro = c.FechaCobro,
+          MontoTotal = c.MontoTotal,
+          Estado = c.Estado
+        })
+        .ToListAsync();
+    }
+    
+    // Si hay cobros confirmados, mostrar modal con restricciones
+    if (cobrosConfirmados.Any())
+    {
+      _restriccionIdVenta = id;
+      _tieneComposicionCaja = false; // Ya no bloqueamos por composición
+      _cobrosAsociados = cobrosConfirmados;
+      StateHasChanged();
+      await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('restriccionAnularModal')).show()");
+      return;
+    }
+    
+    // Confirmación simple
+    var ok = await JS.InvokeAsync<bool>("confirm", $"¿Anular la venta #{id}? Esto devolverá el stock.");
+    if (!ok) return;
+
+    // Obtener detalles y validar depósitos predeterminados
+    var detalles = await ctx.VentasDetalles.AsNoTracking().Where(d => d.IdVenta == id).ToListAsync();
+    if (detalles.Count == 0) { await JS.InvokeVoidAsync("alert", "La venta no tiene detalles."); return; }
+
+    var productos = await ctx.Productos.AsNoTracking()
+      .Where(p => detalles.Select(d => d.IdProducto).Contains(p.IdProducto))
+      .ToDictionaryAsync(p => p.IdProducto);
+
+    var faltantes = new List<int>();
+    foreach (var d in detalles)
+    {
+      if (!productos.TryGetValue(d.IdProducto, out var prod) || prod.IdDepositoPredeterminado == null)
+        faltantes.Add(d.IdProducto);
+    }
+    if (faltantes.Count > 0)
+    {
+      await JS.InvokeVoidAsync("alert", $"No se puede anular. Hay productos sin depósito predeterminado: {string.Join(", ", faltantes)}");
+      return;
+    }
+
+    // Devolver stock (entrada = 1)
+    try
+    {
+      var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+      var usuario = auth.User?.Identity?.Name ?? "Sistema";
+      foreach (var d in detalles)
+      {
+        var prod = productos[d.IdProducto];
+        await Inventario.AjustarStockAsync(d.IdProducto, prod.IdDepositoPredeterminado!.Value, d.Cantidad, 1, $"Anulación Venta #{id}", usuario);
+      }
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"No se pudo anular la venta por un problema de stock: {ex.Message}");
+      return;
+    }
+
+    // Marcar como Anulado
+    venta.Estado = "Anulado";
+    ctx.Ventas.Update(venta);
+    
+    // Eliminar composición de caja si existe (automáticamente con la anulación)
+    var composiciones = await ctx.ComposicionesCaja
+      .Include(c => c.Detalles)
+      .Where(c => c.IdVenta == id)
+      .ToListAsync();
+    
+    foreach (var comp in composiciones)
+    {
+      if (comp.Detalles != null && comp.Detalles.Any())
+        ctx.Set<ComposicionCajaDetalle>().RemoveRange(comp.Detalles);
+      ctx.ComposicionesCaja.Remove(comp);
+    }
+    
+    // Si tiene cuenta por cobrar, también cancelarla
+    if (cuentaPorCobrar != null)
+    {
+      cuentaPorCobrar.Estado = "CANCELADO";
+    }
+    
+    await ctx.SaveChangesAsync();
+    await Buscar();
+  }
+
+  private async Task Recuperar(int id)
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var venta = await ctx.Ventas.AsNoTracking().FirstOrDefaultAsync(v => v.IdVenta == id);
+    if (venta == null) return;
+    if (!string.Equals(venta.Estado, "Anulado", StringComparison.OrdinalIgnoreCase)) return;
+
+    var detalles = await ctx.VentasDetalles.AsNoTracking().Where(d => d.IdVenta == id).ToListAsync();
+    if (detalles.Count == 0) return;
+
+    var productos = await ctx.Productos.AsNoTracking()
+      .Where(p => detalles.Select(d => d.IdProducto).Contains(p.IdProducto))
+      .ToDictionaryAsync(p => p.IdProducto);
+
+    var faltantes = new List<int>();
+    foreach (var d in detalles)
+    {
+      if (!productos.TryGetValue(d.IdProducto, out var prod) || prod.IdDepositoPredeterminado == null)
+        faltantes.Add(d.IdProducto);
+    }
+    if (faltantes.Count > 0)
+    {
+      await JS.InvokeVoidAsync("alert", $"No se puede recuperar. Hay productos sin depósito predeterminado: {string.Join(", ", faltantes)}");
+      return;
+    }
+
+    // Vuelve a descontar stock (salida = 2)
+    try
+    {
+      var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+      var usuario = auth.User?.Identity?.Name ?? "Sistema";
+      foreach (var d in detalles)
+      {
+        var prod = productos[d.IdProducto];
+        await Inventario.AjustarStockAsync(d.IdProducto, prod.IdDepositoPredeterminado!.Value, d.Cantidad, 2, $"Recuperación Venta #{id}", usuario);
+      }
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"No se pudo recuperar la venta por un problema de stock: {ex.Message}");
+      return;
+    }
+
+    // Marcar como Confirmado
+    var ventaUpdate = await ctx.Ventas.FirstOrDefaultAsync(v => v.IdVenta == id);
+    if (ventaUpdate == null) return;
+  ventaUpdate.Estado = "Confirmado";
+    await ctx.SaveChangesAsync();
+    await Buscar();
+  }
+
+  private async Task Eliminar(int id)
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var venta = await ctx.Ventas.FirstOrDefaultAsync(v => v.IdVenta == id);
+    if (venta == null) 
+    {
+      await JS.InvokeVoidAsync("alert", "Venta no encontrada.");
+      return;
+    }
+
+    // No permitir eliminar ventas anuladas (el stock ya fue devuelto al anular)
+    if (string.Equals(venta.Estado, "Anulado", StringComparison.OrdinalIgnoreCase))
+    {
+      await JS.InvokeVoidAsync("alert", "No se puede eliminar una venta anulada.\nEl stock ya fue devuelto cuando se anuló la venta.");
+      return;
+    }
+
+    // Verificar que no esté aprobada en SIFEN
+    if (!string.IsNullOrWhiteSpace(venta.EstadoSifen) && venta.EstadoSifen == "ACEPTADO")
+    {
+      await JS.InvokeVoidAsync("alert", "No se puede eliminar una venta que fue ACEPTADA en SIFEN.\nDebe anular el documento electrónico primero.");
+      return;
+    }
+
+    // Verificar si tiene cobros CONFIRMADOS de cuotas (ventas a crédito)
+    var cuentaPorCobrar = await ctx.CuentasPorCobrar
+      .FirstOrDefaultAsync(c => c.IdVenta == id && c.Estado != "CANCELADO");
+    
+    List<CobroCuotaInfo> cobrosConfirmados = new();
+    if (cuentaPorCobrar != null)
+    {
+      // Solo cobros CONFIRMADOS bloquean la eliminación (los anulados no)
+      cobrosConfirmados = await ctx.CobrosCuotas
+        .Where(c => c.IdCuentaPorCobrar == cuentaPorCobrar.IdCuentaPorCobrar && c.Estado == "CONFIRMADO")
+        .Select(c => new CobroCuotaInfo
+        {
+          IdCobro = c.IdCobro,
+          IdCuentaPorCobrar = c.IdCuentaPorCobrar,
+          NumeroRecibo = c.NumeroRecibo ?? "-",
+          FechaCobro = c.FechaCobro,
+          MontoTotal = c.MontoTotal,
+          Estado = c.Estado
+        })
+        .ToListAsync();
+    }
+    
+    // Si hay cobros CONFIRMADOS, mostrar modal (la composición se elimina automáticamente)
+    if (cobrosConfirmados.Any())
+    {
+      _restriccionIdVenta = id;
+      _tieneComposicionCaja = false; // Ya no bloqueamos por composición
+      _cobrosAsociados = cobrosConfirmados;
+      StateHasChanged();
+      await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('restriccionAnularModal')).show()");
+      return;
+    }
+
+    // Confirmación con advertencia de eliminación permanente
+    var ok = await JS.InvokeAsync<bool>("confirm", $"¿ELIMINAR PERMANENTEMENTE la venta #{id}?\n\nEsta acción NO SE PUEDE DESHACER.\n- Se devolverá el stock de todos los productos\n- El registro de la venta se borrará de la base de datos");
+    if (!ok) return;
+
+    // Obtener detalles
+    var detalles = await ctx.VentasDetalles.Where(d => d.IdVenta == id).ToListAsync();
+    
+    // Devolver stock (la venta NO está anulada, así que hay que devolver)
+    if (detalles.Count > 0)
+    {
+      var productos = await ctx.Productos.AsNoTracking()
+        .Where(p => detalles.Select(d => d.IdProducto).Contains(p.IdProducto))
+        .ToDictionaryAsync(p => p.IdProducto);
+
+      var faltantes = new List<int>();
+      foreach (var d in detalles)
+      {
+        if (!productos.TryGetValue(d.IdProducto, out var prod) || prod.IdDepositoPredeterminado == null)
+          faltantes.Add(d.IdProducto);
+      }
+      if (faltantes.Count > 0)
+      {
+        await JS.InvokeVoidAsync("alert", $"No se puede eliminar. Hay productos sin depósito predeterminado: {string.Join(", ", faltantes)}");
+        return;
+      }
+
+      // Devolver stock (entrada = 1)
+      try
+      {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var usuario = auth.User?.Identity?.Name ?? "Sistema";
+        foreach (var d in detalles)
+        {
+          var prod = productos[d.IdProducto];
+          await Inventario.AjustarStockAsync(d.IdProducto, prod.IdDepositoPredeterminado!.Value, d.Cantidad, 1, $"Eliminación Venta #{id}", usuario);
+        }
+      }
+      catch (Exception ex)
+      {
+        await JS.InvokeVoidAsync("alert", $"No se pudo eliminar la venta por un problema de stock: {ex.Message}");
+        return;
+      }
+    }
+
+    try
+    {
+      // Eliminar cuenta por cobrar, cuotas y cobros ANULADOS si existen
+      var cuentaPorCobrarEliminar = await ctx.CuentasPorCobrar
+        .Include(c => c.Cuotas)
+        .FirstOrDefaultAsync(c => c.IdVenta == id);
+      
+      if (cuentaPorCobrarEliminar != null)
+      {
+        // Eliminar cobros ANULADOS y sus detalles (los confirmados ya fueron verificados que no existen)
+        var cobrosAnulados = await ctx.CobrosCuotas
+          .Include(c => c.Detalles)
+          .Where(c => c.IdCuentaPorCobrar == cuentaPorCobrarEliminar.IdCuentaPorCobrar)
+          .ToListAsync();
+        
+        foreach (var cobro in cobrosAnulados)
+        {
+          if (cobro.Detalles != null && cobro.Detalles.Any())
+            ctx.Set<CobroDetalle>().RemoveRange(cobro.Detalles);
+          ctx.CobrosCuotas.Remove(cobro);
+        }
+        
+        // Eliminar cuotas de la cuenta por cobrar
+        if (cuentaPorCobrarEliminar.Cuotas != null && cuentaPorCobrarEliminar.Cuotas.Any())
+          ctx.CuentasPorCobrarCuotas.RemoveRange(cuentaPorCobrarEliminar.Cuotas);
+        
+        // Eliminar cuenta por cobrar
+        ctx.CuentasPorCobrar.Remove(cuentaPorCobrarEliminar);
+      }
+      
+      // Eliminar composición de caja y sus detalles (automáticamente con la venta)
+      var composiciones = await ctx.ComposicionesCaja
+        .Include(c => c.Detalles)
+        .Where(c => c.IdVenta == id)
+        .ToListAsync();
+      
+      foreach (var comp in composiciones)
+      {
+        if (comp.Detalles != null && comp.Detalles.Any())
+          ctx.Set<ComposicionCajaDetalle>().RemoveRange(comp.Detalles);
+        ctx.ComposicionesCaja.Remove(comp);
+      }
+
+      // Eliminar detalles de la venta
+      ctx.VentasDetalles.RemoveRange(detalles);
+
+      // Eliminar la venta
+      ctx.Ventas.Remove(venta);
+
+      await ctx.SaveChangesAsync();
+      await JS.InvokeVoidAsync("alert", $"Venta #{id} eliminada correctamente.");
+      await Buscar();
+    }
+    catch (Exception ex)
+    {
+      var innerMsg = ex.InnerException?.Message ?? ex.Message;
+      await JS.InvokeVoidAsync("alert", $"Error al eliminar la venta: {innerMsg}");
+    }
+  }
+
+  private async Task MostrarComposicion(int idVenta)
+  {
+    try
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      _composicionIdVenta = idVenta;
+      
+      var composicion = await ctx.ComposicionesCaja
+        .Include(c => c.Detalles)!
+          .ThenInclude(d => d.Moneda)
+        .AsNoTracking()
+        .FirstOrDefaultAsync(c => c.IdVenta == idVenta);
+      
+      _composicionDetalles = composicion?.Detalles?.ToList() ?? new();
+      
+      await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('composicionModal')).show()");
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"Error al cargar composición: {ex.Message}");
+    }
+  }
+
+  private string ObtenerIconoMedio(SistemIA.Models.Enums.MedioPago medio)
+  {
+    return medio switch
+    {
+      SistemIA.Models.Enums.MedioPago.Efectivo => "bi-cash",
+      SistemIA.Models.Enums.MedioPago.Tarjeta => "bi-credit-card",
+      SistemIA.Models.Enums.MedioPago.QR => "bi-qr-code",
+      SistemIA.Models.Enums.MedioPago.Cheque => "bi-file-earmark-text",
+      SistemIA.Models.Enums.MedioPago.Transferencia => "bi-bank",
+      _ => "bi-cash-coin"
+    };
+  }
+
+  private async Task ExportarCsv()
+  {
+    if (!ventas.Any()) return;
+    var sep = ';';
+    var sb = new System.Text.StringBuilder();
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+    sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
+    sb.AppendLine(string.Join(sep, new[]{"IdVenta","Fecha","Cliente","Documento","Moneda","Cambio","TotalGs","TotalUsd","Estado","EstadoSifen"}));
+    foreach (var v in ventas)
+    {
+      string[] cols = new[]
+      {
+        v.IdVenta.ToString(),
+        v.Fecha.ToString("yyyy-MM-dd"),
+        v.ClienteNombre,
+        v.Numero ?? "",
+        v.Moneda,
+        v.Cambio.HasValue ? v.Cambio.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "",
+        v.TotalGs.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        v.TotalUsd.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        v.Estado,
+        v.EstadoSifen ?? ""
+      };
+      var line = string.Join(sep, cols.Select(val => !string.IsNullOrEmpty(val) && (val.Contains(sep) || val.Contains('"') || val.Contains('\n')) ? $"\"{val.Replace("\"","\"\"")}\"" : val ?? ""));
+      sb.AppendLine(line);
+    }
+    var utf8bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    var bytes = utf8bom.GetBytes(sb.ToString());
+    var b64 = Convert.ToBase64String(bytes);
+    var file = $"VentasExplorar_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "text/csv;charset=utf-8");
+  }
+
+  private async Task ImprimirListado()
+  {
+    if (!ventas.Any()) return;
+    // Estilos para impresión
+    var head = new System.Text.StringBuilder();
+    head.AppendLine("<meta charset=\"utf-8\"/>");
+    head.AppendLine("<title>Listado de Ventas</title>");
+    head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+    head.AppendLine("<style>");
+    head.AppendLine("@media print { @page { size: A4; margin: 10mm 10mm; } }");
+    head.AppendLine("body{font-size:11px;color:#111;}");
+    head.AppendLine(".factura-header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+    head.AppendLine(".factura-header .logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+    head.AppendLine(".factura-header .logo-wrap{width:140px;display:flex;align-items:center;justify-content:center;}");
+    head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
+    head.AppendLine(".factura-header .empresa .small{color:#555;}");
+    head.AppendLine(".tabla th,.tabla td{padding:.35rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
+    head.AppendLine(".right{text-align:right}");
+    head.AppendLine(".muted{color:#666}");
+    head.AppendLine("</style>");
+
+    // Datos empresa/logo
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s=>s.Id).FirstOrDefaultAsync();
+    var sucIdSel = SucursalProvider.GetSucursalId();
+    if (sucIdSel.HasValue)
+    {
+      var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+      if (s2 != null) suc = s2;
+    }
+    string empresa = suc?.NombreEmpresa ?? "Empresa";
+    string sucursal = suc?.NombreSucursal ?? "Sucursal";
+    string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+    string? logoDataUri = null;
+    if (suc?.Logo != null && suc.Logo.Length>0) logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+    var filtros = System.Net.WebUtility.HtmlEncode($"Nº Int: {(filtroIdVenta.HasValue ? filtroIdVenta.Value.ToString() : "Todos")} | Cliente: {filtroCliente} | Estado: {(string.IsNullOrEmpty(filtroEstado)?"Todos":filtroEstado)}");
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<div class=\"container-fluid\">");
+    sb.AppendLine("  <div class=\"factura-header\">");
+    sb.AppendLine("    <div class=\"logo-wrap\">");
+    if (!string.IsNullOrEmpty(logoDataUri)) sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+    else sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:10px;color:#999;min-height:40px;min-width:100px;\">LOGO</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"empresa\">");
+    sb.AppendLine($"      <h2>{empresa}</h2>");
+    sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+    sb.AppendLine($"      <div class=\"small\">{sucursal}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"ms-auto text-end\">");
+    sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Listado de Ventas</div>");
+    sb.AppendLine($"      <div>Desde: {filtroDesde:dd/MM/yyyy} &nbsp; Hasta: {filtroHasta:dd/MM/yyyy}</div>");
+    sb.AppendLine($"      <div class=\"small muted\">{filtros}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("  </div>");
+
+    // Tabla
+    sb.AppendLine("  <table class=\"table table-sm tabla\">");
+    sb.AppendLine("    <thead><tr><th>Nº Int.</th><th>#</th><th>Fecha</th><th>Cliente</th><th>RUC</th><th>Documento</th><th>Timbrado</th><th class='text-center'>Mon</th><th class='right'>Cambio</th><th class='right'>Total Gs</th><th class='right'>Total $</th><th>Estado</th><th>SIFEN</th></tr></thead>");
+    sb.AppendLine("    <tbody>");
+    int n = 0;
+    foreach (var v in ventas)
+    {
+      var estadoSifen = string.IsNullOrWhiteSpace(v.EstadoSifen) ? "-" : v.EstadoSifen;
+      var cambioStr = v.Cambio.HasValue ? v.Cambio.Value.ToString("N2") : "-";
+      sb.AppendLine($"      <tr><td><strong>{v.IdVenta}</strong></td><td>{++n}</td><td>{v.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(v.ClienteNombre)}</td><td>{System.Net.WebUtility.HtmlEncode(v.ClienteRuc)}</td><td>{System.Net.WebUtility.HtmlEncode(v.Numero ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(v.Timbrado ?? "-")}</td><td class='text-center'>{v.Moneda}</td><td class='right'>{cambioStr}</td><td class='right'>{v.TotalGs:N0}</td><td class='right'>{v.TotalUsd:N2}</td><td>{v.Estado}</td><td>{estadoSifen}</td></tr>");
+    }
+    sb.AppendLine("    </tbody>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='9' class='right'>Totales</th><th class='right'>{ventas.Sum(x=>x.TotalGs):N0}</th><th class='right'>{ventas.Sum(x=>x.TotalUsd):N2}</th><th></th><th></th></tr></tfoot>");
+    sb.AppendLine("  </table>");
+    sb.AppendLine("</div>");
+
+    await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+  }
+
+  private async Task ExportarXlsx()
+  {
+    if (!ventas.Any()) return;
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var sucNombre = SucursalProvider.GetSucursalNombre() ?? "";
+    using var wb = new XLWorkbook();
+    var ws = wb.AddWorksheet("Ventas");
+    int row = 1;
+    ws.Cell(row,1).Value = "Generado"; ws.Cell(row,2).Value = DateTime.Now; ws.Cell(row,2).Style.DateFormat.Format = "yyyy-MM-dd HH:mm"; row++;
+    ws.Cell(row,1).Value = "Usuario"; ws.Cell(row,2).Value = usuario; row++;
+    ws.Cell(row,1).Value = "Sucursal"; ws.Cell(row,2).Value = sucNombre; row += 2;
+    var headers = new[]{"Nº Int.","Fecha","Cliente","Documento","Moneda","Cambio","Total Gs","Total $","Estado","Estado SIFEN"};
+    for (int c=0;c<headers.Length;c++) ws.Cell(row, c+1).Value = headers[c];
+    ws.Range(row,1,row,headers.Length).Style.Font.Bold = true; row++;
+    foreach (var it in ventas)
+    {
+      ws.Cell(row,1).Value = it.IdVenta;
+      ws.Cell(row,2).Value = it.Fecha; ws.Cell(row,2).Style.DateFormat.Format = "yyyy-MM-dd";
+      ws.Cell(row,3).Value = it.ClienteNombre;
+      ws.Cell(row,4).Value = it.Numero ?? "";
+      ws.Cell(row,5).Value = it.Moneda;
+      ws.Cell(row,6).Value = it.Cambio ?? 0; ws.Cell(row,6).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,7).Value = it.TotalGs; ws.Cell(row,7).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,8).Value = it.TotalUsd; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,9).Value = it.Estado;
+      ws.Cell(row,10).Value = it.EstadoSifen ?? "";
+      row++;
+    }
+    ws.Columns().AdjustToContents();
+    using var ms = new System.IO.MemoryStream();
+    wb.SaveAs(ms);
+    var b64 = Convert.ToBase64String(ms.ToArray());
+    var file = $"VentasExplorar_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  private async Task EnviarSifen(int id)
+  {
+    try
+    {
+      // Prevalidar
+      using (var http = new System.Net.Http.HttpClient { BaseAddress = new Uri(Nav.BaseUri) })
+      {
+        var pre = await http.GetAsync($"admin/de/validar/{id}");
+        var preBody = await pre.Content.ReadAsStringAsync();
+        if (!pre.IsSuccessStatusCode)
+        {
+          await JS.InvokeVoidAsync("alert", $"No se pudo validar la venta: {preBody}");
+          return;
+        }
+        // Parseo simple
+        var ok = preBody.Contains("\"Ok\":true") || preBody.Contains("\"ok\":true", StringComparison.OrdinalIgnoreCase);
+        if (!ok)
+        {
+          // Extraer errores/advertencias si están
+          await JS.InvokeVoidAsync("alert", $"Validación SIFEN con errores: {preBody}");
+          return;
+        }
+        // Si contiene advertencias, pedir confirmación
+        var tieneWarn = preBody.Contains("Advertencias") || preBody.Contains("advertencias", StringComparison.OrdinalIgnoreCase);
+        if (tieneWarn)
+        {
+          var cont = await JS.InvokeAsync<bool>("confirm", "La validación tiene advertencias. ¿Desea continuar con el envío?");
+          if (!cont) return;
+        }
+      }
+
+      using var http2 = new System.Net.Http.HttpClient { BaseAddress = new Uri(Nav.BaseUri) };
+      var res = await http2.PostAsync($"ventas/{id}/enviar-sifen", content: null);
+      var body = await res.Content.ReadAsStringAsync();
+      await JS.InvokeVoidAsync("alert", res.IsSuccessStatusCode ? body : ($"Error al enviar: {body}"));
+      await Buscar();
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"No se pudo enviar a SIFEN: {ex.Message}");
+    }
+  }
+
+  private async Task MostrarQR(string cdc)
+  {
+    try
+    {
+      if (string.IsNullOrWhiteSpace(cdc)) return;
+      
+      var url = $"https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={cdc}";
+      await JS.InvokeVoidAsync("mostrarModalQR", cdc, url);
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"Error al mostrar QR: {ex.Message}");
+    }
+  }
+
+  private async Task ConsultarSifen(int id)
+  {
+    try
+    {
+      using var http = new System.Net.Http.HttpClient { BaseAddress = new Uri(Nav.BaseUri) };
+      // Exigir IdLote: sin IdLote no consultamos
+      var ventaSel = ventas.FirstOrDefault(x => x.IdVenta == id);
+      if (ventaSel == null || string.IsNullOrWhiteSpace(ventaSel.IdLote))
+      {
+        await JS.InvokeVoidAsync("alert", "No se puede consultar: la venta aún no tiene idLote. Primero envíe a SIFEN y obtenga el protocolo de lote.");
+        return;
+      }
+      var url = $"ventas/{id}/consultar-sifen?idLote={System.Net.WebUtility.UrlEncode(ventaSel.IdLote)}";
+  var res = await http.GetAsync(url);
+      var body = await res.Content.ReadAsStringAsync();
+  if (res.IsSuccessStatusCode)
+      {
+        // Intentar parsear JSON para mostrar bonito y ofrecer copiar consulta/respuesta
+        try
+        {
+          using var doc = System.Text.Json.JsonDocument.Parse(body);
+          var root = doc.RootElement;
+          var codigo = root.TryGetProperty("codigo", out var c) ? c.GetString() : "";
+          var mensaje = root.TryGetProperty("mensaje", out var m) ? m.GetString() : "";
+          var cdc = root.TryGetProperty("cdc", out var cd) ? cd.GetString() : "";
+          var consulta = root.TryGetProperty("consulta", out var con) ? con.GetString() : "";
+          var respuesta = root.TryGetProperty("respuesta", out var r) ? r.GetString() : "";
+          string dId = ""; string idLoteUsado = "";
+          if (root.TryGetProperty("detalles", out var det) && det.ValueKind == System.Text.Json.JsonValueKind.Object)
+          {
+            dId = det.TryGetProperty("dId", out var d) ? d.GetString() ?? "" : "";
+            idLoteUsado = det.TryGetProperty("idLoteUsado", out var il) ? il.GetString() ?? "" : "";
+          }
+
+          // Mostrar modal con todo el contenido
+          await JS.InvokeVoidAsync("mostrarModalSifen", codigo ?? string.Empty, mensaje ?? string.Empty, consulta ?? string.Empty, respuesta ?? string.Empty, dId, idLoteUsado);
+        }
+        catch
+        {
+          await JS.InvokeVoidAsync("alert", body);
+        }
+      }
+      else
+      {
+        // Si hay error, mostrar tal cual
+        await JS.InvokeVoidAsync("alert", $"Error al consultar: {body}");
+      }
+      await Buscar();
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"No se pudo consultar SIFEN: {ex.Message}");
+    }
+  }
+
+  private class ItemVenta
+  {
+    public int IdVenta { get; set; }
+    public DateTime Fecha { get; set; }
+    public string ClienteNombre { get; set; } = string.Empty;
+    public string ClienteRuc { get; set; } = string.Empty;
+    public string? Numero { get; set; }
+    public string? Timbrado { get; set; }
+    public decimal Total { get; set; }
+    public string Moneda { get; set; } = "PYG";
+    public decimal? Cambio { get; set; }
+    public decimal TotalGs { get; set; }
+    public decimal TotalUsd { get; set; }
+    public string Estado { get; set; } = "Borrador";
+  public string? EstadoSifen { get; set; } = string.Empty;
+  public string? CDC { get; set; } = string.Empty;
+  public string? IdLote { get; set; } = string.Empty;
+  public bool TieneComposicion { get; set; }
+  }
+}

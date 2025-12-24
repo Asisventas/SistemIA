@@ -1,0 +1,234 @@
+@page "/inventario/movimientos"
+@using SistemIA.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SistemIA.Services.IInventarioService Inventario
+
+<h3 class="mb-1">Movimientos de Inventario</h3>
+<p class="text-muted mb-3">Use esta sección para registrar entradas y salidas de productos por depósito. Seleccione el producto y el depósito, indique el tipo de movimiento y la cantidad.</p>
+
+@if (!string.IsNullOrEmpty(errorMsg))
+{
+    <div class="alert alert-danger py-2">@errorMsg</div>
+}
+@if (!string.IsNullOrEmpty(okMsg))
+{
+    <div class="alert alert-success py-2">@okMsg</div>
+}
+
+<div class="card mb-3">
+  <div class="card-header">Registrar movimiento</div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Producto</label>
+        <select class="form-select" @bind="SelectedProductoId">
+          <option value="0">-- Seleccione un producto --</option>
+          @if(productos is not null)
+          {
+              @foreach(var p in productos)
+              {
+                  <option value="@p.IdProducto">@p.Descripcion (@p.CodigoInterno)</option>
+              }
+          }
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Depósito</label>
+        <select class="form-select" @bind="SelectedDepositoId" disabled="@(depositos is null || !depositos.Any())">
+          <option value="0">-- Seleccione un depósito --</option>
+          @if(depositos is not null)
+          {
+              @foreach(var d in depositos)
+              {
+                  <option value="@d.IdDeposito">@d.Nombre (@d.IdSucursal)</option>
+              }
+          }
+        </select>
+        @if(depositos is not null && !depositos.Any())
+        {
+            <small class="text-muted">No hay depósitos. Cree uno en Configuración → Depósitos.</small>
+        }
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Tipo</label>
+        <select class="form-select" @bind="tipo">
+          <option value="1">Entrada</option>
+          <option value="2">Salida</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cantidad</label>
+        <input class="form-control" type="number" step="0.0001" @bind="cantidad" />
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Motivo</label>
+        <input class="form-control" @bind="motivo" placeholder="Ej: Compra, Ajuste, Devolución..." />
+      </div>
+      <div class="col-md-3 d-flex align-items-center">
+        <div>
+          <div class="small text-muted">Stock actual en depósito:</div>
+          <div class="fw-semibold">@((stockActual.HasValue)? stockActual.Value.ToString("N4") : "-")</div>
+        </div>
+      </div>
+      <div class="col-md-3 text-end">
+        <button class="btn btn-success" @onclick="Registrar" disabled="@(selectedProductoId==0 || selectedDepositoId==0 || cantidad<=0)">Registrar</button>
+      </div>
+    </div>
+  </div>
+  <div class="card-footer small text-muted">Consejo: una Entrada suma stock; una Salida descuenta stock en el depósito seleccionado.</div>
+  </div>
+
+<h5 class="mt-4">Últimos movimientos</h5>
+<table class="table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>Fecha</th>
+      <th>Producto</th>
+      <th>Depósito</th>
+      <th>Tipo</th>
+      <th class="text-end">Cantidad</th>
+      <th>Usuario</th>
+      <th>Motivo</th>
+    </tr>
+  </thead>
+  <tbody>
+    @if(movs is null)
+    {
+        <tr><td colspan="7">Cargando...</td></tr>
+    }
+    else if(!movs.Any())
+    {
+        <tr><td colspan="7">Sin movimientos</td></tr>
+    }
+    else
+    {
+        @foreach(var m in movs)
+        {
+            <tr>
+              <td>@m.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+              <td>@(m.Producto is null ? m.IdProducto.ToString() : m.Producto.Descripcion)</td>
+              <td>@(m.Deposito is null ? m.IdDeposito.ToString() : m.Deposito.Nombre)</td>
+              <td>@(m.Tipo==1?"Entrada":"Salida")</td>
+              <td class="text-end">@m.Cantidad</td>
+              <td>@m.Usuario</td>
+              <td>@m.Motivo</td>
+            </tr>
+        }
+    }
+  </tbody>
+  </table>
+
+@code{
+  private List<MovimientoInventario>? movs;
+  private List<Producto>? productos;
+  private List<Deposito>? depositos;
+  private int selectedProductoId;
+  private int selectedDepositoId;
+  private int SelectedProductoId
+  {
+    get => selectedProductoId;
+    set
+    {
+      if (selectedProductoId != value)
+      {
+        selectedProductoId = value;
+        // Si el producto tiene depósito predeterminado, lo seleccionamos automáticamente
+        try
+        {
+          var prod = productos?.FirstOrDefault(p => p.IdProducto == selectedProductoId);
+          var depId = prod?.IdDepositoPredeterminado;
+          if (depId.HasValue && depId.Value > 0 && (depositos?.Any(d => d.IdDeposito == depId.Value) ?? false))
+          {
+            // Asignamos al setter para que dispare la actualización del stock
+            SelectedDepositoId = depId.Value;
+          }
+        }
+        catch { /* no-op */ }
+        _ = InvokeAsync(async () => await ActualizarStockActual());
+      }
+    }
+  }
+  private int SelectedDepositoId
+  {
+    get => selectedDepositoId;
+    set
+    {
+      if (selectedDepositoId != value)
+      {
+        selectedDepositoId = value;
+        _ = InvokeAsync(async () => await ActualizarStockActual());
+      }
+    }
+  }
+  private int tipo = 1;
+  private decimal cantidad = 1;
+  private string? motivo;
+  private string? errorMsg;
+  private string? okMsg;
+  private decimal? stockActual;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await CargarCombos();
+    await CargarMovimientos();
+  }
+
+  private async Task CargarCombos()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    productos = await ctx.Productos.AsNoTracking()
+      .OrderBy(p=>p.Descripcion)
+      .Take(200)
+      .ToListAsync();
+    depositos = await ctx.Depositos.AsNoTracking()
+      .OrderBy(d=>d.IdSucursal).ThenBy(d=>d.Nombre)
+      .ToListAsync();
+  }
+
+  private async Task CargarMovimientos()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    movs = await ctx.MovimientosInventario.AsNoTracking()
+      .Include(m=>m.Producto)
+      .Include(m=>m.Deposito)
+      .OrderByDescending(m=>m.Fecha)
+      .Take(200)
+      .ToListAsync();
+  }
+
+  private async Task ActualizarStockActual()
+  {
+    if(selectedProductoId>0 && selectedDepositoId>0)
+    {
+      stockActual = await Inventario.ObtenerStockAsync(selectedProductoId, selectedDepositoId);
+    }
+    else
+    {
+      stockActual = null;
+    }
+    StateHasChanged();
+  }
+
+  // Los cambios de selección se manejan en los setters de SelectedProductoId y SelectedDepositoId
+
+  private async Task Registrar()
+  {
+    errorMsg = okMsg = null;
+    if (selectedProductoId == 0) { errorMsg = "Seleccione un producto"; return; }
+    if (selectedDepositoId == 0) { errorMsg = "Seleccione un depósito"; return; }
+    if (cantidad <= 0) { errorMsg = "La cantidad debe ser mayor a 0"; return; }
+
+    try
+    {
+      await Inventario.AjustarStockAsync(selectedProductoId, selectedDepositoId, cantidad, tipo, motivo, "Sistema");
+      okMsg = "Movimiento registrado";
+      await ActualizarStockActual();
+      await CargarMovimientos();
+    }
+    catch(Exception ex)
+    {
+      errorMsg = ex.Message;
+    }
+  }
+}

@@ -1,0 +1,245 @@
+@page "/prueba-grafico"
+@inject ITipoCambioHistoricoService HistoricoService
+@inject IJSRuntime JS
+
+<h3>Prueba de Gráfico de Tipos de Cambio</h3>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Sistema de Pruebas de Gráficos</h5>
+            </div>
+            <div class="card-body">
+                @if (cargando)
+                {
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                        <span>Cargando datos...</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body text-center">
+                                    <h6>Registros</h6>
+                                    <h3>@registrosTotales</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-success text-white">
+                                <div class="card-body text-center">
+                                    <h6>Pares</h6>
+                                    <h3>@paresDatos</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-info text-white">
+                                <div class="card-body text-center">
+                                    <h6>Estado</h6>
+                                    <small>@estadoActual</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <button class="btn btn-primary me-2" @onclick="CargarDatos" disabled="@cargando">
+                            <i class="bi bi-arrow-clockwise"></i> Recargar
+                        </button>
+                        
+                        @if (registrosTotales > 0)
+                        {
+                            <button class="btn btn-success me-2" @onclick="CrearGrafico" disabled="@cargando">
+                                <i class="bi bi-graph-up"></i> Crear Gráfico
+                            </button>
+                        }
+                        
+                        <button class="btn btn-info" @onclick="PruebaSimple">
+                            <i class="bi bi-bar-chart"></i> Prueba Simple
+                        </button>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(mensajeError))
+                    {
+                        <div class="alert alert-danger">
+                            <strong>Error:</strong> @mensajeError
+                        </div>
+                    }
+                    
+                    <div style="position: relative; height: 400px; width: 100%;">
+                        <canvas id="graficoPrueba"></canvas>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool cargando = true;
+    private int registrosTotales = 0;
+    private int paresDatos = 0;
+    private string estadoActual = "Inicializando...";
+    private string mensajeError = "";
+    private Dictionary<string, List<object>>? datosGrafico;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        cargando = true;
+        estadoActual = "Cargando...";
+        mensajeError = "";
+        StateHasChanged();
+        
+        try
+        {
+            var historial = await HistoricoService.ObtenerHistorialUltimoMesAsync();
+            registrosTotales = historial?.Count ?? 0;
+            
+            if (registrosTotales > 0)
+            {
+                datosGrafico = await HistoricoService.ObtenerDatosGraficoAsync(30);
+                paresDatos = datosGrafico?.Count ?? 0;
+                estadoActual = $"OK - {registrosTotales} registros";
+            }
+            else
+            {
+                estadoActual = "Sin datos";
+                paresDatos = 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeError = ex.Message;
+            estadoActual = "Error";
+        }
+        finally
+        {
+            cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CrearGrafico()
+    {
+        if (datosGrafico == null || !datosGrafico.Any())
+        {
+            mensajeError = "No hay datos para el gráfico";
+            return;
+        }
+
+        try
+        {
+            estadoActual = "Creando gráfico...";
+            mensajeError = "";
+            StateHasChanged();
+
+            var datasets = new List<object>();
+            var colores = new[] { "#FF6B6B", "#4ECDC4", "#45B7D1", "#96C93D" };
+            var indiceColor = 0;
+
+            foreach (var par in datosGrafico)
+            {
+                var dataset = new
+                {
+                    label = par.Key,
+                    data = par.Value,
+                    borderColor = colores[indiceColor % colores.Length],
+                    backgroundColor = colores[indiceColor % colores.Length] + "30",
+                    fill = false,
+                    tension = 0.3
+                };
+                datasets.Add(dataset);
+                indiceColor++;
+            }
+
+            var config = new
+            {
+                type = "line",
+                data = new { datasets = datasets },
+                options = new
+                {
+                    responsive = true,
+                    maintainAspectRatio = false,
+                    scales = new
+                    {
+                        x = new
+                        {
+                            type = "time",
+                            time = new
+                            {
+                                unit = "day",
+                                displayFormats = new { day = "dd/MM" }
+                            }
+                        },
+                        y = new { beginAtZero = false }
+                    }
+                }
+            };
+
+            await JS.InvokeVoidAsync("crearGraficoTiposCambio", "graficoPrueba", config.data, config.options);
+            estadoActual = "Gráfico creado";
+        }
+        catch (Exception ex)
+        {
+            mensajeError = $"Error: {ex.Message}";
+            estadoActual = "Error creando gráfico";
+        }
+    }
+
+    private async Task PruebaSimple()
+    {
+        try
+        {
+            estadoActual = "Prueba simple...";
+            mensajeError = "";
+            StateHasChanged();
+
+            await JS.InvokeVoidAsync("eval", @"
+                const canvas = document.getElementById('graficoPrueba');
+                if (canvas && typeof Chart !== 'undefined') {
+                    if (window.graficoPrueba_chart) {
+                        window.graficoPrueba_chart.destroy();
+                    }
+                    
+                    const testData = {
+                        labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'],
+                        datasets: [{
+                            label: 'Prueba',
+                            data: [7200, 7300, 7250, 7400, 7350],
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        }]
+                    };
+                    
+                    window.graficoPrueba_chart = new Chart(canvas, {
+                        type: 'line',
+                        data: testData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false
+                        }
+                    });
+                    console.log('Gráfico de prueba creado');
+                } else {
+                    console.error('Canvas o Chart.js no disponible');
+                }
+            ");
+
+            estadoActual = "Prueba completada";
+        }
+        catch (Exception ex)
+        {
+            mensajeError = $"Error en prueba: {ex.Message}";
+        }
+    }
+}

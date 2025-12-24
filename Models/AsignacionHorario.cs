@@ -22,7 +22,15 @@ namespace SistemIA.Models
         [Required]
         public DateTime FechaInicio { get; set; }
 
+        public DateTime? FechaFin { get; set; }
+
         [Required]
-        public DateTime FechaFin { get; set; }
+        public bool Estado { get; set; } = true;
+
+        public DateTime FechaAsignacion { get; set; } = DateTime.Now;
+
+        public int? AsignadoPorId_Usuario { get; set; }
+
+        public string? Observaciones { get; set; }
     }
 }

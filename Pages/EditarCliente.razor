@@ -1,10 +1,18 @@
 ﻿@page "/clientes/editar/{IdCliente:int}"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
 @using SistemIA.Models
 @using SistemIA.Utils
-@inject SistemIA.Models.AppDbContext Db
+@using System.Linq
+@using System.Xml
+@using System.ComponentModel.DataAnnotations
+@using System.Threading
+@using System.Threading.Tasks
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject Sifen Sifen
 
 <h3 class="mb-4">✏️ Editar Cliente</h3>
 
@@ -16,153 +24,469 @@ else if (!string.IsNullOrEmpty(errorMessage))
 {
     <div class="alert alert-danger">@errorMessage</div>
 }
-else
+else if (cliente is not null)
 {
     <EditForm Model="@cliente" OnValidSubmit="ActualizarCliente">
         <DataAnnotationsValidator />
         <ValidationSummary />
         <div class="row g-3">
             <!-- Columna Izquierda -->
-            <div class="col-md-6">
-                <div class="mb-3">
-                    <label class="form-label">Razón Social</label>
-                    <InputText class="form-control" @bind-Value="cliente.RazonSocial" />
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header py-2"><strong>Identificación</strong></div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Razón Social</label>
+                            <InputText class="form-control" @bind-Value="cliente.RazonSocial" />
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Tipo Documento</label>
+                                <InputSelect class="form-select" @bind-Value="cliente.TipoDocumento">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var tipo in tiposDocumentos)
+                                    {
+                                        <option value="@tipo.TipoDocumento">@tipo.Descripcion</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Numero de Documento</label>
+                                <div class="input-group">
+                                    <InputText class="form-control"
+                                               @bind-Value="cliente.RUC"
+                                               @bind-Value:after="OnRucChanged" />
+                                    <button type="button" class="btn btn-outline-secondary" @onclick="ConsultarRucManual" disabled="@consultandoRuc">
+                                        @if (consultandoRuc)
+                                        {
+                                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                        }
+                                        else
+                                        {
+                                            <text>DNIT</text>
+                                        }
+                                    </button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(mensajeRuc))
+                                {
+                                    <div class="form-text @(esErrorRuc ? "text-danger" : "text-success")">@mensajeRuc</div>
+                                }
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">DV</label>
+                                <InputNumber class="form-control" @bind-Value="cliente.DV" readonly />
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Tipo Documento</label>
-                    <InputSelect class="form-select" @bind-Value="cliente.TipoDocumento">
-                        <option value="">-- Seleccionar --</option>
-                        @foreach (var tipo in tiposDocumentos)
-                        {
-                            <option value="@tipo.TipoDocumento">@tipo.Descripcion</option>
-                        }
-                    </InputSelect>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">RUC</label>
-                    <InputText class="form-control"
-                               @bind-Value="cliente.RUC"
-                               onblur="@OnRucChanged" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">DV</label>
-                    <InputNumber class="form-control" @bind-Value="cliente.DV" readonly />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Dirección</label>
-                    <InputText class="form-control" @bind-Value="cliente.Direccion" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Teléfono</label>
-                    <InputText class="form-control" @bind-Value="cliente.Telefono" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Email</label>
-                    <InputText class="form-control" @bind-Value="cliente.Email" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Fecha de Nacimiento</label>
-                    <InputDate class="form-control" @bind-Value="cliente.FechaNacimiento" />
+
+                <div class="card mt-3">
+                    <div class="card-header py-2"><strong>Ubicación y contacto</strong></div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Dirección</label>
+                            <InputText class="form-control" @bind-Value="cliente.Direccion" />
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label">País</label>
+                                <InputSelect class="form-select" @bind-Value="cliente.CodigoPais">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var pais in paises)
+                                    {
+                                        <option value="@pais.CodigoPais">@pais.Nombre</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Ciudad</label>
+                                <InputSelect class="form-select" @bind-Value="cliente.IdCiudad" @bind-Value:after="OnCiudadChangedAfter">
+                                    <option value="1">ASUNCION (DISTRITO)</option>
+                                    @foreach (var ciudad in ciudades.Where(c => c.Numero != 1))
+                                    {
+                                        <option value="@ciudad.Numero">@ciudad.Nombre (@ciudad.Departamento.ToString("00"))</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+                        <div class="row g-2 mt-2">
+                            <div class="col-md-6">
+                                <label class="form-label">Teléfono</label>
+                                <InputText class="form-control" @bind-Value="cliente.Telefono" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Email</label>
+                                <InputText class="form-control" @bind-Value="cliente.Email" />
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <label class="form-label">Fecha de Nacimiento</label>
+                            <InputDate class="form-control" @bind-Value="cliente.FechaNacimiento" />
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Columna Derecha -->
-            <div class="col-md-6">
-                <div class="mb-3">
-                    <label class="form-label">Contacto</label>
-                    <InputText class="form-control" @bind-Value="cliente.Contacto" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Límite Crédito</label>
-                    @if (editandoLimiteCredito)
-                    {
-                        <InputNumber @bind-Value="cliente.LimiteCredito"
-                                     class="form-control"
-                                     @onblur="OnLimiteCreditoBlur"
-                                     autofocus />
-                    }
-                    else
-                    {
-                        <div class="form-control-plaintext"
-                             style="min-height:38px; cursor:pointer;"
-                             title="Haz clic para editar"
-                             @onclick="ActivarEdicionLimiteCredito">
-                            @(cliente.LimiteCredito.HasValue ? cliente.LimiteCredito.Value.ToString("N2") : "")
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header py-2 d-flex align-items-center justify-content-between">
+                        <strong>Condiciones comerciales</strong>
+                        <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#sifenCollapse" aria-expanded="false" aria-controls="sifenCollapse">SIFEN</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <InputCheckbox id="estadoClienteEditar" class="form-check-input" @bind-Value="cliente.Estado" />
+                                    <label class="form-check-label" for="estadoClienteEditar">Cliente Activo</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <InputCheckbox id="permiteCreditoEditar" class="form-check-input" @bind-Value="cliente.PermiteCredito" />
+                                    <label class="form-check-label" for="permiteCreditoEditar" title="Habilita venta a crédito y remisiones">✓ Permite Crédito</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <InputCheckbox id="extranjeroClienteEditar" class="form-check-input" @bind-Value="cliente.EsExtranjero" />
+                                    <label class="form-check-label" for="extranjeroClienteEditar">¿Extranjero?</label>
+                                </div>
+                            </div>
                         </div>
-                    }
+
+                        <div class="mt-3">
+                            <label class="form-label">Tipo de Contribuyente</label>
+                            <InputSelect class="form-select" @bind-Value="cliente.IdTipoContribuyente">
+                                <option value="">-- Seleccionar --</option>
+                                @foreach (var tipo in tiposContribuyentes)
+                                {
+                                    <option value="@tipo.IdTipoContribuyente">@tipo.NombreTipo</option>
+                                }
+                            </InputSelect>
+                        </div>
+
+                        <div class="mt-3">
+                            <label class="form-label">Tipo de Operación</label>
+                            <small class="form-text text-muted">1=B2B, 2=B2C, 3=B2G, 4=B2F</small>
+                            <InputSelect @bind-Value="cliente.TipoOperacion" class="form-select">
+                                <option value="">Seleccione...</option>
+                                <option value="1">1 - B2B (Empresa a Empresa)</option>
+                                <option value="2">2 - B2C (Empresa a Consumidor Final)</option>
+                                <option value="3">3 - B2G (Empresa a Gobierno)</option>
+                                <option value="4">4 - B2F (Empresa a Extranjero)</option>
+                            </InputSelect>
+                        </div>
+
+                        <div class="row g-2 mt-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Límite Crédito</label>
+                                @if (editandoLimiteCredito)
+                                {
+                                    <InputNumber @bind-Value="cliente.LimiteCredito" class="form-control" @onblur="OnLimiteCreditoBlur" autofocus disabled="@(!cliente.PermiteCredito)" />
+                                }
+                                else
+                                {
+                                    <div class="form-control-plaintext border rounded px-2"
+                                         style="min-height:38px; cursor:pointer;"
+                                         title="Haz clic para editar"
+                                         @onclick="ActivarEdicionLimiteCredito">
+                                        @(cliente.LimiteCredito.HasValue ? cliente.LimiteCredito.Value.ToString("N2") : "")
+                                    </div>
+                                }
+                                @if (!cliente.PermiteCredito)
+                                {
+                                    <small class="text-muted">Habilitar 'Permite Crédito'</small>
+                                }
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Plazo Días Crédito</label>
+                                <InputNumber class="form-control" @bind-Value="cliente.PlazoDiasCredito" disabled="@(!cliente.PermiteCredito)" />
+                                @if (!cliente.PermiteCredito)
+                                {
+                                    <small class="text-muted">Habilitar 'Permite Crédito'</small>
+                                }
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Saldo Pendiente</label>
+                                <InputNumber class="form-control" @bind-Value="cliente.Saldo" readonly />
+                                @if (cliente.LimiteCredito.HasValue && cliente.Saldo > 0)
+                                {
+                                    var disponible = cliente.LimiteCredito.Value - cliente.Saldo;
+                                    <small class="@(disponible >= 0 ? "text-success" : "text-danger")">Disponible: @disponible.ToString("N2")</small>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <label class="form-label">Precio Diferenciado</label>
+                            <div class="d-flex align-items-center">
+                                <InputCheckbox class="form-check-input" @bind-Value="cliente.PrecioDiferenciado" />
+                                <button type="button" class="btn btn-sm btn-outline-primary ms-2" @onclick="TogglePreciosDiferenciados">
+                                    <i class="bi bi-tags"></i> Gestionar precios por producto
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Estado</label>
-                    <InputSelect class="form-select" @bind-Value="cliente.Estado">
-                        <option value="">-- Seleccionar --</option>
-                        <option value="Activo">Activo</option>
-                        <option value="Inactivo">Inactivo</option>
-                    </InputSelect>
+
+                <!-- NOTIFICACIONES DE CRÉDITO -->
+                @if (cliente.PermiteCredito)
+                {
+                    <div class="card mt-3">
+                        <div class="card-header py-2 bg-info text-white"><strong>📊 Estado de Crédito</strong></div>
+                        <div class="card-body">
+                            @if (cargandoEstadoCredito)
+                            {
+                                <div class="text-center">
+                                    <div class="spinner-border spinner-border-sm" role="status">
+                                        <span class="visually-hidden">Cargando...</span>
+                                    </div>
+                                </div>
+                            }
+                            else if (estadoCredito != null)
+                            {
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="border rounded p-2">
+                                            <small class="text-muted">Límite de Crédito</small>
+                                            <div class="fs-5 fw-bold">@(cliente.LimiteCredito?.ToString("N2") ?? "-")</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="border rounded p-2">
+                                            <small class="text-muted">Saldo Pendiente</small>
+                                            <div class="fs-5 fw-bold text-@(estadoCredito.SaldoPendiente > 0 ? "danger" : "success")">
+                                                @estadoCredito.SaldoPendiente.ToString("N2")
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="border rounded p-2 @(estadoCredito.CreditosVencidos > 0 ? "border-danger" : "")">
+                                            <small class="text-muted">Facturas Vencidas</small>
+                                            <div class="fs-5 fw-bold text-danger">
+                                                @estadoCredito.CreditosVencidos
+                                                @if (estadoCredito.MontoVencido > 0)
+                                                {
+                                                    <small class="text-muted">(@estadoCredito.MontoVencido.ToString("N2"))</small>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="border rounded p-2 @(estadoCredito.CreditosPorVencer > 0 ? "border-warning" : "")">
+                                            <small class="text-muted">Por Vencer (7 días)</small>
+                                            <div class="fs-5 fw-bold text-warning">
+                                                @estadoCredito.CreditosPorVencer
+                                                @if (estadoCredito.MontoPorVencer > 0)
+                                                {
+                                                    <small class="text-muted">(@estadoCredito.MontoPorVencer.ToString("N2"))</small>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                @if (estadoCredito.CreditosVencidos > 0)
+                                {
+                                    <div class="alert alert-danger mt-3 mb-0">
+                                        <i class="bi bi-exclamation-triangle"></i> Este cliente tiene facturas vencidas. Gestione los cobros pendientes.
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- SECCIÓN SIFEN - Campos específicos para facturación electrónica (colapsable) -->
+        <div class="collapse mt-4" id="sifenCollapse">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">📄 Información SIFEN (Facturación Electrónica)</h5>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Saldo</label>
-                    <InputNumber class="form-control" @bind-Value="cliente.Saldo" />
+                <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Naturaleza del Receptor</label>
+                            <small class="form-text text-muted d-block">
+                                1=Contribuyente (con RUC), 2=No contribuyente (consumidor final)
+                            </small>
+                            <InputSelect class="form-select" @bind-Value="cliente.NaturalezaReceptor">
+                                <option value="1">1 - Contribuyente (Persona con RUC activo)</option>
+                                <option value="2">2 - No contribuyente (Consumidor final sin RUC)</option>
+                            </InputSelect>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Código Departamento</label>
+                            <small class="form-text text-muted d-block">
+                                Código oficial según catálogo SIFEN (ej: 01=Capital, 11=Central)
+                            </small>
+                            <InputText class="form-control" @bind-Value="cliente.CodigoDepartamento" maxlength="2" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descripción Departamento</label>
+                            <small class="form-text text-muted d-block">
+                                Nombre del departamento (máximo 16 caracteres)
+                            </small>
+                            <InputText class="form-control" @bind-Value="cliente.DescripcionDepartamento" maxlength="16" />
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Código Distrito</label>
+                            <small class="form-text text-muted d-block">
+                                Código oficial según catálogo SIFEN (ej: 0001=Asunción)
+                            </small>
+                            <InputText class="form-control" @bind-Value="cliente.CodigoDistrito" maxlength="4" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descripción Distrito</label>
+                            <small class="form-text text-muted d-block">
+                                Nombre del distrito (máximo 30 caracteres)
+                            </small>
+                            <InputText class="form-control" @bind-Value="cliente.DescripcionDistrito" maxlength="30" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Nombre de Fantasía</label>
+                            <small class="form-text text-muted d-block">
+                                Nombre comercial de la empresa (opcional, máximo 255 caracteres)
+                            </small>
+                            <InputText class="form-control" @bind-Value="cliente.NombreFantasia" maxlength="255" />
+                            </div>
+                            </div>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Tipo de Contribuyente</label>
-                    <InputSelect class="form-select" @bind-Value="cliente.IdTipoContribuyente">
-                        <option value="">-- Seleccionar --</option>
-                        @foreach (var tipo in tiposContribuyentes)
-                        {
-                            <option value="@tipo.IdTipoContribuyente">@tipo.NombreTipo</option>
-                        }
-                    </InputSelect>
-                    <label>Tipo de Operación</label>
-                    <InputSelect @bind-Value="cliente.TipoOperacion" class="form-select">
-                        <option value="">Seleccione...</option>
-                        @foreach (var tipo in tiposOperacion)
-                        {
-                            <option value="@tipo.Codigo">@tipo.Descripcion</option>
-                        }
-                    </InputSelect>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Timbrado</label>
-                    <InputText class="form-control" @bind-Value="cliente.Timbrado" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Vencimiento Timbrado</label>
-                    <InputDate class="form-control" @bind-Value="cliente.VencimientoTimbrado" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Precio Diferenciado</label>
-                    <InputCheckbox class="form-check-input" @bind-Value="cliente.PrecioDiferenciado" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Plazo Días Crédito</label>
-                    <InputNumber class="form-control" @bind-Value="cliente.PlazoDiasCredito" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">País</label>
-                    <InputSelect class="form-select" @bind-Value="cliente.CodigoPais">
-                        <option value="">-- Seleccionar --</option>
-                        @foreach (var pais in paises)
-                        {
-                            <option value="@pais.CodigoPais">@pais.Nombre</option>
-                        }
-                    </InputSelect>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Ciudad</label>
-                    <InputSelect class="form-select" @bind-Value="cliente.IdCiudad">
-                        <option value="">-- Seleccionar --</option>
-                        @foreach (var ciudad in ciudades)
-                        {
-                            <option value="@ciudad.IdCiudad">@ciudad.Nombre (@ciudad.Departamento)</option>
-                        }
-                    </InputSelect>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">¿Extranjero?</label>
-                    <InputCheckbox class="form-check-input" @bind-Value="cliente.EsExtranjero" />
+
+                <!-- Campos específicos para No Contribuyentes -->
+                <div class="row g-3 mt-3" style="display: @(cliente.NaturalezaReceptor == 2 ? "block" : "none")">
+                    <div class="col-12">
+                        <div class="alert alert-info">
+                            <strong>Campos adicionales para No Contribuyentes:</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Tipo de Documento de Identidad</label>
+                            <small class="form-text text-muted d-block">
+                                1=CI Paraguaya, 2=Pasaporte, 3=CI Extranjera, 4=Otro, 5=Innominado (sin documento)
+                            </small>
+                            <InputSelect class="form-select" @bind-Value="cliente.TipoDocumentoIdentidadSifen" @bind-Value:after="OnTipoDocIdentidadChangedAfter">
+                                <option value="">-- Seleccionar --</option>
+                                <option value="1">1 - Cédula de Identidad Paraguaya</option>
+                                <option value="2">2 - Pasaporte</option>
+                                <option value="3">3 - Cédula de Identidad Extranjera</option>
+                                <option value="4">4 - Otro documento de identidad</option>
+                                <option value="5">5 - Innominado (sin documento)</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Documento</label>
+                            <small class="form-text text-muted d-block">
+                                Número del documento según el tipo seleccionado arriba
+                            </small>
+                            <InputText class="form-control" @bind-Value="cliente.NumeroDocumentoIdentidad" maxlength="20" disabled="@(cliente.TipoDocumentoIdentidadSifen == 5)" />
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
+
+        @if (cliente?.PrecioDiferenciado == true && mostrarPreciosDif)
+        {
+            <div class="card mt-4">
+                <div class="card-header bg-warning-subtle">
+                    <h5 class="mb-0"><i class="bi bi-tags me-2"></i>Precios diferenciados por producto</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-2 align-items-end mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Producto</label>
+                            <div class="position-relative">
+                                <input class="form-control" placeholder="Tipee nombre o código..." value="@prodSearch" @oninput="OnProdSearchChanged" @onfocus="ShowProdOpciones" @onblur="OnProdBlur" @onkeydown="OnProdKeyDown" />
+                                @if (prodMostrandoOpciones && prodOpciones.Count > 0)
+                                {
+                                    <div class="list-group position-absolute w-100 shadow-sm bg-white" style="z-index:1000; max-height:260px; overflow:auto;">
+                                        @for (int i = 0; i < prodOpciones.Count; i++)
+                                        {
+                                            var pr = prodOpciones[i];
+                                            var itemClass = $"list-group-item list-group-item-action d-flex justify-content-between align-items-center {(i == prodSelectedIndex ? "active" : string.Empty)}";
+                                            <button type="button" class="@itemClass" @onmousedown="(() => SeleccionarProducto(pr))" @onclick="(() => SeleccionarProducto(pr))">
+                                                <span>@pr.Descripcion</span>
+                                                <small class="text-muted">@pr.CodigoInterno · @pr.UnidadMedidaCodigo</small>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                else if (prodMostrandoOpciones && !string.IsNullOrWhiteSpace(prodSearch) && prodOpciones.Count == 0)
+                                {
+                                    <div class="list-group position-absolute w-100 shadow-sm bg-white" style="z-index:1000; max-height:260px; overflow:auto;">
+                                        <div class="list-group-item text-muted">Sin resultados</div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Precio fijo Gs</label>
+                            <InputNumber class="form-control" @bind-Value="precioFijoGs" />
+                            <div class="form-text">Opcional. Si se define, tiene prioridad sobre el %.</div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">% Desc.</label>
+                            <InputNumber class="form-control" @bind-Value="porcentajeDesc" />
+                        </div>
+                        <div class="col-md-1 text-end">
+                            <button type="button" class="btn btn-outline-primary w-100" @onclick="AgregarPrecioCliente" disabled="@(prodSelectedId == 0 || (precioFijoGs is null && (porcentajeDesc is null || porcentajeDesc <= 0)))">Agregar</button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th style="width:90px">ID</th>
+                                    <th>Producto</th>
+                                    <th class="text-end" style="width:120px">Precio lista</th>
+                                    <th class="text-end" style="width:130px">Precio fijo Gs</th>
+                                    <th class="text-end" style="width:110px">% Desc</th>
+                                    <th class="text-end" style="width:130px">Precio final</th>
+                                    <th style="width:70px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (preciosCliente.Count == 0)
+                                {
+                                    <tr><td colspan="7" class="text-muted">Sin filas</td></tr>
+                                }
+                                else
+                                {
+                                    @foreach (var pc in preciosCliente)
+                                    {
+                                        var precioLista = pc.Producto?.PrecioUnitarioGs ?? 0m;
+                                        var precioFinal = pc.PrecioFijoGs ?? (precioLista * (1 - ((pc.PorcentajeDescuento ?? 0) / 100m)));
+                                        <tr>
+                                            <td>@pc.IdProducto</td>
+                                            <td>@pc.Producto?.Descripcion</td>
+                                            <td class="text-end">@precioLista.ToString("N0")</td>
+                                            <td class="text-end">@(pc.PrecioFijoGs?.ToString("N0") ?? "-")</td>
+                                            <td class="text-end">@((pc.PorcentajeDescuento?.ToString("N2") ?? "-"))</td>
+                                            <td class="text-end">@precioFinal.ToString("N0")</td>
+                                            <td class="text-end">
+                                                <button type="button" class="btn btn-sm btn-outline-danger" title="Quitar" @onclick="() => QuitarPrecioCliente(pc.IdClientePrecio)"><i class="bi bi-trash"></i></button>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
 
         <div class="mt-4">
             <button type="submit" class="btn btn-primary">💾 Guardar Cambios</button>
@@ -179,12 +503,39 @@ else
     private List<TiposDocumentosIdentidad> tiposDocumentos = new();
     private List<TiposContribuyentes> tiposContribuyentes = new();
     private List<Paises> paises = new();
-    private List<Ciudades> ciudades = new();
+    private List<CiudadCatalogo> ciudades = new();
     private List<TipoOperacion> tiposOperacion = new();
     private string? errorMessage;
     private bool isLoading = true;
-    private bool editandoLimiteCredito => !cliente.LimiteCredito.HasValue || editandoLimiteCreditoInterno;
+    private bool editandoLimiteCredito => cliente?.LimiteCredito == null || editandoLimiteCreditoInterno;
     private bool editandoLimiteCreditoInterno = false;
+    private bool consultandoRuc = false;
+    private string? mensajeRuc;
+    private bool esErrorRuc = false;
+    // Precios diferenciados
+    private bool mostrarPreciosDif = false;
+    private List<ClientePrecio> preciosCliente = new();
+    private string prodSearch = string.Empty;
+    private List<Producto> prodOpciones = new();
+    private bool prodMostrandoOpciones = false;
+    private int prodSelectedIndex = -1;
+    private int prodSelectedId = 0;
+    private decimal? precioFijoGs;
+    private decimal? porcentajeDesc;
+    private CancellationTokenSource? _searchCts;
+    
+    // Estado de crédito
+    private bool cargandoEstadoCredito = false;
+    private EstadoCreditoCliente? estadoCredito;
+
+    public class EstadoCreditoCliente
+    {
+        public decimal SaldoPendiente { get; set; }
+        public int CreditosVencidos { get; set; }
+        public decimal MontoVencido { get; set; }
+        public int CreditosPorVencer { get; set; }
+        public decimal MontoPorVencer { get; set; }
+    }
 
     private void ActivarEdicionLimiteCredito()
     {
@@ -195,21 +546,34 @@ else
     {
         editandoLimiteCreditoInterno = false;
     }
+
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            tiposContribuyentes = await Db.TiposContribuyentes.ToListAsync();
-            tiposDocumentos = await Db.TiposDocumentosIdentidad.ToListAsync();
-            paises = await Db.Paises.ToListAsync();
-            ciudades = await Db.Ciudades.ToListAsync();
-            tiposOperacion = await Db.TiposOperacion.ToListAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            tiposContribuyentes = await dbContext.TiposContribuyentes.ToListAsync();
+            tiposDocumentos = await dbContext.TiposDocumentosIdentidad.ToListAsync();
+            paises = await dbContext.Paises.ToListAsync();
+            ciudades = await dbContext.CiudadesCatalogo.OrderBy(c => c.Nombre).ToListAsync();
+            tiposOperacion = await dbContext.TiposOperacion.ToListAsync();
 
-            cliente = await Db.Clientes.FirstOrDefaultAsync(c => c.IdCliente == IdCliente);
+            cliente = await dbContext.Clientes.AsNoTracking().FirstOrDefaultAsync(c => c.IdCliente == IdCliente);
 
             if (cliente == null)
             {
                 errorMessage = "Cliente no encontrado.";
+            }
+            else
+            {
+                await EnsureTablaPreciosClienteAsync(dbContext);
+                await CargarPreciosClienteAsync(dbContext, cliente.IdCliente);
+                
+                // Cargar estado de crédito si el cliente tiene habilitado el crédito
+                if (cliente.PermiteCredito)
+                {
+                    await CargarEstadoCreditoAsync(dbContext);
+                }
             }
         }
         catch (Exception ex)
@@ -220,15 +584,197 @@ else
         isLoading = false;
     }
 
-    private async Task ActualizarCliente()
+    private void TogglePreciosDiferenciados()
     {
-        if (cliente == null)
-            return;
+        if (cliente is null) return;
+        if (!cliente.PrecioDiferenciado)
+        {
+            cliente.PrecioDiferenciado = true;
+        }
+        mostrarPreciosDif = !mostrarPreciosDif;
+    }
 
+    private async Task EnsureTablaPreciosClienteAsync(AppDbContext ctx)
+    {
         try
         {
-            Db.Clientes.Update(cliente);
-            await Db.SaveChangesAsync();
+            await ctx.Database.ExecuteSqlRawAsync(@"IF OBJECT_ID('dbo.ClientesPrecios','U') IS NULL
+BEGIN
+  CREATE TABLE [dbo].[ClientesPrecios](
+    [IdClientePrecio] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [IdCliente] INT NOT NULL,
+    [IdProducto] INT NOT NULL,
+    [PrecioFijoGs] DECIMAL(18,4) NULL,
+    [PorcentajeDescuento] DECIMAL(18,2) NULL,
+    [Activo] BIT NOT NULL CONSTRAINT DF_ClientesPrecios_Activo DEFAULT(1),
+    [FechaCreacion] DATETIME NOT NULL CONSTRAINT DF_ClientesPrecios_Fecha DEFAULT(GETDATE()),
+    [UsuarioCreacion] VARCHAR(50) NULL
+  );
+  CREATE UNIQUE INDEX IX_ClientesPrecios_Cliente_Producto ON [dbo].[ClientesPrecios]([IdCliente],[IdProducto]);
+END");
+        }
+        catch { }
+    }
+
+    private async Task CargarPreciosClienteAsync(AppDbContext ctx, int idCliente)
+    {
+        preciosCliente = await ctx.ClientesPrecios
+            .AsNoTracking()
+            .Include(cp => cp.Producto)
+            .Where(cp => cp.IdCliente == idCliente && cp.Activo)
+            .OrderBy(cp => cp.Producto!.Descripcion)
+            .ToListAsync();
+        StateHasChanged();
+    }
+
+    private void ShowProdOpciones()
+    {
+        prodMostrandoOpciones = true;
+        if (prodOpciones.Count > 0 && prodSelectedIndex < 0) prodSelectedIndex = 0;
+    }
+
+    private async Task BuscarProductosAsync(string term, CancellationToken ct)
+    {
+        term = (term ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(term))
+        {
+            prodOpciones = new();
+            prodSelectedIndex = -1;
+            StateHasChanged();
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var q = db.Productos.AsNoTracking()
+            .Where(p => p.Descripcion.Contains(term) || p.CodigoInterno.Contains(term))
+            .OrderBy(p => p.Descripcion)
+            .Take(20);
+        prodOpciones = await q.ToListAsync(ct);
+        prodSelectedIndex = prodOpciones.Count > 0 ? 0 : -1;
+        StateHasChanged();
+    }
+
+    private async Task OnProdSearchChanged(ChangeEventArgs e)
+    {
+        prodSearch = e.Value?.ToString() ?? string.Empty;
+        prodSelectedId = 0;
+        prodMostrandoOpciones = true;
+        prodSelectedIndex = -1;
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        try
+        {
+            await Task.Delay(200, token);
+            await BuscarProductosAsync(prodSearch, token);
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private void SeleccionarProducto(Producto pr)
+    {
+        prodSelectedId = pr.IdProducto;
+        prodSearch = pr.Descripcion;
+        prodMostrandoOpciones = false;
+        prodSelectedIndex = -1;
+    }
+
+    private async Task OnProdBlur(FocusEventArgs e)
+    {
+        await Task.Delay(150);
+        prodMostrandoOpciones = false;
+        StateHasChanged();
+    }
+
+    private void OnProdKeyDown(KeyboardEventArgs e)
+    {
+        if (!prodMostrandoOpciones) return;
+        if (e.Key == "ArrowDown")
+        {
+            if (prodOpciones.Count == 0) return;
+            prodSelectedIndex = (prodSelectedIndex + 1 + prodOpciones.Count) % prodOpciones.Count;
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            if (prodOpciones.Count == 0) return;
+            prodSelectedIndex = (prodSelectedIndex - 1 + prodOpciones.Count) % prodOpciones.Count;
+        }
+        else if (e.Key == "Enter")
+        {
+            if (prodSelectedIndex >= 0 && prodSelectedIndex < prodOpciones.Count)
+            {
+                SeleccionarProducto(prodOpciones[prodSelectedIndex]);
+            }
+        }
+        else if (e.Key == "Escape")
+        {
+            prodMostrandoOpciones = false;
+        }
+    }
+
+    private async Task AgregarPrecioCliente()
+    {
+        if (cliente is null || cliente.IdCliente <= 0) { await JS.InvokeVoidAsync("alert", "Cliente no válido"); return; }
+        if (prodSelectedId <= 0) { return; }
+        if (precioFijoGs is null && (porcentajeDesc is null || porcentajeDesc <= 0)) { await JS.InvokeVoidAsync("alert", "Ingrese un precio fijo o un porcentaje de descuento"); return; }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await EnsureTablaPreciosClienteAsync(db);
+        var existe = await db.ClientesPrecios.AnyAsync(x => x.IdCliente == cliente.IdCliente && x.IdProducto == prodSelectedId);
+        if (existe) { await JS.InvokeVoidAsync("alert", "Ese producto ya tiene precio diferenciado para este cliente"); return; }
+        var nuevo = new ClientePrecio
+        {
+            IdCliente = cliente.IdCliente,
+            IdProducto = prodSelectedId,
+            PrecioFijoGs = precioFijoGs,
+            PorcentajeDescuento = porcentajeDesc,
+            Activo = true,
+            UsuarioCreacion = "Sistema"
+        };
+        db.ClientesPrecios.Add(nuevo);
+        await db.SaveChangesAsync();
+        // Reset
+        prodSelectedId = 0;
+        prodSearch = string.Empty;
+        prodOpciones.Clear();
+        prodMostrandoOpciones = false;
+        prodSelectedIndex = -1;
+        precioFijoGs = null;
+        porcentajeDesc = null;
+        await CargarPreciosClienteAsync(db, cliente.IdCliente);
+    }
+
+    private async Task QuitarPrecioCliente(int idClientePrecio)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.ClientesPrecios.FirstOrDefaultAsync(x => x.IdClientePrecio == idClientePrecio);
+        if (row is null) return;
+        db.ClientesPrecios.Remove(row);
+        await db.SaveChangesAsync();
+        if (cliente is not null)
+        {
+            await CargarPreciosClienteAsync(db, cliente.IdCliente);
+        }
+    }
+
+    private async Task ActualizarCliente()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        if (cliente == null)
+            return;
+        try
+        {
+            // Validar que el RUC no esté duplicado en otro cliente
+            if (!string.IsNullOrWhiteSpace(cliente.RUC))
+            {
+                var rucExiste = await dbContext.Clientes.AnyAsync(c => c.RUC == cliente.RUC && c.IdCliente != cliente.IdCliente);
+                if (rucExiste)
+                {
+                    errorMessage = "Ya existe otro cliente con ese número de documento (RUC)";
+                    return;
+                }
+            }
+            
+            dbContext.Clientes.Update(cliente);
+            await dbContext.SaveChangesAsync();
             Navigation.NavigateTo("/clientes");
         }
         catch (Exception ex)
@@ -242,19 +788,300 @@ else
     {
         if (cliente == null)
             return;
-
-        if (!string.IsNullOrWhiteSpace(cliente.RUC) && cliente.RUC.All(char.IsDigit))
+        if (string.IsNullOrWhiteSpace(cliente.RUC))
         {
-            cliente.DV = RucHelper.CalcularDvRuc(cliente.RUC);
+            mensajeRuc = "Por favor ingrese un número de RUC";
+            esErrorRuc = true;
+            return;
         }
-        else
+        if (!cliente.RUC.All(char.IsDigit))
         {
-            cliente.DV = 0;
+            mensajeRuc = "El RUC debe contener solo números";
+            esErrorRuc = true;
+            return;
+        }
+        if (cliente.RUC.Length < 5 || cliente.RUC.Length > 8)
+        {
+            mensajeRuc = "El RUC debe tener entre 5 y 8 dígitos";
+            esErrorRuc = true;
+            return;
+        }
+        cliente.DV = RucHelper.CalcularDvRuc(cliente.RUC);
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var sociedad = await dbContext.Sociedades.FirstOrDefaultAsync();
+            if (sociedad == null)
+            {
+                mensajeRuc = "No hay sociedad configurada en el sistema";
+                esErrorRuc = true;
+                return;
+            }
+            
+            Console.WriteLine($"[DEBUG] Sociedad encontrada: {sociedad.Nombre}");
+            Console.WriteLine($"[DEBUG] CertificadoRuta: {sociedad.PathCertificadoP12}");
+            Console.WriteLine($"[DEBUG] CertificadoPassword existe: {!string.IsNullOrEmpty(sociedad.PasswordCertificadoP12)}");
+            
+            if (string.IsNullOrEmpty(sociedad.PathCertificadoP12) || string.IsNullOrEmpty(sociedad.PasswordCertificadoP12))
+            {
+                mensajeRuc = "La sociedad no tiene configurado el certificado digital";
+                esErrorRuc = true;
+                return;
+            }
+            
+            Console.WriteLine($"[DEBUG] Iniciando consulta RUC para: {cliente.RUC}");
+            
+            // Usar URLs de SIFEN desde configuración de sociedad
+            var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            
+            var sifen = new Sifen();
+            var xmlRespuesta = await sifen.Consulta(url, cliente.RUC, "1", sociedad.PathCertificadoP12 ?? "", sociedad.PasswordCertificadoP12 ?? "");
+            
+            Console.WriteLine($"[DEBUG] Resultado recibido: {xmlRespuesta?.Substring(0, Math.Min(500, xmlRespuesta?.Length ?? 0))}...");
+            
+            if (string.IsNullOrEmpty(xmlRespuesta))
+            {
+                mensajeRuc = "⚠️ Sin respuesta de SIFEN. Verifique conexión e intente nuevamente.";
+                esErrorRuc = true;
+                return;
+            }
+            
+            // Verificar si es error de conexión/formato (problema común con conexión inestable)
+            if (xmlRespuesta.Contains("0160") || xmlRespuesta.Contains("XML Mal Formado"))
+            {
+                mensajeRuc = "⚠️ Error de conexión con SIFEN. Intente nuevamente.";
+                esErrorRuc = true;
+                return;
+            }
+            
+            var xmlDoc = new System.Xml.XmlDocument();
+            xmlDoc.LoadXml(xmlRespuesta);
+            
+            // Buscar código de respuesta
+            var codResNode = xmlDoc.SelectSingleNode("//*[local-name()='dCodRes']");
+            var msgResNode = xmlDoc.SelectSingleNode("//*[local-name()='dMsgRes']");
+            var codRes = codResNode?.InnerText ?? "";
+            var msgRes = msgResNode?.InnerText ?? "";
+            
+            Console.WriteLine($"[DEBUG EditarCliente] dCodRes: {codRes}, dMsgRes: {msgRes}");
+            
+            // Código 0502 = RUC encontrado
+            if (codRes == "0502")
+            {
+                // Buscar datos del contribuyente dentro de xContRUC
+                // Campos reales de SIFEN: dRUCCons, dRazCons, dCodEstCons, dDesEstCons, dRUCFactElec
+                var xContRUC = xmlDoc.SelectSingleNode("//*[local-name()='xContRUC']");
+                if (xContRUC != null)
+                {
+                    // dRazCons = Razón Social del contribuyente consultado
+                    var dRazCons = xContRUC.SelectSingleNode(".//*[local-name()='dRazCons']")?.InnerText;
+                    // dDesEstCons = Descripción del estado (ACTIVO, INACTIVO, etc.)
+                    var dDesEstCons = xContRUC.SelectSingleNode(".//*[local-name()='dDesEstCons']")?.InnerText;
+                    // dCodEstCons = Código del estado (ACT, INA, etc.)
+                    var dCodEstCons = xContRUC.SelectSingleNode(".//*[local-name()='dCodEstCons']")?.InnerText;
+                    // dRUCFactElec = Si puede facturar electrónicamente (S/N)
+                    var dRUCFactElec = xContRUC.SelectSingleNode(".//*[local-name()='dRUCFactElec']")?.InnerText;
+                    
+                    Console.WriteLine($"[DEBUG EditarCliente] dRazCons: {dRazCons}");
+                    Console.WriteLine($"[DEBUG EditarCliente] dDesEstCons: {dDesEstCons}");
+                    Console.WriteLine($"[DEBUG EditarCliente] dCodEstCons: {dCodEstCons}");
+                    Console.WriteLine($"[DEBUG EditarCliente] dRUCFactElec: {dRUCFactElec}");
+                    
+                    bool datosActualizados = false;
+                    
+                    // Actualizar cliente con datos de SIFEN
+                    if (!string.IsNullOrEmpty(dRazCons))
+                    {
+                        cliente.RazonSocial = dRazCons.Trim();
+                        datosActualizados = true;
+                    }
+                    
+                    // Estado del contribuyente
+                    if (!string.IsNullOrEmpty(dDesEstCons))
+                    {
+                        cliente.Estado = dDesEstCons.ToUpper().Contains("ACTIVO") || dCodEstCons == "ACT";
+                        datosActualizados = true;
+                    }
+                    
+                    // Determinar tipo de contribuyente por el RUC
+                    if (!string.IsNullOrEmpty(cliente.RUC))
+                    {
+                        if (cliente.RUC.Length >= 7)
+                        {
+                            cliente.IdTipoContribuyente = 2; // Persona Jurídica
+                            cliente.NaturalezaReceptor = 2;
+                        }
+                        else
+                        {
+                            cliente.IdTipoContribuyente = 1; // Persona Física
+                            cliente.NaturalezaReceptor = 1;
+                        }
+                        datosActualizados = true;
+                    }
+                    
+                    if (datosActualizados)
+                    {
+                        mensajeRuc = $"✓ {dRazCons?.Trim()} - {dDesEstCons}";
+                        esErrorRuc = false;
+                        StateHasChanged();
+                    }
+                    else
+                    {
+                        mensajeRuc = "RUC encontrado pero sin datos actualizables";
+                        esErrorRuc = true;
+                    }
+                }
+                else
+                {
+                    mensajeRuc = "RUC encontrado pero sin datos del contribuyente";
+                    esErrorRuc = true;
+                }
+            }
+            else if (codRes == "0501")
+            {
+                // 0501 = RUC no encontrado
+                mensajeRuc = $"RUC no encontrado: {msgRes}";
+                esErrorRuc = true;
+            }
+            else
+            {
+                mensajeRuc = $"Respuesta SIFEN: [{codRes}] {msgRes}";
+                esErrorRuc = codRes != "0500"; // 0500 es procesado correctamente
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeRuc = $"Error al consultar RUC: {ex.Message}";
+            esErrorRuc = true;
+            Console.WriteLine($"[ERROR] {ex.Message}");
         }
     }
 
     private void Cancelar()
     {
         Navigation.NavigateTo("/clientes");
+    }
+
+    private async Task OnCiudadChanged(ChangeEventArgs e)
+    {
+        if (cliente != null && int.TryParse(e.Value?.ToString(), out int ciudadId))
+        {
+            cliente.IdCiudad = ciudadId;
+            
+            // Configuración automática de datos SIFEN según la ciudad seleccionada
+            await ConfigurarDatosSifenPorCiudad(ciudadId);
+        }
+    }
+
+    private async Task OnCiudadChangedAfter()
+    {
+        // Configuración automática de datos SIFEN después de que el binding se complete
+        if (cliente != null && cliente.IdCiudad > 0)
+        {
+            await ConfigurarDatosSifenPorCiudad(cliente.IdCiudad);
+        }
+    }
+
+    private async Task ConfigurarDatosSifenPorCiudad(int ciudadId)
+    {
+        if (cliente == null) return;
+
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var ciudad = await dbContext.CiudadesCatalogo.FindAsync(ciudadId);
+            if (ciudad == null) return;
+
+            var dep = await dbContext.DepartamentosCatalogo.FindAsync(ciudad.Departamento);
+            var dis = await dbContext.DistritosCatalogo.FindAsync(ciudad.Distrito);
+
+            if (dep != null)
+            {
+                cliente.CodigoDepartamento = ciudad.Departamento.ToString("00");
+                cliente.DescripcionDepartamento = dep.Nombre.ToUpperInvariant();
+            }
+            if (dis != null)
+            {
+                cliente.CodigoDistrito = ciudad.Distrito.ToString("0000");
+                cliente.DescripcionDistrito = dis.Nombre.ToUpperInvariant();
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Error al configurar datos SIFEN por ciudad: {ex.Message}");
+        }
+    }
+
+    private async Task ConsultarRucManual()
+    {
+        if (cliente == null || string.IsNullOrWhiteSpace(cliente.RUC))
+        {
+            mensajeRuc = "Por favor ingrese un número de RUC";
+            esErrorRuc = true;
+            return;
+        }
+
+        consultandoRuc = true;
+        mensajeRuc = "Consultando datos en DNIT SET Paraguay...";
+        esErrorRuc = false;
+        StateHasChanged();
+
+        try
+        {
+            await OnRucChanged();
+        }
+        finally
+        {
+            consultandoRuc = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task OnTipoDocIdentidadChangedAfter()
+    {
+        if (cliente != null && cliente.TipoDocumentoIdentidadSifen == 5)
+        {
+            cliente.NumeroDocumentoIdentidad = "0";
+        }
+        return Task.CompletedTask;
+    }
+    
+    private async Task CargarEstadoCreditoAsync(AppDbContext dbContext)
+    {
+        if (cliente == null) return;
+        
+        cargandoEstadoCredito = true;
+        StateHasChanged();
+        
+        try
+        {
+            var hoy = DateTime.Today;
+            var dentro7Dias = hoy.AddDays(7);
+            
+            var cuentas = await dbContext.CuentasPorCobrar
+                .Where(c => c.IdCliente == cliente.IdCliente && c.Estado == "PENDIENTE")
+                .ToListAsync();
+            
+            estadoCredito = new EstadoCreditoCliente
+            {
+                SaldoPendiente = cuentas.Sum(c => c.SaldoPendiente),
+                CreditosVencidos = cuentas.Count(c => c.FechaVencimiento < hoy),
+                MontoVencido = cuentas.Where(c => c.FechaVencimiento < hoy).Sum(c => c.SaldoPendiente),
+                CreditosPorVencer = cuentas.Count(c => c.FechaVencimiento >= hoy && c.FechaVencimiento <= dentro7Dias),
+                MontoPorVencer = cuentas.Where(c => c.FechaVencimiento >= hoy && c.FechaVencimiento <= dentro7Dias).Sum(c => c.SaldoPendiente)
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] CargarEstadoCreditoAsync: {ex.Message}");
+            estadoCredito = null;
+        }
+        finally
+        {
+            cargandoEstadoCredito = false;
+            StateHasChanged();
+        }
     }
 }

@@ -1,0 +1,150 @@
+@page "/configuracion/tipos-pago"
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<h3>Tipos de Pago</h3>
+
+@if (!string.IsNullOrEmpty(Error))
+{
+    <div class="alert alert-danger">@Error</div>
+}
+@if (!string.IsNullOrEmpty(Ok))
+{
+    <div class="alert alert-success">@Ok</div>
+}
+
+<EditForm Model="Nuevo" OnValidSubmit="AgregarAsync">
+    <DataAnnotationsValidator />
+    <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label">Nombre</label>
+            <InputText class="form-control" @bind-Value="Nuevo.Nombre" />
+        </div>
+        <div class="col-md-2">
+            <div class="form-check mt-4">
+                <InputCheckbox class="form-check-input" @bind-Value="Nuevo.EsCredito" />
+                <label class="form-check-label">Es Crédito</label>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="form-check mt-4">
+                <InputCheckbox class="form-check-input" @bind-Value="Nuevo.Activo" />
+                <label class="form-check-label">Activo</label>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Orden</label>
+            <InputNumber class="form-control" @bind-Value="Nuevo.Orden" TValue="int" />
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">Agregar</button>
+        </div>
+    </div>
+</EditForm>
+
+<table class="table table-sm mt-3">
+    <thead>
+        <tr>
+            <th>Nombre</th>
+            <th>Es Crédito</th>
+            <th>Activo</th>
+            <th>Orden</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var t in Tipos)
+        {
+            <tr>
+                <td><InputText class="form-control form-control-sm" @bind-Value="t.Nombre" /></td>
+                <td class="text-center"><InputCheckbox class="form-check-input" @bind-Value="t.EsCredito" /></td>
+                <td class="text-center"><InputCheckbox class="form-check-input" @bind-Value="t.Activo" /></td>
+                <td style="width:120px"><InputNumber class="form-control form-control-sm" @bind-Value="t.Orden" TValue="int" /></td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarAsync(t)">Eliminar</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div class="mt-2">
+    <button class="btn btn-success" @onclick="GuardarCambiosAsync">Guardar cambios</button>
+</div>
+
+</PageProtection>
+
+@code {
+    private string? Error;
+    private string? Ok;
+    private List<SistemIA.Models.TipoPago> Tipos = new();
+    private SistemIA.Models.TipoPago Nuevo = new() { Activo = true, Orden = 0 };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        Tipos = await ctx.TiposPago.OrderBy(t => t.Orden).ThenBy(t => t.Nombre).ToListAsync();
+    }
+
+    private async Task AgregarAsync()
+    {
+        Error = Ok = null;
+        if (string.IsNullOrWhiteSpace(Nuevo.Nombre)) { Error = "Nombre requerido"; return; }
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            ctx.TiposPago.Add(Nuevo);
+            await ctx.SaveChangesAsync();
+            Ok = "Tipo de pago agregado";
+            Nuevo = new SistemIA.Models.TipoPago { Activo = true };
+            await CargarAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+    }
+
+    private async Task GuardarCambiosAsync()
+    {
+        Error = Ok = null;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            foreach (var t in Tipos)
+            {
+                ctx.TiposPago.Update(t);
+            }
+            await ctx.SaveChangesAsync();
+            Ok = "Cambios guardados";
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+    }
+
+    private async Task EliminarAsync(SistemIA.Models.TipoPago t)
+    {
+        Error = Ok = null;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            ctx.TiposPago.Remove(t);
+            await ctx.SaveChangesAsync();
+            await CargarAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+    }
+}

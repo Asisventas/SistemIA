@@ -1,0 +1,492 @@
+@page "/sucursal-config"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Utils
+@using System.Text
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+
+<h3>Configuracion de Sucursal para DNIT y Facturación Electrónica</h3>
+
+@if (loading)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    @if (sucursalExiste)
+                    {
+                        <div class="alert alert-info">
+                            <strong>Sucursal configurada:</strong> @nombreSucursal
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            No hay sucursal configurada. Complete los datos para habilitar DNIT y facturación electrónica.
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Nombre Sucursal</label>
+                        <input type="text" class="form-control" @bind="nombreSucursal" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Nombre Empresa</label>
+                        <input type="text" class="form-control" @bind="nombreEmpresa" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">RUC</label>
+                        <input type="text" class="form-control" @bind="ruc" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Certificado (.p12)</label>
+                        <select class="form-select" @bind="certificadoPath">
+                            <option value="">-- Seleccionar --</option>
+                            @foreach (var cert in certificados)
+                            {
+                                <option value="@cert">@System.IO.Path.GetFileName(cert)</option>
+                            }
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Password Certificado</label>
+                        <div class="input-group">
+                            <input type="@(mostrarPassword ? "text" : "password")" class="form-control" @bind="password" placeholder="Ingrese la contraseña del certificado" />
+                            <button class="btn btn-outline-secondary" type="button" @onclick="TogglePasswordVisibility">
+                                @if (mostrarPassword)
+                                {
+                                    <i class="fas fa-eye-slash"></i>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-eye"></i>
+                                }
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(password))
+                        {
+                            <div class="form-text">
+                                <small>Contraseña actual: <code>@(mostrarPassword ? password : new string('*', password.Length))</code></small>
+                            </div>
+                        }
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Ambiente SET</label>
+                        <select class="form-select" @bind="ambiente">
+                            <option value="test">Pruebas (sifen-test.set.gov.py)</option>
+                            <option value="prod">Producción (sifen.set.gov.py)</option>
+                        </select>
+                        <div class="form-text">Seleccione el ambiente de la SET para consultas RUC y facturación electrónica</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Timbrado SET</label>
+                        <input type="text" class="form-control" @bind="timbrado" placeholder="Ej: 12345678" />
+                        <div class="form-text">Número de timbrado asignado por la SET para facturación electrónica</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Punto de Expedición</label>
+                        <input type="text" class="form-control" @bind="puntoExpedicion" placeholder="001" maxlength="3" />
+                        <div class="form-text">Punto de expedición (3 dígitos)</div>
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary" @onclick="Guardar" disabled="@saving">
+                        @if (saving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <text>Guardando...</text>
+                        }
+                        else
+                        {
+                            <text>Guardar Configuracion</text>
+                        }
+                    </button>
+                    
+                    <button type="button" class="btn btn-secondary ms-2" @onclick="ProbarConexion" disabled="@probandoConexion">
+                        @if (probandoConexion)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <text>Probando...</text>
+                        }
+                        else
+                        {
+                            <text>🔍 Probar Conexión SIFEN</text>
+                        }
+                    </button>
+                    
+                    <button type="button" class="btn btn-outline-info ms-2" @onclick="DiagnosticoCompleto" disabled="@diagnosticando">
+                        @if (diagnosticando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <text>Diagnosticando...</text>
+                        }
+                        else
+                        {
+                            <text>🔧 Diagnóstico Completo</text>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6>Información SIFEN</h6>
+                    <div class="small">
+                        <p><strong>URLs Oficiales:</strong></p>
+                        <ul class="mb-2">
+                            <li><strong>Pruebas:</strong> sifen-test.set.gov.py</li>
+                            <li><strong>Producción:</strong> sifen.set.gov.py</li>
+                        </ul>
+                        
+                        <p><strong>Endpoints disponibles:</strong></p>
+                        <ul class="mb-2">
+                            <li>Consulta RUC: <code>/de/ws/consultas/consulta-ruc.wsdl</code></li>
+                            <li>Envío DE: <code>/de/ws/sync/recibe-de.wsdl</code></li>
+                            <li>Consulta DE: <code>/de/ws/consultas/consulta-de.wsdl</code></li>
+                        </ul>
+                        
+                        <p><strong>Certificados:</strong></p>
+                        @if (certificados.Any())
+                        {
+                            <ul>
+                                @foreach (var cert in certificados)
+                                {
+                                    <li>@System.IO.Path.GetFileName(cert)</li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No hay certificados .p12 en /certificados</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(mensaje))
+    {
+        <div class="alert @(esError ? "alert-danger" : "alert-success") mt-3">
+            @mensaje
+        </div>
+    }
+    
+    @if (!string.IsNullOrEmpty(resultadoDiagnostico))
+    {
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6>Resultado del Diagnóstico</h6>
+            </div>
+            <div class="card-body">
+                <pre class="small" style="max-height: 400px; overflow-y: auto;">@resultadoDiagnostico</pre>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool loading = true;
+    private bool saving = false;
+    private bool probandoConexion = false;
+    private bool diagnosticando = false;
+    private bool sucursalExiste = false;
+    private bool esError = false;
+    private bool mostrarPassword = false;
+    private string mensaje = "";
+    private string resultadoDiagnostico = "";
+    
+    private string nombreSucursal = "Sucursal Principal";
+    private string nombreEmpresa = "Mi Empresa";
+    private string ruc = "80000000";
+    private string certificadoPath = "";
+    private string password = "";
+    private string ambiente = "test";
+    private string timbrado = "";
+    private string puntoExpedicion = "001";
+    
+    private List<string> certificados = new();
+    private Sucursal? currentSucursal;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Buscar certificados
+            var certDir = Path.Combine(Directory.GetCurrentDirectory(), "certificados");
+            if (Directory.Exists(certDir))
+            {
+                certificados = Directory.GetFiles(certDir, "*.p12").ToList();
+            }
+
+            // Cargar sucursal
+            using var db = await DbFactory.CreateDbContextAsync();
+            currentSucursal = await db.Sucursal.FirstOrDefaultAsync();
+            
+            if (currentSucursal is not null)
+            {
+                sucursalExiste = true;
+                nombreSucursal = currentSucursal.NombreSucursal;
+                nombreEmpresa = currentSucursal.NombreEmpresa;
+                ruc = currentSucursal.RUC;
+                certificadoPath = currentSucursal.CertificadoRuta ?? "";
+                password = currentSucursal.CertificadoPassword ?? "";
+                ambiente = currentSucursal.Ambiente ?? "test";
+                timbrado = currentSucursal.Timbrado ?? "";
+                puntoExpedicion = currentSucursal.PuntoExpedicion ?? "001";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error: {ex.Message}";
+            esError = true;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(nombreSucursal) || 
+            string.IsNullOrWhiteSpace(ruc) ||
+            string.IsNullOrWhiteSpace(certificadoPath) ||
+            string.IsNullOrWhiteSpace(password) ||
+            string.IsNullOrWhiteSpace(puntoExpedicion))
+        {
+            mensaje = "Complete todos los campos obligatorios (Nombre, RUC, Certificado, Password, Punto Expedición)";
+            esError = true;
+            return;
+        }
+
+        saving = true;
+        mensaje = "";
+        
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            
+            if (currentSucursal is null)
+            {
+                currentSucursal = new Sucursal
+                {
+                    NumSucursal = "001",
+                    NombreSucursal = nombreSucursal,
+                    NombreEmpresa = nombreEmpresa,
+                    Direccion = "Asuncion",
+                    RUC = ruc,
+                    DV = RucHelper.CalcularDvRuc(ruc),
+                    CertificadoRuta = certificadoPath,
+                    CertificadoPassword = password,
+                    Ambiente = ambiente,
+                    Timbrado = timbrado,
+                    PuntoExpedicion = puntoExpedicion,
+                    IdCiudad = 1
+                };
+                
+                db.Sucursal.Add(currentSucursal);
+                sucursalExiste = true;
+            }
+            else
+            {
+                currentSucursal.NombreSucursal = nombreSucursal;
+                currentSucursal.NombreEmpresa = nombreEmpresa;
+                currentSucursal.RUC = ruc;
+                currentSucursal.DV = RucHelper.CalcularDvRuc(ruc);
+                currentSucursal.CertificadoRuta = certificadoPath;
+                currentSucursal.CertificadoPassword = password;
+                currentSucursal.Ambiente = ambiente;
+                currentSucursal.Timbrado = timbrado;
+                currentSucursal.PuntoExpedicion = puntoExpedicion;
+                
+                db.Sucursal.Update(currentSucursal);
+            }
+            
+            await db.SaveChangesAsync();
+            
+            mensaje = "Configuración guardada. DNIT y facturación electrónica habilitados.";
+            esError = false;
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al guardar: {ex.Message}";
+            esError = true;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+    
+    private async Task ProbarConexion()
+    {
+        if (string.IsNullOrWhiteSpace(certificadoPath) || string.IsNullOrWhiteSpace(password))
+        {
+            mensaje = "Configure el certificado y contraseña antes de probar la conexión";
+            esError = true;
+            return;
+        }
+
+        probandoConexion = true;
+        mensaje = "";
+        resultadoDiagnostico = "";
+        
+        try
+        {
+            Console.WriteLine("[DEBUG] === INICIANDO PRUEBA DE CONEXIÓN SIFEN ===");
+            Console.WriteLine($"[DEBUG] Ambiente: {ambiente}");
+            Console.WriteLine($"[DEBUG] Certificado: {certificadoPath}");
+            
+            // Usar SifenTester con formato XML corregido
+            var ambienteCodigo = ambiente == "test" ? "1" : "2";
+            var testResult = await SifenTester.TestConnection(ambienteCodigo, certificadoPath, password);
+            
+            Console.WriteLine($"[DEBUG] Resultado: Success={testResult.Success}, StatusCode={testResult.StatusCode}");
+            Console.WriteLine($"[DEBUG] Message: {testResult.Message}");
+            Console.WriteLine($"[DEBUG] Response: {testResult.ResponsePreview}");
+            
+            if (testResult.Success)
+            {
+                mensaje = $"✅ {testResult.Message}";
+                esError = false;
+            }
+            else
+            {
+                mensaje = $"❌ {testResult.Message}";
+                if (!string.IsNullOrEmpty(testResult.Details))
+                    mensaje += $"\nDetalles: {testResult.Details}";
+                if (testResult.StatusCode > 0)
+                    mensaje += $"\nStatus Code: {testResult.StatusCode}";
+                esError = true;
+            }
+        }
+        finally
+        {
+            probandoConexion = false;
+        }
+    }
+    
+    private async Task DiagnosticoCompleto()
+    {
+        diagnosticando = true;
+        resultadoDiagnostico = "";
+        mensaje = "";
+        
+        var diagnostico = new StringBuilder();
+        diagnostico.AppendLine("=== DIAGNÓSTICO COMPLETO SIFEN ===");
+        diagnostico.AppendLine($"Fecha: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        diagnostico.AppendLine();
+        
+        try
+        {
+            // 1. Verificar conectividad básica
+            diagnostico.AppendLine("1. CONECTIVIDAD BÁSICA");
+            diagnostico.AppendLine("---------------------");
+            
+            var testBasico = await SifenTester.TestBasicConnectivity(ambiente == "test" ? "1" : "2");
+            diagnostico.AppendLine($"Estado: {(testBasico.Success ? "✅ OK" : "❌ ERROR")}");
+            diagnostico.AppendLine($"Mensaje: {testBasico.Message}");
+            diagnostico.AppendLine($"Detalles: {testBasico.Details}");
+            if (testBasico.StatusCode > 0)
+                diagnostico.AppendLine($"Status Code: {testBasico.StatusCode}");
+            diagnostico.AppendLine();
+            
+            // 2. Verificar certificado
+            diagnostico.AppendLine("2. VERIFICACIÓN DE CERTIFICADO");
+            diagnostico.AppendLine("-----------------------------");
+            
+            if (string.IsNullOrWhiteSpace(certificadoPath) || string.IsNullOrWhiteSpace(password))
+            {
+                diagnostico.AppendLine("❌ Certificado o contraseña no configurados");
+            }
+            else
+            {
+                var testCompleto = await SifenTester.TestConnection(ambiente == "test" ? "1" : "2", certificadoPath, password);
+                diagnostico.AppendLine($"Estado: {(testCompleto.Success ? "✅ OK" : "❌ ERROR")}");
+                diagnostico.AppendLine($"Mensaje: {testCompleto.Message}");
+                diagnostico.AppendLine($"Detalles: {testCompleto.Details}");
+                if (testCompleto.StatusCode > 0)
+                    diagnostico.AppendLine($"Status Code: {testCompleto.StatusCode}");
+                
+                if (!string.IsNullOrEmpty(testCompleto.ResponsePreview))
+                {
+                    diagnostico.AppendLine("Response Preview:");
+                    diagnostico.AppendLine(testCompleto.ResponsePreview);
+                }
+                
+                if (testCompleto.Success)
+                {
+                    mensaje = "✅ Diagnóstico completado: SIFEN está operativo";
+                    esError = false;
+                }
+                else
+                {
+                    mensaje = "❌ Problemas detectados en la conexión SIFEN";
+                    esError = true;
+                }
+            }
+            
+            diagnostico.AppendLine();
+            
+            // 3. Información de configuración
+            diagnostico.AppendLine("3. CONFIGURACIÓN ACTUAL");
+            diagnostico.AppendLine("----------------------");
+            var ambienteTexto = ambiente == "test" ? "Pruebas" : "Producción";
+            var urlBase = ambiente == "test" ? "https://sifen-test.set.gov.py" : "https://sifen.set.gov.py";
+            var certificadoTexto = string.IsNullOrEmpty(certificadoPath) ? "No configurado" : Path.GetFileName(certificadoPath);
+            var timbradoTexto = string.IsNullOrEmpty(timbrado) ? "No configurado" : timbrado;
+            
+            diagnostico.AppendLine($"Ambiente: {ambienteTexto}");
+            diagnostico.AppendLine($"URL Base: {urlBase}");
+            diagnostico.AppendLine($"Certificado: {certificadoTexto}");
+            diagnostico.AppendLine($"RUC: {ruc}");
+            diagnostico.AppendLine($"Timbrado: {timbradoTexto}");
+            diagnostico.AppendLine();
+            
+            // 4. Recomendaciones
+            diagnostico.AppendLine("4. RECOMENDACIONES");
+            diagnostico.AppendLine("------------------");
+            
+            if (string.IsNullOrEmpty(certificadoPath))
+                diagnostico.AppendLine("• Configure un certificado .p12 válido");
+            if (string.IsNullOrEmpty(password))
+                diagnostico.AppendLine("• Configure la contraseña del certificado");
+            if (string.IsNullOrEmpty(timbrado))
+                diagnostico.AppendLine("• Configure el número de timbrado para facturación electrónica");
+            
+            diagnostico.AppendLine("• Verifique que el certificado esté vigente");
+            diagnostico.AppendLine("• Confirme que el RUC corresponda al certificado");
+            diagnostico.AppendLine("• En caso de problemas, contacte al soporte técnico de la SET");
+            
+            resultadoDiagnostico = diagnostico.ToString();
+        }
+        catch (Exception ex)
+        {
+            diagnostico.AppendLine($"ERROR durante el diagnóstico: {ex.Message}");
+            resultadoDiagnostico = diagnostico.ToString();
+            mensaje = "❌ Error durante el diagnóstico";
+            esError = true;
+        }
+        finally
+        {
+            diagnosticando = false;
+        }
+    }
+    
+    private void TogglePasswordVisibility()
+    {
+        mostrarPassword = !mostrarPassword;
+    }
+}

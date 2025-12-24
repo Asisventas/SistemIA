@@ -1,0 +1,312 @@
+@page "/personal/permisos-usuarios"
+@using SistemIA.Models
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject PermisosService PermisosService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/personal" Permiso="VIEW">
+
+<PageTitle>Permisos de Usuarios - SistemIA</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h3><i class="bi bi-shield-lock"></i> Permisos de Usuarios</h3>
+            <p class="text-muted">Configure los permisos de acceso a módulos por rol de usuario</p>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando permisos...</p>
+        </div>
+    }
+    else
+    {
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label fw-bold">Seleccionar Rol:</label>
+                <select class="form-select" @bind="rolSeleccionadoId" @bind:after="CargarPermisosRol">
+                    <option value="0">-- Seleccione un rol --</option>
+                    @foreach (var rol in roles)
+                    {
+                        <option value="@rol.Id_Rol">@rol.NombreRol</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-8 text-end align-self-end">
+                @if (rolSeleccionadoId > 0)
+                {
+                    <button class="btn btn-success" @onclick="GuardarCambios" disabled="@guardando">
+                        <i class="bi bi-save"></i> 
+                        @if (guardando)
+                        {
+                            <span>Guardando...</span>
+                        }
+                        else
+                        {
+                            <span>Guardar Cambios</span>
+                        }
+                    </button>
+                    <button class="btn btn-secondary ms-2" @onclick="CargarPermisosRol">
+                        <i class="bi bi-arrow-clockwise"></i> Recargar
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (mensaje != null)
+        {
+            <div class="alert alert-@(mensajeEsError ? "danger" : "success") alert-dismissible fade show" role="alert">
+                <i class="bi bi-@(mensajeEsError ? "exclamation-triangle" : "check-circle")"></i> @mensaje
+                <button type="button" class="btn-close" @onclick="() => mensaje = null"></button>
+            </div>
+        }
+
+        @if (rolSeleccionadoId > 0 && modulosConPermisos.Any())
+        {
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-grid-3x3"></i> Matriz de Permisos</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                        <table class="table table-hover table-bordered mb-0">
+                            <thead style="position: sticky; top: 0; z-index: 10;">
+                                <tr class="table-primary">
+                                    <th class="text-white" style="width: 30%; position: sticky; top: 0; background-color: var(--bs-primary) !important;">Módulo</th>
+                                    @foreach (var permiso in todosPermisos)
+                                    {
+                                        <th class="text-center text-white" style="width: 11%; position: sticky; top: 0; background-color: var(--bs-primary) !important;">
+                                            <i class="bi bi-@ObtenerIconoPermiso(permiso.Codigo)"></i><br />
+                                            <small>@permiso.Nombre</small>
+                                        </th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var mc in modulosConPermisos.Where(m => m.Modulo.IdModuloPadre == null))
+                                {
+                                    <!-- Módulo padre -->
+                                    <tr class="table-secondary">
+                                        <td>
+                                            <strong>
+                                                <i class="@mc.Modulo.Icono"></i> @mc.Modulo.Nombre
+                                            </strong>
+                                            <br />
+                                            <small class="text-muted">@mc.Modulo.Descripcion</small>
+                                        </td>
+                                        @foreach (var pa in mc.Permisos)
+                                        {
+                                            <td class="text-center align-middle">
+                                                <input type="checkbox" 
+                                                       class="form-check-input" 
+                                                       style="transform: scale(1.5);"
+                                                       checked="@pa.Concedido" 
+                                                       @onchange="e => CambiarPermiso(mc.Modulo.IdModulo, pa.Permiso.IdPermiso, (bool)e.Value!)" />
+                                            </td>
+                                        }
+                                    </tr>
+
+                                    <!-- Submódulos -->
+                                    @foreach (var submc in modulosConPermisos.Where(m => m.Modulo.IdModuloPadre == mc.Modulo.IdModulo))
+                                    {
+                                        <tr>
+                                            <td class="ps-5">
+                                                <i class="@submc.Modulo.Icono"></i> @submc.Modulo.Nombre
+                                                <br />
+                                                <small class="text-muted">@submc.Modulo.Descripcion</small>
+                                            </td>
+                                            @foreach (var pa in submc.Permisos)
+                                            {
+                                                <td class="text-center align-middle">
+                                                    <input type="checkbox" 
+                                                           class="form-check-input" 
+                                                           style="transform: scale(1.5);"
+                                                           checked="@pa.Concedido" 
+                                                           @onchange="e => CambiarPermiso(submc.Modulo.IdModulo, pa.Permiso.IdPermiso, (bool)e.Value!)" />
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-info mt-3">
+                <i class="bi bi-info-circle"></i> 
+                <strong>Nota:</strong> Los cambios no se aplicarán hasta que presione el botón "Guardar Cambios".
+                Los usuarios con sesiones activas deberán cerrar sesión y volver a iniciarla para que los cambios surtan efecto.
+            </div>
+        }
+        else if (rolSeleccionadoId > 0)
+        {
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i> No hay módulos configurados en el sistema.
+            </div>
+        }
+    }
+</div>
+
+</PageProtection>
+
+@code {
+    private bool cargando = true;
+    private bool guardando = false;
+    private List<Rol> roles = new();
+    private int rolSeleccionadoId = 0;
+    private List<ModuloConPermisos> modulosConPermisos = new();
+    private List<Permiso> todosPermisos = new();
+    private string? mensaje;
+    private bool mensajeEsError;
+    private string? usuarioActual;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarUsuarioActual();
+        await CargarRoles();
+        cargando = false;
+    }
+
+    private async Task CargarUsuarioActual()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                usuarioActual = user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Desconocido";
+            }
+            else
+            {
+                usuarioActual = "Sistema";
+            }
+        }
+        catch
+        {
+            usuarioActual = "Sistema";
+        }
+    }
+
+    private async Task CargarRoles()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        roles = await ctx.Roles.Where(r => r.Estado).OrderBy(r => r.NombreRol).ToListAsync();
+        
+        // Cargar todos los permisos disponibles
+        todosPermisos = await ctx.Permisos.Where(p => p.Activo).OrderBy(p => p.Orden).ToListAsync();
+    }
+
+    private async Task CargarPermisosRol()
+    {
+        if (rolSeleccionadoId <= 0)
+        {
+            modulosConPermisos.Clear();
+            return;
+        }
+
+        cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            modulosConPermisos = await PermisosService.ObtenerModulosConPermisosAsync(rolSeleccionadoId);
+            mensaje = null;
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al cargar permisos: {ex.Message}";
+            mensajeEsError = true;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void CambiarPermiso(int idModulo, int idPermiso, bool concedido)
+    {
+        var modulo = modulosConPermisos.FirstOrDefault(m => m.Modulo.IdModulo == idModulo);
+        if (modulo == null) return;
+
+        var permiso = modulo.Permisos.FirstOrDefault(p => p.Permiso.IdPermiso == idPermiso);
+        if (permiso == null) return;
+
+        permiso.Concedido = concedido;
+    }
+
+    private async Task GuardarCambios()
+    {
+        guardando = true;
+        mensaje = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Obtener rol actual para auditoría
+            var rol = await ctx.Roles.FirstOrDefaultAsync(r => r.Id_Rol == rolSeleccionadoId);
+
+            int cambiosRealizados = 0;
+
+            foreach (var mc in modulosConPermisos)
+            {
+                foreach (var pa in mc.Permisos)
+                {
+                    var exitoso = await PermisosService.AsignarPermisoAsync(
+                        rolSeleccionadoId,
+                        mc.Modulo.IdModulo,
+                        pa.Permiso.IdPermiso,
+                        pa.Concedido,
+                        usuarioActual
+                    );
+
+                    if (exitoso) cambiosRealizados++;
+                }
+            }
+
+            mensaje = $"Se guardaron correctamente {cambiosRealizados} permisos para el rol {rol?.NombreRol}.";
+            mensajeEsError = false;
+
+            // Recargar permisos para reflejar cambios
+            await CargarPermisosRol();
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al guardar cambios: {ex.Message}";
+            mensajeEsError = true;
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+    private string ObtenerIconoPermiso(string codigo)
+    {
+        return codigo switch
+        {
+            "VIEW" => "eye",
+            "CREATE" => "plus-circle",
+            "EDIT" => "pencil-square",
+            "DELETE" => "trash",
+            "EXPORT" => "download",
+            "PRINT" => "printer",
+            _ => "circle"
+        };
+    }
+}

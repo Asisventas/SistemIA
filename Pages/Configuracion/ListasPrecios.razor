@@ -1,0 +1,111 @@
+@* Vista duplicada (sin ruta) — se mantiene como referencia pero no es enrutable *@
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Shared
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Rendering
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<h3 class="mb-3">Listas de Precios</h3>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+          <i class="bi bi-tags me-2"></i>
+          <strong>Listas configuradas</strong>
+        </div>
+        <div class="text-muted small">Total: @Listas.Count</div>
+      </div>
+      <div class="card-body p-0">
+        @if (Cargando)
+        {
+            <div class="py-3 text-center text-muted small">Cargando listas...</div>
+        }
+        else if (Listas.Count == 0)
+        {
+            <div class="py-3 text-center text-muted small">No hay listas de precios configuradas</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr class="text-success">
+                    <th class="text-uppercase small">Lista</th>
+                    <th class="text-uppercase small">Moneda</th>
+                    <th class="text-uppercase small">Vigencia</th>
+                    <th class="text-uppercase small text-center">Predet.</th>
+                    <th class="text-uppercase small text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var l in Listas)
+                  {
+                    <tr>
+                      <td>
+                        <div class="fw-semibold">@l.Nombre</div>
+                        <div class="small text-muted">@l.Descripcion</div>
+                      </td>
+                      <td>
+                        <img src="@GetFlagUrl(l.Moneda?.CodigoISO)" alt="@l.Moneda?.CodigoISO" class="me-2" style="width:20px;height:14px;object-fit:cover;border-radius:1px;border:1px solid rgba(0,0,0,.1)" />
+                        <span class="fw-semibold">@l.Moneda?.CodigoISO</span>
+                        <small class="text-muted ms-1">@l.Moneda?.Nombre</small>
+                      </td>
+                      <td><small>@l.VigenciaDescripcion</small></td>
+                      <td class="text-center">@(l.EsPredeterminada ? "✔" : "—")</td>
+                      <td class="text-center">
+                        @if (l.Estado)
+                        {
+                            <span class="badge bg-success-subtle text-success">Activa</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary-subtle text-secondary">Inactiva</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <TablaTiposCambio />
+  </div>
+</div>
+
+@code {
+  private bool Cargando = true;
+  private List<ListaPrecio> Listas = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    try
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      Listas = await ctx.ListasPrecios
+        .Include(l => l.Moneda)
+        .OrderBy(l => l.Orden)
+        .ThenBy(l => l.Nombre)
+        .ToListAsync();
+    }
+    finally
+    {
+      Cargando = false;
+    }
+  }
+
+  private static string GetFlagUrl(string? iso) => iso switch
+  {
+      "PYG" => "/img/flags/pyg.svg",
+      "USD" => "/img/flags/usd.svg",
+      "BRL" => "/img/flags/brl.svg",
+      "ARS" => "/img/flags/ars.svg",
+      _ => "/img/flags/usd.svg"
+  };
+}

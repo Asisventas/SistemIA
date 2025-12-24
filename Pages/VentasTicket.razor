@@ -1,0 +1,610 @@
+@page "/ventas/ticket/{IdVenta:int}"
+@page "/ventas/ticket/{IdVenta:int}/{AutoPrint:int}"
+@using SistemIA.Models
+@using Microsoft.EntityFrameworkCore
+@using System.Globalization
+@using System.Text
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle></PageTitle>
+
+<HeadContent>
+    <link rel="stylesheet" href="~/css/ticket-80mm.css?v=@DateTime.Now.Ticks" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</HeadContent>
+
+@if (_venta == null || _sociedad == null)
+{
+    <p><em>Cargando ticket...</em></p>
+}
+else
+{
+    @if (AutoPrint == 1)
+    {
+        <!-- Barra de acciones flotante -->
+        <div id="actionBar" style="position: fixed; top: 10px; right: 10px; z-index: 1001; display: none;">
+            <button class="btn btn-primary btn-sm me-2" onclick="window.print();" title="Imprimir de nuevo">
+                <i class="bi bi-printer"></i> Imprimir
+            </button>
+            <a href="/ventas" class="btn btn-secondary btn-sm me-2" title="Volver a Ventas">
+                <i class="bi bi-arrow-left"></i> Volver
+            </a>
+            <button class="btn btn-danger btn-sm" onclick="window.close();" title="Cerrar">
+                <i class="bi bi-x-lg"></i> Cerrar
+            </button>
+        </div>
+        
+        <!-- Contenedor para el PDF -->
+        <div id="pdfContainer" style="width: 100%; height: 100vh;">
+            <iframe id="pdfFrame" style="width: 100%; height: 100%; border: none;"></iframe>
+        </div>
+        <div id="loadingOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; display: flex; justify-content: center; align-items: center; flex-direction: column; z-index: 1000;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Generando ticket...</span>
+            </div>
+            <p class="mt-3">Generando ticket para impresión...</p>
+        </div>
+    }
+    else
+    {
+        <div class="ticket-container">
+        <div class="ticket-print-area" id="ticketPrintArea">
+
+            <!-- ENCABEZADO -->
+            <div class="ticket-header">
+                @if (_caja?.MostrarLogo == true && _sucursal?.Logo?.Length > 0)
+                {
+                    <div class="ticket-logo">
+                        <img src="@GetLogoBase64()" alt="Logo" />
+                    </div>
+                }
+                <div class="ticket-empresa">@_sociedad.Nombre</div>
+                <div class="ticket-ruc">RUC: @_sociedad.RUC</div>
+
+                @if (!string.IsNullOrEmpty(_sociedad.Direccion))
+                {
+                    <div class="ticket-direccion">@_sociedad.Direccion</div>
+                }
+
+                @if (!string.IsNullOrEmpty(_sociedad.Telefono))
+                {
+                    <div class="ticket-telefono">Tel: @_sociedad.Telefono</div>
+                }
+
+                <div class="ticket-tipo-doc">
+                    @(_caja?.TipoFacturacion == "ELECTRONICA"
+                        ? "FACTURA ELECTRÓNICA"
+                        : (_venta.TipoDocumento?.ToUpper() ?? "FACTURA"))
+                </div>
+            </div>
+
+            <div class="ticket-separator">================================</div>
+
+            <!-- DATOS FACTURA -->
+            <div class="ticket-info">
+                <div class="ticket-row"><span class="ticket-label">Nro:</span><span class="ticket-value">@_venta.NumeroFactura</span></div>
+                <div class="ticket-row"><span class="ticket-label">Fecha:</span><span class="ticket-value">@_venta.Fecha.ToString("dd/MM/yyyy HH:mm")</span></div>
+
+                @if (!string.IsNullOrEmpty(_venta.Timbrado))
+                {
+                    <div class="ticket-row"><span class="ticket-label">Timbrado:</span><span class="ticket-value">@_venta.Timbrado</span></div>
+                }
+
+                @if (_venta.FechaVencimiento.HasValue)
+                {
+                    <div class="ticket-row"><span class="ticket-label">Válido:</span><span class="ticket-value">@_venta.FechaVencimiento.Value.ToString("dd/MM/yyyy")</span></div>
+                }
+            </div>
+
+            <div class="ticket-separator">================================</div>
+
+            <!-- CLIENTE -->
+            @if (_cliente != null)
+            {
+                <div class="ticket-cliente">
+                    <div class="ticket-row"><span class="ticket-label">Cliente:</span><span class="ticket-value">@_cliente.RazonSocial</span></div>
+                    @if (!string.IsNullOrEmpty(_cliente.RUC))
+                    {
+                        <div class="ticket-row"><span class="ticket-label">RUC/CI:</span><span class="ticket-value">@_cliente.RUC</span></div>
+                    }
+                </div>
+
+                <div class="ticket-separator">================================</div>
+            }
+
+            <!-- CONDICIÓN -->
+            <div class="ticket-condicion">
+                <div class="ticket-row">
+                    <span class="ticket-label">Condición:</span>
+                    <span class="ticket-value">@(_tipoPago?.Nombre ?? "CONTADO")</span>
+                </div>
+            </div>
+
+            <div class="ticket-separator">================================</div>
+
+            <!-- DETALLE -->
+            <div class="ticket-detalle">
+                <div class="ticket-detalle-header">
+                    <span class="col-desc">DESCRIPCIÓN</span>
+                    <span class="col-cant">CANT</span>
+                    <span class="col-precio">PRECIO</span>
+                    <span class="col-subtotal">TOTAL</span>
+                </div>
+
+                @foreach (var det in _detalles)
+                {
+                    <div class="ticket-detalle-item">
+                        <span class="col-desc">@det.Producto?.Descripcion</span>
+                        <span class="col-cant">@det.Cantidad</span>
+                        <span class="col-precio">@FormatearImporte(det.PrecioUnitario)</span>
+                        <span class="col-subtotal">@FormatearImporte(det.Importe)</span>
+                    </div>
+                }
+            </div>
+
+            <div class="ticket-separator">================================</div>
+
+            <!-- TOTALES -->
+            <div class="ticket-totales">
+                <div class="ticket-row"><span class="ticket-label">Subtotal:</span><span class="ticket-value">@FormatearImporte(_subtotalGravadas)</span></div>
+
+                @if (_totalIva10 > 0)
+                {
+                    <div class="ticket-row"><span class="ticket-label">IVA 10%:</span><span class="ticket-value">@FormatearImporte(_totalIva10)</span></div>
+                }
+
+                @if (_totalIva5 > 0)
+                {
+                    <div class="ticket-row"><span class="ticket-label">IVA 5%:</span><span class="ticket-value">@FormatearImporte(_totalIva5)</span></div>
+                }
+
+                <div class="ticket-separator">--------------------------------</div>
+
+                <div class="ticket-row ticket-total">
+                    <span class="ticket-label">TOTAL:</span>
+                    <span class="ticket-value">@FormatearImporte(_venta.Total)</span>
+                </div>
+            </div>
+
+            <div class="ticket-separator">================================</div>
+
+            <!-- PIE -->
+            <div class="ticket-footer">
+                <div class="ticket-gracias">¡GRACIAS POR SU COMPRA!</div>
+                <div class="ticket-sistema">SistemIA</div>
+            </div>
+        </div>
+
+        <!-- BOTONES -->
+        <div class="ticket-actions no-print">
+            <button class="btn btn-primary" @onclick="ImprimirTicket">
+                <i class="fas fa-print me-2"></i>Imprimir Directamente
+            </button>
+            <button class="btn btn-info" @onclick="PrevisualizarPdfTicket">
+                <i class="fas fa-eye me-2"></i>Previsualizar PDF
+            </button>
+            <button class="btn btn-secondary" @onclick="Cerrar">
+                <i class="fas fa-times me-2"></i>Cerrar
+            </button>
+        </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int IdVenta { get; set; }
+    [Parameter] public int AutoPrint { get; set; }
+
+    private Venta? _venta;
+    private Cliente? _cliente;
+    private Sociedad? _sociedad;
+    private Sucursal? _sucursal;
+    private TipoPago? _tipoPago;
+    private Caja? _caja;
+    private List<VentaDetalle> _detalles = new();
+
+    private decimal _subtotalGravadas;
+    private decimal _totalIva5;
+    private decimal _totalIva10;
+    private decimal _totalExentas;
+    private decimal _liquidacionIva10;
+    private decimal _liquidacionIva5;
+
+    private int AnchoCaracteres => _caja?.AnchoTicket is > 20 ? _caja.AnchoTicket.Value : 42;
+
+    protected override async Task OnInitializedAsync() => await CargarDatosAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoPrint == 1)
+        {
+            // Dar más tiempo para que la página cargue completamente antes de generar el PDF
+            await Task.Delay(1500);
+            await GenerarPdfEnIframe();
+        }
+    }
+
+    /// <summary>
+    /// Construye el objeto ticketData con todos los datos necesarios para factura autoimpresor Paraguay
+    /// </summary>
+    private object BuildTicketData()
+    {
+        var esFacturaElectronica = _caja?.TipoFacturacion == "ELECTRONICA";
+        var tipoDocumento = esFacturaElectronica ? "FACTURA ELECTRÓNICA" : (_venta?.TipoDocumento?.ToUpper() ?? "FACTURA");
+        
+        return new
+        {
+            // === DATOS DEL EMISOR (Sociedad/Empresa) ===
+            empresa = _sociedad?.Nombre ?? "",
+            ruc = FormatearRucConDv(_sociedad?.RUC, _sociedad?.DV),
+            direccion = _sociedad?.Direccion ?? "",
+            telefono = _sociedad?.Telefono ?? "",
+            email = _sociedad?.Email ?? "",
+            
+            // === DATOS DE SUCURSAL ===
+            sucursal = _sucursal?.NombreSucursal ?? "",
+            sucursalNumero = _sucursal?.NumSucursal ?? "",
+            sucursalDireccion = _sucursal?.Direccion ?? "",
+            sucursalTelefono = _sucursal?.Telefono ?? "",
+            rubroEmpresa = _sucursal?.RubroEmpresa ?? "",
+            
+            // === DATOS DE CAJA/PUNTO DE EXPEDICIÓN ===
+            puntoExpedicion = _caja?.Nivel2 ?? "",
+            establecimiento = _caja?.Nivel1 ?? "",
+            cajaNumero = _caja?.CajaActual?.ToString() ?? "",
+            tipoFacturacion = _caja?.TipoFacturacion ?? "AUTOIMPRESOR",
+            
+            // === DATOS DEL DOCUMENTO ===
+            tipoDoc = tipoDocumento,
+            numero = FormatearNumeroFactura(_caja?.Nivel1, _caja?.Nivel2, _venta?.NumeroFactura),
+            serie = _caja?.Serie?.ToString() ?? "",
+            fecha = _venta?.Fecha.ToString("dd/MM/yyyy HH:mm") ?? "",
+            
+            // === DATOS DE TIMBRADO (Autoimpresor) ===
+            timbrado = _venta?.Timbrado ?? _caja?.Timbrado ?? "",
+            vigenciaDel = _caja?.VigenciaDel?.ToString("dd/MM/yyyy") ?? "",
+            vigenciaAl = _caja?.VigenciaAl?.ToString("dd/MM/yyyy") ?? "",
+            validoHasta = _venta?.FechaVencimiento?.ToString("dd/MM/yyyy") ?? _caja?.VigenciaAl?.ToString("dd/MM/yyyy") ?? "",
+            
+            // === DATOS DEL CLIENTE ===
+            cliente = _cliente?.RazonSocial ?? "",
+            clienteRuc = _cliente?.RUC ?? "",
+            clienteDireccion = _cliente?.Direccion ?? "",
+            clienteTelefono = _cliente?.Telefono ?? "",
+            
+            // === CONDICIÓN DE VENTA ===
+            condicion = _tipoPago?.Nombre ?? "CONTADO",
+            esCredito = (_tipoPago?.Nombre?.ToUpper().Contains("CREDITO") ?? false) || (_tipoPago?.Nombre?.ToUpper().Contains("CRÉDITO") ?? false),
+            
+            // === DETALLE DE PRODUCTOS ===
+            items = _detalles.Select(d => new
+            {
+                codigo = d.Producto?.CodigoInterno ?? "",
+                descripcion = d.Producto?.Descripcion ?? "",
+                cantidad = d.Cantidad,
+                precio = FormatearImporte(d.PrecioUnitario),
+                exenta = d.Exenta > 0 ? FormatearImporte(d.Exenta) : "",
+                gravada5 = d.Grabado5 > 0 ? FormatearImporte(d.Grabado5) : "",
+                gravada10 = d.Grabado10 > 0 ? FormatearImporte(d.Grabado10) : "",
+                total = FormatearImporte(d.Importe)
+            }).ToArray(),
+            
+            // === TOTALES ===
+            subtotal = FormatearImporte(_subtotalGravadas),
+            subtotalExentas = _totalExentas > 0 ? FormatearImporte(_totalExentas) : "",
+            subtotalGravadas5 = _detalles.Sum(x => x.Grabado5) > 0 ? FormatearImporte(_detalles.Sum(x => x.Grabado5)) : "",
+            subtotalGravadas10 = _detalles.Sum(x => x.Grabado10) > 0 ? FormatearImporte(_detalles.Sum(x => x.Grabado10)) : "",
+            iva10 = _totalIva10 > 0 ? FormatearImporte(_totalIva10) : "",
+            iva5 = _totalIva5 > 0 ? FormatearImporte(_totalIva5) : "",
+            total = FormatearImporte(_venta?.Total ?? 0),
+            totalEnLetras = ConvertirNumeroALetras(_venta?.Total ?? 0),
+            
+            // === LIQUIDACIÓN IVA (Autoimpresor) ===
+            liquidacionIva10 = _liquidacionIva10 > 0 ? FormatearImporte(_liquidacionIva10) : "",
+            liquidacionIva5 = _liquidacionIva5 > 0 ? FormatearImporte(_liquidacionIva5) : "",
+            totalIva = FormatearImporte(_totalIva10 + _totalIva5),
+            
+            // === CONFIGURACIÓN DE IMPRESIÓN ===
+            ancho = AnchoCaracteres,
+            mostrarLogo = _caja?.MostrarLogo == true && _sucursal?.Logo?.Length > 0,
+            logoUrl = (_caja?.MostrarLogo == true && _sucursal?.Logo?.Length > 0) ? GetLogoBase64() : null,
+            esMonedaExtranjera = _venta?.EsMonedaExtranjera ?? false,
+            moneda = _venta?.EsMonedaExtranjera == true ? "USD" : "PYG"
+        };
+    }
+    
+    private string FormatearNumeroFactura(string? nivel1, string? nivel2, string? numeroFactura)
+    {
+        // Formato: 001-001-0001234 (establecimiento-punto expedición-número)
+        var est = (nivel1 ?? "001").PadLeft(3, '0');
+        var pto = (nivel2 ?? "001").PadLeft(3, '0');
+        var num = (numeroFactura ?? "0000001").PadLeft(7, '0');
+        return $"{est}-{pto}-{num}";
+    }
+    
+    private string FormatearRucConDv(string? ruc, int? dv)
+    {
+        if (string.IsNullOrEmpty(ruc)) return "";
+        return dv.HasValue ? $"{ruc}-{dv}" : ruc;
+    }
+    
+    private string ConvertirNumeroALetras(decimal numero)
+    {
+        // Implementación simple para montos en guaraníes
+        var parteEntera = (long)Math.Floor(numero);
+        if (parteEntera == 0) return "CERO GUARANIES";
+        
+        var resultado = ConvertirEnteroALetras(parteEntera);
+        return $"{resultado} GUARANIES";
+    }
+    
+    private string ConvertirEnteroALetras(long numero)
+    {
+        if (numero == 0) return "CERO";
+        if (numero < 0) return "MENOS " + ConvertirEnteroALetras(-numero);
+
+        string[] unidades = { "", "UN", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE" };
+        string[] especiales = { "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISEIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE" };
+        string[] decenas = { "", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA" };
+        string[] centenas = { "", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS" };
+
+        string resultado = "";
+
+        if (numero >= 1000000)
+        {
+            var millones = numero / 1000000;
+            resultado += (millones == 1 ? "UN MILLON " : ConvertirEnteroALetras(millones) + " MILLONES ");
+            numero %= 1000000;
+        }
+
+        if (numero >= 1000)
+        {
+            var miles = numero / 1000;
+            resultado += (miles == 1 ? "MIL " : ConvertirEnteroALetras(miles) + " MIL ");
+            numero %= 1000;
+        }
+
+        if (numero >= 100)
+        {
+            if (numero == 100)
+                resultado += "CIEN ";
+            else
+                resultado += centenas[numero / 100] + " ";
+            numero %= 100;
+        }
+
+        if (numero >= 20)
+        {
+            var d = numero / 10;
+            var u = numero % 10;
+            resultado += decenas[d];
+            if (u > 0) resultado += " Y " + unidades[u];
+            resultado += " ";
+        }
+        else if (numero >= 10)
+        {
+            resultado += especiales[numero - 10] + " ";
+        }
+        else if (numero > 0)
+        {
+            resultado += unidades[numero] + " ";
+        }
+
+        return resultado.Trim();
+    }
+    
+    private async Task GenerarPdfEnIframe()
+    {
+        if (_venta == null) return;
+        
+        var ticketData = BuildTicketData();
+        
+        await JS.InvokeVoidAsync("generarPdfEnIframe", ticketData);
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _venta = await ctx.Ventas.FindAsync(IdVenta);
+        if (_venta == null) return;
+
+        _detalles = await ctx.VentasDetalles.Include(x => x.Producto).Where(x => x.IdVenta == IdVenta).ToListAsync();
+        _cliente = _venta.IdCliente.HasValue ? await ctx.Clientes.FindAsync(_venta.IdCliente) : null;
+        _sociedad = await ctx.Sociedades.FirstAsync();
+        _sucursal = await ctx.Sucursal.FindAsync(_venta.IdSucursal);
+        _tipoPago = _venta.IdTipoPago.HasValue ? await ctx.TiposPago.FindAsync(_venta.IdTipoPago) : null;
+        _caja = await ctx.Cajas.FirstAsync(c => c.CajaActual == 1);
+
+        // Calcular totales
+        _subtotalGravadas = _detalles.Sum(x => x.Grabado10 + x.Grabado5);
+        _totalIva10 = _detalles.Sum(x => x.IVA10);
+        _totalIva5 = _detalles.Sum(x => x.IVA5);
+        _totalExentas = _detalles.Sum(x => x.Exenta);
+        
+        // Liquidación IVA (base imponible)
+        _liquidacionIva10 = _detalles.Sum(x => x.Grabado10) / 11m * 10m; // IVA 10% = Base / 11 * 10
+        _liquidacionIva5 = _detalles.Sum(x => x.Grabado5) / 21m * 20m;   // IVA 5% = Base / 21 * 20
+    }
+
+    private string FormatearImporte(decimal v) => _venta?.EsMonedaExtranjera == true ? v.ToString("N2") : v.ToString("N0");
+
+    private string GetLogoBase64() => $"data:image/png;base64,{Convert.ToBase64String(_sucursal!.Logo)}";
+
+    private async Task ImprimirTicketDirecto()
+    {
+        if (_venta == null) return;
+        var escpos = BuildEscPosTicket();
+        var payload = Convert.ToBase64String(Encoding.ASCII.GetBytes(escpos));
+        await JS.InvokeVoidAsync("printTicketEscPos", payload, _caja?.NombreImpresora);
+    }
+
+    private string BuildEscPosTicket()
+    {
+        const string ESC = "\x1B";
+        const string GS = "\x1D";
+        int width = AnchoCaracteres;
+
+        var sb = new StringBuilder();
+
+        string Clean(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+            var normalized = text.Normalize(NormalizationForm.FormD);
+            var sbClean = new StringBuilder();
+            foreach (var c in normalized)
+            {
+                var cat = CharUnicodeInfo.GetUnicodeCategory(c);
+                if (cat != UnicodeCategory.NonSpacingMark && c <= 0x7E)
+                {
+                    sbClean.Append(c);
+                }
+            }
+            return sbClean.ToString().Normalize(NormalizationForm.FormC);
+        }
+
+        IEnumerable<string> Wrap(string? text, int max)
+        {
+            var value = Clean(text);
+            if (string.IsNullOrEmpty(value))
+            {
+                yield return string.Empty;
+                yield break;
+            }
+
+            for (int i = 0; i < value.Length; i += max)
+            {
+                var len = Math.Min(max, value.Length - i);
+                yield return value.Substring(i, len);
+            }
+        }
+
+        string PadLine(string left, string right)
+        {
+            left = Clean(left);
+            right = Clean(right);
+            var spaces = Math.Max(1, width - left.Length - right.Length);
+            return left + new string(' ', spaces) + right;
+        }
+
+        void AlignCenter() => sb.Append($"{ESC}a{(char)1}");
+        void AlignLeft() => sb.Append($"{ESC}a{(char)0}");
+        void BoldOn() => sb.Append($"{ESC}E{(char)1}");
+        void BoldOff() => sb.Append($"{ESC}E{(char)0}");
+
+        sb.Append($"{ESC}@");
+
+        AlignCenter();
+        BoldOn();
+        foreach (var line in Wrap(_sociedad?.Nombre, width)) sb.AppendLine(line);
+        BoldOff();
+        foreach (var line in Wrap($"RUC: {_sociedad?.RUC}", width)) sb.AppendLine(line);
+        if (!string.IsNullOrWhiteSpace(_sociedad?.Direccion))
+            foreach (var line in Wrap(_sociedad.Direccion, width)) sb.AppendLine(line);
+        if (!string.IsNullOrWhiteSpace(_sociedad?.Telefono))
+            foreach (var line in Wrap($"Tel: {_sociedad.Telefono}", width)) sb.AppendLine(line);
+
+        foreach (var line in Wrap(_caja?.TipoFacturacion == "ELECTRONICA" ? "FACTURA ELECTRONICA" : (_venta?.TipoDocumento?.ToUpper() ?? "FACTURA"), width))
+        {
+            BoldOn();
+            sb.AppendLine(line);
+            BoldOff();
+        }
+
+        AlignLeft();
+        sb.AppendLine(new string('=', width));
+        sb.AppendLine(PadLine("Nro:", _venta?.NumeroFactura ?? string.Empty));
+        sb.AppendLine(PadLine("Fecha:", _venta?.Fecha.ToString("dd/MM/yyyy HH:mm") ?? string.Empty));
+        if (!string.IsNullOrEmpty(_venta?.Timbrado))
+            sb.AppendLine(PadLine("Timbrado:", _venta.Timbrado));
+        if (_venta?.FechaVencimiento.HasValue == true)
+            sb.AppendLine(PadLine("Valido:", _venta.FechaVencimiento.Value.ToString("dd/MM/yyyy")));
+
+        sb.AppendLine(new string('=', width));
+        if (_cliente != null)
+        {
+            sb.AppendLine(PadLine("Cliente:", _cliente.RazonSocial ?? string.Empty));
+            if (!string.IsNullOrEmpty(_cliente.RUC))
+                sb.AppendLine(PadLine("RUC/CI:", _cliente.RUC));
+            sb.AppendLine(new string('=', width));
+        }
+
+        sb.AppendLine(PadLine("Condicion:", _tipoPago?.Nombre ?? "CONTADO"));
+        sb.AppendLine(new string('=', width));
+
+        int colCant = 6;
+        int colPrecio = 8;
+        int colTotal = 8;
+        int colDesc = Math.Max(10, width - (colCant + colPrecio + colTotal));
+
+        sb.AppendLine("DESCRIPCION".PadRight(width));
+        sb.AppendLine("".PadRight(colDesc) + "CANT".PadLeft(colCant) + "P.UNIT".PadLeft(colPrecio) + "TOTAL".PadLeft(colTotal));
+
+        foreach (var det in _detalles)
+        {
+            var descLines = Wrap(det.Producto?.Descripcion, colDesc).ToList();
+            var cant = det.Cantidad.ToString().PadLeft(colCant);
+            var pUnit = FormatearImporte(det.PrecioUnitario).PadLeft(colPrecio);
+            var tot = FormatearImporte(det.Importe).PadLeft(colTotal);
+
+            if (descLines.Count == 0) descLines.Add(string.Empty);
+            sb.AppendLine(descLines[0].PadRight(colDesc) + cant + pUnit + tot);
+            for (int i = 1; i < descLines.Count; i++)
+            {
+                sb.AppendLine(descLines[i]);
+            }
+        }
+
+        sb.AppendLine(new string('=', width));
+        sb.AppendLine(PadLine("Subtotal:", FormatearImporte(_subtotalGravadas)));
+        if (_totalIva10 > 0) sb.AppendLine(PadLine("IVA 10%:", FormatearImporte(_totalIva10)));
+        if (_totalIva5 > 0) sb.AppendLine(PadLine("IVA 5%:", FormatearImporte(_totalIva5)));
+        sb.AppendLine(new string('-', width));
+        BoldOn();
+        sb.AppendLine(PadLine("TOTAL:", FormatearImporte(_venta!.Total)));
+        BoldOff();
+
+        sb.AppendLine(new string('=', width));
+        AlignCenter();
+        sb.AppendLine("GRACIAS POR SU COMPRA!");
+        sb.AppendLine("SistemIA");
+        AlignLeft();
+
+        sb.Append($"{GS}V{(char)0}");
+
+        return sb.ToString();
+    }
+
+    private async Task ImprimirTicket()
+    {
+        // Si el formato es A4, redirigir a la vista de factura A4
+        if (_caja?.FormatoImpresion == "A4")
+        {
+            var url = $"/ventas/preview/{IdVenta}?print=1";
+            await JS.InvokeVoidAsync("open", url, "_blank");
+            return;
+        }
+        
+        // Para TICKET: generar PDF e imprimir automáticamente
+        if (_venta == null) return;
+        
+        var ticketData = BuildTicketData();
+        
+        // Llamar función JavaScript para imprimir directamente (autoPrint = true por defecto)
+        await JS.InvokeVoidAsync("generarPdfTicketDirecto", ticketData);
+    }
+
+    private async Task PrevisualizarPdfTicket()
+    {
+        if (_venta == null) return;
+        
+        var ticketData = BuildTicketData();
+        
+        // Llamar función JavaScript solo para previsualizar (sin imprimir automáticamente)
+        await JS.InvokeVoidAsync("generarPdfTicketPreview", ticketData);
+    }
+
+    private void Cerrar() => Nav.NavigateTo("/ventas");
+}

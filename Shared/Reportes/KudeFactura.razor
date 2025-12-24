@@ -1,0 +1,507 @@
+@using Microsoft.EntityFrameworkCore
+@namespace SistemIA.Shared.Reportes
+@using SistemIA.Models
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.ICajaService CajaService
+@using QRCoder
+@using Microsoft.AspNetCore.WebUtilities
+
+@code {
+  [Parameter] public int IdVenta { get; set; }
+  [Parameter] public EventCallback OnReady { get; set; }
+  private Venta? venta;
+  private List<VentaDetalle> detalles = new();
+  private Cliente? cliente;
+  private Caja? caja;
+  private string? qrDataUrl;
+  private int _lastLoadedIdVenta = -1; // Cache para evitar recargas innecesarias
+  private int _lastOnReadyIdVenta = -1; // Evitar invocaciones repetidas de OnReady
+  private bool _ocultarImagenes = false; // Debug: ocultar imágenes (logo/QR)
+  private bool esFacturaElectronica => (caja?.TipoFacturacion ?? "ELECTRONICA") == "ELECTRONICA";
+  private string numeroCompleto => $"{venta?.Establecimiento}-{venta?.PuntoExpedicion}-{venta?.NumeroFactura}";
+
+  protected override async Task OnParametersSetAsync()
+  {
+    // Evitar recargas innecesarias de los mismos datos
+    if (_lastLoadedIdVenta == IdVenta && venta != null)
+    {
+      Console.WriteLine($"[KudeFactura] Cache hit para venta {IdVenta}");
+      // Asegurar que las flags dependientes de query se mantengan actualizadas
+      ActualizarFlagsDesdeQuery();
+
+      // OnReady solo una vez por IdVenta
+      if (OnReady.HasDelegate && _lastOnReadyIdVenta != IdVenta)
+      {
+        Console.WriteLine("[KudeFactura] Invocando OnReady desde cache hit (una sola vez por venta)...");
+        _lastOnReadyIdVenta = IdVenta;
+        await OnReady.InvokeAsync();
+      }
+      return;
+    }
+
+    try
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      Console.WriteLine($"[KudeFactura] Cargando venta {IdVenta}...");
+      
+      // Cargar venta con includes optimizados usando AsNoTracking
+      venta = await ctx.Ventas
+        .AsNoTracking()
+        .Include(v => v.Cliente)
+        .Include(v => v.Sucursal)
+        .Include(v => v.Moneda)
+        .FirstOrDefaultAsync(v => v.IdVenta == IdVenta);
+        
+      if (venta == null) 
+      {
+        Console.WriteLine($"[KudeFactura] Venta {IdVenta} no encontrada");
+        return;
+      }
+      
+      cliente = venta.Cliente;
+      
+      // Cargar detalles y caja en paralelo solo si necesario
+      var loadTasks = new List<Task>();
+      
+      // Solo cargar detalles si la venta cambió
+      loadTasks.Add(Task.Run(async () => 
+      {
+        await using var detailCtx = await DbFactory.CreateDbContextAsync();
+        detalles = await detailCtx.VentasDetalles
+          .AsNoTracking()
+          .Include(d => d.Producto)
+          .Where(d => d.IdVenta == IdVenta)
+          .ToListAsync();
+      }));
+      
+      // Cargar caja usando el servicio con cache
+      if (caja == null)
+      {
+        loadTasks.Add(Task.Run(async () =>
+        {
+          caja = await CajaService.ObtenerCajaActualAsync();
+        }));
+      }
+      
+      await Task.WhenAll(loadTasks);
+      _lastLoadedIdVenta = IdVenta; // Marcar como cargado
+
+      Console.WriteLine($"[KudeFactura] Datos cargados: {detalles.Count} detalles");
+      Console.WriteLine($"[KudeFactura] TipoFacturacion de caja: {caja?.TipoFacturacion ?? "NULL"}");
+      Console.WriteLine($"[KudeFactura] esFacturaElectronica: {esFacturaElectronica}");
+
+      // Generar QR solo si es factura electrónica
+      if (esFacturaElectronica)
+      {
+        qrDataUrl = GenerarQrDataUrl();
+        Console.WriteLine($"[KudeFactura] QR generado: {!string.IsNullOrEmpty(qrDataUrl)}");
+      }
+      else
+      {
+        Console.WriteLine("[KudeFactura] QR omitido (modo AUTOIMPRESOR)");
+      }
+      
+      // Actualizar flags de query (p.ej., ocultar imágenes)
+      ActualizarFlagsDesdeQuery();
+      
+      // Forzar un re-render para asegurar que todo esté listo
+      StateHasChanged();
+      
+      if (OnReady.HasDelegate && _lastOnReadyIdVenta != IdVenta)
+      {
+        Console.WriteLine("[KudeFactura] Invocando OnReady (una sola vez por venta)...");
+        _lastOnReadyIdVenta = IdVenta;
+        await OnReady.InvokeAsync();
+      }
+    }
+    catch (Exception ex)
+    {
+      Console.WriteLine($"[KudeFactura] Error: {ex.Message}");
+    }
+  }
+
+  private string Pad7(string? n)
+    => int.TryParse(n, out var x) ? x.ToString("D7") : (n ?? "0000001");
+
+  private string NumKude()
+    => $"{venta?.Establecimiento ?? "001"}-{venta?.PuntoExpedicion ?? "001"}-{Pad7(venta?.NumeroFactura)}";
+
+  private string? LogoDataUrl()
+  {
+    try
+    {
+      var bytes = venta?.Sucursal?.Logo;
+      if (bytes == null || bytes.Length == 0) return null;
+      var base64 = Convert.ToBase64String(bytes);
+      return $"data:image/png;base64,{base64}";
+    }
+    catch { return null; }
+  }
+
+  private decimal TotExentas => detalles.Sum(x => x.Exenta);
+  private decimal TotGrav5 => detalles.Sum(x => x.Grabado5);
+  private decimal TotGrav10 => detalles.Sum(x => x.Grabado10);
+  private decimal TotIva5 => detalles.Sum(x => x.IVA5);
+  private decimal TotIva10 => detalles.Sum(x => x.IVA10);
+
+  private void ActualizarFlagsDesdeQuery()
+  {
+    try
+    {
+      var uri = new Uri(Nav.Uri);
+      var query = QueryHelpers.ParseQuery(uri.Query);
+      _ocultarImagenes = query.ContainsKey("noimg") || query.ContainsKey("sinimg");
+      if (_ocultarImagenes)
+        Console.WriteLine("[KudeFactura] Modo depuración: ocultar imágenes activado por query string");
+    }
+    catch { /* ignorar */ }
+  }
+}
+
+@if (venta == null)
+{
+    <div class="alert alert-warning">Venta no encontrada.</div>
+}
+else
+{
+<div class="kude">
+  <div class="doc-a4">
+    <div class="encabezado">
+      <div class="emisor-left">
+        <div class="logo-y-empresa">
+          @if (!_ocultarImagenes && !string.IsNullOrEmpty(LogoDataUrl()))
+          {
+            <img class="logo" src="@LogoDataUrl()" alt="Logo" />
+          }
+          <div class="empresa">
+            <div class="nombre">@venta.Sucursal?.NombreEmpresa</div>
+            <div class="dir">@venta.Sucursal?.Direccion</div>
+            @if (!string.IsNullOrWhiteSpace(venta?.Sucursal?.Telefono))
+            {
+              <div class="tel">Teléfono: @venta.Sucursal?.Telefono</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(venta?.Sucursal?.Correo))
+            {
+              <div class="mail">@venta.Sucursal?.Correo</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(venta?.Sucursal?.RubroEmpresa))
+            {
+              <div class="rubro">Actividad Económica: @venta.Sucursal?.RubroEmpresa</div>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="emisor-right">
+        <div>R.U.C.: @(venta?.Sucursal?.RUC)-@(venta?.Sucursal?.DV)</div>
+  <div>Timbrado N°: @venta?.Timbrado</div>
+        @if (caja != null)
+        {
+          <div>Fecha de Inicio de Vigencia: @(caja.VigenciaDel?.ToString("dd/MM/yyyy"))</div>
+        }
+        <div class="titulo-doc">@(esFacturaElectronica ? "FACTURA ELECTRÓNICA" : "FACTURA")</div>
+        <div class="numero">@NumKude()</div>
+      </div>
+    </div>
+
+    <div class="banda">
+      <div class="col-izq">
+  <div><b>Fecha y Hora de Emisión:</b> @venta?.Fecha.ToString("dd/MM/yyyy HH:mm:ss")</div>
+        <div><b>Condición de Venta:</b> @(string.IsNullOrWhiteSpace(venta?.FormaPago) ? (venta?.TipoPago?.EsCredito == true ? "CRÉDITO" : "CONTADO") : venta!.FormaPago)</div>
+        <div><b>Cuotas:</b> @(venta?.TipoPago?.EsCredito == true ? (venta?.Plazo ?? 0) : 1)</div>
+        <div><b>Moneda:</b> @(venta?.Moneda?.CodigoISO)</div>
+  <div><b>Tipo de Cambio:</b> @venta?.CambioDelDia</div>
+  <div><b>N° Venta:</b> @venta?.IdVenta</div>
+        <div><b>N° Pedido:</b> —</div>
+      </div>
+      <div class="col-der">
+        <div><b>Tipo Doc.:</b> @(venta?.TipoDocumento ?? "FACTURA")</div>
+        <div><b>R.U.C./C.I.:</b> @(string.IsNullOrWhiteSpace(cliente?.RUC) ? cliente?.NumeroDocumentoIdentidad : ($"{cliente?.RUC}-{cliente?.DV}"))</div>
+        <div><b>Razón Social:</b> @cliente?.RazonSocial</div>
+        <div><b>Dirección:</b> @cliente?.Direccion</div>
+        @if (!string.IsNullOrWhiteSpace(cliente?.Telefono))
+        {
+          <div><b>Teléfono:</b> @cliente!.Telefono</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(cliente?.Email))
+        {
+          <div><b>Correo Electrónico:</b> @cliente!.Email</div>
+        }
+        <div><b>Plazo Crédito (días):</b> @(venta?.TipoPago?.EsCredito == true ? (venta?.Plazo ?? 0) : 0)</div>
+        <div><b>Tipo de Transacción:</b> @(venta?.TipoPago?.EsCredito == true ? "Crédito" : "Contado")</div>
+      </div>
+    </div>
+
+    <div class="items">
+      <table class="tabla">
+        <thead>
+          <tr>
+            <th style="width:10%">Código</th>
+            <th>Descripción</th>
+            <th style="width:9%">Unidad Medida</th>
+            <th style="width:6%">Cajas</th>
+            <th style="width:8%">Cantidad</th>
+            <th style="width:10%">Precio Unitario</th>
+            <th style="width:9%">Descuento</th>
+            <th style="width:9%">Exentas</th>
+            <th style="width:9%">5%</th>
+            <th style="width:9%">10%</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var d in detalles)
+          {
+            var codigo = d.Producto?.CodigoInterno ?? d.Producto?.CodigoBarras ?? d.IdProducto.ToString();
+            <tr>
+              <td>@codigo</td>
+              <td>@d.Producto?.Descripcion</td>
+              <td class="t-center">@d.Producto?.UndMedida</td>
+              <td class="t-center">1,00</td>
+              <td class="t-right">@d.Cantidad.ToString("N2")</td>
+              <td class="t-right">@d.PrecioUnitario.ToString("N0")</td>
+              <td class="t-right">0</td>
+              <td class="t-right">@d.Exenta.ToString("N0")</td>
+              <td class="t-right">@d.Grabado5.ToString("N0")</td>
+              <td class="t-right">@d.Grabado10.ToString("N0")</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="resumen">
+      <div class="subtotales">
+        <div>Subtotal:</div>
+        <div class="t-right">@(venta?.Total.ToString("N0"))</div>
+      </div>
+      <div class="total-operacion">
+        <div>Total de la Operación (en guaraníes):</div>
+        <div class="t-right">@(venta?.Total.ToString("N0"))</div>
+      </div>
+      <div class="en-letras">@(venta?.TotalEnLetras)</div>
+      <div class="liquidacion-iva">
+        <div class="fila"><div>Liquidación del I.V.A.:</div><div class="t-right"></div></div>
+        <div class="fila"><div>(5%)</div><div class="t-right">@TotIva5.ToString("N0")</div></div>
+        <div class="fila"><div>(10%)</div><div class="t-right">@TotIva10.ToString("N0")</div></div>
+  <div class="fila total-iva"><div>Total I.V.A.:</div><div class="t-right">@((TotIva5 + TotIva10).ToString("N0"))</div></div>
+      </div>
+    </div>
+
+    @if (esFacturaElectronica)
+    {
+    <div class="validacion">
+      <div class="qr">
+        @if (!_ocultarImagenes)
+        {
+          if (!string.IsNullOrEmpty(qrDataUrl))
+          {
+            <img src="@qrDataUrl" alt="QR de la Factura" />
+          }
+          else if (!string.IsNullOrWhiteSpace(venta?.CDC))
+          {
+            <!-- Mostrar QR usando API de Google como fallback -->
+            <img src="@($"https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={Uri.EscapeDataString(venta.CDC)}")" alt="QR de la Factura" />
+          }
+          else
+          {
+            <!-- Placeholder cuando no hay CDC definitivo -->
+            <div class="qr-placeholder">
+              <div class="qr-icon">�</div>
+              <div class="qr-text">QR Preview<br />Enviar a SIFEN para validar</div>
+            </div>
+          }
+        }
+        else
+        {
+          <div class="qr-placeholder">
+            <div class="qr-text">(QR oculto para prueba)</div>
+          </div>
+        }
+      </div>
+      <div class="cdc-y-textos">
+        <div class="link">Consulte la validez de esta Factura Electrónica con el número de CDC impreso abajo en:<br />https://ekuatia.set.gov.py/consultas/</div>
+        <div class="cdc">
+          CDC: 
+          <span>
+            @if (!string.IsNullOrWhiteSpace(venta?.CDC))
+            {
+              @venta.CDC
+            }
+            else
+            {
+              var cdcPreview = GenerarCdcPreview();
+              if (!string.IsNullOrEmpty(cdcPreview))
+              {
+                <span class="text-info">@cdcPreview</span>
+                <small class="text-muted d-block">(Preview - Enviar a SIFEN para validar)</small>
+              }
+              else
+              {
+                <em class="text-warning">Pendiente - Completar datos y enviar a SIFEN</em>
+              }
+            }
+          </span>
+        </div>
+        <div class="nota">ESTE DOCUMENTO ES UNA REPRESENTACIÓN GRÁFICA DE UN DOCUMENTO ELECTRÓNICO (XML)</div>
+        <div class="interes">Información de interés del receptor emisor:<br />Si su documento electrónico presenta algún error, podrá solicitar la modificación dentro de las 48 horas siguientes de la emisión de este comprobante.</div>
+      </div>
+    </div>
+    }
+
+    <div class="leyenda-final">
+      La falta de pago a su vencimiento constituirá en mora automática al deudor, sin necesidad de interpelación judicial o extrajudicial previa, devengándose un interés moratorio del 3% mensual para operaciones en guaraníes, más un interés punitorio del 30% del interés moratorio, el que se adicionará, por todo el tiempo de mora y que será calculado sobre los saldos deudores hasta el efectivo pago. A todos los efectos legales y procesales emergentes de este documento las partes aceptan la jurisdicción y competencia de los Jueces y Tribunales de la ciudad de Asunción, renunciando a cualquier otro fuero o jurisdicción que pudiera corresponder.
+    </div>
+  </div>
+</div>
+}
+
+@code {
+  private string GenerarQrDataUrl()
+    {
+        try
+        {
+      var cdcParaQr = venta?.CDC;
+      
+      // Si no hay CDC, generar uno temporal para preview
+      if (string.IsNullOrWhiteSpace(cdcParaQr)) 
+      {
+        cdcParaQr = GenerarCdcPreview();
+        if (string.IsNullOrWhiteSpace(cdcParaQr))
+        {
+          Console.WriteLine($"QR: No se puede generar CDC para venta {venta?.IdVenta}");
+          return string.Empty;
+        }
+        Console.WriteLine($"QR: Usando CDC temporal para preview: {cdcParaQr}");
+      }
+      else
+      {
+        Console.WriteLine($"QR: Usando CDC oficial: {cdcParaQr}");
+      }
+
+      // Contenido QR según SET (URL de consulta + CDC)
+      var url = $"https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={cdcParaQr}";
+
+      using var generator = new QRCodeGenerator();
+      using var data = generator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+
+      // Generar SVG manualmente para máxima nitidez
+      var svgDataUrl = GenerarSvgDesdeData(data, escala: 3, margen: 4);
+      if (!string.IsNullOrEmpty(svgDataUrl)) 
+      {
+        Console.WriteLine("QR SVG generado exitosamente");
+        return svgDataUrl;
+      }
+
+      // Fallback a PNG de alta resolución
+      var png = new PngByteQRCode(data);
+      var bytes = png.GetGraphic(12);
+      var base64 = Convert.ToBase64String(bytes);
+      Console.WriteLine("QR PNG generado como fallback");
+      return $"data:image/png;base64,{base64}";
+        }
+        catch (Exception ex) 
+        { 
+          Console.WriteLine($"Error generando QR: {ex.Message}");
+          return string.Empty; 
+        }
+    }
+
+  private string GenerarCdcPreview()
+  {
+    try
+    {
+      var sucursal = venta?.Sucursal;
+      if (sucursal == null || string.IsNullOrWhiteSpace(sucursal.RUC))
+        return string.Empty;
+        
+      var ruc = sucursal.RUC;
+      var dv = (sucursal.DV ?? 0).ToString();
+      var establecimiento = venta?.Establecimiento ?? "001";
+      var puntoExpedicion = venta?.PuntoExpedicion ?? "001";
+      var numero = venta?.NumeroFactura?.PadLeft(7, '0') ?? "0000001";
+      
+      return $"{ruc}{dv}{establecimiento}{puntoExpedicion}{numero}";
+    }
+    catch
+    {
+      return string.Empty;
+    }
+  }
+
+  private string GenerarSvgDesdeData(QRCodeData data, int escala = 3, int margen = 4)
+  {
+    try
+    {
+      // Accede a ModuleMatrix sin depender del tipo genérico exacto
+      var prop = typeof(QRCodeData).GetProperty("ModuleMatrix");
+      var matrixObj = prop?.GetValue(data);
+      if (matrixObj is not System.Collections.IList filas || filas.Count == 0) return string.Empty;
+
+      int size = filas.Count;
+      int totalPx = (size + margen * 2) * escala;
+      var sb = new System.Text.StringBuilder();
+      sb.Append($"<svg xmlns='http://www.w3.org/2000/svg' width='{totalPx}' height='{totalPx}' viewBox='0 0 {totalPx} {totalPx}'>");
+      sb.Append("<rect width='100%' height='100%' fill='white'/>");
+      sb.Append("<g fill='black'>");
+
+      for (int y = 0; y < size; y++)
+      {
+        var rowObj = filas[y];
+        System.Collections.IList? fila = rowObj as System.Collections.IList;
+        if (fila != null)
+        {
+          int rowCount = fila.Count;
+          for (int x = 0; x < rowCount; x++)
+          {
+            var cell = fila[x];
+            if (CellIsOn(cell))
+            {
+              int rx = (x + margen) * escala;
+              int ry = (y + margen) * escala;
+              sb.Append($"<rect x='{rx}' y='{ry}' width='{escala}' height='{escala}'/>");
+            }
+          }
+        }
+        else
+        {
+          // Intentar como BitArray u otro tipo con indexador y propiedad Length
+          var lengthProp = rowObj?.GetType().GetProperty("Length");
+          var indexer = rowObj?.GetType().GetProperty("Item", new System.Type[] { typeof(int) });
+          int rowCount = lengthProp is null ? 0 : (int)(lengthProp.GetValue(rowObj) ?? 0);
+          for (int x = 0; x < rowCount; x++)
+          {
+            object? cell = indexer?.GetValue(rowObj, new object[] { x });
+            if (CellIsOn(cell))
+            {
+              int rx = (x + margen) * escala;
+              int ry = (y + margen) * escala;
+              sb.Append($"<rect x='{rx}' y='{ry}' width='{escala}' height='{escala}'/>");
+            }
+          }
+        }
+      }
+
+      sb.Append("</g></svg>");
+      return "data:image/svg+xml;utf8," + Uri.EscapeDataString(sb.ToString());
+    }
+    catch { return string.Empty; }
+  }
+
+  private static bool CellIsOn(object? cell)
+  {
+    if (cell is null) return false;
+    if (cell is bool b) return b;
+    if (cell is byte by) return by != 0;
+    if (cell is sbyte sb) return sb != 0;
+    if (cell is short s) return s != 0;
+    if (cell is int i) return i != 0;
+    if (cell is long l) return l != 0;
+    var str = cell.ToString();
+    if (bool.TryParse(str, out var parsed)) return parsed;
+    if (int.TryParse(str, out var parsedInt)) return parsedInt != 0;
+    return false;
+  }
+}
+
+@* Estilos movidos a KudeFactura.razor.css para evitar conflictos Razor con @media *@

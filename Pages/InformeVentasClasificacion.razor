@@ -1,0 +1,726 @@
+@page "/informes/ventas-clasificacion"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using SistemIA.Models
+@using SistemIA.Models.Enums
+@attribute [Authorize]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject NavigationManager Nav
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using ClosedXML.Excel
+
+<PageProtection Modulo="/reportes" Permiso="VIEW">
+
+<h3 class="mb-3"><i class="bi bi-pie-chart me-2"></i>Informe de Ventas por Clasificación</h3>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">Desde</label>
+                <input type="date" class="form-control" @bind="fDesde" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Hasta</label>
+                <input type="date" class="form-control" @bind="fHasta" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Clasificación</label>
+                <select class="form-select" @bind="fIdClasificacion">
+                    <option value="0">Todas</option>
+                    @foreach (var c in clasificaciones)
+                    {
+                        <option value="@c.IdClasificacion">@c.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Caja</label>
+                <select class="form-select" @bind="fIdCaja">
+                    <option value="0">Todas</option>
+                    @foreach (var c in cajas)
+                    {
+                        <option value="@c.IdCaja">Caja @c.IdCaja</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Estado</label>
+                <select class="form-select" @bind="fEstado">
+                    <option value="">Todos</option>
+                    <option value="Activa">Activas</option>
+                    <option value="Anulada">Anuladas</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2 justify-content-end flex-wrap">
+                <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
+                <button class="btn btn-outline-success" title="Exportar CSV" @onclick="ExportarCsv"><i class="bi bi-filetype-csv"></i></button>
+                <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
+                <button class="btn btn-outline-primary" title="Imprimir Ticket" @onclick="ImprimirTicket"><i class="bi bi-receipt"></i></button>
+                <button class="btn btn-outline-secondary" title="Imprimir A4" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (cargando)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2 text-muted">Cargando información...</p>
+    </div>
+}
+else
+{
+    <!-- Resumen General -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1">Total Vendido</h6>
+                    <h3 class="mb-0">@totalGeneral.ToString("N0") ₲</h3>
+                    <small>@cantidadTotal.ToString("N0") unidades</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1">Clasificaciones</h6>
+                    <h3 class="mb-0">@resumenClasificacion.Count</h3>
+                    <small>categorías con ventas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1">Productos Vendidos</h6>
+                    <h3 class="mb-0">@detalleProductos.Select(d => d.IdProducto).Distinct().Count()</h3>
+                    <small>productos únicos</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1">Ticket Promedio</h6>
+                    <h3 class="mb-0">@(cantidadTotal > 0 ? (totalGeneral / cantidadTotal).ToString("N0") : "0") ₲</h3>
+                    <small>por unidad</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráfico de barras por clasificación -->
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0"><i class="bi bi-bar-chart-fill me-2"></i>Distribución por Clasificación</h5>
+        </div>
+        <div class="card-body">
+            @foreach (var item in resumenClasificacion.OrderByDescending(r => r.Total).Take(10))
+            {
+                var pct = totalGeneral > 0 ? (item.Total / totalGeneral * 100) : 0;
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="fw-semibold">@item.Clasificacion</span>
+                        <span class="badge bg-primary">@item.Total.ToString("N0") ₲ (@pct.ToString("F1")%)</span>
+                    </div>
+                    <div class="progress" style="height: 25px;">
+                        <div class="progress-bar bg-success" role="progressbar" 
+                             style="width: @pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%">
+                            @item.Cantidad.ToString("N0") uds
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Tabla resumen por clasificación -->
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-table me-2"></i>Resumen por Clasificación</h5>
+            <button class="btn btn-sm btn-outline-dark" @onclick="() => mostrarDetalle = !mostrarDetalle">
+                <i class="bi @(mostrarDetalle ? "bi-chevron-up" : "bi-chevron-down") me-1"></i>
+                @(mostrarDetalle ? "Ocultar" : "Ver") Detalle
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width:40px">#</th>
+                        <th>Clasificación</th>
+                        <th class="text-end">Cantidad</th>
+                        <th class="text-end">Total Vendido</th>
+                        <th class="text-end">Costo Total</th>
+                        <th class="text-end">Utilidad</th>
+                        <th class="text-end">% Margen</th>
+                        <th class="text-end">% Participación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{var idx = 0;}
+                    @foreach (var item in resumenClasificacion.OrderByDescending(r => r.Total))
+                    {
+                        var pct = totalGeneral > 0 ? (item.Total / totalGeneral * 100) : 0;
+                        var margen = item.Total > 0 ? ((item.Total - item.Costo) / item.Total * 100) : 0;
+                        <tr>
+                            <td>@(++idx)</td>
+                            <td class="fw-semibold">@item.Clasificacion</td>
+                            <td class="text-end">@item.Cantidad.ToString("N2")</td>
+                            <td class="text-end fw-bold">@item.Total.ToString("N0")</td>
+                            <td class="text-end text-muted">@item.Costo.ToString("N0")</td>
+                            <td class="text-end @(item.Utilidad >= 0 ? "text-success" : "text-danger") fw-bold">
+                                @item.Utilidad.ToString("N0")
+                            </td>
+                            <td class="text-end">
+                                <span class="badge @(margen >= 20 ? "bg-success" : margen >= 10 ? "bg-warning text-dark" : "bg-danger")">
+                                    @margen.ToString("F1")%
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <div class="progress" style="height: 18px; min-width: 80px;">
+                                    <div class="progress-bar bg-info" style="width: @pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%">
+                                        @pct.ToString("F1")%
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot class="table-secondary fw-bold">
+                    <tr>
+                        <td colspan="2">TOTAL</td>
+                        <td class="text-end">@cantidadTotal.ToString("N2")</td>
+                        <td class="text-end">@totalGeneral.ToString("N0")</td>
+                        <td class="text-end">@resumenClasificacion.Sum(r => r.Costo).ToString("N0")</td>
+                        <td class="text-end @(resumenClasificacion.Sum(r => r.Utilidad) >= 0 ? "text-success" : "text-danger")">
+                            @resumenClasificacion.Sum(r => r.Utilidad).ToString("N0")
+                        </td>
+                        <td class="text-end">
+                            @{
+                                var margenTotal = totalGeneral > 0 ? 
+                                    ((totalGeneral - resumenClasificacion.Sum(r => r.Costo)) / totalGeneral * 100) : 0;
+                            }
+                            @margenTotal.ToString("F1")%
+                        </td>
+                        <td class="text-end">100%</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Detalle de productos (expandible) -->
+    @if (mostrarDetalle)
+    {
+        <div class="card">
+            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Detalle de Productos</h5>
+                <span class="badge bg-light text-dark">@detalleProductos.Count registros</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width:40px">#</th>
+                                <th>Código</th>
+                                <th>Producto</th>
+                                <th>Clasificación</th>
+                                <th class="text-end">Cantidad</th>
+                                <th class="text-end">Precio Prom.</th>
+                                <th class="text-end">Total</th>
+                                <th class="text-end">Costo</th>
+                                <th class="text-end">Utilidad</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{var n = 0;}
+                            @foreach (var det in detalleProductos.OrderByDescending(d => d.Total).Take(500))
+                            {
+                                <tr>
+                                    <td>@(++n)</td>
+                                    <td><code>@det.Codigo</code></td>
+                                    <td>@det.Producto</td>
+                                    <td><span class="badge bg-secondary">@det.Clasificacion</span></td>
+                                    <td class="text-end">@det.Cantidad.ToString("N2")</td>
+                                    <td class="text-end">@det.PrecioPromedio.ToString("N0")</td>
+                                    <td class="text-end fw-bold">@det.Total.ToString("N0")</td>
+                                    <td class="text-end text-muted">@det.Costo.ToString("N0")</td>
+                                    <td class="text-end @(det.Utilidad >= 0 ? "text-success" : "text-danger")">
+                                        @det.Utilidad.ToString("N0")
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+</PageProtection>
+
+@code {
+    private DateTime? fDesde;
+    private DateTime? fHasta;
+    private int fIdClasificacion = 0;
+    private int fIdCaja = 0;
+    private string? fEstado;
+
+    private bool cargando = false;
+    private bool mostrarDetalle = false;
+    private List<Clasificacion> clasificaciones = new();
+    private List<Caja> cajas = new();
+    private List<ResumenClasificacion> resumenClasificacion = new();
+    private List<DetalleProducto> detalleProductos = new();
+    private decimal totalGeneral = 0;
+    private decimal cantidadTotal = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        if (!sucId.HasValue)
+        {
+            var ret = System.Net.WebUtility.UrlEncode(Nav.Uri);
+            Nav.NavigateTo($"/seleccionar-sucursal?returnUrl={ret}", forceLoad: true);
+            return;
+        }
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        // Obtener fecha de caja como predeterminada
+        var cajaActual = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+        var fechaCaja = cajaActual?.FechaActualCaja ?? DateTime.Today;
+        fDesde = fechaCaja;
+        fHasta = fechaCaja;
+        
+        clasificaciones = await ctx.Clasificaciones.AsNoTracking()
+            .Where(c => c.Activo)
+            .OrderBy(c => c.Nombre)
+            .ToListAsync();
+
+        cajas = await ctx.Cajas.AsNoTracking()
+            .OrderBy(c => c.IdCaja)
+            .ToListAsync();
+
+        await Buscar();
+    }
+
+    private async Task Buscar()
+    {
+        cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var sucId = SucursalProvider.GetSucursalId();
+
+            var fechaDesde = fDesde ?? DateTime.Today.AddDays(-30);
+            var fechaHasta = (fHasta ?? DateTime.Today).AddDays(1);
+
+            // Query de ventas con detalles
+            var query = from v in ctx.Ventas.AsNoTracking()
+                        join d in ctx.VentasDetalles.AsNoTracking() on v.IdVenta equals d.IdVenta
+                        join p in ctx.Productos.AsNoTracking() on d.IdProducto equals p.IdProducto
+                        join c in ctx.Clasificaciones.AsNoTracking() on p.IdClasificacion equals c.IdClasificacion into cJoin
+                        from c in cJoin.DefaultIfEmpty()
+                        where v.Fecha >= fechaDesde && v.Fecha < fechaHasta
+                        select new
+                        {
+                            v.IdVenta,
+                            v.Fecha,
+                            v.Estado,
+                            v.IdCaja,
+                            v.IdSucursal,
+                            d.IdProducto,
+                            d.Cantidad,
+                            d.PrecioUnitario,
+                            d.Importe,
+                            p.CodigoInterno,
+                            Producto = p.Descripcion,
+                            p.CostoUnitarioGs,
+                            IdClasificacion = c != null ? c.IdClasificacion : 0,
+                            Clasificacion = c != null ? c.Nombre : "Sin Clasificación"
+                        };
+
+            if (sucId.HasValue)
+                query = query.Where(x => x.IdSucursal == sucId.Value);
+
+            if (fIdClasificacion > 0)
+                query = query.Where(x => x.IdClasificacion == fIdClasificacion);
+
+            if (fIdCaja > 0)
+                query = query.Where(x => x.IdCaja == fIdCaja);
+
+            if (!string.IsNullOrWhiteSpace(fEstado))
+                query = query.Where(x => x.Estado == fEstado);
+            else
+                query = query.Where(x => x.Estado != "Anulada"); // Por defecto excluir anuladas
+
+            var data = await query.ToListAsync();
+
+            // Agrupar por clasificación
+            resumenClasificacion = data
+                .GroupBy(x => new { x.IdClasificacion, x.Clasificacion })
+                .Select(g => new ResumenClasificacion
+                {
+                    IdClasificacion = g.Key.IdClasificacion,
+                    Clasificacion = g.Key.Clasificacion,
+                    Cantidad = g.Sum(x => x.Cantidad),
+                    Total = g.Sum(x => x.Importe),
+                    Costo = g.Sum(x => x.Cantidad * (x.CostoUnitarioGs ?? 0))
+                })
+                .OrderByDescending(r => r.Total)
+                .ToList();
+
+            // Agrupar por producto
+            detalleProductos = data
+                .GroupBy(x => new { x.IdProducto, x.CodigoInterno, x.Producto, x.Clasificacion })
+                .Select(g => new DetalleProducto
+                {
+                    IdProducto = g.Key.IdProducto,
+                    Codigo = g.Key.CodigoInterno ?? "",
+                    Producto = g.Key.Producto ?? "",
+                    Clasificacion = g.Key.Clasificacion,
+                    Cantidad = g.Sum(x => x.Cantidad),
+                    Total = g.Sum(x => x.Importe),
+                    Costo = g.Sum(x => x.Cantidad * (x.CostoUnitarioGs ?? 0)),
+                    PrecioPromedio = g.Sum(x => x.Cantidad) > 0 ? g.Sum(x => x.Importe) / g.Sum(x => x.Cantidad) : 0
+                })
+                .OrderByDescending(d => d.Total)
+                .ToList();
+
+            totalGeneral = resumenClasificacion.Sum(r => r.Total);
+            cantidadTotal = resumenClasificacion.Sum(r => r.Cantidad);
+        }
+        finally
+        {
+            cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Imprimir()
+    {
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset=\"utf-8\"/>");
+        head.AppendLine("<title>Ventas por Clasificación</title>");
+        head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: A4 landscape; margin: 10mm; } }");
+        head.AppendLine("body{font-size:10px;color:#111;}");
+        head.AppendLine(".header{border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+        head.AppendLine(".tabla th,.tabla td{padding:.25rem;border-bottom:1px solid #e5e7eb;}");
+        head.AppendLine(".right{text-align:right} .bold{font-weight:bold}");
+        head.AppendLine("</style>");
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+        string empresa = suc?.NombreEmpresa ?? "Empresa";
+        string sucursal = suc?.NombreSucursal ?? "Sucursal";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+        string direccion = suc?.Direccion ?? "";
+        string telefono = suc?.Telefono ?? "";
+        string? logoDataUri = null;
+        if (suc?.Logo != null && suc.Logo.Length > 0)
+            logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+        // Info de filtros
+        string infoCaja = fIdCaja > 0 ? $"Caja: {fIdCaja}" : "Todas las Cajas";
+        string infoClasif = fIdClasificacion > 0 ? $"Clasif: {clasificaciones.FirstOrDefault(c => c.IdClasificacion == fIdClasificacion)?.Nombre ?? fIdClasificacion.ToString()}" : "Todas";
+        string infoEstado = !string.IsNullOrEmpty(fEstado) ? $"Estado: {fEstado}" : "";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class='container-fluid'>");
+        sb.AppendLine("<div class='header d-flex justify-content-between align-items-center'>");
+        sb.AppendLine("<div class='d-flex align-items-center gap-3'>");
+        if (!string.IsNullOrEmpty(logoDataUri))
+            sb.AppendLine($"<img src='{logoDataUri}' style='max-width:120px;max-height:70px;object-fit:contain;' />");
+        sb.AppendLine($"<div><h4 class='mb-0'>{empresa}</h4><div class='small'>RUC: {ruc}</div><div class='small'>{sucursal}</div>");
+        if (!string.IsNullOrEmpty(direccion)) sb.AppendLine($"<div class='small'>{direccion}</div>");
+        if (!string.IsNullOrEmpty(telefono)) sb.AppendLine($"<div class='small'>Tel: {telefono}</div>");
+        sb.AppendLine("</div></div>");
+        sb.AppendLine($"<div class='text-end'><h5>Ventas por Clasificación</h5><div>Desde: {fDesde:dd/MM/yyyy} - Hasta: {fHasta:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div class='small'>{infoCaja} | {infoClasif}</div>");
+        if (!string.IsNullOrEmpty(infoEstado)) sb.AppendLine($"<div class='small'>{infoEstado}</div>");
+        sb.AppendLine("</div></div>");
+
+        // Resumen
+        sb.AppendLine("<div class='row mb-3'>");
+        sb.AppendLine($"<div class='col-3'><strong>Total Vendido:</strong> {totalGeneral:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-3'><strong>Cantidad:</strong> {cantidadTotal:N0} uds</div>");
+        sb.AppendLine($"<div class='col-3'><strong>Clasificaciones:</strong> {resumenClasificacion.Count}</div>");
+        sb.AppendLine($"<div class='col-3'><strong>Productos:</strong> {detalleProductos.Select(d => d.IdProducto).Distinct().Count()}</div>");
+        sb.AppendLine("</div>");
+
+        // Tabla resumen
+        sb.AppendLine("<table class='table table-sm tabla'>");
+        sb.AppendLine("<thead><tr><th>#</th><th>Clasificación</th><th class='right'>Cantidad</th><th class='right'>Total</th><th class='right'>Costo</th><th class='right'>Utilidad</th><th class='right'>% Margen</th><th class='right'>% Part.</th></tr></thead>");
+        sb.AppendLine("<tbody>");
+        int idx = 0;
+        foreach (var item in resumenClasificacion.OrderByDescending(r => r.Total))
+        {
+            var pct = totalGeneral > 0 ? (item.Total / totalGeneral * 100) : 0;
+            var margen = item.Total > 0 ? ((item.Total - item.Costo) / item.Total * 100) : 0;
+            sb.AppendLine($"<tr><td>{++idx}</td><td>{item.Clasificacion}</td><td class='right'>{item.Cantidad:N2}</td><td class='right bold'>{item.Total:N0}</td><td class='right'>{item.Costo:N0}</td><td class='right'>{item.Utilidad:N0}</td><td class='right'>{margen:F1}%</td><td class='right'>{pct:F1}%</td></tr>");
+        }
+        sb.AppendLine("</tbody>");
+        var margenTotal = totalGeneral > 0 ? ((totalGeneral - resumenClasificacion.Sum(r => r.Costo)) / totalGeneral * 100) : 0;
+        sb.AppendLine($"<tfoot class='table-secondary'><tr class='bold'><td colspan='2'>TOTAL</td><td class='right'>{cantidadTotal:N2}</td><td class='right'>{totalGeneral:N0}</td><td class='right'>{resumenClasificacion.Sum(r => r.Costo):N0}</td><td class='right'>{resumenClasificacion.Sum(r => r.Utilidad):N0}</td><td class='right'>{margenTotal:F1}%</td><td class='right'>100%</td></tr></tfoot>");
+        sb.AppendLine("</table>");
+
+        // Detalle de productos (top 50)
+        sb.AppendLine("<h6 class='mt-4'>Top 50 Productos</h6>");
+        sb.AppendLine("<table class='table table-sm tabla'>");
+        sb.AppendLine("<thead><tr><th>#</th><th>Código</th><th>Producto</th><th>Clasificación</th><th class='right'>Cant.</th><th class='right'>Total</th><th class='right'>Utilidad</th></tr></thead>");
+        sb.AppendLine("<tbody>");
+        int n = 0;
+        foreach (var det in detalleProductos.Take(50))
+        {
+            sb.AppendLine($"<tr><td>{++n}</td><td>{det.Codigo}</td><td>{det.Producto}</td><td>{det.Clasificacion}</td><td class='right'>{det.Cantidad:N2}</td><td class='right'>{det.Total:N0}</td><td class='right'>{det.Utilidad:N0}</td></tr>");
+        }
+        sb.AppendLine("</tbody></table>");
+        sb.AppendLine("</div>");
+
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+
+    private async Task ImprimirTicket()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+        
+        string empresa = suc?.NombreEmpresa ?? "Empresa";
+        string sucursal = suc?.NombreSucursal ?? "Sucursal";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+
+        // Info de filtros
+        string infoCaja = fIdCaja > 0 ? $"Caja: {fIdCaja}" : "Todas";
+        string infoClasif = fIdClasificacion > 0 ? clasificaciones.FirstOrDefault(c => c.IdClasificacion == fIdClasificacion)?.Nombre ?? "Seleccionada" : "Todas";
+
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset='utf-8'/>");
+        head.AppendLine("<title>Ventas por Clasificación - Ticket</title>");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: 80mm auto; margin: 2mm; } }");
+        head.AppendLine("body{font-family:'Courier New',monospace;font-size:12px;width:76mm;margin:0 auto;color:#000;}");
+        head.AppendLine(".center{text-align:center} .right{text-align:right} .bold{font-weight:bold}");
+        head.AppendLine(".line{border-top:1px dashed #000;margin:5px 0;}");
+        head.AppendLine(".doble-line{border-top:2px solid #000;margin:5px 0;}");
+        head.AppendLine("table{width:100%;border-collapse:collapse;} td{padding:2px 0;}");
+        head.AppendLine(".small{font-size:10px}");
+        head.AppendLine("</style>");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class='center bold'>" + empresa + "</div>");
+        sb.AppendLine("<div class='center small'>RUC: " + ruc + "</div>");
+        sb.AppendLine("<div class='center small'>" + sucursal + "</div>");
+        sb.AppendLine("<div class='doble-line'></div>");
+        sb.AppendLine("<div class='center bold'>VENTAS POR CLASIFICACION</div>");
+        sb.AppendLine("<div class='line'></div>");
+        sb.AppendLine($"<div>Desde: {fDesde:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div>Hasta: {fHasta:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div>{infoCaja} | {infoClasif}</div>");
+        sb.AppendLine("<div class='line'></div>");
+        
+        sb.AppendLine("<div class='bold'>TOTALES</div>");
+        sb.AppendLine("<table>");
+        sb.AppendLine($"<tr><td>Total Vendido:</td><td class='right'>{totalGeneral:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>Cantidad:</td><td class='right'>{cantidadTotal:N2}</td></tr>");
+        sb.AppendLine($"<tr><td>Clasificaciones:</td><td class='right'>{resumenClasificacion.Count}</td></tr>");
+        sb.AppendLine($"<tr><td>Productos:</td><td class='right'>{detalleProductos.Select(d => d.IdProducto).Distinct().Count()}</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='line'></div>");
+
+        sb.AppendLine("<div class='bold'>POR CLASIFICACION</div>");
+        sb.AppendLine("<table>");
+        foreach (var item in resumenClasificacion.OrderByDescending(r => r.Total).Take(15))
+        {
+            var pct = totalGeneral > 0 ? (item.Total / totalGeneral * 100) : 0;
+            sb.AppendLine($"<tr><td>{item.Clasificacion}:</td><td class='right'>{item.Total:N0}</td></tr>");
+        }
+        if (resumenClasificacion.Count > 15)
+            sb.AppendLine($"<tr><td colspan='2' class='center small'>... y {resumenClasificacion.Count - 15} más</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='line'></div>");
+
+        sb.AppendLine("<div class='bold'>TOP 10 PRODUCTOS</div>");
+        sb.AppendLine("<table>");
+        foreach (var det in detalleProductos.Take(10))
+        {
+            sb.AppendLine($"<tr><td class='small'>{det.Producto.Substring(0, Math.Min(det.Producto.Length, 18))}:</td><td class='right'>{det.Total:N0}</td></tr>");
+        }
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='doble-line'></div>");
+
+        sb.AppendLine($"<div class='center small'>Impreso: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
+
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+
+    private async Task ExportarCsv()
+    {
+        var sep = ';';
+        var sb = new System.Text.StringBuilder();
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var usuario = auth.User?.Identity?.Name ?? "";
+        sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario}");
+        sb.AppendLine("VENTAS POR CLASIFICACIÓN");
+        sb.AppendLine($"Desde;{fDesde:yyyy-MM-dd};Hasta;{fHasta:yyyy-MM-dd}");
+        sb.AppendLine($"Total;{totalGeneral};Cantidad;{cantidadTotal}");
+        sb.AppendLine();
+        sb.AppendLine("RESUMEN POR CLASIFICACIÓN");
+        sb.AppendLine(string.Join(sep, new[] { "Clasificación", "Cantidad", "Total", "Costo", "Utilidad", "% Margen", "% Participación" }));
+        foreach (var item in resumenClasificacion)
+        {
+            var pct = totalGeneral > 0 ? (item.Total / totalGeneral * 100) : 0;
+            var margen = item.Total > 0 ? ((item.Total - item.Costo) / item.Total * 100) : 0;
+            sb.AppendLine(string.Join(sep, new[] {
+                item.Clasificacion,
+                item.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Total.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Costo.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Utilidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                margen.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+                pct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+            }));
+        }
+        sb.AppendLine();
+        sb.AppendLine("DETALLE POR PRODUCTO");
+        sb.AppendLine(string.Join(sep, new[] { "Código", "Producto", "Clasificación", "Cantidad", "PrecioProm", "Total", "Costo", "Utilidad" }));
+        foreach (var det in detalleProductos)
+        {
+            sb.AppendLine(string.Join(sep, new[] {
+                det.Codigo, det.Producto, det.Clasificacion,
+                det.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                det.PrecioPromedio.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                det.Total.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                det.Costo.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                det.Utilidad.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            }));
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", b64, $"VentasClasificacion_{DateTime.Now:yyyyMMdd_HHmmss}.csv", "text/csv;charset=utf-8");
+    }
+
+    private async Task ExportarXlsx()
+    {
+        using var wb = new XLWorkbook();
+
+        // Hoja 1: Resumen por Clasificación
+        var ws1 = wb.AddWorksheet("Resumen");
+        int row = 1;
+        ws1.Cell(row, 1).Value = "VENTAS POR CLASIFICACIÓN";
+        ws1.Cell(row, 1).Style.Font.Bold = true;
+        ws1.Cell(row, 1).Style.Font.FontSize = 14;
+        row++;
+        ws1.Cell(row, 1).Value = $"Desde: {fDesde:dd/MM/yyyy} - Hasta: {fHasta:dd/MM/yyyy}";
+        row += 2;
+
+        ws1.Cell(row, 1).Value = "Total Vendido:"; ws1.Cell(row, 2).Value = totalGeneral; ws1.Cell(row, 2).Style.NumberFormat.Format = "#,##0";
+        row++;
+        ws1.Cell(row, 1).Value = "Cantidad Total:"; ws1.Cell(row, 2).Value = cantidadTotal; ws1.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        row += 2;
+
+        var headers1 = new[] { "Clasificación", "Cantidad", "Total", "Costo", "Utilidad", "% Margen", "% Participación" };
+        for (int c = 0; c < headers1.Length; c++)
+        {
+            ws1.Cell(row, c + 1).Value = headers1[c];
+            ws1.Cell(row, c + 1).Style.Font.Bold = true;
+        }
+        row++;
+
+        foreach (var item in resumenClasificacion)
+        {
+            var pct = totalGeneral > 0 ? (item.Total / totalGeneral * 100) : 0;
+            var margen = item.Total > 0 ? ((item.Total - item.Costo) / item.Total * 100) : 0;
+            ws1.Cell(row, 1).Value = item.Clasificacion;
+            ws1.Cell(row, 2).Value = item.Cantidad; ws1.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+            ws1.Cell(row, 3).Value = item.Total; ws1.Cell(row, 3).Style.NumberFormat.Format = "#,##0";
+            ws1.Cell(row, 4).Value = item.Costo; ws1.Cell(row, 4).Style.NumberFormat.Format = "#,##0";
+            ws1.Cell(row, 5).Value = item.Utilidad; ws1.Cell(row, 5).Style.NumberFormat.Format = "#,##0";
+            ws1.Cell(row, 6).Value = margen / 100; ws1.Cell(row, 6).Style.NumberFormat.Format = "0.00%";
+            ws1.Cell(row, 7).Value = pct / 100; ws1.Cell(row, 7).Style.NumberFormat.Format = "0.00%";
+            row++;
+        }
+
+        // Fila de totales
+        var margenTotal = totalGeneral > 0 ? ((totalGeneral - resumenClasificacion.Sum(r => r.Costo)) / totalGeneral * 100) : 0;
+        ws1.Cell(row, 1).Value = "TOTAL"; ws1.Cell(row, 1).Style.Font.Bold = true;
+        ws1.Cell(row, 2).Value = cantidadTotal; ws1.Cell(row, 2).Style.Font.Bold = true;
+        ws1.Cell(row, 3).Value = totalGeneral; ws1.Cell(row, 3).Style.Font.Bold = true;
+        ws1.Cell(row, 4).Value = resumenClasificacion.Sum(r => r.Costo); ws1.Cell(row, 4).Style.Font.Bold = true;
+        ws1.Cell(row, 5).Value = resumenClasificacion.Sum(r => r.Utilidad); ws1.Cell(row, 5).Style.Font.Bold = true;
+        ws1.Cell(row, 6).Value = margenTotal / 100; ws1.Cell(row, 6).Style.Font.Bold = true;
+        ws1.Cell(row, 7).Value = 1; ws1.Cell(row, 7).Style.Font.Bold = true;
+
+        ws1.Columns().AdjustToContents();
+
+        // Hoja 2: Detalle por Producto
+        var ws2 = wb.AddWorksheet("Detalle");
+        row = 1;
+        var headers2 = new[] { "Código", "Producto", "Clasificación", "Cantidad", "Precio Prom.", "Total", "Costo", "Utilidad" };
+        for (int c = 0; c < headers2.Length; c++)
+        {
+            ws2.Cell(row, c + 1).Value = headers2[c];
+            ws2.Cell(row, c + 1).Style.Font.Bold = true;
+        }
+        row++;
+
+        foreach (var det in detalleProductos)
+        {
+            ws2.Cell(row, 1).Value = det.Codigo;
+            ws2.Cell(row, 2).Value = det.Producto;
+            ws2.Cell(row, 3).Value = det.Clasificacion;
+            ws2.Cell(row, 4).Value = det.Cantidad; ws2.Cell(row, 4).Style.NumberFormat.Format = "#,##0.00";
+            ws2.Cell(row, 5).Value = det.PrecioPromedio; ws2.Cell(row, 5).Style.NumberFormat.Format = "#,##0";
+            ws2.Cell(row, 6).Value = det.Total; ws2.Cell(row, 6).Style.NumberFormat.Format = "#,##0";
+            ws2.Cell(row, 7).Value = det.Costo; ws2.Cell(row, 7).Style.NumberFormat.Format = "#,##0";
+            ws2.Cell(row, 8).Value = det.Utilidad; ws2.Cell(row, 8).Style.NumberFormat.Format = "#,##0";
+            row++;
+        }
+
+        ws2.Columns().AdjustToContents();
+
+        using var ms = new System.IO.MemoryStream();
+        wb.SaveAs(ms);
+        var b64 = Convert.ToBase64String(ms.ToArray());
+        await JS.InvokeVoidAsync("downloadFile", b64, $"VentasClasificacion_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private class ResumenClasificacion
+    {
+        public int IdClasificacion { get; set; }
+        public string Clasificacion { get; set; } = "";
+        public decimal Cantidad { get; set; }
+        public decimal Total { get; set; }
+        public decimal Costo { get; set; }
+        public decimal Utilidad => Total - Costo;
+    }
+
+    private class DetalleProducto
+    {
+        public int IdProducto { get; set; }
+        public string Codigo { get; set; } = "";
+        public string Producto { get; set; } = "";
+        public string Clasificacion { get; set; } = "";
+        public decimal Cantidad { get; set; }
+        public decimal Total { get; set; }
+        public decimal Costo { get; set; }
+        public decimal PrecioPromedio { get; set; }
+        public decimal Utilidad => Total - Costo;
+    }
+}

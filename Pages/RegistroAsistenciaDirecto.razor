@@ -1,0 +1,409 @@
+@page "/registro-directo"
+@using Microsoft.JSInterop
+@using Microsoft.EntityFrameworkCore
+@using FaceRecognitionDotNet
+@using System.IO
+@using System.Drawing
+@using SistemIA.Models
+@using SistemIA.Services
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AsistenciaCalculatorService AsistenciaCalculator
+
+<PageTitle>Registro de Asistencia</PageTitle>
+
+<link href="css/registro-directo.css" rel="stylesheet" />
+
+<div class="registro-directo-container">
+    <div class="registro-panel">
+        <div class="camera-container">
+            <video id="videoElement" autoplay playsinline></video>
+            <canvas id="canvasElement" style="display: none;"></canvas>
+            
+            <div class="face-outline @(_faceDetected ? "detected" : "")">
+                <div class="circle"></div>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            @if (_usuarioReconocido != null)
+            {
+                <div class="usuario-info">
+                    <img src="@(ObtenerUrlFoto(_usuarioReconocido))" alt="Foto de perfil" />
+                    <h2>@_usuarioReconocido.Nombres @_usuarioReconocido.Apellidos</h2>
+                </div>
+            }
+            else
+            {
+                <div class="instrucciones">
+                    <h2>Posicione su rostro dentro del círculo</h2>
+                    <p>El sistema registrará automáticamente su asistencia</p>
+                </div>
+            }
+        </div>
+
+        @if (_mostrarMensaje)
+        {
+            <div class="mensaje-confirmacion @(_tipoMensaje)">
+                <h3>@_textoMensaje</h3>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _faceDetected;
+    private Usuario? _usuarioReconocido;
+    private bool _mostrarMensaje;
+    private string _textoMensaje = "";
+    private string _tipoMensaje = "";
+    private DotNetObjectReference<RegistroAsistenciaDirecto>? _objRef;
+    private IJSObjectReference? _speechModule;
+    private bool _procesandoAsistencia;
+    private Dictionary<int, DateTime> _ultimasMarcaciones = new();
+    private const int TIEMPO_ENTRE_MARCACIONES = 60; // segundos
+
+    // Componentes de reconocimiento facial
+    private FaceRecognition? faceRecognition;
+    private List<double[]> knownEmbeddings = new();
+    private List<int> knownUserIds = new();
+    private const double FACE_RECOGNITION_TOLERANCE = 0.55;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var modeloPath = @"C:\asis\SistemIA\face_recognition_models";
+            faceRecognition = FaceRecognition.Create(modeloPath);
+            await CargarEmbeddingsConocidos();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error inicializando reconocimiento facial: {ex.Message}");
+            _textoMensaje = "Error al inicializar el sistema de reconocimiento facial";
+            _tipoMensaje = "error";
+            _mostrarMensaje = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _objRef = DotNetObjectReference.Create(this);
+                _speechModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/speechHandler.js");
+                await JSRuntime.InvokeVoidAsync("startCamera", "videoElement");
+                await IniciarDeteccionContinua();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error inicializando JavaScript: {ex.Message}");
+                _textoMensaje = "Error al inicializar la cámara";
+                _tipoMensaje = "error";
+                _mostrarMensaje = true;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task CargarEmbeddingsConocidos()
+    {
+        knownEmbeddings.Clear();
+        knownUserIds.Clear();
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var usuariosConEmbedding = await context.Usuarios
+            .Where(u => u.EmbeddingFacial != null && u.EmbeddingFacial.Length > 0)
+            .ToListAsync();
+
+        foreach (var user in usuariosConEmbedding)
+        {
+            var doubleArray = ConvertByteArrayToDoubleArray(user.EmbeddingFacial);
+            if (doubleArray.Length > 0)
+            {
+                knownEmbeddings.Add(doubleArray);
+                knownUserIds.Add(user.Id_Usu);
+            }
+        }
+    }
+
+    private async Task IniciarDeteccionContinua()
+    {
+        while (true)
+        {
+            if (!_procesandoAsistencia)
+            {
+                await ProcesarAsistencia();
+            }
+            await Task.Delay(500); // Ajusta este valor según sea necesario
+        }
+    }
+
+    private async Task ProcesarAsistencia()
+    {
+        try
+        {
+            _procesandoAsistencia = true;
+
+            var imageData = await JSRuntime.InvokeAsync<string>("captureFrame", "videoElement", "canvasElement");
+            if (string.IsNullOrEmpty(imageData))
+            {
+                return;
+            }
+
+            var imageBytes = Convert.FromBase64String(imageData.Split(',')[1]);
+            
+            using var ms = new MemoryStream(imageBytes);
+            using var bitmap = new Bitmap(ms);
+            using var img = FaceRecognition.LoadImage(bitmap);
+            
+            var faceLocations = faceRecognition?.FaceLocations(img).ToArray() ?? Array.Empty<Location>();
+            _faceDetected = faceLocations.Length == 1;
+            StateHasChanged();
+
+            if (_faceDetected)
+            {
+                var capturedEncodings = faceRecognition?.FaceEncodings(img, faceLocations).ToArray() ?? Array.Empty<FaceEncoding>();
+                if (capturedEncodings.Length > 0)
+                {
+                    using var capturedEncoding = capturedEncodings[0];
+                    var capturedVector = capturedEncoding.GetRawEncoding();
+                    
+                    // Buscar la mejor coincidencia
+                    var bestMatchIndex = -1;
+                    var minDistance = 1.0;
+                    
+                    for (int i = 0; i < knownEmbeddings.Count; i++)
+                    {
+                        var distance = CalculateEuclideanDistance(knownEmbeddings[i], capturedVector);
+                        if (distance < minDistance)
+                        {
+                            minDistance = distance;
+                            bestMatchIndex = i;
+                        }
+                    }
+
+                    if (bestMatchIndex != -1 && minDistance <= FACE_RECOGNITION_TOLERANCE)
+                    {
+                        var userId = knownUserIds[bestMatchIndex];
+                        await using var context = await DbFactory.CreateDbContextAsync();
+                        var usuario = await context.Usuarios.FirstOrDefaultAsync(u => u.Id_Usu == userId);
+                        
+                        if (usuario != null)
+                        {
+                            // Verificar si ha pasado suficiente tiempo desde la última marcación
+                            if (_ultimasMarcaciones.TryGetValue(usuario.Id_Usu, out DateTime ultimaMarcacion))
+                            {
+                                var tiempoTranscurrido = (DateTime.Now - ultimaMarcacion).TotalSeconds;
+                                if (tiempoTranscurrido < TIEMPO_ENTRE_MARCACIONES)
+                                {
+                                    _usuarioReconocido = usuario; // Mostrar la foto del usuario mientras espera
+                                    _textoMensaje = $"Debe esperar {TIEMPO_ENTRE_MARCACIONES - (int)tiempoTranscurrido} segundos";
+                                    _tipoMensaje = "warning";
+                                    _mostrarMensaje = true;
+                                    StateHasChanged();
+                                    return;
+                                }
+                            }
+
+                            await RegistrarAsistencia(usuario, imageBytes);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                _usuarioReconocido = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error en procesamiento: {ex.Message}");
+        }
+        finally
+        {
+            _procesandoAsistencia = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RegistrarAsistencia(Usuario usuario, byte[] imageBytes)
+    {
+        try
+        {
+            _procesandoAsistencia = true;
+            // Establecer el usuario reconocido primero para mostrar la foto
+            _usuarioReconocido = usuario;
+            StateHasChanged();
+
+            // Detener la detección temporalmente
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("stopCamera", "videoElement");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error al detener la cámara: {ex.Message}");
+            }
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var ultimaAsistencia = await context.Asistencias
+                .Where(a => a.Id_Usuario == usuario.Id_Usu)
+                .OrderByDescending(a => a.FechaHora)
+                .FirstOrDefaultAsync();
+
+            var tipoRegistro = (ultimaAsistencia == null || 
+                              ultimaAsistencia.TipoRegistro == "Salida" || 
+                              ultimaAsistencia.TipoRegistro == "FinBreak") 
+                              ? "Entrada" : "Salida";
+
+            var asistencia = new Asistencia
+            {
+                Id_Usuario = usuario.Id_Usu,
+                FechaHora = DateTime.Now,
+                TipoRegistro = tipoRegistro,
+                Notas = "Registro facial automático",
+                ImagenRegistro = imageBytes,
+                Sucursal = 1, // Asumiendo que existe al menos una sucursal con Id = 1
+                MetodoRegistro = "Facial",
+                EsRegistroAutomatico = true,
+                UbicacionRegistro = "Terminal Principal"
+            };
+
+            // *** CALCULAR AUTOMÁTICAMENTE TODOS LOS CAMPOS DE CONTROL DE TIEMPO ***
+            asistencia = await AsistenciaCalculator.CalcularControlTiempo(asistencia);
+
+            context.Asistencias.Add(asistencia);
+            await context.SaveChangesAsync();
+
+            // Generar mensaje personalizado basado en el estado de puntualidad
+            string mensajePersonalizado = GenerarMensajePersonalizado(usuario, asistencia);
+            
+            _textoMensaje = mensajePersonalizado;
+            _tipoMensaje = "success";
+            _mostrarMensaje = true;
+
+            if (_speechModule != null)
+            {
+                await _speechModule.InvokeVoidAsync("speak", _textoMensaje);
+            }
+
+            // Mostrar mensaje y foto por 3 segundos
+            try
+            {
+                await Task.Delay(3000);
+                if (_tipoMensaje == "success") // Solo limpiar mensajes de éxito
+                {
+                    _mostrarMensaje = false;
+                }
+                
+                // Guardar el momento de la última marcación
+                _ultimasMarcaciones[usuario.Id_Usu] = DateTime.Now;
+                
+                // Reiniciar la cámara solo si el circuito sigue activo
+                await JSRuntime.InvokeVoidAsync("startCamera", "videoElement");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error en operaciones post-registro: {ex.Message}");
+            }
+            finally
+            {
+                _usuarioReconocido = null;
+                _procesandoAsistencia = false;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _textoMensaje = "Error al registrar asistencia";
+            _tipoMensaje = "error";
+            _mostrarMensaje = true;
+            Console.WriteLine($"Error al registrar asistencia: {ex.Message}");
+        }
+    }
+
+    private string GenerarMensajePersonalizado(Usuario usuario, Asistencia asistencia)
+    {
+        var horaProgramadaStr = asistencia.HoraProgramada?.ToString("HH:mm") ?? "";
+        var horaRegistroStr = asistencia.FechaHora.ToString("HH:mm");
+        
+        if (asistencia.TipoRegistro == "Entrada")
+        {
+            return asistencia.EstadoPuntualidad switch
+            {
+                "Puntual" => $"¡Buenos días, {usuario.Nombres}! Entrada registrada correctamente a las {horaRegistroStr}. Horario programado: {horaProgramadaStr}.",
+                "Tardanza" => $"Hola, {usuario.Nombres}. Tardanza de {asistencia.DiferenciaMinutos} minutos. Entrada a las {horaRegistroStr}, horario programado: {horaProgramadaStr}.",
+                "Adelanto" => $"¡Buenos días, {usuario.Nombres}! Entrada temprana de {Math.Abs(asistencia.DiferenciaMinutos ?? 0)} minutos. Entrada a las {horaRegistroStr}, horario programado: {horaProgramadaStr}.",
+                "NoLaborable" => $"Hola, {usuario.Nombres}. Registro en día no laborable a las {horaRegistroStr}.",
+                _ => $"Hola, {usuario.Nombres}. Entrada registrada a las {horaRegistroStr}."
+            };
+        }
+        else
+        {
+            return asistencia.EstadoPuntualidad switch
+            {
+                "Puntual" => $"¡Hasta luego, {usuario.Nombres}! Salida registrada correctamente a las {horaRegistroStr}. Horario programado: {horaProgramadaStr}.",
+                "SalidaTemprana" => $"Hasta luego, {usuario.Nombres}. Salida temprana de {Math.Abs(asistencia.DiferenciaMinutos ?? 0)} minutos. Salida a las {horaRegistroStr}, horario programado: {horaProgramadaStr}.",
+                "TiempoExtra" => $"¡Excelente trabajo, {usuario.Nombres}! Tiempo extra de {asistencia.HorasExtraMinutos} minutos. Salida a las {horaRegistroStr}, horario programado: {horaProgramadaStr}.",
+                _ => $"Hasta luego, {usuario.Nombres}. Salida registrada a las {horaRegistroStr}."
+            };
+        }
+    }
+
+    private double[] ConvertByteArrayToDoubleArray(byte[] byteArray)
+    {
+        if (byteArray == null || byteArray.Length % sizeof(double) != 0)
+            return Array.Empty<double>();
+
+        var doubleArray = new double[byteArray.Length / sizeof(double)];
+        Buffer.BlockCopy(byteArray, 0, doubleArray, 0, byteArray.Length);
+        return doubleArray;
+    }
+
+    private double CalculateEuclideanDistance(double[] vector1, double[] vector2)
+    {
+        if (vector1.Length != vector2.Length)
+            throw new ArgumentException("Vectores de diferente longitud");
+
+        double sum = 0;
+        for (int i = 0; i < vector1.Length; i++)
+        {
+            sum += Math.Pow(vector1[i] - vector2[i], 2);
+        }
+        return Math.Sqrt(sum);
+    }
+
+    private string ObtenerUrlFoto(Usuario usuario)
+    {
+        if (usuario?.Foto == null || usuario.Foto.Length == 0)
+            return "images/default-profile.png";
+            
+        var base64 = Convert.ToBase64String(usuario.Foto);
+        return $"data:image/png;base64,{base64}";
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        try
+        {
+            if (_speechModule != null)
+            {
+                await _speechModule.DisposeAsync();
+            }
+            
+            _objRef?.Dispose();
+            
+            await JSRuntime.InvokeVoidAsync("stopCamera", "videoElement");
+            faceRecognition?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error during disposal: {ex.Message}");
+        }
+    }
+}

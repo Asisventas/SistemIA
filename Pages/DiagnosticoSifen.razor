@@ -1,0 +1,567 @@
+@page "/admin/sifen/diagnostico"
+@using SistemIA.Models
+@using SistemIA.Data
+@using System.Security.Cryptography.X509Certificates
+@using Microsoft.EntityFrameworkCore
+@inject IConfiguration Configuration
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<PageTitle>Diagnóstico SIFEN</PageTitle>
+
+<div class="container-fluid">
+    <h3 class="mb-4"><i class="bi bi-gear-wide-connected me-2"></i>Diagnóstico SIFEN</h3>
+
+    <div class="row">
+        <!-- Panel de Configuración -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-sliders me-2"></i>Configuración Actual
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-bordered">
+                        <tbody>
+                            <tr>
+                                <th style="width: 40%;">Ambiente</th>
+                                <td>
+                                    <span class="badge @(ambiente == "test" ? "bg-warning" : "bg-success")">
+                                        @(ambiente == "test" ? "TEST" : "PRODUCCIÓN")
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>RUC Emisor</th>
+                                <td><code>@rucEmisor</code></td>
+                            </tr>
+                            <tr>
+                                <th>URL Consulta RUC</th>
+                                <td><small class="text-break">@urlConsultaRuc</small></td>
+                            </tr>
+                            <tr>
+                                <th>URL Consulta DE</th>
+                                <td><small class="text-break">@urlConsultaDe</small></td>
+                            </tr>
+                            <tr>
+                                <th>URL Recepción Lote</th>
+                                <td><small class="text-break">@urlRecepcionLote</small></td>
+                            </tr>
+                            <tr>
+                                <th>Certificado (.p12)</th>
+                                <td>
+                                    @if (certificadoExiste)
+                                    {
+                                        <span class="text-success"><i class="bi bi-check-circle me-1"></i>Encontrado</span>
+                                        <br /><small class="text-muted">@rutaCertificado</small>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-danger"><i class="bi bi-x-circle me-1"></i>No encontrado</span>
+                                        <br /><small class="text-muted">@rutaCertificado</small>
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Password Certificado</th>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(passwordCertificado))
+                                    {
+                                        <span class="text-success"><i class="bi bi-check-circle me-1"></i>Configurado</span>
+                                        <span class="text-muted ms-2">(@passwordCertificado.Length caracteres)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-danger"><i class="bi bi-x-circle me-1"></i>No configurado</span>
+                                    }
+                                </td>
+                            </tr>
+                            @if (certificadoExiste && !string.IsNullOrEmpty(passwordCertificado))
+                            {
+                                <tr>
+                                    <th>Validación Certificado</th>
+                                    <td>
+                                        @if (certificadoValido)
+                                        {
+                                            <span class="text-success"><i class="bi bi-shield-check me-1"></i>Válido</span>
+                                            <br /><small class="text-muted">Subject: @certificadoSubject</small>
+                                            <br /><small class="text-muted">Expira: @certificadoExpiracion</small>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-danger"><i class="bi bi-shield-x me-1"></i>Error</span>
+                                            <br /><small class="text-danger">@errorCertificado</small>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="RecargarConfiguracion">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Recargar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel de Prueba -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <i class="bi bi-search me-2"></i>Prueba de Consulta RUC
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">RUC a Consultar</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" @bind="rucConsulta" 
+                                   placeholder="Ej: 80033703" maxlength="15" />
+                            <button class="btn btn-primary" @onclick="ConsultarRuc" disabled="@consultando">
+                                @if (consultando)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Consultando...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-send me-1"></i>
+                                    <span>Consultar</span>
+                                }
+                            </button>
+                        </div>
+                        <small class="text-muted">Ingrese el RUC sin dígito verificador</small>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(mensajeError))
+                    {
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            @mensajeError
+                        </div>
+                    }
+
+                    @if (tiempoRespuesta > 0)
+                    {
+                        <div class="mb-2">
+                            <small class="text-muted">
+                                <i class="bi bi-clock me-1"></i>Tiempo de respuesta: @tiempoRespuesta ms
+                            </small>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Resultado -->
+            @if (resultadoConsulta != null || !string.IsNullOrEmpty(xmlEnviado))
+            {
+                <div class="card mb-4">
+                    <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-file-code me-2"></i>Resultado</span>
+                        <div>
+                            <button class="btn btn-sm btn-outline-light me-1" @onclick="() => mostrarXmlEnviado = !mostrarXmlEnviado">
+                                @(mostrarXmlEnviado ? "Ocultar XML Enviado" : "Ver XML Enviado")
+                            </button>
+                            <button class="btn btn-sm btn-outline-light" @onclick="CopiarResultado">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (mostrarXmlEnviado && !string.IsNullOrEmpty(xmlEnviado))
+                        {
+                            <div class="bg-dark text-light p-3">
+                                <h6 class="text-warning mb-2">XML Enviado:</h6>
+                                <pre class="mb-0" style="max-height: 200px; overflow-y: auto; font-size: 11px; white-space: pre-wrap;">@xmlEnviado</pre>
+                            </div>
+                            <hr class="m-0" />
+                        }
+                        
+                        @if (resultadoConsulta != null)
+                        {
+                            <div class="p-3">
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <strong>Código Estado:</strong>
+                                        <span class="badge @(resultadoConsulta.dCodRes == "0502" ? "bg-success" : "bg-danger") ms-2">
+                                            @resultadoConsulta.dCodRes
+                                        </span>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong>Mensaje:</strong> @resultadoConsulta.dMsgRes
+                                    </div>
+                                </div>
+
+                                @if (resultadoConsulta.xContRUC != null)
+                                {
+                                    <h6 class="border-bottom pb-2">Datos del Contribuyente</h6>
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            <tr><th style="width:35%">RUC</th><td>@resultadoConsulta.xContRUC.dRUC-@resultadoConsulta.xContRUC.dDV</td></tr>
+                                            <tr><th>Razón Social</th><td>@resultadoConsulta.xContRUC.dRazSoc</td></tr>
+                                            <tr><th>Nombre Fantasía</th><td>@resultadoConsulta.xContRUC.dNomFan</td></tr>
+                                            <tr><th>Estado</th><td>@resultadoConsulta.xContRUC.dDesEstCont</td></tr>
+                                            <tr><th>Tipo Contribuyente</th><td>@resultadoConsulta.xContRUC.dDesTipCont</td></tr>
+                                            <tr><th>Régimen</th><td>@resultadoConsulta.xContRUC.dDesRegimen</td></tr>
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(xmlRespuesta))
+                        {
+                            <div class="bg-light p-3 border-top">
+                                <h6 class="text-muted mb-2">XML Respuesta Completa:</h6>
+                                <pre style="max-height: 300px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; background: #f8f9fa;">@xmlRespuesta</pre>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Panel de Logs -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-terminal me-2"></i>Log de Operaciones</span>
+                    <button class="btn btn-sm btn-outline-light" @onclick="LimpiarLogs">
+                        <i class="bi bi-trash me-1"></i>Limpiar
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="bg-dark text-light p-3" style="max-height: 250px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                        @if (logs.Count == 0)
+                        {
+                            <span class="text-muted">No hay logs aún...</span>
+                        }
+                        else
+                        {
+                            @foreach (var log in logs)
+                            {
+                                <div class="@GetLogClass(log.Tipo)">
+                                    <span class="text-muted">[@log.Hora.ToString("HH:mm:ss")]</span>
+                                    <span class="ms-2">@log.Mensaje</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Configuración
+    private string ambiente = "";
+    private string rucEmisor = "";
+    private string urlConsultaRuc = "";
+    private string urlConsultaDe = "";
+    private string urlRecepcionLote = "";
+    private string rutaCertificado = "";
+    private string passwordCertificado = "";
+    private bool certificadoExiste = false;
+    private bool certificadoValido = false;
+    private string certificadoSubject = "";
+    private string certificadoExpiracion = "";
+    private string errorCertificado = "";
+    
+    // Datos de la Sociedad
+    private Sociedad? sociedad;
+    private string fuenteDatos = "";
+
+    // Consulta
+    private string rucConsulta = "80033703";
+    private bool consultando = false;
+    private string mensajeError = "";
+    private string xmlEnviado = "";
+    private string xmlRespuesta = "";
+    private Sifen.RespuestaConsultaRUC? resultadoConsulta;
+    private long tiempoRespuesta = 0;
+    private bool mostrarXmlEnviado = false;
+
+    // Logs
+    private List<LogEntry> logs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarConfiguracionAsync();
+    }
+
+    private async Task CargarConfiguracionAsync()
+    {
+        try
+        {
+            // Primero intentar cargar desde la tabla Sociedades
+            using var db = await DbFactory.CreateDbContextAsync();
+            sociedad = await db.Sociedades.FirstOrDefaultAsync();
+
+            if (sociedad != null)
+            {
+                fuenteDatos = "Base de datos (Sociedad)";
+                rucEmisor = sociedad.RUC ?? "";
+                rutaCertificado = sociedad.PathCertificadoP12 ?? "";
+                passwordCertificado = sociedad.PasswordCertificadoP12 ?? "";
+                ambiente = sociedad.ServidorSifen ?? "test";
+                
+                // Si hay URLs personalizadas en Sociedad, usarlas
+                if (!string.IsNullOrEmpty(sociedad.DeUrlConsultaRuc))
+                    urlConsultaRuc = sociedad.DeUrlConsultaRuc;
+                if (!string.IsNullOrEmpty(sociedad.DeUrlConsultaDocumento))
+                    urlConsultaDe = sociedad.DeUrlConsultaDocumento;
+                if (!string.IsNullOrEmpty(sociedad.DeUrlEnvioDocumento))
+                    urlRecepcionLote = sociedad.DeUrlEnvioDocumento;
+                    
+                AgregarLog("info", $"Datos cargados desde Sociedad: {sociedad.Nombre}");
+            }
+            else
+            {
+                fuenteDatos = "appsettings.json";
+                // Fallback a configuración de appsettings
+                ambiente = Configuration["Sifen:Ambiente"] ?? "test";
+                rucEmisor = Configuration["Sifen:RucEmisor"] ?? "";
+                rutaCertificado = Configuration["Sifen:RutaCertificado"] ?? "";
+                passwordCertificado = Configuration["Sifen:PasswordCertificado"] ?? "";
+                AgregarLog("warning", "No se encontró registro en Sociedad, usando appsettings.json");
+            }
+            
+            // Construir URLs si no están definidas
+            var baseUrl = ambiente == "prod" 
+                ? "https://sifen.set.gov.py/de/ws" 
+                : "https://sifen-test.set.gov.py/de/ws";
+            
+            if (string.IsNullOrEmpty(urlConsultaRuc))
+                urlConsultaRuc = $"{baseUrl}/consultas/consulta-ruc.wsdl";
+            if (string.IsNullOrEmpty(urlConsultaDe))
+                urlConsultaDe = $"{baseUrl}/consultas/consulta.wsdl";
+            if (string.IsNullOrEmpty(urlRecepcionLote))
+                urlRecepcionLote = $"{baseUrl}/sync/recibe.wsdl";
+            
+            certificadoExiste = !string.IsNullOrEmpty(rutaCertificado) && System.IO.File.Exists(rutaCertificado);
+
+            if (certificadoExiste && !string.IsNullOrEmpty(passwordCertificado))
+            {
+                ValidarCertificado();
+            }
+
+            AgregarLog("info", "Configuración cargada correctamente");
+        }
+        catch (Exception ex)
+        {
+            AgregarLog("error", $"Error al cargar configuración: {ex.Message}");
+        }
+    }
+
+    private void ValidarCertificado()
+    {
+        try
+        {
+            var cert = new X509Certificate2(rutaCertificado, passwordCertificado);
+            certificadoValido = true;
+            certificadoSubject = cert.Subject;
+            certificadoExpiracion = cert.NotAfter.ToString("dd/MM/yyyy HH:mm");
+            
+            if (cert.NotAfter < DateTime.Now)
+            {
+                certificadoValido = false;
+                errorCertificado = "El certificado ha expirado";
+            }
+            else if (cert.NotAfter < DateTime.Now.AddDays(30))
+            {
+                AgregarLog("warning", $"El certificado expira pronto: {certificadoExpiracion}");
+            }
+        }
+        catch (Exception ex)
+        {
+            certificadoValido = false;
+            errorCertificado = ex.Message;
+            AgregarLog("error", $"Error al validar certificado: {ex.Message}");
+        }
+    }
+
+    private async Task ConsultarRuc()
+    {
+        if (string.IsNullOrWhiteSpace(rucConsulta))
+        {
+            mensajeError = "Debe ingresar un RUC";
+            return;
+        }
+
+        // Validar que tengamos los datos necesarios
+        if (string.IsNullOrEmpty(rutaCertificado) || !certificadoExiste)
+        {
+            mensajeError = "Certificado no encontrado. Configure el path del certificado en la tabla Sociedad.";
+            return;
+        }
+        if (string.IsNullOrEmpty(passwordCertificado))
+        {
+            mensajeError = "Password del certificado no configurado. Configure el password en la tabla Sociedad.";
+            return;
+        }
+
+        consultando = true;
+        mensajeError = "";
+        xmlEnviado = "";
+        xmlRespuesta = "";
+        resultadoConsulta = null;
+        tiempoRespuesta = 0;
+
+        try
+        {
+            AgregarLog("info", $"Iniciando consulta RUC: {rucConsulta}");
+            AgregarLog("info", $"Usando certificado: {rutaCertificado}");
+            AgregarLog("info", $"Password: {new string('*', passwordCertificado.Length)} ({passwordCertificado.Length} caracteres)");
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            // Generar el XML que se enviará (para debug)
+            var dId = $"{DateTime.Now:yyyyMMddHHmmss}{new Random().Next(100, 999)}";
+            xmlEnviado = $@"<env:Envelope xmlns:env=""http://www.w3.org/2003/05/soap-envelope"">
+<env:Header/>
+<env:Body>
+<rEnviConsRUC xmlns=""http://ekuatia.set.gov.py/sifen/xsd"">
+<dId>{dId}</dId>
+<dRUCCons>{rucConsulta}</dRUCCons>
+</rEnviConsRUC>
+</env:Body>
+</env:Envelope>";
+
+            AgregarLog("info", $"XML generado, enviando a {urlConsultaRuc}...");
+
+            // Crear instancia de Sifen y llamar directamente al método Consulta
+            var sifen = new Sifen();
+            var respuestaXml = await sifen.Consulta(urlConsultaRuc, rucConsulta, "1", rutaCertificado, passwordCertificado);
+            
+            stopwatch.Stop();
+            tiempoRespuesta = stopwatch.ElapsedMilliseconds;
+
+            xmlRespuesta = respuestaXml ?? "";
+
+            if (!string.IsNullOrEmpty(respuestaXml))
+            {
+                // Parsear la respuesta
+                resultadoConsulta = ParsearRespuestaRUC(respuestaXml);
+                if (resultadoConsulta != null)
+                {
+                    AgregarLog("success", $"Consulta completada - Código: {resultadoConsulta.dCodRes} - {resultadoConsulta.dMsgRes}");
+                }
+                else
+                {
+                    AgregarLog("warning", "Respuesta recibida pero no se pudo parsear");
+                }
+            }
+            else
+            {
+                mensajeError = "Respuesta vacía del servidor";
+                AgregarLog("error", mensajeError);
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeError = ex.Message;
+            AgregarLog("error", $"Excepción: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                AgregarLog("error", $"Inner: {ex.InnerException.Message}");
+            }
+        }
+        finally
+        {
+            consultando = false;
+        }
+    }
+
+    private Sifen.RespuestaConsultaRUC? ParsearRespuestaRUC(string xml)
+    {
+        try
+        {
+            var doc = new System.Xml.XmlDocument();
+            doc.LoadXml(xml);
+
+            var nsmgr = new System.Xml.XmlNamespaceManager(doc.NameTable);
+            nsmgr.AddNamespace("ns2", "http://ekuatia.set.gov.py/sifen/xsd");
+
+            var respuesta = new Sifen.RespuestaConsultaRUC();
+
+            // Buscar dCodRes y dMsgRes
+            var codRes = doc.SelectSingleNode("//ns2:dCodRes", nsmgr) ?? doc.GetElementsByTagName("dCodRes")[0];
+            var msgRes = doc.SelectSingleNode("//ns2:dMsgRes", nsmgr) ?? doc.GetElementsByTagName("dMsgRes")[0];
+
+            respuesta.dCodRes = codRes?.InnerText ?? "";
+            respuesta.dMsgRes = msgRes?.InnerText ?? "";
+
+            // Si hay datos del contribuyente (código 0502 = encontrado)
+            if (respuesta.dCodRes == "0502")
+            {
+                var xContRUC = doc.SelectSingleNode("//ns2:xContRUC", nsmgr) ?? doc.GetElementsByTagName("xContRUC")[0];
+                if (xContRUC != null)
+                {
+                    respuesta.xContRUC = new Sifen.DatosContribuyente
+                    {
+                        dRUC = GetNodeValue(xContRUC, "dRUC"),
+                        dDV = GetNodeValue(xContRUC, "dDV"),
+                        dRazSoc = GetNodeValue(xContRUC, "dRazSoc"),
+                        dNomFan = GetNodeValue(xContRUC, "dNomFan"),
+                        dDesEstCont = GetNodeValue(xContRUC, "dDesEstCont"),
+                        dDesTipCont = GetNodeValue(xContRUC, "dDesTipCont"),
+                        dDesRegimen = GetNodeValue(xContRUC, "dDesRegimen")
+                    };
+                }
+            }
+
+            return respuesta;
+        }
+        catch (Exception ex)
+        {
+            AgregarLog("error", $"Error al parsear respuesta: {ex.Message}");
+            return null;
+        }
+    }
+
+    private string GetNodeValue(System.Xml.XmlNode parent, string tagName)
+    {
+        var node = parent.SelectSingleNode($".//*[local-name()='{tagName}']");
+        return node?.InnerText ?? "";
+    }
+
+    private async Task RecargarConfiguracion()
+    {
+        await CargarConfiguracionAsync();
+        StateHasChanged();
+    }
+
+    private async Task CopiarResultado()
+    {
+        var texto = xmlRespuesta ?? resultadoConsulta?.ToString() ?? "";
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", texto);
+        AgregarLog("info", "Resultado copiado al portapapeles");
+    }
+
+    private void LimpiarLogs()
+    {
+        logs.Clear();
+    }
+
+    private void AgregarLog(string tipo, string mensaje)
+    {
+        logs.Insert(0, new LogEntry { Tipo = tipo, Mensaje = mensaje, Hora = DateTime.Now });
+        if (logs.Count > 100) logs.RemoveAt(logs.Count - 1);
+    }
+
+    private string GetLogClass(string tipo) => tipo switch
+    {
+        "error" => "text-danger",
+        "warning" => "text-warning",
+        "success" => "text-success",
+        _ => "text-light"
+    };
+
+    private class LogEntry
+    {
+        public string Tipo { get; set; } = "";
+        public string Mensaje { get; set; } = "";
+        public DateTime Hora { get; set; }
+    }
+}

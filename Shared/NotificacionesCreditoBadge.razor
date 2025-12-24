@@ -1,0 +1,71 @@
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+@if (cargando)
+{
+    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+}
+else if (totalVencidos > 0)
+{
+    <span class="badge bg-danger rounded-pill ms-2" title="@($"{totalVencidos} facturas vencidas")">
+        @totalVencidos
+    </span>
+}
+else if (totalPorVencer > 0)
+{
+    <span class="badge bg-warning rounded-pill ms-2" title="@($"{totalPorVencer} facturas por vencer en 7 días")">
+        @totalPorVencer
+    </span>
+}
+
+@code {
+    private bool cargando = true;
+    private int totalVencidos = 0;
+    private int totalPorVencer = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarNotificacionesAsync();
+    }
+
+    private async Task CargarNotificacionesAsync()
+    {
+        cargando = true;
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var hoy = DateTime.Today;
+            var dentro7Dias = hoy.AddDays(7);
+
+            var cuentasVencidas = await ctx.CuentasPorCobrar
+                .Where(c => c.Estado == "PENDIENTE" && c.FechaVencimiento < hoy && c.SaldoPendiente > 0)
+                .CountAsync();
+
+            var cuentasPorVencer = await ctx.CuentasPorCobrar
+                .Where(c => c.Estado == "PENDIENTE" && 
+                           c.FechaVencimiento >= hoy && 
+                           c.FechaVencimiento <= dentro7Dias && 
+                           c.SaldoPendiente > 0)
+                .CountAsync();
+
+            totalVencidos = cuentasVencidas;
+            totalPorVencer = cuentasPorVencer;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] CargarNotificacionesAsync: {ex.Message}");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    public async Task RefrescarAsync()
+    {
+        await CargarNotificacionesAsync();
+        StateHasChanged();
+    }
+}

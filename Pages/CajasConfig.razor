@@ -1,0 +1,557 @@
+@page "/configuracion/cajas"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject SistemIA.Services.ICajaService CajaService
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<h3>Configuración de Cajas</h3>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<div class="mb-3">
+    <button class="btn btn-sm btn-primary" @onclick="CrearNueva">Nueva Caja</button>
+    <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="Cargar">Refrescar</button>
+</div>
+
+<div class="row g-3">
+    <div class="col-12">
+        <table class="table table-sm table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Serie</th>
+                    <th>Timbrado</th>
+                    <th>Vigencia</th>
+                    <th>Bloquear</th>
+                    <th>Activa</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in cajas)
+                {
+                    <tr>
+                        <td>@c.IdCaja</td>
+                        <td>@c.Serie</td>
+                        <td>@c.Timbrado</td>
+                        <td>@(c.VigenciaDel?.ToString("dd/MM/yyyy") ?? "") - @(c.VigenciaAl?.ToString("dd/MM/yyyy") ?? "")</td>
+                        <td>@((c.BloquearFactura ?? false) ? "Sí" : "No")</td>
+                        <td>@((c.CajaActual == 1) ? "Sí" : "No")</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => Editar(c)">Editar</button>
+                            <button class="btn btn-sm btn-outline-success ms-1" title="Establecer como caja actual" @onclick="() => EstablecerActual(c.IdCaja)" disabled="@(c.CajaActual == 1)">Activar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (editando != null)
+{
+    <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Fecha Actual Caja</label>
+                <input class="form-control" type="date" @bind="editando.FechaActualCaja" />
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkBloqFecha" type="checkbox" class="form-check-input" @bind="BloqFechaCajaChecked" />
+                    <label class="form-check-label" for="chkBloqFecha">Bloquear fecha de caja</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Cant. Turnos</label>
+                <input class="form-control" type="number" @bind="editando.CantTurnos" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Turno Actual</label>
+                <input class="form-control" type="number" @bind="editando.TurnoActual" />
+            </div>
+            <div class="col-12"><hr /></div>
+            
+        <h6>Datos de la Factura</h6>
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Nivel 1</label>
+                <input class="form-control" type="text" @bind="editando.Nivel1" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Nivel 2</label>
+                <input class="form-control" type="text" @bind="editando.Nivel2" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Factura Inicial</label>
+                <input class="form-control" type="text" @bind="editando.FacturaInicial" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Serie</label>
+                <input class="form-control" type="number" @bind="editando.Serie" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Timbrado</label>
+                <input class="form-control" type="text" @bind="editando.Timbrado" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Vigencia Desde</label>
+                <input class="form-control" type="date" @bind="editando.VigenciaDel" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Vigencia Hasta</label>
+                <input class="form-control" type="date" @bind="editando.VigenciaAl" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Impresora (Factura)</label>
+                <input class="form-control" type="text" @bind="editando.NombreImpresora" />
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkBloqFactura" type="checkbox" class="form-check-input" @bind="BloqFacturaChecked" />
+                    <label class="form-check-label" for="chkBloqFactura">Bloquear número</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkImpFactura" type="checkbox" class="form-check-input" @bind="ImprimirFacturaChecked" />
+                    <label class="form-check-label" for="chkImpFactura">Imprimir Facturas</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Tipo de Facturación</label>
+                <select class="form-select" @bind="editando.TipoFacturacion">
+                    <option value="ELECTRONICA">Factura Electrónica</option>
+                    <option value="AUTOIMPRESOR">Factura Autoimpresor</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Formato de Impresión</label>
+                <select class="form-select" @bind="editando.FormatoImpresion">
+                    <option value="">-- Seleccione --</option>
+                    <option value="TICKET">Ticket Térmico (80mm)</option>
+                    <option value="A4">Láser A4</option>
+                    <option value="MATRICIAL">Matricial (Carta)</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-4">
+                    <input id="chkMostrarLogo" type="checkbox" class="form-check-input" @bind="MostrarLogoChecked" />
+                    <label class="form-check-label" for="chkMostrarLogo">Con Logo</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Ancho Ticket (caracteres)</label>
+                <input class="form-control" type="number" @bind="editando.AnchoTicket" placeholder="42" />
+            </div>
+        </div>
+            <div class="col-12"><hr /></div>
+            
+        <h6>Datos de la Remisión</h6>
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Nivel 1</label>
+                <input class="form-control" type="text" @bind="editando.Nivel1R" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Nivel 2</label>
+                <input class="form-control" type="text" @bind="editando.Nivel2R" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Factura Inicial</label>
+                <input class="form-control" type="text" @bind="editando.FacturaInicialR" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Serie</label>
+                <input class="form-control" type="number" @bind="editando.SerieR" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Timbrado</label>
+                <input class="form-control" type="text" @bind="editando.TimbradoR" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Vigencia Desde</label>
+                <input class="form-control" type="date" @bind="editando.VigenciaDelR" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Vigencia Hasta</label>
+                <input class="form-control" type="date" @bind="editando.VigenciaAlR" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Impresora (Remisión)</label>
+                <input class="form-control" type="text" @bind="editando.NombreImpresoraR" />
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkBloqRem" type="checkbox" class="form-check-input" @bind="BloqRemisionChecked" />
+                    <label class="form-check-label" for="chkBloqRem">Bloquear número</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkImpRem" type="checkbox" class="form-check-input" @bind="ImprimirRemisionChecked" />
+                    <label class="form-check-label" for="chkImpRem">Imprimir Remisión</label>
+                </div>
+            </div>
+        </div>
+    <div class="col-12"><hr /></div>
+        <h6>Datos de la Nota de Crédito</h6>
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Nivel 1</label>
+                <input class="form-control" type="text" @bind="editando.Nivel1NC" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Nivel 2</label>
+                <input class="form-control" type="text" @bind="editando.Nivel2NC" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">N° Nota Crédito</label>
+                <input class="form-control" type="text" @bind="editando.NumeroNC" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Serie</label>
+                <input class="form-control" type="number" @bind="editando.SerieNC" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Timbrado</label>
+                <input class="form-control" type="text" @bind="editando.TimbradoNC" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Vigencia Desde</label>
+                <input class="form-control" type="date" @bind="editando.VigenciaDelNC" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Vigencia Hasta</label>
+                <input class="form-control" type="date" @bind="editando.VigenciaAlNC" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Impresora (N. Crédito)</label>
+                <input class="form-control" type="text" @bind="editando.NombreImpresoraNC" />
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkBloqNC" type="checkbox" class="form-check-input" @bind="BloqNCChecked" />
+                    <label class="form-check-label" for="chkBloqNC">Bloquear número NC</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkImpNC" type="checkbox" class="form-check-input" @bind="ImprimirNCChecked" />
+                    <label class="form-check-label" for="chkImpNC">Imprimir N. Crédito</label>
+                </div>
+            </div>
+        </div>
+    <div class="col-12"><hr /></div>
+        <h6>Datos del Recibo</h6>
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Nivel 1</label>
+                <input class="form-control" type="text" @bind="editando.Nivel1Recibo" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Nivel 2</label>
+                <input class="form-control" type="text" @bind="editando.Nivel2Recibo" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">N° Recibo</label>
+                <input class="form-control" type="text" @bind="editando.NumeroRecibo" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Serie</label>
+                <input class="form-control" type="number" @bind="editando.SerieRecibo" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Timbrado</label>
+                <input class="form-control" type="text" @bind="editando.TimbradoRecibo" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Vigencia Desde</label>
+                <input class="form-control" type="date" @bind="editando.VigenciaDelRecibo" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Vigencia Hasta</label>
+                <input class="form-control" type="date" @bind="editando.VigenciaAlRecibo" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Impresora (Recibo)</label>
+                <input class="form-control" type="text" @bind="editando.NombreImpresoraRecibo" />
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkBloqRec" type="checkbox" class="form-check-input" @bind="BloqReciboChecked" />
+                    <label class="form-check-label" for="chkBloqRec">Bloquear número</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input id="chkImpRec" type="checkbox" class="form-check-input" @bind="ImprimirReciboChecked" />
+                    <label class="form-check-label" for="chkImpRec">Imprimir Recibo</label>
+                </div>
+            </div>
+        </div>
+        </div>
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-success" type="button" @onclick="Guardar">Guardar</button>
+            <button class="btn btn-secondary" type="button" @onclick="Cancelar">Cancelar</button>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private string? error;
+    private List<SistemIA.Models.Caja> cajas = new();
+    private SistemIA.Models.Caja? editando;
+    private bool BloqFacturaChecked
+    {
+        get => editando?.BloquearFactura ?? false;
+        set { if (editando != null) editando.BloquearFactura = value; }
+    }
+    private bool BloqFechaCajaChecked
+    {
+        get => editando?.bloquear_fechaCaja ?? false;
+        set { if (editando != null) editando.bloquear_fechaCaja = value; }
+    }
+    private bool ImprimirFacturaChecked
+    {
+        get => (editando?.Imprimir_Factura ?? 0) == 1;
+        set { if (editando != null) editando.Imprimir_Factura = value ? 1 : 0; }
+    }
+    private bool BloqRemisionChecked
+    {
+        get => editando?.BloquearFacturaR ?? false;
+        set { if (editando != null) editando.BloquearFacturaR = value; }
+    }
+    private bool ImprimirRemisionChecked
+    {
+        get => editando?.Imprimir_remisionR ?? false;
+        set { if (editando != null) editando.Imprimir_remisionR = value; }
+    }
+    private bool BloqNCChecked
+    {
+        get => editando?.BloquearFacturaNC ?? false;
+        set { if (editando != null) editando.BloquearFacturaNC = value; }
+    }
+    private bool ImprimirNCChecked
+    {
+        get => editando?.Imprimir_remisionNC ?? false;
+        set { if (editando != null) editando.Imprimir_remisionNC = value; }
+    }
+    private bool BloqReciboChecked
+    {
+        get => editando?.BloquearFacturaRecibo ?? false;
+        set { if (editando != null) editando.BloquearFacturaRecibo = value; }
+    }
+    private bool ImprimirReciboChecked
+    {
+        get => editando?.Imprimir_remisionRecibo ?? false;
+        set { if (editando != null) editando.Imprimir_remisionRecibo = value; }
+    }
+    private bool MostrarLogoChecked
+    {
+        get => editando?.MostrarLogo ?? false;
+        set { if (editando != null) editando.MostrarLogo = value; }
+    }
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        error = null;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            await EnsureColumnasCajaAsync(ctx);
+            cajas = await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void CrearNueva()
+    {
+        editando = new SistemIA.Models.Caja { Nivel1 = "001", Nivel2 = "001", FacturaInicial = "0000001" };
+    }
+
+    private void Editar(SistemIA.Models.Caja c)
+    {
+        editando = new SistemIA.Models.Caja
+        {
+            IdCaja = c.IdCaja,
+            CantTurnos = c.CantTurnos,
+            TurnoActual = c.TurnoActual,
+            Nivel1 = c.Nivel1,
+            Nivel2 = c.Nivel2,
+            FacturaInicial = c.FacturaInicial,
+            Serie = c.Serie,
+            Timbrado = c.Timbrado,
+            NombreImpresora = c.NombreImpresora,
+            FechaActualCaja = c.FechaActualCaja,
+            VigenciaDel = c.VigenciaDel,
+            VigenciaAl = c.VigenciaAl,
+            BloquearFactura = c.BloquearFactura,
+            Imprimir_Factura = c.Imprimir_Factura,
+            bloquear_fechaCaja = c.bloquear_fechaCaja,
+            TipoFacturacion = c.TipoFacturacion,
+            FormatoImpresion = c.FormatoImpresion,
+            MostrarLogo = c.MostrarLogo,
+            AnchoTicket = c.AnchoTicket,
+            // Remisión
+            Nivel1R = c.Nivel1R,
+            Nivel2R = c.Nivel2R,
+            FacturaInicialR = c.FacturaInicialR,
+            SerieR = c.SerieR,
+            TimbradoR = c.TimbradoR,
+            VigenciaDelR = c.VigenciaDelR,
+            VigenciaAlR = c.VigenciaAlR,
+            NombreImpresoraR = c.NombreImpresoraR,
+            BloquearFacturaR = c.BloquearFacturaR,
+            Imprimir_remisionR = c.Imprimir_remisionR,
+            // Nota de Crédito
+            Nivel1NC = c.Nivel1NC,
+            Nivel2NC = c.Nivel2NC,
+            NumeroNC = c.NumeroNC,
+            SerieNC = c.SerieNC,
+            TimbradoNC = c.TimbradoNC,
+            VigenciaDelNC = c.VigenciaDelNC,
+            VigenciaAlNC = c.VigenciaAlNC,
+            NombreImpresoraNC = c.NombreImpresoraNC,
+            BloquearFacturaNC = c.BloquearFacturaNC,
+            Imprimir_remisionNC = c.Imprimir_remisionNC,
+            // Recibo
+            Nivel1Recibo = c.Nivel1Recibo,
+            Nivel2Recibo = c.Nivel2Recibo,
+            NumeroRecibo = c.NumeroRecibo,
+            SerieRecibo = c.SerieRecibo,
+            TimbradoRecibo = c.TimbradoRecibo,
+            VigenciaDelRecibo = c.VigenciaDelRecibo,
+            VigenciaAlRecibo = c.VigenciaAlRecibo,
+            NombreImpresoraRecibo = c.NombreImpresoraRecibo,
+            BloquearFacturaRecibo = c.BloquearFacturaRecibo,
+            Imprimir_remisionRecibo = c.Imprimir_remisionRecibo
+        };
+    }
+
+    private async Task Guardar()
+    {
+        if (editando == null) return;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            await EnsureColumnasCajaAsync(ctx);
+            if (editando.IdCaja == 0)
+            {
+                ctx.Cajas.Add(editando);
+            }
+            else
+            {
+                // Cargar la entidad original y actualizar sus propiedades
+                var cajaOriginal = await ctx.Cajas.FindAsync(editando.IdCaja);
+                if (cajaOriginal != null)
+                {
+                    // Actualizar todas las propiedades
+                    cajaOriginal.CantTurnos = editando.CantTurnos;
+                    cajaOriginal.TurnoActual = editando.TurnoActual;
+                    cajaOriginal.Nivel1 = editando.Nivel1;
+                    cajaOriginal.Nivel2 = editando.Nivel2;
+                    cajaOriginal.FacturaInicial = editando.FacturaInicial;
+                    cajaOriginal.Serie = editando.Serie;
+                    cajaOriginal.Timbrado = editando.Timbrado;
+                    cajaOriginal.NombreImpresora = editando.NombreImpresora;
+                    cajaOriginal.FechaActualCaja = editando.FechaActualCaja;
+                    cajaOriginal.VigenciaDel = editando.VigenciaDel;
+                    cajaOriginal.VigenciaAl = editando.VigenciaAl;
+                    cajaOriginal.BloquearFactura = editando.BloquearFactura;
+                    cajaOriginal.Imprimir_Factura = editando.Imprimir_Factura;
+                    cajaOriginal.bloquear_fechaCaja = editando.bloquear_fechaCaja;
+                    cajaOriginal.TipoFacturacion = editando.TipoFacturacion;
+                    cajaOriginal.FormatoImpresion = editando.FormatoImpresion;
+                    cajaOriginal.MostrarLogo = editando.MostrarLogo;
+                    cajaOriginal.AnchoTicket = editando.AnchoTicket;
+                    // Remisión
+                    cajaOriginal.Nivel1R = editando.Nivel1R;
+                    cajaOriginal.Nivel2R = editando.Nivel2R;
+                    cajaOriginal.FacturaInicialR = editando.FacturaInicialR;
+                    cajaOriginal.SerieR = editando.SerieR;
+                    cajaOriginal.TimbradoR = editando.TimbradoR;
+                    cajaOriginal.VigenciaDelR = editando.VigenciaDelR;
+                    cajaOriginal.VigenciaAlR = editando.VigenciaAlR;
+                    cajaOriginal.NombreImpresoraR = editando.NombreImpresoraR;
+                    cajaOriginal.BloquearFacturaR = editando.BloquearFacturaR;
+                    cajaOriginal.Imprimir_remisionR = editando.Imprimir_remisionR;
+                    // Nota de Crédito
+                    cajaOriginal.Nivel1NC = editando.Nivel1NC;
+                    cajaOriginal.Nivel2NC = editando.Nivel2NC;
+                    cajaOriginal.NumeroNC = editando.NumeroNC;
+                    cajaOriginal.SerieNC = editando.SerieNC;
+                    cajaOriginal.TimbradoNC = editando.TimbradoNC;
+                    cajaOriginal.VigenciaDelNC = editando.VigenciaDelNC;
+                    cajaOriginal.VigenciaAlNC = editando.VigenciaAlNC;
+                    cajaOriginal.NombreImpresoraNC = editando.NombreImpresoraNC;
+                    cajaOriginal.BloquearFacturaNC = editando.BloquearFacturaNC;
+                    cajaOriginal.Imprimir_remisionNC = editando.Imprimir_remisionNC;
+                    // Recibo
+                    cajaOriginal.Nivel1Recibo = editando.Nivel1Recibo;
+                    cajaOriginal.Nivel2Recibo = editando.Nivel2Recibo;
+                    cajaOriginal.NumeroRecibo = editando.NumeroRecibo;
+                    cajaOriginal.SerieRecibo = editando.SerieRecibo;
+                    cajaOriginal.TimbradoRecibo = editando.TimbradoRecibo;
+                    cajaOriginal.VigenciaDelRecibo = editando.VigenciaDelRecibo;
+                    cajaOriginal.VigenciaAlRecibo = editando.VigenciaAlRecibo;
+                    cajaOriginal.NombreImpresoraRecibo = editando.NombreImpresoraRecibo;
+                    cajaOriginal.BloquearFacturaRecibo = editando.BloquearFacturaRecibo;
+                    cajaOriginal.Imprimir_remisionRecibo = editando.Imprimir_remisionRecibo;
+                }
+            }
+            await ctx.SaveChangesAsync();
+            CajaService.LimpiarCache(); // Limpiar caché para que los cambios se reflejen inmediatamente
+            editando = null;
+            await Cargar();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private static async Task EnsureColumnasCajaAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        var sql = @"
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'CantTurnos' AND object_id = OBJECT_ID(N'Cajas'))
+    ALTER TABLE Cajas ADD CantTurnos INT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'TurnoActual' AND object_id = OBJECT_ID(N'Cajas'))
+    ALTER TABLE Cajas ADD TurnoActual INT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'FechaActualCaja' AND object_id = OBJECT_ID(N'Cajas'))
+    ALTER TABLE Cajas ADD FechaActualCaja DATETIME NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'bloquear_fechaCaja' AND object_id = OBJECT_ID(N'Cajas'))
+    ALTER TABLE Cajas ADD bloquear_fechaCaja BIT NULL;
+ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'CajaActual' AND object_id = OBJECT_ID(N'Cajas'))
+    ALTER TABLE Cajas ADD CajaActual INT NULL;";
+        try { await ctx.Database.ExecuteSqlRawAsync(sql); } catch { }
+    }
+
+    private async Task EstablecerActual(int idCaja)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            await EnsureColumnasCajaAsync(ctx);
+            // Poner 0 a todas y 1 a la seleccionada
+            await ctx.Database.ExecuteSqlRawAsync("UPDATE Cajas SET CajaActual = 0;");
+            await ctx.Database.ExecuteSqlRawAsync("UPDATE Cajas SET CajaActual = 1 WHERE id_caja = {0};", idCaja);
+            CajaService.LimpiarCache(); // Limpiar caché para que los cambios se reflejen inmediatamente
+            await Cargar();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private void Cancelar() => editando = null;
+}

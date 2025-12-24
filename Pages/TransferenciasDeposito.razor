@@ -1,0 +1,1049 @@
+@page "/inventario/transferencias"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Web
+@attribute [Authorize]
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject SistemIA.Services.IInventarioService Inventario
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+
+<h3 class="mb-3"><i class="bi bi-arrow-left-right me-2"></i>Transferencias entre Depósitos</h3>
+
+@if (!mostrarFormulario)
+{
+  <!-- Filtros de búsqueda -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label">ID</label>
+          <input type="number" class="form-control" @bind="filtroId" placeholder="Número" />
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Fecha Desde</label>
+          <input type="date" class="form-control" @bind="filtroFechaDesde" />
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Fecha Hasta</label>
+          <input type="date" class="form-control" @bind="filtroFechaHasta" />
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Depósito Origen</label>
+          <select class="form-select" @bind="filtroDepositoOrigen">
+            <option value="0">Todos</option>
+            @if (depositos != null)
+            {
+              foreach (var d in depositos)
+              {
+                <option value="@d.IdDeposito">@d.Nombre</option>
+              }
+            }
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Depósito Destino</label>
+          <select class="form-select" @bind="filtroDepositoDestino">
+            <option value="0">Todos</option>
+            @if (depositos != null)
+            {
+              foreach (var d in depositos)
+              {
+                <option value="@d.IdDeposito">@d.Nombre</option>
+              }
+            }
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary w-100" @onclick="BuscarTransferencias">
+            <i class="bi bi-search me-1"></i> Buscar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resultados de búsqueda -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Transferencias Registradas</h5>
+        <button class="btn btn-success" @onclick="MostrarFormulario">
+          <i class="bi bi-plus-circle me-1"></i> Nueva Transferencia
+        </button>
+      </div>
+      
+      <div class="table-responsive">
+        <table class="table table-hover table-sm">
+          <thead class="table-dark">
+            <tr>
+              <th>ID</th>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th>Destino</th>
+              <th>Usuario</th>
+              <th>Comentario</th>
+              <th style="width:150px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @if (transferenciasFiltradas == null)
+            {
+              <tr><td colspan="7" class="text-center">Cargando...</td></tr>
+            }
+            else if (!transferenciasFiltradas.Any())
+            {
+              <tr><td colspan="7" class="text-center text-muted">No se encontraron transferencias</td></tr>
+            }
+            else
+            {
+              foreach (var t in transferenciasFiltradas)
+              {
+                <tr style="cursor:pointer;" @onclick="() => MostrarVistaPrevia(t.IdTransferencia)">
+                  <td><strong>#@t.IdTransferencia</strong></td>
+                  <td>@t.FechaTransferencia.ToString("dd/MM/yyyy HH:mm")</td>
+                  <td>@t.DepositoOrigen?.Nombre</td>
+                  <td>@t.DepositoDestino?.Nombre</td>
+                  <td>@t.UsuarioCreacion</td>
+                  <td>@t.Comentario</td>
+                  <td @onclick:stopPropagation="true">
+                    <button class="btn btn-sm btn-outline-info me-1" @onclick="() => MostrarVistaPrevia(t.IdTransferencia)" title="Vista previa">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="() => ImprimirTransferencia(t.IdTransferencia)" title="Imprimir">
+                      <i class="bi bi-printer"></i>
+                    </button>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Modal de Vista Previa -->
+  @if (mostrarVistaPrevia && transferenciaPreview != null)
+  {
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.85);" @onclick="CerrarVistaPrevia">
+      <div class="modal-dialog" style="max-width: 95vw; width: 95vw; margin: 1rem auto; resize: both; overflow: auto;" @onclick:stopPropagation="true">
+        <div class="modal-content" style="height: calc(100vh - 2rem); resize: both; overflow: hidden;">
+          <div class="modal-header bg-primary text-white">
+            <h5 class="modal-title">
+              <i class="bi bi-eye me-2"></i>
+              Vista Previa - Transferencia #@transferenciaPreview.IdTransferencia
+            </h5>
+            <button type="button" class="btn-close btn-close-white" @onclick="CerrarVistaPrevia"></button>
+          </div>
+          <div class="modal-body p-0" style="overflow-y: auto; overflow-x: auto;">
+            <div style="background: #e0e0e0; padding: 30px; min-height: 100%;">
+              <div style="background: white; width: 28cm; margin: 0 auto; padding: 2.5cm; box-shadow: 0 8px 24px rgba(0,0,0,0.3); border-radius: 0;">
+                @((MarkupString)htmlVistaPrevia)
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-lg btn-secondary" @onclick="CerrarVistaPrevia">
+              <i class="bi bi-x-circle me-2"></i> Cerrar
+            </button>
+            <button class="btn btn-lg btn-primary" @onclick="() => ImprimirTransferencia(transferenciaPreview.IdTransferencia)">
+              <i class="bi bi-printer me-2"></i> Imprimir
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+}
+else
+{
+  <!-- Formulario de nueva transferencia -->
+
+  <!-- Formulario de nueva transferencia -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0">Nueva Transferencia</h5>
+      <button class="btn btn-outline-secondary btn-sm" @onclick="CancelarFormulario">
+        <i class="bi bi-x-lg me-1"></i> Cancelar
+      </button>
+    </div>
+    <div class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Depósito Origen</label>
+        <select class="form-select" @bind="idDepositoOrigen" @bind:after="CargarStocksOrigen" disabled="@guardando">
+          <option value="0">-- Seleccione origen --</option>
+          @if (depositos != null)
+          {
+            foreach (var d in depositos)
+            {
+              <option value="@d.IdDeposito">@d.Nombre (@d.Sucursal?.NombreSucursal)</option>
+            }
+          }
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Depósito Destino</label>
+        <select class="form-select" @bind="idDepositoDestino" disabled="@guardando">
+          <option value="0">-- Seleccione destino --</option>
+          @if (depositos != null)
+          {
+            foreach (var d in depositos.Where(x => x.IdDeposito != idDepositoOrigen))
+            {
+              <option value="@d.IdDeposito">@d.Nombre (@d.Sucursal?.NombreSucursal)</option>
+            }
+          }
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Comentario</label>
+        <input class="form-control" @bind="comentario" maxlength="500" placeholder="Opcional" disabled="@guardando" />
+      </div>
+      <div class="col-md-2 text-end">
+        <button class="btn btn-primary w-100" @onclick="Guardar" disabled="@(idDepositoOrigen==0 || idDepositoDestino==0 || !lineas.Any() || guardando)">
+          <i class="bi bi-save me-1"></i> @(guardando?"Guardando...":"Guardar")
+        </button>
+      </div>
+    </div>
+  </div>
+  @if (!string.IsNullOrWhiteSpace(errorMsg))
+  {
+    <div class="card-footer">
+      <div class="alert alert-danger py-2 my-0">@errorMsg</div>
+    </div>
+  }
+  @if (!string.IsNullOrWhiteSpace(okMsg))
+  {
+    <div class="card-footer">
+      <div class="alert alert-success py-2 my-0">@okMsg</div>
+    </div>
+  }
+  @if (transferenciaGeneradaId.HasValue)
+  {
+    <div class="card-footer d-flex gap-2">
+      <button class="btn btn-outline-secondary" @onclick="Imprimir">
+        <i class="bi bi-printer me-1"></i> Imprimir
+      </button>
+      <button class="btn btn-outline-primary" @onclick="NuevaTransferenciaDesdeFormulario">
+        <i class="bi bi-plus-circle me-1"></i> Nueva transferencia
+      </button>
+      <button class="btn btn-outline-info" @onclick="VolverAListado">
+        <i class="bi bi-list me-1"></i> Ver listado
+      </button>
+    </div>
+  }
+</div>
+}
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-6">
+        <label class="form-label">Producto</label>
+        <div class="position-relative">
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input class="form-control" placeholder="Buscar por nombre o código" @bind="buscarProducto" @bind:event="oninput" @onkeyup="OnProductoKeyUp" @onfocus="OnProductoFocus" @onblur="OnProductoBlur" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}" disabled="@(idDepositoOrigen==0 || guardando)" />
+          </div>
+          @if (mostrarSugProductos && productosFiltrados.Any())
+          {
+            <div class="list-group position-absolute w-100 z-3" style="max-height: 300px; overflow:auto;">
+              @foreach (var p in productosFiltrados.Take(15))
+              {
+                <button type="button"
+                        class="list-group-item list-group-item-action d-flex justify-content-between align-items-start"
+                        tabindex="-1"
+                        @onpointerdown="() => SeleccionarProducto(p)" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+                        @onmousedown="() => SeleccionarProducto(p)" @onmousedown:preventDefault @onmousedown:stopPropagation
+                        @onclick="() => SeleccionarProducto(p)" @onclick:preventDefault @onclick:stopPropagation>
+                  <div>
+                    <div class="fw-semibold">@p.Descripcion</div>
+                    <small class="text-muted">Código: @p.CodigoInterno</small>
+                  </div>
+                  <span class="badge bg-secondary">Stock: @ObtenerStockDisplay(p.IdProducto)</span>
+                </button>
+              }
+            </div>
+          }
+        </div>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock disponible</label>
+        <input class="form-control" value="@stockDisponible.ToString("N2")" disabled />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cantidad a transferir</label>
+        <input class="form-control" type="number" step="0.01" min="0" @bind-value="cantidad" @bind-value:event="oninput" disabled="@(idProductoSeleccionado==0 || guardando)" />
+      </div>
+      <div class="col-md-2 text-end">
+        <button class="btn btn-success w-100" @onclick="AgregarLinea" disabled="@(idProductoSeleccionado==0 || idDepositoOrigen==0 || cantidad<=0 || guardando)">
+          <i class="bi bi-plus-lg"></i> Agregar
+        </button>
+      </div>
+    </div>
+
+    <hr />
+
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th style="width:50px;">#</th>
+            <th>Código</th>
+            <th>Producto</th>
+            <th class="text-end">Stock origen</th>
+            <th class="text-end">Cantidad</th>
+            <th class="text-end">Costo unit.</th>
+            <th class="text-end">Costo total</th>
+            <th style="width:80px;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (!lineas.Any())
+          {
+            <tr><td colspan="8" class="text-center text-muted py-4">Sin productos agregados</td></tr>
+          }
+          else
+          {
+            var idx = 0;
+            foreach (var l in lineas)
+            {
+              <tr>
+                <td>@(++idx)</td>
+                <td><span class="badge bg-secondary">@l.CodigoInterno</span></td>
+                <td>
+                  <div class="fw-semibold">@l.Descripcion</div>
+                </td>
+                <td class="text-end">@l.StockOrigen.ToString("N2")</td>
+                <td class="text-end">
+                  <input class="form-control form-control-sm text-end" style="max-width:120px; display:inline-block;" type="number" step="0.01" min="0.01" value="@l.Cantidad"
+                         @oninput="(e)=>ActualizarCantidad(l, e.Value?.ToString())" disabled="@guardando" />
+                </td>
+                <td class="text-end">@l.CostoUnitario.ToString("N0")</td>
+                <td class="text-end fw-semibold">@l.CostoTotal.ToString("N0")</td>
+                <td class="text-center">
+                  <button class="btn btn-sm btn-outline-danger" title="Quitar" @onclick="(()=>QuitarLinea(l))" disabled="@guardando"><i class="bi bi-x-lg"></i></button>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+        <tfoot>
+          <tr class="table-secondary">
+            <th colspan="6" class="text-end">Total</th>
+            <th class="text-end">@lineas.Sum(x=>x.CostoTotal).ToString("N0")</th>
+            <th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+@code {
+  private List<SistemIA.Models.Deposito>? depositos;
+  private List<SistemIA.Models.Producto>? productos;
+  private List<SistemIA.Models.Producto> productosFiltrados = new();
+  private Dictionary<int, decimal> stocksPorProducto = new();
+  
+  // Variables de formulario
+  private bool mostrarFormulario = false;
+  private int idDepositoOrigen;
+  private int idDepositoDestino;
+  private string? comentario;
+  private int idProductoSeleccionado;
+  private decimal stockDisponible;
+  private decimal cantidad;
+  private string? buscarProducto;
+  private bool mostrarSugProductos;
+  
+  private string? errorMsg;
+  private string? okMsg;
+  private bool guardando;
+  private int? transferenciaGeneradaId;
+  
+  private List<LineaVM> lineas = new();
+  
+  // Variables de filtros
+  private int? filtroId;
+  private DateTime? filtroFechaDesde;
+  private DateTime? filtroFechaHasta;
+  private int filtroDepositoOrigen;
+  private int filtroDepositoDestino;
+  
+  private List<SistemIA.Models.TransferenciaDeposito>? transferenciasFiltradas;
+  
+  // Variables de vista previa
+  private bool mostrarVistaPrevia = false;
+  private SistemIA.Models.TransferenciaDeposito? transferenciaPreview;
+  private string htmlVistaPrevia = string.Empty;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    depositos = await ctx.Depositos
+      .Include(d => d.Sucursal)
+      .Where(d => d.Activo)
+      .AsNoTracking()
+      .OrderBy(d => d.IdSucursal)
+      .ThenBy(d => d.Nombre)
+      .ToListAsync();
+    productos = await ctx.Productos
+      .AsNoTracking()
+      .Where(p => p.Activo)
+      .OrderBy(p => p.Descripcion)
+      .ToListAsync();
+    
+    // Cargar últimas transferencias
+    await BuscarTransferencias();
+  }
+  
+  private void MostrarFormulario()
+  {
+    mostrarFormulario = true;
+    Nuevo();
+  }
+  
+  private void CancelarFormulario()
+  {
+    mostrarFormulario = false;
+    Nuevo();
+  }
+  
+  private void VolverAListado()
+  {
+    mostrarFormulario = false;
+    Nuevo();
+    _ = BuscarTransferencias();
+  }
+  
+  private void NuevaTransferenciaDesdeFormulario()
+  {
+    Nuevo();
+  }
+  
+  private async Task BuscarTransferencias()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    
+    var query = ctx.TransferenciasDeposito
+      .Include(t => t.DepositoOrigen)
+      .Include(t => t.DepositoDestino)
+      .AsNoTracking()
+      .AsQueryable();
+    
+    if (filtroId.HasValue)
+      query = query.Where(t => t.IdTransferencia == filtroId.Value);
+    
+    if (filtroFechaDesde.HasValue)
+      query = query.Where(t => t.FechaTransferencia >= filtroFechaDesde.Value);
+    
+    if (filtroFechaHasta.HasValue)
+      query = query.Where(t => t.FechaTransferencia <= filtroFechaHasta.Value.AddDays(1));
+    
+    if (filtroDepositoOrigen > 0)
+      query = query.Where(t => t.IdDepositoOrigen == filtroDepositoOrigen);
+    
+    if (filtroDepositoDestino > 0)
+      query = query.Where(t => t.IdDepositoDestino == filtroDepositoDestino);
+    
+    transferenciasFiltradas = await query
+      .OrderByDescending(t => t.IdTransferencia)
+      .Take(100)
+      .ToListAsync();
+  }
+  
+  private async Task MostrarVistaPrevia(int idTransferencia)
+  {
+    try
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      transferenciaPreview = await ctx.TransferenciasDeposito
+        .Include(t => t.DepositoOrigen).ThenInclude(d => d!.Sucursal)
+        .Include(t => t.DepositoDestino).ThenInclude(d => d!.Sucursal)
+        .AsNoTracking()
+        .FirstOrDefaultAsync(t => t.IdTransferencia == idTransferencia);
+      
+      if (transferenciaPreview == null) return;
+      
+      var detalles = await ctx.TransferenciasDepositoDetalle
+        .Include(d => d.Producto)
+        .AsNoTracking()
+        .Where(d => d.IdTransferencia == idTransferencia)
+        .ToListAsync();
+      
+      htmlVistaPrevia = GenerarHtmlVistaPrevia(transferenciaPreview, detalles);
+      mostrarVistaPrevia = true;
+    }
+    catch (Exception ex)
+    {
+      Console.Error.WriteLine($"Error al cargar vista previa: {ex.Message}");
+    }
+  }
+  
+  private void CerrarVistaPrevia()
+  {
+    mostrarVistaPrevia = false;
+    transferenciaPreview = null;
+    htmlVistaPrevia = string.Empty;
+  }
+  
+  private string GenerarHtmlVistaPrevia(SistemIA.Models.TransferenciaDeposito trans, List<SistemIA.Models.TransferenciaDepositoDetalle> dets)
+  {
+    var suc = trans.DepositoOrigen?.Sucursal;
+    string empresa = suc?.NombreEmpresa ?? "Empresa";
+    string sucursal = suc?.NombreSucursal ?? "Sucursal";
+    string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+    string direccion = suc?.Direccion ?? "";
+    
+    // Logo
+    string? logoDataUri = null;
+    if (suc?.Logo != null && suc.Logo.Length > 0)
+    {
+      var b64 = Convert.ToBase64String(suc.Logo);
+      logoDataUri = $"data:image/png;base64,{b64}";
+    }
+    
+    var sb = new System.Text.StringBuilder();
+    
+    // Estilos inline para la vista previa (idénticos a la impresión)
+    sb.AppendLine("<style>");
+    sb.AppendLine("body{font-size:14px;color:#000;line-height:1.5;}");
+    sb.AppendLine(".header{display:flex;align-items:center;gap:20px;border-bottom:4px solid #000;padding-bottom:14px;margin-bottom:20px;}");
+    sb.AppendLine(".header .logo{max-width:160px;max-height:80px;object-fit:contain;border-radius:6px;border:2px solid #ddd;background:#fff;padding:10px;}");
+    sb.AppendLine(".header .empresa h2{margin:0;font-size:22px;font-weight:700;color:#000;}");
+    sb.AppendLine(".header .empresa .small{font-size:13px;color:#333;font-weight:600;}");
+    sb.AppendLine(".meta{display:flex;justify-content:space-between;gap:20px;margin-bottom:20px;padding:16px;background:#f8f9fa;border-radius:6px;border:2px solid #dee2e6;}");
+    sb.AppendLine(".meta .text-muted{color:#555!important;font-size:12px;font-weight:700;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px;}");
+    sb.AppendLine(".meta .fw-semibold{color:#000;font-size:16px;font-weight:700;}");
+    sb.AppendLine(".table-trans{width:100%;border-collapse:collapse;margin-top:16px;}");
+    sb.AppendLine(".table-trans th,.table-trans td{padding:.85rem;border:1.5px solid #dee2e6;}");
+    sb.AppendLine(".table-trans thead th{background:#000;color:white;font-weight:700;font-size:14px;text-align:left;padding:12px;}");
+    sb.AppendLine(".table-trans tbody tr{background:#fff;}");
+    sb.AppendLine(".table-trans tbody tr:hover{background:#f1f3f5;}");
+    sb.AppendLine(".table-trans tbody td{color:#000;font-size:14px;font-weight:500;}");
+    sb.AppendLine(".table-trans tfoot tr{background:#f8f9fa;border-top:4px solid #000;}");
+    sb.AppendLine(".table-trans tfoot td{font-weight:700;font-size:17px;color:#000;padding:14px;}");
+    sb.AppendLine(".alert-info{background:#d1ecf1;border:2px solid #0c5460;padding:14px;border-radius:6px;margin:16px 0;color:#0c5460;font-size:14px;font-weight:600;}");
+    sb.AppendLine(".fw-bold{font-weight:700;}");
+    sb.AppendLine("</style>");
+    
+    // HEADER (igual que la impresión)
+    sb.AppendLine("<div class='header'>");
+    if (!string.IsNullOrEmpty(logoDataUri))
+      sb.AppendLine($"  <img class='logo' src='{logoDataUri}' alt='Logo'/>");
+    sb.AppendLine("  <div class='empresa'>");
+    sb.AppendLine($"    <h2>{System.Net.WebUtility.HtmlEncode(empresa)}</h2>");
+    sb.AppendLine($"    <div class='small'>RUC: {System.Net.WebUtility.HtmlEncode(ruc)} · {System.Net.WebUtility.HtmlEncode(sucursal)}</div>");
+    sb.AppendLine($"    <div class='small'>{System.Net.WebUtility.HtmlEncode(direccion)}</div>");
+    sb.AppendLine("  </div>");
+    sb.AppendLine("  <div style='margin-left:auto;text-align:right;'>");
+    sb.AppendLine("    <div class='fw-bold' style='font-size:20px;color:#000;'>Transferencia entre Depósitos</div>");
+    sb.AppendLine($"    <div style='font-size:16px;font-weight:600;color:#000;'>N°: {trans.IdTransferencia:D6}</div>");
+    sb.AppendLine($"    <div style='font-size:13px;color:#333;'>Fecha: {trans.FechaTransferencia:dd/MM/yyyy HH:mm}</div>");
+    if (!string.IsNullOrWhiteSpace(trans.UsuarioCreacion))
+      sb.AppendLine($"    <div style='font-size:13px;color:#333;'>Usuario: {System.Net.WebUtility.HtmlEncode(trans.UsuarioCreacion)}</div>");
+    sb.AppendLine("  </div>");
+    sb.AppendLine("</div>");
+    
+    // META (depósitos origen/destino - igual que la impresión)
+    sb.AppendLine("<div class='meta'>");
+    sb.AppendLine("  <div>");
+    sb.AppendLine("    <div class='text-muted'>Depósito Origen</div>");
+    sb.AppendLine($"    <div class='fw-semibold'>{System.Net.WebUtility.HtmlEncode(trans.DepositoOrigen?.Nombre ?? "N/A")}</div>");
+    sb.AppendLine($"    <div class='small'>{System.Net.WebUtility.HtmlEncode(trans.DepositoOrigen?.Sucursal?.NombreSucursal ?? "")}</div>");
+    sb.AppendLine("  </div>");
+    sb.AppendLine("  <div style='text-align:right;'>");
+    sb.AppendLine("    <div class='text-muted'>Depósito Destino</div>");
+    sb.AppendLine($"    <div class='fw-semibold'>{System.Net.WebUtility.HtmlEncode(trans.DepositoDestino?.Nombre ?? "N/A")}</div>");
+    sb.AppendLine($"    <div class='small'>{System.Net.WebUtility.HtmlEncode(trans.DepositoDestino?.Sucursal?.NombreSucursal ?? "")}</div>");
+    sb.AppendLine("  </div>");
+    sb.AppendLine("</div>");
+    
+    if (!string.IsNullOrWhiteSpace(trans.Comentario))
+    {
+      sb.AppendLine($"<div class='alert alert-info'><strong>Comentario:</strong> {System.Net.WebUtility.HtmlEncode(trans.Comentario)}</div>");
+    }
+    
+    sb.AppendLine("<table class='table-trans'>");
+    sb.AppendLine("  <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th style='text-align:right;width:120px;'>Cantidad</th><th style='text-align:right;width:130px;'>Costo unit.</th><th style='text-align:right;width:130px;'>Costo total</th></tr></thead>");
+    sb.AppendLine("  <tbody>");
+    var idx = 0;
+    foreach (var d in dets)
+    {
+      idx++;
+      var desc = d.Producto?.Descripcion ?? $"Producto #{d.IdProducto}";
+      var codigo = d.Producto?.CodigoInterno ?? "-";
+      var costoTotal = d.Cantidad * (d.CostoUnitario ?? 0);
+      sb.AppendLine($"    <tr><td style='font-weight:600;'>{idx}</td><td style='font-weight:600;'>{System.Net.WebUtility.HtmlEncode(codigo)}</td><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td style='text-align:right;font-weight:600;'>{d.Cantidad:N2}</td><td style='text-align:right;'>{(d.CostoUnitario ?? 0):N0}</td><td style='text-align:right;font-weight:700;'>{costoTotal:N0}</td></tr>");
+    }
+    sb.AppendLine("  </tbody>");
+    sb.AppendLine("  <tfoot>");
+    var totalCosto = dets.Sum(d => d.Cantidad * (d.CostoUnitario ?? 0));
+    sb.AppendLine($"    <tr><td colspan='5' style='text-align:right;font-size:16px;'>TOTAL</td><td style='text-align:right;font-size:16px;'>{totalCosto:N0}</td></tr>");
+    sb.AppendLine("  </tfoot>");
+    sb.AppendLine("</table>");
+    
+    sb.AppendLine("<div style='text-align:center;margin-top:2rem;color:#000;font-size:11px;font-weight:600;'>** Comprobante de Transferencia **</div>");
+    
+    return sb.ToString();
+  }
+
+  private async Task CargarStockDisponible()
+  {
+    if (idProductoSeleccionado == 0 || idDepositoOrigen == 0)
+    {
+      stockDisponible = 0;
+      return;
+    }
+    
+    try
+    {
+      stockDisponible = await Inventario.ObtenerStockAsync(idProductoSeleccionado, idDepositoOrigen);
+    }
+    catch
+    {
+      stockDisponible = 0;
+    }
+  }
+
+  private string ObtenerStockDisplay(int idProducto)
+  {
+    if (idDepositoOrigen == 0) return "-";
+    if (stocksPorProducto.ContainsKey(idProducto))
+      return stocksPorProducto[idProducto].ToString("N2");
+    return "-";
+  }
+
+  private async Task CargarStocksOrigen()
+  {
+    if (idDepositoOrigen == 0 || productos == null) return;
+    
+    stocksPorProducto.Clear();
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var stocks = await ctx.ProductosDepositos
+      .AsNoTracking()
+      .Where(pd => pd.IdDeposito == idDepositoOrigen && pd.Stock > 0)
+      .ToListAsync();
+    
+    foreach (var s in stocks)
+    {
+      stocksPorProducto[s.IdProducto] = s.Stock;
+    }
+  }
+
+  private void AplicarFiltroProductos()
+  {
+    var texto = (buscarProducto ?? string.Empty).Trim().ToLowerInvariant();
+    mostrarSugProductos = !string.IsNullOrWhiteSpace(texto);
+    if (!mostrarSugProductos)
+    {
+      productosFiltrados = new List<SistemIA.Models.Producto>();
+      return;
+    }
+    
+    productosFiltrados = productos!
+      .Where(p => (p.Descripcion ?? string.Empty).ToLower().Contains(texto) || 
+                  (p.CodigoInterno ?? string.Empty).ToLower().Contains(texto))
+      .Take(50)
+      .ToList();
+  }
+
+  private async Task SeleccionarProducto(SistemIA.Models.Producto p)
+  {
+    idProductoSeleccionado = p.IdProducto;
+    buscarProducto = p.Descripcion ?? string.Empty;
+    mostrarSugProductos = false;
+    cantidad = 1;
+    await CargarStockDisponible();
+    StateHasChanged();
+  }
+
+  private void OnProductoKeyUp(KeyboardEventArgs e)
+  {
+    if (e.Key == "Escape")
+    {
+      mostrarSugProductos = false;
+    }
+    else
+    {
+      AplicarFiltroProductos();
+    }
+  }
+
+  private void OnProductoFocus(FocusEventArgs _)
+  {
+    if (!string.IsNullOrEmpty(buscarProducto))
+    {
+      AplicarFiltroProductos();
+      mostrarSugProductos = true;
+    }
+  }
+
+  private void OnProductoBlur(FocusEventArgs _)
+  {
+    // Manejado por onpointerdown
+  }
+
+  private async Task AgregarLinea()
+  {
+    errorMsg = okMsg = null;
+    if (idDepositoOrigen == 0) { errorMsg = "Seleccione depósito origen"; return; }
+    if (idDepositoDestino == 0) { errorMsg = "Seleccione depósito destino"; return; }
+    if (idProductoSeleccionado == 0) { errorMsg = "Seleccione un producto"; return; }
+    if (cantidad <= 0) { errorMsg = "Ingrese cantidad mayor a 0"; return; }
+    
+    await CargarStockDisponible();
+    if (cantidad > stockDisponible)
+    {
+      errorMsg = $"Stock insuficiente. Disponible: {stockDisponible:N2}";
+      return;
+    }
+    
+    var p = productos!.First(x => x.IdProducto == idProductoSeleccionado);
+    var existente = lineas.FirstOrDefault(x => x.IdProducto == p.IdProducto);
+    
+    if (existente != null)
+    {
+      existente.Cantidad = cantidad;
+      existente.StockOrigen = stockDisponible;
+      RecalcularLinea(existente);
+    }
+    else
+    {
+      var l = new LineaVM
+      {
+        IdProducto = p.IdProducto,
+        CodigoInterno = p.CodigoInterno,
+        Descripcion = p.Descripcion,
+        StockOrigen = stockDisponible,
+        Cantidad = cantidad,
+        CostoUnitario = p.CostoUnitarioGs ?? 0
+      };
+      RecalcularLinea(l);
+      lineas.Add(l);
+    }
+    
+    // Limpiar
+    idProductoSeleccionado = 0;
+    stockDisponible = 0;
+    cantidad = 0;
+    buscarProducto = string.Empty;
+    mostrarSugProductos = false;
+  }
+
+  private void RecalcularLinea(LineaVM l)
+  {
+    l.CostoTotal = l.Cantidad * l.CostoUnitario;
+  }
+
+  private void ActualizarCantidad(LineaVM l, string? valor)
+  {
+    if (decimal.TryParse(valor, out var cant) && cant > 0)
+    {
+      l.Cantidad = cant;
+      RecalcularLinea(l);
+    }
+    else if (string.IsNullOrWhiteSpace(valor))
+    {
+      // Si está vacío, dejar el valor actual
+      return;
+    }
+    else
+    {
+      // Si es inválido o <= 0, resetear a 1
+      l.Cantidad = 1;
+      RecalcularLinea(l);
+    }
+  }
+
+  private void QuitarLinea(LineaVM l)
+  {
+    lineas.Remove(l);
+  }
+
+  private async Task Guardar()
+  {
+    errorMsg = okMsg = null;
+    guardando = true;
+    StateHasChanged();
+    
+    try
+    {
+      if (idDepositoOrigen == 0 || idDepositoDestino == 0)
+      {
+        errorMsg = "Seleccione depósitos origen y destino";
+        return;
+      }
+      
+      if (idDepositoOrigen == idDepositoDestino)
+      {
+        errorMsg = "El depósito origen debe ser diferente al destino";
+        return;
+      }
+      
+      if (!lineas.Any())
+      {
+        errorMsg = "Agregue al menos un producto";
+        return;
+      }
+      
+      // Validar stocks
+      foreach (var l in lineas)
+      {
+        var stockActual = await Inventario.ObtenerStockAsync(l.IdProducto, idDepositoOrigen);
+        if (l.Cantidad > stockActual)
+        {
+          errorMsg = $"Stock insuficiente para {l.Descripcion}. Disponible: {stockActual:N2}";
+          return;
+        }
+      }
+      
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      
+      // Obtener usuario
+      var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+      var usuario = authState.User.Identity?.Name ?? "Sistema";
+      
+      // Crear transferencia
+      var transferencia = new SistemIA.Models.TransferenciaDeposito
+      {
+        IdDepositoOrigen = idDepositoOrigen,
+        IdDepositoDestino = idDepositoDestino,
+        FechaTransferencia = DateTime.Now,
+        Comentario = comentario,
+        UsuarioCreacion = usuario
+      };
+      
+      ctx.TransferenciasDeposito.Add(transferencia);
+      await ctx.SaveChangesAsync();
+      
+      // Crear detalles
+      foreach (var l in lineas)
+      {
+        var detalle = new SistemIA.Models.TransferenciaDepositoDetalle
+        {
+          IdTransferencia = transferencia.IdTransferencia,
+          IdProducto = l.IdProducto,
+          Cantidad = l.Cantidad,
+          CostoUnitario = l.CostoUnitario
+        };
+        ctx.TransferenciasDepositoDetalle.Add(detalle);
+      }
+      
+      await ctx.SaveChangesAsync();
+      
+      // Validar que todas las cantidades sean válidas antes de procesar
+      foreach (var l in lineas)
+      {
+        if (l.Cantidad <= 0)
+        {
+          errorMsg = $"La cantidad para {l.Descripcion} debe ser mayor a 0";
+          return;
+        }
+      }
+      
+      // Ajustar stocks: salida del origen, entrada al destino
+      foreach (var l in lineas)
+      {
+        Console.WriteLine($"DEBUG: Ajustando stock - Producto: {l.IdProducto}, Deposito Origen: {idDepositoOrigen}, Cantidad: {l.Cantidad}");
+        
+        // Salida del origen (tipo 2 = salida, cantidad siempre positiva)
+        await Inventario.AjustarStockAsync(l.IdProducto, idDepositoOrigen, l.Cantidad, 2, $"Transferencia #{transferencia.IdTransferencia}", usuario);
+        
+        Console.WriteLine($"DEBUG: Stock origen actualizado. Ahora depositando en destino: {idDepositoDestino}");
+        
+        // Entrada al destino (tipo 1 = entrada, cantidad siempre positiva)
+        await Inventario.AjustarStockAsync(l.IdProducto, idDepositoDestino, l.Cantidad, 1, $"Transferencia #{transferencia.IdTransferencia}", usuario);
+      }
+      
+      transferenciaGeneradaId = transferencia.IdTransferencia;
+      okMsg = $"Transferencia #{transferencia.IdTransferencia} guardada exitosamente";
+      
+      // Limpiar formulario para nueva transferencia
+      lineas.Clear();
+      idProductoSeleccionado = 0;
+      stockDisponible = 0;
+      cantidad = 0;
+      buscarProducto = null;
+      mostrarSugProductos = false;
+      comentario = null;
+    }
+    catch (Exception ex)
+    {
+      errorMsg = $"Error al guardar: {ex.Message}";
+      if (ex.InnerException != null)
+      {
+        errorMsg += $" | Detalle: {ex.InnerException.Message}";
+      }
+      Console.Error.WriteLine($"Error completo en transferencia: {ex}");
+    }
+    finally
+    {
+      guardando = false;
+      StateHasChanged();
+    }
+  }
+
+  private void Nuevo()
+  {
+    idDepositoOrigen = depositos?.FirstOrDefault()?.IdDeposito ?? 0;
+    idDepositoDestino = 0;
+    comentario = null;
+    lineas.Clear();
+    errorMsg = okMsg = null;
+    transferenciaGeneradaId = null;
+    idProductoSeleccionado = 0;
+    stockDisponible = 0;
+    cantidad = 0;
+    buscarProducto = null;
+    mostrarSugProductos = false;
+  }
+
+  private async Task Imprimir()
+  {
+    if (!transferenciaGeneradaId.HasValue) return;
+    await ImprimirTransferencia(transferenciaGeneradaId.Value);
+  }
+  
+  private async Task ImprimirTransferencia(int idTransferencia)
+  {
+    try
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      var trans = await ctx.TransferenciasDeposito
+        .Include(t => t.DepositoOrigen).ThenInclude(d => d!.Sucursal)
+        .Include(t => t.DepositoDestino).ThenInclude(d => d!.Sucursal)
+        .AsNoTracking()
+        .FirstOrDefaultAsync(t => t.IdTransferencia == idTransferencia);
+      
+      if (trans == null) return;
+      
+      var detalles = await ctx.TransferenciasDepositoDetalle
+        .Include(d => d.Producto)
+        .AsNoTracking()
+        .Where(d => d.IdTransferencia == idTransferencia)
+        .ToListAsync();
+      
+      await ImprimirComprobante(trans, detalles);
+    }
+    catch (Exception ex)
+    {
+      Console.Error.WriteLine($"Error al imprimir: {ex.Message}");
+    }
+  }
+
+  private async Task ImprimirComprobante(SistemIA.Models.TransferenciaDeposito trans, List<SistemIA.Models.TransferenciaDepositoDetalle> dets)
+  {
+    try
+    {
+      var suc = trans.DepositoOrigen?.Sucursal;
+      string empresa = suc?.NombreEmpresa ?? "Empresa";
+      string sucursal = suc?.NombreSucursal ?? "Sucursal";
+      string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+      string direccion = suc?.Direccion ?? "";
+      
+      // Logo
+      string? logoDataUri = null;
+      if (suc?.Logo != null && suc.Logo.Length > 0)
+      {
+        var b64 = Convert.ToBase64String(suc.Logo);
+        logoDataUri = $"data:image/png;base64,{b64}";
+      }
+      
+      // HEAD
+      var head = new System.Text.StringBuilder();
+      head.AppendLine("<meta charset=\"utf-8\"/>");
+      head.AppendLine("<title>Transferencia entre Depósitos</title>");
+      head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+      head.AppendLine("<style>");
+      head.AppendLine("@media print { @page { size: A4; margin: 14mm 12mm; } }");
+      head.AppendLine("body{font-size:12px;color:#111;}");
+      head.AppendLine(".header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+      head.AppendLine(".header .logo{max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+      head.AppendLine(".header .empresa h2{margin:0;font-size:18px;}");
+      head.AppendLine(".meta{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px;}");
+      head.AppendLine(".table-trans th,.table-trans td{padding:.4rem;border-bottom:1px solid #e5e7eb;}");
+      head.AppendLine(".totales{background:#f8fafc;border-radius:6px;padding:10px;}");
+      head.AppendLine("</style>");
+      
+      // BODY
+      var sb = new System.Text.StringBuilder();
+      sb.AppendLine("<div class=\"container-fluid\">");
+      sb.AppendLine("  <div class=\"header\">");
+      if (!string.IsNullOrEmpty(logoDataUri))
+        sb.AppendLine($"    <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+      sb.AppendLine("    <div class=\"empresa\">");
+      sb.AppendLine($"      <h2>{empresa}</h2>");
+      sb.AppendLine($"      <div class=\"small\">RUC: {ruc} · {sucursal}</div>");
+      sb.AppendLine($"      <div class=\"small\">{direccion}</div>");
+      sb.AppendLine("    </div>");
+      sb.AppendLine("    <div class=\"ms-auto text-end\">");
+      sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Transferencia entre Depósitos</div>");
+      sb.AppendLine($"      <div>N°: {trans.IdTransferencia}</div>");
+      sb.AppendLine($"      <div>Fecha: {trans.FechaTransferencia:dd/MM/yyyy HH:mm}</div>");
+      if (!string.IsNullOrWhiteSpace(trans.UsuarioCreacion))
+        sb.AppendLine($"      <div>Usuario: {trans.UsuarioCreacion}</div>");
+      sb.AppendLine("    </div>");
+      sb.AppendLine("  </div>");
+      
+      sb.AppendLine("  <div class=\"meta\">");
+      sb.AppendLine("    <div>");
+      sb.AppendLine("      <div class=\"text-muted\">Depósito Origen</div>");
+      sb.AppendLine($"      <div class=\"fw-semibold\">{trans.DepositoOrigen?.Nombre ?? "N/A"}</div>");
+      sb.AppendLine($"      <div class=\"small\">{trans.DepositoOrigen?.Sucursal?.NombreSucursal ?? ""}</div>");
+      sb.AppendLine("    </div>");
+      sb.AppendLine("    <div class=\"text-end\">");
+      sb.AppendLine("      <div class=\"text-muted\">Depósito Destino</div>");
+      sb.AppendLine($"      <div class=\"fw-semibold\">{trans.DepositoDestino?.Nombre ?? "N/A"}</div>");
+      sb.AppendLine($"      <div class=\"small\">{trans.DepositoDestino?.Sucursal?.NombreSucursal ?? ""}</div>");
+      sb.AppendLine("    </div>");
+      sb.AppendLine("  </div>");
+      
+      if (!string.IsNullOrWhiteSpace(trans.Comentario))
+      {
+        sb.AppendLine($"  <div class=\"alert alert-info\"><strong>Comentario:</strong> {System.Net.WebUtility.HtmlEncode(trans.Comentario)}</div>");
+      }
+      
+      sb.AppendLine("  <table class=\"table table-sm table-trans\">");
+      sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th class=\"text-end\">Cantidad</th><th class=\"text-end\">Costo unit.</th><th class=\"text-end\">Costo total</th></tr></thead>");
+      sb.AppendLine("    <tbody>");
+      var idx = 0;
+      foreach (var d in dets)
+      {
+        idx++;
+        var desc = d.Producto?.Descripcion ?? $"Producto #{d.IdProducto}";
+        var codigo = d.Producto?.CodigoInterno ?? "-";
+        var costoTotal = d.Cantidad * (d.CostoUnitario ?? 0);
+        sb.AppendLine($"      <tr><td>{idx}</td><td>{System.Net.WebUtility.HtmlEncode(codigo)}</td><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{(d.CostoUnitario ?? 0):N0}</td><td class=\"text-end\">{costoTotal:N0}</td></tr>");
+      }
+      sb.AppendLine("    </tbody>");
+      sb.AppendLine("    <tfoot>");
+      var totalCosto = dets.Sum(d => d.Cantidad * (d.CostoUnitario ?? 0));
+      sb.AppendLine($"      <tr class=\"fw-bold\"><td colspan=\"5\" class=\"text-end\">Total</td><td class=\"text-end\">{totalCosto:N0}</td></tr>");
+      sb.AppendLine("    </tfoot>");
+      sb.AppendLine("  </table>");
+      
+      sb.AppendLine("  <div class=\"text-center mt-4\" style=\"color:#666;font-size:10px;\">** Comprobante de Transferencia **</div>");
+      sb.AppendLine("</div>");
+      
+      await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+    catch (Exception ex)
+    {
+      Console.Error.WriteLine($"Error al generar comprobante: {ex.Message}");
+    }
+  }
+
+  private class LineaVM
+  {
+    public int IdProducto { get; set; }
+    public string CodigoInterno { get; set; } = string.Empty;
+    public string Descripcion { get; set; } = string.Empty;
+    public decimal StockOrigen { get; set; }
+    public decimal Cantidad { get; set; }
+    public decimal CostoUnitario { get; set; }
+    public decimal CostoTotal { get; set; }
+  }
+}

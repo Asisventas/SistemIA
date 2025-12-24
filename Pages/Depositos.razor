@@ -1,0 +1,92 @@
+@page "/inventario/depositos"
+@using SistemIA.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SistemIA.Services.IInventarioService Inventario
+
+<PageProtection Modulo="/inventario" Permiso="VIEW">
+
+<h3>Depósitos</h3>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-4">
+        <input class="form-control" @bind="nuevoNombre" placeholder="Nombre del depósito" />
+      </div>
+      <div class="col-md-3">
+        <input class="form-control" @bind="nuevaDescripcion" placeholder="Descripción (opcional)" />
+      </div>
+      <div class="col-md-3">
+        <input class="form-control" type="number" @bind="idSucursal" placeholder="Id Sucursal" />
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary w-100" @onclick="Crear">Crear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Id</th>
+      <th>Nombre</th>
+      <th>Descripción</th>
+      <th>Sucursal</th>
+      <th>Estado</th>
+    </tr>
+  </thead>
+  <tbody>
+    @if(depositos is null)
+    {
+        <tr><td colspan="5">Cargando...</td></tr>
+    }
+    else if(!depositos.Any())
+    {
+        <tr><td colspan="5">Sin depósitos</td></tr>
+    }
+    else
+    {
+        @foreach(var d in depositos)
+        {
+            <tr>
+              <td>@d.IdDeposito</td>
+              <td>@d.Nombre</td>
+              <td>@d.Descripcion</td>
+              <td>@d.IdSucursal</td>
+              <td>@(d.Activo?"Activo":"Inactivo")</td>
+            </tr>
+        }
+    }
+  </tbody>
+</table>
+
+</PageProtection>
+
+@code{
+  private List<Deposito>? depositos;
+  private string nuevoNombre = string.Empty;
+  private string? nuevaDescripcion;
+  private int idSucursal = 1;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await Cargar();
+  }
+
+  private async Task Cargar()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    depositos = await ctx.Depositos.AsNoTracking().OrderBy(d=>d.IdSucursal).ThenBy(d=>d.Nombre).ToListAsync();
+  }
+
+  private async Task Crear()
+  {
+    if(string.IsNullOrWhiteSpace(nuevoNombre)) return;
+    await Inventario.CrearDepositoAsync(nuevoNombre, idSucursal, nuevaDescripcion);
+    nuevoNombre = string.Empty; nuevaDescripcion = null;
+    await Cargar();
+    StateHasChanged();
+  }
+}

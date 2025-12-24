@@ -23,9 +23,8 @@ namespace SistemIA.Models
         [Required, StringLength(200)]
         public string Direccion { get; set; } = string.Empty;
 
-        [Required]
-        public int? IdCiudad { get; set; }  // Clave foránea
-        public Ciudades? Ciudad { get; set; }  // Navegación
+    [Required]
+    public int? IdCiudad { get; set; }  // FK a CiudadCatalogo.Numero
 
         [StringLength(20)]
         public string? Telefono { get; set; }
@@ -46,6 +45,12 @@ namespace SistemIA.Models
         public string? CertificadoPassword { get; set; }
 
         [StringLength(10)]
+        public string? Ambiente { get; set; } = "test"; // test o prod
+
+        [StringLength(20)]
+        public string? Timbrado { get; set; } // Número de timbrado de la SET
+
+        [StringLength(10)]
         public string? PuntoExpedicion { get; set; }
 
         public bool SistemaPlaya { get; set; } = false;
@@ -62,5 +67,37 @@ namespace SistemIA.Models
 
         [StringLength(200)]
         public string? Conexion { get; set; }
+
+        // === CONFIGURACIÓN DE ASISTENCIA ===
+        
+        /// <summary>
+        /// Minutos de tolerancia para entrada (por defecto 10 minutos)
+        /// </summary>
+        public int ToleranciaEntradaMinutos { get; set; } = 10;
+
+        /// <summary>
+        /// Minutos de tolerancia para salida (por defecto 10 minutos)
+        /// </summary>
+        public int ToleranciaSalidaMinutos { get; set; } = 10;
+
+        /// <summary>
+        /// Indica si se requiere justificación para tardanzas
+        /// </summary>
+        public bool RequiereJustificacionTardanza { get; set; } = true;
+
+        /// <summary>
+        /// Indica si se requiere justificación para salidas tempranas
+        /// </summary>
+        public bool RequiereJustificacionSalidaTemprana { get; set; } = true;
+
+        /// <summary>
+        /// Minutos máximos de horas extra permitidas por día
+        /// </summary>
+        public int MaximoHorasExtraDia { get; set; } = 240; // 4 horas
+
+        /// <summary>
+        /// Indica si el sistema calcula automáticamente las horas extra
+        /// </summary>
+        public bool CalculoAutomaticoHorasExtra { get; set; } = true;
     }
 }

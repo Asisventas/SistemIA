@@ -1,0 +1,177 @@
+@page "/ventas/preview/{id:int}"
+@using SistemIA.Shared.Reportes
+@using SistemIA.Models
+
+<div class="preview-toolbar shadow-sm">
+  <div class="container-fluid">
+    <div class="row align-items-center py-2">
+      <div class="col-md-3">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="Cerrar">
+          <i class="bi bi-x-lg me-1"></i>
+          Cerrar
+        </button>
+      </div>
+      <div class="col-md-6 text-center">
+        <h5 class="mb-0 text-primary">
+          <i class="bi bi-receipt me-2"></i>
+          Factura Electrónica #@id
+        </h5>
+        <small class="text-muted">
+          <i class="bi bi-calendar3 me-1"></i>
+          @DateTime.Now.ToString("dddd, dd 'de' MMMM 'de' yyyy", new System.Globalization.CultureInfo("es-ES"))
+        </small>
+      </div>
+      <div class="col-md-3 text-end">
+        <div class="btn-group">
+          <button class="btn btn-outline-secondary btn-sm" @onclick="Imprimir" title="Imprimir o Guardar como PDF (usa el estilo de la factura)">
+            <i class="bi bi-printer me-1"></i>
+            Imprimir / Guardar PDF
+          </button>
+          <button class="btn btn-primary btn-sm" @onclick="Imprimir" title="Abrir vista de impresión del navegador (elige 'Guardar como PDF')">
+            <i class="bi bi-filetype-pdf me-1"></i>
+            Ver como PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="preview-help bg-light border-top">
+    <div class="container-fluid">
+      <div class="py-2 text-center">
+        <small class="text-muted">
+          <i class="bi bi-info-circle me-1"></i>
+          Esta vista usa el mismo estilo que la impresión. Para generar PDF elige "Guardar como PDF" en el diálogo de impresión.
+        </small>
+      </div>
+    </div>
+  </div>
+</div>
+
+@if (_autoPrintRequested && !_printExecuted)
+{
+  <div class="alert alert-info text-center my-3">
+    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+    <strong>Preparando impresión automática...</strong>
+    <br><small class="text-muted">La ventana de impresión se abrirá automáticamente</small>
+  </div>
+}
+
+<div class="preview-container">
+  <KudeFactura IdVenta="@id" OnReady="FacturaLista" />
+</div>
+
+@code {
+  [Parameter] public int id { get; set; }
+
+  private async Task Imprimir()
+  {
+    await JS.InvokeVoidAsync("console.log", "[PreviewFactura] Impresión manual solicitada");
+    
+    // Esperar un momento para asegurar que todo esté renderizado
+    await Task.Delay(300);
+    
+    try 
+    {
+      // Verificar que el contenido esté disponible antes de imprimir
+      var hasContent = await JS.InvokeAsync<bool>("eval", 
+        "document.querySelector('.preview-container .factura-content') !== null || document.querySelector('.preview-container') !== null");
+      
+      if (hasContent)
+      {
+        await JS.InvokeVoidAsync("console.log", "[PreviewFactura] Contenido verificado, ejecutando impresión");
+        await JS.InvokeVoidAsync("window.print");
+      }
+      else
+      {
+        await JS.InvokeVoidAsync("console.log", "[PreviewFactura] Contenido no disponible, reintentando en 1 segundo");
+        await Task.Delay(1000);
+        await JS.InvokeVoidAsync("window.print");
+      }
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("console.log", $"[PreviewFactura] Error en verificación, imprimiendo directamente: {ex.Message}");
+      await JS.InvokeVoidAsync("window.print");
+    }
+  }
+
+  private Task Cerrar()
+  {
+    JS.InvokeVoidAsync("window.close");
+    return Task.CompletedTask;
+  }
+
+  [Inject] IJSRuntime JS { get; set; } = default!;
+
+  private bool _autoPrintRequested = false;
+  private bool _printExecuted = false;
+
+  protected override void OnAfterRender(bool firstRender)
+  {
+    if (firstRender)
+    {
+      var uri = new Uri(Nav.Uri);
+      var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
+      _autoPrintRequested = q.Get("print") == "1";
+      
+      if (_autoPrintRequested)
+      {
+        _ = JS.InvokeVoidAsync("console.log", "[PreviewFactura] Auto-print detectado, esperando que la factura esté lista...");
+        
+        // Timeout de seguridad por si OnReady no se dispara
+        _ = Task.Run(async () =>
+        {
+          await Task.Delay(5000); // 5 segundos
+          if (_autoPrintRequested && !_printExecuted)
+          {
+            await JS.InvokeVoidAsync("console.log", "[PreviewFactura] Timeout - forzando impresión");
+            _printExecuted = true;
+            await JS.InvokeVoidAsync("window.print");
+            await InvokeAsync(StateHasChanged);
+          }
+        });
+      }
+    }
+  }
+
+  private async Task FacturaLista()
+  {
+    if (_autoPrintRequested && !_printExecuted)
+    {
+      _printExecuted = true;
+      await JS.InvokeVoidAsync("console.log", "[PreviewFactura] Factura cargada, iniciando auto-impresión...");
+      
+      // Esperar a que todo esté renderizado
+      await Task.Delay(800);
+      
+      // Verificar elementos críticos
+      try 
+      {
+        var hasQr = await JS.InvokeAsync<bool>("eval", "document.querySelector('.validacion .qr img') !== null");
+        var hasTable = await JS.InvokeAsync<bool>("eval", "document.querySelector('.tabla tbody tr') !== null");
+        
+        await JS.InvokeVoidAsync("console.log", $"[PreviewFactura] Verificación - QR: {hasQr}, Tabla: {hasTable}");
+        
+        if (!hasQr || !hasTable)
+        {
+          await JS.InvokeVoidAsync("console.log", "[PreviewFactura] Elementos no completamente cargados, esperando un poco más...");
+          await Task.Delay(500);
+        }
+      }
+      catch (Exception ex)
+      {
+        await JS.InvokeVoidAsync("console.log", $"[PreviewFactura] Error verificando elementos: {ex.Message}");
+      }
+      
+      await JS.InvokeVoidAsync("console.log", "[PreviewFactura] Ejecutando window.print automático");
+      await JS.InvokeVoidAsync("window.print");
+    }
+  }
+
+  [Inject] NavigationManager Nav { get; set; } = default!;
+}
+
+@code {
+}
+
+@* estilos movidos a archivo .razor.css opcional *@

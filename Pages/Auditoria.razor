@@ -1,0 +1,485 @@
+@page "/configuracion/auditoria"
+@using SistemIA.Models
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuditoriaService AuditoriaService
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<PageTitle>Auditoría del Sistema - SistemIA</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h3><i class="bi bi-journal-text"></i> Auditoría del Sistema</h3>
+            <p class="text-muted">Registro completo de acciones realizadas por usuarios</p>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class="bi bi-funnel"></i> Filtros de Búsqueda
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Fecha Desde:</label>
+                    <input type="date" class="form-control" @bind="fechaDesde" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Fecha Hasta:</label>
+                    <input type="date" class="form-control" @bind="fechaHasta" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Usuario:</label>
+                    <select class="form-select" @bind="usuarioSeleccionadoId">
+                        <option value="0">-- Todos --</option>
+                        @foreach (var usuario in usuarios)
+                        {
+                            <option value="@usuario.Id_Usu">@usuario.UsuarioNombre - @usuario.Nombres</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Módulo:</label>
+                    <input type="text" class="form-control" @bind="moduloFiltro" placeholder="Ej: Ventas, Productos..." />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Tipo Acción:</label>
+                    <select class="form-select" @bind="tipoAccionFiltro">
+                        <option value="">-- Todos --</option>
+                        <option value="CREATE">Crear</option>
+                        <option value="UPDATE">Actualizar</option>
+                        <option value="DELETE">Eliminar</option>
+                        <option value="VIEW">Consultar</option>
+                        <option value="EXPORT">Exportar</option>
+                        <option value="PRINT">Imprimir</option>
+                        <option value="LOGIN">Inicio Sesión</option>
+                        <option value="LOGOUT">Cierre Sesión</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Límite:</label>
+                    <select class="form-select" @bind="limite">
+                        <option value="50">50 registros</option>
+                        <option value="100">100 registros</option>
+                        <option value="200">200 registros</option>
+                        <option value="500">500 registros</option>
+                    </select>
+                </div>
+                <div class="col-md-6 align-self-end">
+                    <button class="btn btn-primary" @onclick="CargarAuditorias" disabled="@cargando">
+                        <i class="bi bi-search"></i> Buscar
+                    </button>
+                    <button class="btn btn-secondary ms-2" @onclick="LimpiarFiltros">
+                        <i class="bi bi-x-circle"></i> Limpiar
+                    </button>
+                    <button class="btn btn-success ms-2" @onclick="ExportarExcel" disabled="@(!auditorias.Any())">
+                        <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (mensaje != null)
+    {
+        <div class="alert alert-@(mensajeEsError ? "danger" : "info") alert-dismissible fade show" role="alert">
+            @mensaje
+            <button type="button" class="btn-close" @onclick="() => mensaje = null"></button>
+        </div>
+    }
+
+    @if (cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando auditorías...</p>
+        </div>
+    }
+    else if (auditorias.Any())
+    {
+        <!-- Estadísticas -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5><i class="bi bi-bar-chart"></i> Estadísticas</h5>
+                        <div class="row">
+                            @foreach (var stat in estadisticas)
+                            {
+                                <div class="col-md-2 text-center">
+                                    <h4 class="text-primary mb-0">@stat.Value</h4>
+                                    <small class="text-muted">@ObtenerNombreAccion(stat.Key)</small>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabla de Auditorías -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-secondary text-white">
+                <i class="bi bi-list-ul"></i> Registros de Auditoría (@auditorias.Count)
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 8%;">Fecha/Hora</th>
+                                <th style="width: 10%;">Usuario</th>
+                                <th style="width: 8%;">Rol</th>
+                                <th style="width: 10%;">Módulo</th>
+                                <th style="width: 10%;">Acción</th>
+                                <th style="width: 8%;">Tipo</th>
+                                <th style="width: 10%;">Entidad</th>
+                                <th style="width: 20%;">Descripción</th>
+                                <th style="width: 8%;">IP</th>
+                                <th style="width: 5%;">Estado</th>
+                                <th style="width: 3%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var auditoria in auditorias)
+                            {
+                                <tr class="@(auditoria.Exitosa ? "" : "table-danger")">
+                                    <td>
+                                        <small>@auditoria.FechaHora.ToString("dd/MM/yyyy")</small><br />
+                                        <small class="text-muted">@auditoria.FechaHora.ToString("HH:mm:ss")</small>
+                                    </td>
+                                    <td>
+                                        <strong>@auditoria.NombreUsuario</strong><br />
+                                        <small class="text-muted">@auditoria.Usuario?.UsuarioNombre</small>
+                                    </td>
+                                    <td>@auditoria.RolUsuario</td>
+                                    <td>@auditoria.Modulo</td>
+                                    <td>@auditoria.Accion</td>
+                                    <td>
+                                        <span class="badge bg-@ObtenerColorTipo(auditoria.TipoAccion)">
+                                            @auditoria.TipoAccion
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @auditoria.Entidad
+                                        @if (auditoria.IdRegistroAfectado.HasValue)
+                                        {
+                                            <br /><small class="text-muted">ID: @auditoria.IdRegistroAfectado</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        <small>@auditoria.Descripcion</small>
+                                    </td>
+                                    <td>
+                                        <small>@auditoria.DireccionIP</small><br />
+                                        <small class="text-muted" title="@auditoria.Navegador">
+                                            @(auditoria.Navegador?.Length > 20 ? auditoria.Navegador.Substring(0, 20) + "..." : auditoria.Navegador)
+                                        </small>
+                                    </td>
+                                    <td class="text-center">
+                                        @if (auditoria.Exitosa)
+                                        {
+                                            <i class="bi bi-check-circle text-success" title="Exitosa"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-x-circle text-danger" title="@auditoria.MensajeError"></i>
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => VerDetalle(auditoria)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+    else if (!cargando)
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No se encontraron registros de auditoría con los filtros seleccionados.
+        </div>
+    }
+</div>
+
+<!-- Modal de Detalle -->
+@if (auditoriaSeleccionada != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-info-circle"></i> Detalle de Auditoría</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarDetalle"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Usuario:</strong> @auditoriaSeleccionada.NombreUsuario (@auditoriaSeleccionada.Usuario?.UsuarioNombre)
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Rol:</strong> @auditoriaSeleccionada.RolUsuario
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Fecha/Hora:</strong> @auditoriaSeleccionada.FechaHora.ToString("dd/MM/yyyy HH:mm:ss")
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Módulo:</strong> @auditoriaSeleccionada.Modulo
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Acción:</strong> @auditoriaSeleccionada.Accion
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Tipo:</strong> <span class="badge bg-@ObtenerColorTipo(auditoriaSeleccionada.TipoAccion)">@auditoriaSeleccionada.TipoAccion</span>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Entidad:</strong> @auditoriaSeleccionada.Entidad
+                        </div>
+                        <div class="col-md-6">
+                            <strong>ID Registro:</strong> @auditoriaSeleccionada.IdRegistroAfectado
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <strong>Descripción:</strong><br />
+                            @auditoriaSeleccionada.Descripcion
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Dirección IP:</strong> @auditoriaSeleccionada.DireccionIP
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Navegador:</strong> @auditoriaSeleccionada.Navegador
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Estado:</strong> @(auditoriaSeleccionada.Exitosa ? "Exitosa" : "Fallida")
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Severidad:</strong> <span class="badge bg-@ObtenerColorSeveridad(auditoriaSeleccionada.Severidad)">@auditoriaSeleccionada.Severidad</span>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(auditoriaSeleccionada.MensajeError))
+                    {
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <div class="alert alert-danger">
+                                    <strong>Error:</strong> @auditoriaSeleccionada.MensajeError
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(auditoriaSeleccionada.DatosAntes) || !string.IsNullOrEmpty(auditoriaSeleccionada.DatosDespues))
+                    {
+                        <div class="row">
+                            @if (!string.IsNullOrEmpty(auditoriaSeleccionada.DatosAntes))
+                            {
+                                <div class="col-md-6">
+                                    <h6>Datos Antes:</h6>
+                                    <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">@FormatearJson(auditoriaSeleccionada.DatosAntes)</pre>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(auditoriaSeleccionada.DatosDespues))
+                            {
+                                <div class="col-md-6">
+                                    <h6>Datos Después:</h6>
+                                    <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">@FormatearJson(auditoriaSeleccionada.DatosDespues)</pre>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarDetalle">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private bool cargando = false;
+    private List<AuditoriaAccion> auditorias = new();
+    private List<Usuario> usuarios = new();
+    private Dictionary<string, int> estadisticas = new();
+    private AuditoriaAccion? auditoriaSeleccionada;
+    private string? mensaje;
+    private bool mensajeEsError;
+
+    // Filtros
+    private DateTime? fechaDesde = DateTime.Today.AddDays(-7);
+    private DateTime? fechaHasta = DateTime.Today.AddDays(1);
+    private int usuarioSeleccionadoId = 0;
+    private string? moduloFiltro;
+    private string? tipoAccionFiltro;
+    private int limite = 100;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarUsuarios();
+        await CargarAuditorias();
+    }
+
+    private async Task CargarUsuarios()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        usuarios = await ctx.Usuarios
+            .Where(u => u.Estado_Usu)
+            .OrderBy(u => u.UsuarioNombre)
+            .ToListAsync();
+    }
+
+    private async Task CargarAuditorias()
+    {
+        cargando = true;
+        mensaje = null;
+        StateHasChanged();
+
+        try
+        {
+            int? idUsuario = usuarioSeleccionadoId > 0 ? usuarioSeleccionadoId : null;
+            
+            auditorias = await AuditoriaService.ObtenerHistorialAsync(
+                fechaDesde,
+                fechaHasta,
+                idUsuario,
+                moduloFiltro,
+                tipoAccionFiltro,
+                limite
+            );
+
+            if (auditorias.Any())
+            {
+                estadisticas = await AuditoriaService.ObtenerEstadisticasAsync(
+                    fechaDesde,
+                    fechaHasta,
+                    idUsuario,
+                    moduloFiltro
+                );
+            }
+            else
+            {
+                estadisticas.Clear();
+                mensaje = "No se encontraron registros con los filtros seleccionados.";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al cargar auditorías: {ex.Message}";
+            mensajeEsError = true;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void LimpiarFiltros()
+    {
+        fechaDesde = DateTime.Today.AddDays(-7);
+        fechaHasta = DateTime.Today.AddDays(1);
+        usuarioSeleccionadoId = 0;
+        moduloFiltro = null;
+        tipoAccionFiltro = null;
+        limite = 100;
+    }
+
+    private void VerDetalle(AuditoriaAccion auditoria)
+    {
+        auditoriaSeleccionada = auditoria;
+    }
+
+    private void CerrarDetalle()
+    {
+        auditoriaSeleccionada = null;
+    }
+
+    private string ObtenerColorTipo(string? tipo)
+    {
+        return tipo switch
+        {
+            "CREATE" => "success",
+            "UPDATE" => "primary",
+            "DELETE" => "danger",
+            "VIEW" => "info",
+            "EXPORT" => "warning",
+            "PRINT" => "secondary",
+            "LOGIN" => "success",
+            "LOGOUT" => "secondary",
+            _ => "secondary"
+        };
+    }
+
+    private string ObtenerColorSeveridad(string? severidad)
+    {
+        return severidad switch
+        {
+            "INFO" => "info",
+            "WARNING" => "warning",
+            "ERROR" => "danger",
+            "CRITICAL" => "dark",
+            _ => "secondary"
+        };
+    }
+
+    private string ObtenerNombreAccion(string codigo)
+    {
+        return codigo switch
+        {
+            "CREATE" => "Creados",
+            "UPDATE" => "Actualizados",
+            "DELETE" => "Eliminados",
+            "VIEW" => "Consultados",
+            "EXPORT" => "Exportados",
+            "PRINT" => "Impresos",
+            _ => codigo
+        };
+    }
+
+    private string FormatearJson(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return string.Empty;
+        
+        try
+        {
+            var jsonDocument = System.Text.Json.JsonDocument.Parse(json);
+            return System.Text.Json.JsonSerializer.Serialize(jsonDocument, new System.Text.Json.JsonSerializerOptions 
+            { 
+                WriteIndented = true 
+            });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    private async Task ExportarExcel()
+    {
+        mensaje = "Función de exportación a Excel en desarrollo...";
+        mensajeEsError = false;
+        await Task.CompletedTask;
+    }
+}

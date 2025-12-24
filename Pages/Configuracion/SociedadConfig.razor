@@ -1,0 +1,720 @@
+@page "/configuracion/sociedad"
+@using SistemIA.Models
+@using SistemIA.Utils
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<h3>Configuración de la Sociedad</h3>
+
+@if (_cargando)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    <EditForm Model="_sociedad" OnValidSubmit="GuardarAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Nombre</label>
+                <InputText class="form-control" @bind-Value="_sociedad.Nombre" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">RUC</label>
+                <InputText class="form-control" @bind-Value="_sociedad.RUC" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">DV</label>
+                <InputNumber class="form-control" @bind-Value="_sociedad.DV" />
+            </div>
+
+            <div class="col-md-8">
+                <label class="form-label">Dirección</label>
+                <InputText class="form-control" @bind-Value="_sociedad.Direccion" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Nro. Casa</label>
+                <InputText class="form-control" @bind-Value="_sociedad.NumeroCasa" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Departamento</label>
+                <InputSelect class="form-select" TValue="int?" @bind-Value="_sociedad.Departamento" @onchange="DepartamentoChanged">
+                    <option value="">-- Seleccione --</option>
+                    @foreach (var dep in (_departamentos ?? new List<DepartamentoCatalogo>()))
+                    {
+                        <option value="@dep.Numero">@($"{dep.Numero:00} - {dep.Nombre}")</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Ciudad</label>
+                <InputSelect class="form-select" TValue="int?" @bind-Value="_sociedad.Ciudad" @onchange="CiudadChanged">
+                    <option value="">-- Seleccione --</option>
+                    @foreach (var c in (_ciudades ?? new List<CiudadCatalogo>()))
+                    {
+                        <option value="@c.Numero">@c.Nombre (@c.Departamento.ToString("00"))</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Distrito</label>
+                <InputSelect class="form-select" TValue="int?" @bind-Value="_sociedad.Distrito" @onchange="DistritoChanged">
+                    <option value="">-- Seleccione --</option>
+                    @foreach (var d in (_distritos ?? new List<DistritoCatalogo>()))
+                    {
+                        <option value="@d.Numero">@($"{d.Numero:00} - {d.Nombre}")</option>
+                    }
+                </InputSelect>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Teléfono</label>
+                <InputText class="form-control" @bind-Value="_sociedad.Telefono" />
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">Email</label>
+                <InputText class="form-control" @bind-Value="_sociedad.Email" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Tipo Contribuyente (cód.)</label>
+                <InputNumber class="form-control" @bind-Value="_sociedad.TipoContribuyente" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Id CSC</label>
+                <InputText class="form-control" @bind-Value="_sociedad.IdCsc" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">CSC</label>
+                <InputText class="form-control" @bind-Value="_sociedad.Csc" />
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Certificado P12 (ruta)</label>
+                <InputText class="form-control" @bind-Value="_sociedad.PathCertificadoP12" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Password P12</label>
+                <InputText class="form-control" @bind-Value="_sociedad.PasswordCertificadoP12" type="password" />
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Ruta PEM</label>
+                <InputText class="form-control" @bind-Value="_sociedad.PathCertificadoPem" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Ruta CRT</label>
+                <InputText class="form-control" @bind-Value="_sociedad.PathCertificadoCrt" />
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Ruta Archivo Sin Firma</label>
+                <InputText class="form-control" @bind-Value="_sociedad.PathArchivoSinFirma" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Ruta Archivo Firmado</label>
+                <InputText class="form-control" @bind-Value="_sociedad.PathArchivoFirmado" />
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">URL QR</label>
+                <InputText class="form-control" @bind-Value="_sociedad.DeUrlQr" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Servidor SIFEN (test/prod)</label>
+                <InputSelect class="form-select" TValue="string" @bind-Value="_ambiente" @onchange="AmbienteChanged">
+                    <option value="test">test</option>
+                    <option value="prod">prod</option>
+                </InputSelect>
+            </div>
+
+            <div class="col-12">
+                <div class="border rounded p-3 bg-light small">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Consulta RUC (.wsdl)</label>
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaRuc" disabled />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Envío DE (.wsdl)</label>
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlEnvioDocumento" disabled />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Consulta DE (.wsdl)</label>
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaDocumento" disabled />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Consulta Lote (.wsdl)</label>
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaDocumentoLote" disabled />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <button class="btn btn-primary" disabled="@_guardando">
+                    <span class="bi bi-save me-2"></span> Guardar
+                </button>
+            </div>
+        </div>
+    </EditForm>
+
+    <div class="mt-4">
+        <h5>Actividades Económicas (gActEco)</h5>
+        <p class="text-muted small">Administra el código y la descripción de la actividad económica de la Sociedad. Marca una como principal; esa se usará en la factura electrónica.</p>
+
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Código actividad (cActEco)</label>
+                <InputText class="form-control" @bind-Value="_actCodigo" />
+            </div>
+            <div class="col-md-7">
+                <label class="form-label">Descripción (dDesActEco)</label>
+                <InputText class="form-control" @bind-Value="_actNombre" />
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-4">
+                    <InputCheckbox class="form-check-input" @bind-Value="_actPrincipal" />
+                    <label class="form-check-label">Principal</label>
+                </div>
+            </div>
+            <div class="col-12">
+                <button class="btn btn-success btn-sm" @onclick="AgregarActividadAsync" disabled="@_guardandoAct">
+                    <span class="bi bi-plus-lg me-1"></span> Agregar / Actualizar
+                </button>
+                @if (!string.IsNullOrWhiteSpace(_mensajeAct))
+                {
+                    <span class="ms-3 @( _errorAct ? "text-danger" : "text-success" )">@_mensajeAct</span>
+                }
+            </div>
+        </div>
+
+        <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th style="width: 140px;">Código</th>
+                        <th>Descripción</th>
+                        <th style="width: 120px;">Principal</th>
+                        <th style="width: 180px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_actividades.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" class="text-muted">No hay actividades cargadas.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var a in _actividades)
+                        {
+                            <tr>
+                                <td><code>@a.CodigoActividad</code></td>
+                                <td>@(string.IsNullOrWhiteSpace(a.NombreActividad) ? "—" : a.NombreActividad)</td>
+                                <td>
+                                    @if (a.ActividadPrincipal == "S")
+                                    {
+                                        <span class="badge bg-primary">Principal</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn-outline-primary btn-sm me-1" @onclick="() => MarcarPrincipalAsync(a.Numero)" disabled="@(_guardandoAct || a.ActividadPrincipal == "S")">
+                                        Marcar principal
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => EliminarActividadAsync(a.Numero)" disabled="@_guardandoAct">
+                                        Eliminar
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private Sociedad _sociedad = new();
+    private bool _cargando = true;
+    private bool _guardando = false;
+    private string _ambiente = "test"; // test | prod
+    private List<DepartamentoCatalogo> _departamentos = new();
+    private List<CiudadCatalogo> _ciudadesAll = new();
+    private List<CiudadCatalogo> _ciudades = new();
+    private List<DistritoCatalogo> _distritosAll = new();
+    private List<DistritoCatalogo> _distritos = new();
+
+    // Actividades económicas
+    private List<SociedadActividadEconomica> _actividades = new();
+    private string _actCodigo = string.Empty;
+    private string? _actNombre = string.Empty;
+    private bool _actPrincipal = true;
+    private bool _guardandoAct = false;
+    private string? _mensajeAct;
+    private bool _errorAct = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+    await using var db = await DbFactory.CreateDbContextAsync();
+        _sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync() ?? new Sociedad();
+        _departamentos = await db.DepartamentosCatalogo.AsNoTracking().OrderBy(d => d.Numero).ToListAsync();
+        _ciudadesAll = await db.CiudadesCatalogo.AsNoTracking().OrderBy(c => c.Nombre).ToListAsync();
+        _ciudades = new List<CiudadCatalogo>(_ciudadesAll);
+    _distritosAll = await db.DistritosCatalogo.AsNoTracking().OrderBy(d => d.Nombre).ToListAsync();
+    _distritos = new List<DistritoCatalogo>(_distritosAll);
+
+        // Ambiente por defecto y auto-completar URLs si es nuevo o faltan
+        _ambiente = string.IsNullOrWhiteSpace(_sociedad.ServidorSifen) ? "test" : _sociedad.ServidorSifen!;
+        if (_sociedad.IdSociedad == 0)
+        {
+            _sociedad.ServidorSifen = _ambiente;
+            _sociedad.DeConexion = _ambiente == "prod" ? 2 : 1;
+            AutoCompletarUrls(_ambiente);
+        }
+        else
+        {
+            // Si existen campos vacíos, completar sin sobreescribir lo ya cargado
+            AutoCompletarUrls(_ambiente, soloSiVacio: true);
+        }
+        // Si ya hay ciudad elegida, autocompletar depto y distrito desde ciudad
+        if (_sociedad.Ciudad.HasValue)
+        {
+            var ciudadSel = _ciudadesAll.FirstOrDefault(c => c.Numero == _sociedad.Ciudad.Value);
+            if (ciudadSel != null)
+            {
+                // Forzar coherencia inicial: depto y distrito desde ciudad
+                _sociedad.Departamento = ciudadSel.Departamento;
+                _sociedad.Distrito = ciudadSel.Distrito;
+                AplicarFiltroDepartamento();
+                AplicarFiltroDistrito();
+            }
+        }
+        else if (_sociedad.Distrito.HasValue)
+        {
+            // Si hay distrito guardado, derivar/forzar coherencia del departamento desde el distrito
+            var distSel = _distritosAll.FirstOrDefault(d => d.Numero == _sociedad.Distrito.Value);
+            if (distSel != null)
+            {
+                if (!_sociedad.Departamento.HasValue || _sociedad.Departamento.Value != distSel.Departamento)
+                {
+                    _sociedad.Departamento = distSel.Departamento;
+                }
+                AplicarFiltroDepartamento();
+                // No restringimos ciudades por distrito en carga inicial; solo aseguramos distritos del depto
+                AplicarFiltroDistrito();
+            }
+        }
+
+        _cargando = false;
+        await CargarActividadesAsync();
+    }
+
+    private void AmbienteChanged(ChangeEventArgs _)
+    {
+        _sociedad.ServidorSifen = _ambiente;
+        _sociedad.DeConexion = _ambiente == "prod" ? 2 : 1;
+        AutoCompletarUrls(_ambiente);
+    }
+
+    private void AutoCompletarUrls(string ambiente, bool soloSiVacio = false)
+    {
+        void setIf(bool condition, Func<string> valueFactory, Action<string> setter)
+        {
+            if (condition)
+            {
+                setter(valueFactory());
+            }
+        }
+
+        setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlConsultaRuc),
+            () => SifenConfig.GetConsultaRucUrl(ambiente), v => _sociedad.DeUrlConsultaRuc = v);
+
+        setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlEnvioDocumento),
+            () => SifenConfig.GetEnvioDeUrl(ambiente), v => _sociedad.DeUrlEnvioDocumento = v);
+
+        setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlConsultaDocumento),
+            () => SifenConfig.GetConsultaDeUrl(ambiente), v => _sociedad.DeUrlConsultaDocumento = v);
+
+        setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlConsultaDocumentoLote),
+            () => SifenConfig.GetConsultaLoteUrl(ambiente), v => _sociedad.DeUrlConsultaDocumentoLote = v);
+
+        // DeUrlEnvioEvento y DeUrlQr quedan manuales (no definidos en SifenConfig)
+    }
+
+    private void CiudadChanged(ChangeEventArgs _)
+    {
+        if (_sociedad.Ciudad.HasValue)
+        {
+            var ciudadSel = _ciudadesAll.FirstOrDefault(c => c.Numero == _sociedad.Ciudad.Value);
+            if (ciudadSel != null)
+            {
+                // Si cambia ciudad, alinear depto y distrito automáticamente
+                _sociedad.Departamento = ciudadSel.Departamento;
+                _sociedad.Distrito = ciudadSel.Distrito;
+                AplicarFiltroDepartamento();
+                AplicarFiltroDistrito();
+            }
+        }
+    }
+
+    private void DepartamentoChanged(ChangeEventArgs _)
+    {
+    // Primero limpiar ciudad/distrito para evitar inconsistencias
+    _sociedad.Ciudad = null;
+    _sociedad.Distrito = null;
+    // Luego aplicar filtros por departamento
+    AplicarFiltroDepartamento();
+    AplicarFiltroDistrito();
+    }
+
+    private void DistritoChanged(ChangeEventArgs _)
+    {
+        if (_sociedad.Distrito.HasValue)
+        {
+            var distSel = _distritosAll.FirstOrDefault(d => d.Numero == _sociedad.Distrito.Value);
+            if (distSel != null)
+            {
+                // Fijar automáticamente el Departamento del distrito
+                _sociedad.Departamento = distSel.Departamento;
+                // Filtrar por Departamento
+                AplicarFiltroDepartamento();
+
+                // Filtrar ciudades al distrito elegido
+                var ciudadesDelDistrito = _ciudadesAll
+                    .Where(c => c.Departamento == distSel.Departamento && c.Distrito == distSel.Numero)
+                    .OrderBy(c => c.Nombre)
+                    .ToList();
+                _ciudades = ciudadesDelDistrito;
+
+                // Si hay ciudad seleccionada que no pertenece al distrito, limpiarla
+                if (_sociedad.Ciudad.HasValue)
+                {
+                    var ciudadSel = _ciudadesAll.FirstOrDefault(c => c.Numero == _sociedad.Ciudad.Value);
+                    if (ciudadSel == null || ciudadSel.Distrito != distSel.Numero)
+                    {
+                        _sociedad.Ciudad = null;
+                    }
+                }
+
+                // Si el distrito tiene exactamente una ciudad, auto-seleccionarla
+                if (!_sociedad.Ciudad.HasValue && ciudadesDelDistrito.Count == 1)
+                {
+                    _sociedad.Ciudad = ciudadesDelDistrito[0].Numero;
+                }
+
+                // Filtrar distritos y mantener la selección actual si corresponde
+                AplicarFiltroDistrito();
+            }
+        }
+        else
+        {
+            // Si se deselecciona el distrito, solo refiltrar por departamento actual
+            AplicarFiltroDistrito();
+        }
+    }
+
+    private void AplicarFiltroDepartamento()
+    {
+        if (_sociedad.Departamento.HasValue)
+        {
+            var dep = _sociedad.Departamento.Value;
+            _ciudades = _ciudadesAll
+                .Where(c => c.Departamento == dep)
+                .OrderBy(c => c.Nombre)
+                .ToList();
+            // Fallback: si el catálogo está mal asociado y el filtro devuelve muy pocas ciudades, mostrar todas
+            if (_ciudades.Count <= 1)
+            {
+                _ciudades = new List<CiudadCatalogo>(_ciudadesAll.OrderBy(c => c.Nombre));
+            }
+
+            if (_sociedad.Ciudad.HasValue && !_ciudades.Any(c => c.Numero == _sociedad.Ciudad.Value))
+            {
+                _sociedad.Ciudad = null;
+            }
+        }
+        else
+        {
+            _ciudades = new List<CiudadCatalogo>(_ciudadesAll);
+        }
+    }
+
+    private void AplicarFiltroDistrito()
+    {
+        CiudadCatalogo? ciudadSel = null;
+        if (_sociedad.Ciudad.HasValue)
+        {
+            ciudadSel = _ciudadesAll.FirstOrDefault(c => c.Numero == _sociedad.Ciudad.Value);
+            if (ciudadSel != null)
+            {
+                // Asegurar coherencia de depto/distrito con la ciudad
+                _sociedad.Departamento = ciudadSel.Departamento;
+                _sociedad.Distrito = ciudadSel.Distrito;
+            }
+        }
+
+        int? depOpt = _sociedad.Departamento;
+        if (!depOpt.HasValue && ciudadSel != null)
+        {
+            depOpt = ciudadSel.Departamento;
+        }
+
+        if (depOpt.HasValue)
+        {
+            var dep = depOpt.Value;
+            var lista = _distritosAll
+                .Where(d => d.Departamento == dep)
+                .OrderBy(d => d.Nombre)
+                .ToList();
+
+            // Fallback #1: si por datos mal asociados sólo obtenemos muy pocos distritos,
+            // derivamos el conjunto de distritos a partir de las ciudades del departamento.
+            if (lista.Count <= 1)
+            {
+                var distIds = _ciudadesAll
+                    .Where(c => c.Departamento == dep)
+                    .Select(c => c.Distrito)
+                    .Distinct()
+                    .ToHashSet();
+
+                lista = _distritosAll
+                    .Where(d => distIds.Contains(d.Numero))
+                    .OrderBy(d => d.Nombre)
+                    .ToList();
+            }
+
+            // Fallback #2: como último recurso (datos muy inconsistentes),
+            // mostrar todos los distritos para permitir que el usuario seleccione uno
+            // y que el evento DistritoChanged fije el departamento correcto.
+            if (lista.Count <= 1)
+            {
+                lista = _distritosAll
+                    .OrderBy(d => d.Nombre)
+                    .ToList();
+            }
+
+            // Ordenar poniendo el distrito seleccionado primero, si existe
+            if (_sociedad.Distrito.HasValue)
+            {
+                var sel = _sociedad.Distrito.Value;
+                _distritos = lista
+                    .OrderBy(d => d.Numero == sel ? 0 : 1)
+                    .ThenBy(d => d.Nombre)
+                    .ToList();
+            }
+            else
+            {
+                _distritos = lista;
+            }
+
+            if (_sociedad.Distrito.HasValue && !_distritos.Any(d => d.Numero == _sociedad.Distrito.Value))
+            {
+                _sociedad.Distrito = null;
+            }
+        }
+        else
+        {
+            _distritos = new List<DistritoCatalogo>(_distritosAll.OrderBy(d => d.Nombre));
+        }
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existente = await db.Sociedades.FirstOrDefaultAsync();
+        if (existente is null)
+        {
+            _sociedad.FechaAuditoria = DateTime.Now;
+            db.Sociedades.Add(_sociedad);
+        }
+        else
+        {
+            existente.Nombre = _sociedad.Nombre;
+            existente.RUC = _sociedad.RUC;
+            existente.DV = _sociedad.DV;
+            existente.Direccion = _sociedad.Direccion;
+            existente.NumeroCasa = _sociedad.NumeroCasa;
+            existente.Departamento = _sociedad.Departamento;
+            existente.Ciudad = _sociedad.Ciudad;
+            existente.Distrito = _sociedad.Distrito;
+            existente.Telefono = _sociedad.Telefono;
+            existente.Email = _sociedad.Email;
+            existente.TipoContribuyente = _sociedad.TipoContribuyente;
+            existente.IdCsc = _sociedad.IdCsc;
+            existente.Csc = _sociedad.Csc;
+            existente.PathCertificadoP12 = _sociedad.PathCertificadoP12;
+            existente.PasswordCertificadoP12 = _sociedad.PasswordCertificadoP12;
+            existente.PathCertificadoPem = _sociedad.PathCertificadoPem;
+            existente.PathCertificadoCrt = _sociedad.PathCertificadoCrt;
+            existente.PathArchivoSinFirma = _sociedad.PathArchivoSinFirma;
+            existente.PathArchivoFirmado = _sociedad.PathArchivoFirmado;
+            existente.DeUrlQr = _sociedad.DeUrlQr;
+            existente.DeUrlEnvioDocumento = _sociedad.DeUrlEnvioDocumento;
+            existente.DeUrlEnvioEvento = _sociedad.DeUrlEnvioEvento;
+            existente.DeUrlEnvioDocumentoLote = _sociedad.DeUrlEnvioDocumentoLote;
+            existente.DeUrlConsultaDocumento = _sociedad.DeUrlConsultaDocumento;
+            existente.DeUrlConsultaDocumentoLote = _sociedad.DeUrlConsultaDocumentoLote;
+            existente.DeUrlConsultaRuc = _sociedad.DeUrlConsultaRuc;
+            existente.ServidorSifen = _sociedad.ServidorSifen;
+            existente.DeConexion = _sociedad.DeConexion;
+            existente.FechaAuditoria = DateTime.Now;
+        }
+    await db.SaveChangesAsync();
+
+        // Asegurar que _sociedad tenga el Id (en caso de creación)
+        if (_sociedad.IdSociedad == 0)
+        {
+            var recargada = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+            if (recargada != null)
+                _sociedad = recargada;
+        }
+        _guardando = false;
+        await CargarActividadesAsync();
+    }
+
+    private async Task CargarActividadesAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (_sociedad.IdSociedad > 0)
+        {
+            _actividades = await db.SociedadesActividades
+                .AsNoTracking()
+                .Where(a => a.IdSociedad == _sociedad.IdSociedad)
+                .OrderByDescending(a => a.ActividadPrincipal == "S")
+                .ThenBy(a => a.CodigoActividad)
+                .ToListAsync();
+        }
+        else
+        {
+            _actividades.Clear();
+        }
+        StateHasChanged();
+    }
+
+    private async Task AgregarActividadAsync()
+    {
+        _mensajeAct = null; _errorAct = false; _guardandoAct = true;
+        try
+        {
+            var cod = (_actCodigo ?? string.Empty).Trim();
+            var nom = (_actNombre ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(cod))
+            {
+                _mensajeAct = "Debe ingresar el código de actividad"; _errorAct = true; return;
+            }
+
+            // Si la sociedad aún no existe, guardar primero
+            if (_sociedad.IdSociedad == 0)
+            {
+                await GuardarAsync();
+                if (_sociedad.IdSociedad == 0)
+                {
+                    _mensajeAct = "No se pudo guardar la Sociedad aún. Intente nuevamente."; _errorAct = true; return;
+                }
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Si se marca como principal, desmarcar otras
+            if (_actPrincipal)
+            {
+                var otras = await db.SociedadesActividades
+                    .Where(a => a.IdSociedad == _sociedad.IdSociedad && a.ActividadPrincipal == "S")
+                    .ToListAsync();
+                foreach (var o in otras) o.ActividadPrincipal = null;
+            }
+
+            // Insertar o actualizar si existe por (IdSociedad, CodigoActividad)
+            var existente = await db.SociedadesActividades
+                .FirstOrDefaultAsync(a => a.IdSociedad == _sociedad.IdSociedad && a.CodigoActividad == cod);
+            if (existente is null)
+            {
+                var nuevo = new SociedadActividadEconomica
+                {
+                    IdSociedad = _sociedad.IdSociedad,
+                    CodigoActividad = cod,
+                    NombreActividad = string.IsNullOrWhiteSpace(nom) ? null : nom,
+                    ActividadPrincipal = _actPrincipal ? "S" : null
+                };
+                db.SociedadesActividades.Add(nuevo);
+            }
+            else
+            {
+                existente.NombreActividad = string.IsNullOrWhiteSpace(nom) ? existente.NombreActividad : nom;
+                if (_actPrincipal) existente.ActividadPrincipal = "S";
+            }
+
+            await db.SaveChangesAsync();
+            _mensajeAct = "Actividad registrada";
+            // Limpiar inputs
+            _actNombre = string.Empty; _actCodigo = string.Empty; _actPrincipal = false;
+            await CargarActividadesAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensajeAct = ex.Message; _errorAct = true;
+        }
+        finally
+        {
+            _guardandoAct = false;
+        }
+    }
+
+    private async Task MarcarPrincipalAsync(int numero)
+    {
+        _mensajeAct = null; _errorAct = false; _guardandoAct = true;
+        try
+        {
+            if (_sociedad.IdSociedad == 0) { _mensajeAct = "Guarde la Sociedad primero"; _errorAct = true; return; }
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var act = await db.SociedadesActividades.FirstOrDefaultAsync(a => a.Numero == numero && a.IdSociedad == _sociedad.IdSociedad);
+            if (act is null) { _mensajeAct = "Actividad no encontrada"; _errorAct = true; return; }
+
+            var todas = await db.SociedadesActividades.Where(a => a.IdSociedad == _sociedad.IdSociedad).ToListAsync();
+            foreach (var a in todas) a.ActividadPrincipal = (a.Numero == numero) ? "S" : null;
+            await db.SaveChangesAsync();
+            _mensajeAct = "Actividad principal actualizada";
+            await CargarActividadesAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensajeAct = ex.Message; _errorAct = true;
+        }
+        finally
+        {
+            _guardandoAct = false;
+        }
+    }
+
+    private async Task EliminarActividadAsync(int numero)
+    {
+        _mensajeAct = null; _errorAct = false; _guardandoAct = true;
+        try
+        {
+            if (_sociedad.IdSociedad == 0) { _mensajeAct = "Guarde la Sociedad primero"; _errorAct = true; return; }
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var act = await db.SociedadesActividades.FirstOrDefaultAsync(a => a.Numero == numero && a.IdSociedad == _sociedad.IdSociedad);
+            if (act is null) { _mensajeAct = "Actividad no encontrada"; _errorAct = true; return; }
+            db.SociedadesActividades.Remove(act);
+            await db.SaveChangesAsync();
+            _mensajeAct = "Actividad eliminada";
+            await CargarActividadesAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensajeAct = ex.Message; _errorAct = true;
+        }
+        finally
+        {
+            _guardandoAct = false;
+        }
+    }
+}

@@ -1,11 +1,37 @@
-﻿<Router AppAssembly="@typeof(App).Assembly">
-    <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-    </Found>
-    <NotFound>
-        <LayoutView Layout="@typeof(MainLayout)">
-            <p>Página no encontrada.</p>
-        </LayoutView>
-    </NotFound>
-</Router>
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using SistemIA.Shared
+@inject NavigationManager NavigationManager
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            @if (NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase))
+            {
+                <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            }
+            else
+            {
+                <AuthorizeView>
+                    <Authorized>
+                        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                    </Authorized>
+                    <NotAuthorized>
+                        <RedirectToLogin />
+                    </NotAuthorized>
+                </AuthorizeView>
+            }
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <div class="container mt-4">
+                    <div class="alert alert-warning">
+                        <h4>Página no encontrada</h4>
+                        <p>La ruta solicitada no existe.</p>
+                        <a href="/" class="btn btn-primary">Ir al inicio</a>
+                    </div>
+                </div>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

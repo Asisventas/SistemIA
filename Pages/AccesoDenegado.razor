@@ -1,0 +1,43 @@
+@page "/acceso-denegado"
+
+<div class="container">
+    <div class="row justify-content-center" style="margin-top: 10vh;">
+        <div class="col-md-6">
+            <div class="card shadow-lg border-0">
+                <div class="card-body text-center p-5">
+                    <div class="mb-4">
+                        <i class="bi bi-shield-lock display-1 text-danger"></i>
+                    </div>
+                    
+                    <h2 class="card-title text-danger mb-3">Acceso Denegado</h2>
+                    
+                    <p class="lead mb-4">
+                        No tiene permisos para acceder a esta página.
+                    </p>
+                    
+                    <p class="text-muted mb-4">
+                        Si cree que esto es un error, contacte al administrador del sistema.
+                    </p>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="/" class="btn btn-primary">
+                            <i class="bi bi-house-door"></i> Volver al Inicio
+                        </a>
+                        <button class="btn btn-outline-secondary" @onclick="Volver">
+                            <i class="bi bi-arrow-left"></i> Volver Atrás
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+    
+    private void Volver()
+    {
+        NavigationManager.NavigateTo("/", true);
+    }
+}

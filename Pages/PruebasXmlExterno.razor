@@ -1,0 +1,238 @@
+@page "/pruebas-xml"
+@inject HttpClient Http
+@inject NavigationManager Nav
+@using System.Net.Http.Json
+
+<h3>Pruebas con XML Externo (SIFEN)</h3>
+
+<div class="mb-3">
+    <label>Ambiente:</label>
+    <select @bind="Ambiente" class="form-select" style="max-width:200px;display:inline-block;margin-left:8px;">
+        <option value="test">Test</option>
+        <option value="prod">Producción</option>
+    </select>
+    <label style="margin-left:16px;">Modo envío:</label>
+    <select @bind="Modo" class="form-select" style="max-width:200px;display:inline-block;margin-left:8px;">
+        <option value="lote">Lote (async)</option>
+        <option value="sync">Síncrono (recibe-de)</option>
+    </select>
+</div>
+
+@if (Config != null)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Configuración efectiva de SIFEN</span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CargarConfig" disabled="@IsBusy">Refrescar</button>
+        </div>
+        <div class="card-body small">
+            <div><strong>Ambiente:</strong> @Config!.ambiente</div>
+            <div class="mt-2"><strong>URLs:</strong>
+                <ul class="mb-0">
+                    <li><code>envío lote</code>: @Config!.urls.envioLote</li>
+                    <li><code>envío síncrono</code>: @Config!.urls.envioSync</li>
+                    <li><code>consulta DE</code>: @Config!.urls.consultaDe</li>
+                    <li><code>consulta Lote</code>: @Config!.urls.consultaLote</li>
+                    <li><code>QR base</code>: @Config!.urls.baseQr</li>
+                </ul>
+            </div>
+            <div class="mt-2"><strong>Certificado:</strong>
+                <ul class="mb-0">
+                    <li><code>p12</code>: @Config!.certificado.p12Path</li>
+                    <li><code>tiene contraseña</code>: @(Config!.certificado.tienePassword ? "sí" : "no")</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="mb-2">
+    <label>XML (rDE) de otro sistema:</label>
+    <textarea @bind="Xml" class="form-control" rows="16" placeholder="Pegá aquí el XML del rDE (sin SOAP)"></textarea>
+</div>
+
+<div class="mb-3">
+    <button class="btn btn-primary me-2" @onclick="FirmarYEnviar" disabled="@(IsBusy || string.IsNullOrWhiteSpace(Xml))">Firmar y Enviar</button>
+    <button class="btn btn-secondary me-2" @onclick="ConsultarPorCDC" disabled="@(IsBusy || string.IsNullOrWhiteSpace(Cdc))">Consultar por CDC</button>
+    <button class="btn btn-secondary" @onclick="ConsultarPorLote" disabled="@(IsBusy || string.IsNullOrWhiteSpace(IdLote))">Consultar por Lote</button>
+    @if (IsBusy)
+    {
+        <span class="ms-2">Procesando…</span>
+    }
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Resultado))
+{
+    <div class="card">
+        <div class="card-header">Resultado</div>
+        <div class="card-body">
+            <pre style="white-space:pre-wrap;">@Resultado</pre>
+        </div>
+    </div>
+}
+
+@if (LastDetailsVisible)
+{
+    <div class="card mt-3">
+        <div class="card-header">Detalles de envío/consulta</div>
+        <div class="card-body small">
+            <ul class="mb-0">
+                <li><strong>Ambiente:</strong> @LastAmbiente</li>
+                <li><strong>Modo:</strong> @LastModo</li>
+                <li><strong>URL destino:</strong> @LastUrl</li>
+                <li><strong>Ruta .p12:</strong> @LastP12</li>
+                <li><strong>QR base:</strong> @Config?.urls.baseQr</li>
+                <li><strong>Firma aplicada:</strong> RSA-SHA256 + Exclusive C14N (reemplaza cualquier ds:Signature existente)</li>
+            </ul>
+        </div>
+    </div>
+}
+
+@code {
+    private string Xml { get; set; } = string.Empty;
+    private string Ambiente { get; set; } = "test";
+    private string Modo { get; set; } = "lote";
+    private bool IsBusy { get; set; }
+    private string Resultado { get; set; } = string.Empty;
+    private string? Cdc { get; set; }
+    private string? IdLote { get; set; }
+    private ConfigResponse? Config { get; set; }
+    private bool LastDetailsVisible { get; set; }
+    private string? LastUrl { get; set; }
+    private string? LastP12 { get; set; }
+    private string? LastAmbiente { get; set; }
+    private string? LastModo { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarConfig();
+    }
+
+    private async Task CargarConfig()
+    {
+        try
+        {
+            IsBusy = true;
+            var url = new Uri(new Uri(Nav.BaseUri), $"debug/de-externo/config?ambiente={Ambiente}");
+            Config = await Http.GetFromJsonAsync<ConfigResponse>(url);
+        }
+        catch (Exception ex)
+        {
+            Resultado = $"ERROR config: {ex.Message}";
+        }
+        finally { IsBusy = false; }
+    }
+
+    private async Task FirmarYEnviar()
+    {
+        try
+        {
+            IsBusy = true; Resultado = "";
+            var req = new { xml = Xml, modo = Modo, ambiente = Ambiente };
+            var url = new Uri(new Uri(Nav.BaseUri), "debug/de-externo/enviar");
+            var resp = await Http.PostAsJsonAsync(url, req);
+            var text = await resp.Content.ReadAsStringAsync();
+            Resultado = text;
+            // Extraer CDC e idLote rudimentariamente
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(text);
+                if (doc.RootElement.TryGetProperty("cdc", out var pCdc) && pCdc.ValueKind == System.Text.Json.JsonValueKind.String)
+                    Cdc = pCdc.GetString();
+                if (doc.RootElement.TryGetProperty("idLote", out var pLote) && pLote.ValueKind == System.Text.Json.JsonValueKind.String)
+                    IdLote = pLote.GetString();
+                LastUrl = doc.RootElement.TryGetProperty("url", out var pUrl) && pUrl.ValueKind == System.Text.Json.JsonValueKind.String ? pUrl.GetString() : null;
+                LastP12 = doc.RootElement.TryGetProperty("p12", out var p12) && p12.ValueKind == System.Text.Json.JsonValueKind.String ? p12.GetString() : null;
+                LastAmbiente = doc.RootElement.TryGetProperty("ambiente", out var pAmb) && pAmb.ValueKind == System.Text.Json.JsonValueKind.String ? pAmb.GetString() : Ambiente;
+                LastModo = doc.RootElement.TryGetProperty("modo", out var pModo) && pModo.ValueKind == System.Text.Json.JsonValueKind.String ? pModo.GetString() : Modo;
+                LastDetailsVisible = true;
+            }
+            catch { }
+        }
+        catch (Exception ex)
+        {
+            Resultado = $"ERROR: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ConsultarPorCDC()
+    {
+        if (string.IsNullOrWhiteSpace(Cdc)) return;
+        try
+        {
+            IsBusy = true; Resultado = "";
+            var req = new { tipo = "cdc", id = Cdc, ambiente = Ambiente };
+            var url = new Uri(new Uri(Nav.BaseUri), "debug/de-externo/consultar");
+            var resp = await Http.PostAsJsonAsync(url, req);
+            var text = await resp.Content.ReadAsStringAsync();
+            Resultado = text;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(text);
+                LastUrl = doc.RootElement.TryGetProperty("url", out var pUrl) && pUrl.ValueKind == System.Text.Json.JsonValueKind.String ? pUrl.GetString() : null;
+                LastP12 = doc.RootElement.TryGetProperty("p12", out var p12) && p12.ValueKind == System.Text.Json.JsonValueKind.String ? p12.GetString() : null;
+                LastAmbiente = Ambiente; LastModo = "consulta-cdc";
+                LastDetailsVisible = true;
+            }
+            catch { }
+        }
+        catch (Exception ex)
+        {
+            Resultado = $"ERROR: {ex.Message}";
+        }
+        finally { IsBusy = false; }
+    }
+
+    private async Task ConsultarPorLote()
+    {
+        if (string.IsNullOrWhiteSpace(IdLote)) return;
+        try
+        {
+            IsBusy = true; Resultado = "";
+            var req = new { tipo = "lote", id = IdLote, ambiente = Ambiente };
+            var url = new Uri(new Uri(Nav.BaseUri), "debug/de-externo/consultar");
+            var resp = await Http.PostAsJsonAsync(url, req);
+            var text = await resp.Content.ReadAsStringAsync();
+            Resultado = text;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(text);
+                LastUrl = doc.RootElement.TryGetProperty("url", out var pUrl) && pUrl.ValueKind == System.Text.Json.JsonValueKind.String ? pUrl.GetString() : null;
+                LastP12 = doc.RootElement.TryGetProperty("p12", out var p12) && p12.ValueKind == System.Text.Json.JsonValueKind.String ? p12.GetString() : null;
+                LastAmbiente = Ambiente; LastModo = "consulta-lote";
+                LastDetailsVisible = true;
+            }
+            catch { }
+        }
+        catch (Exception ex)
+        {
+            Resultado = $"ERROR: {ex.Message}";
+        }
+        finally { IsBusy = false; }
+    }
+
+    // Tipos para respuesta de configuración
+    public class ConfigResponse
+    {
+        public string ambiente { get; set; } = string.Empty;
+        public Urls urls { get; set; } = new();
+        public Certificado certificado { get; set; } = new();
+    }
+    public class Urls
+    {
+        public string envioLote { get; set; } = string.Empty;
+        public string envioSync { get; set; } = string.Empty;
+        public string consultaDe { get; set; } = string.Empty;
+        public string consultaLote { get; set; } = string.Empty;
+        public string baseQr { get; set; } = string.Empty;
+    }
+    public class Certificado
+    {
+        public string? p12Path { get; set; }
+        public bool tienePassword { get; set; }
+    }
+}

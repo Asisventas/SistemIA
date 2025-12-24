@@ -1,0 +1,461 @@
+@page "/presupuestos/explorar"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using SistemIA.Models
+@using ClosedXML.Excel
+@using Microsoft.AspNetCore.Components
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.IInventarioService Inventario
+
+<PageProtection Modulo="/ventas" Permiso="VIEW">
+
+<h3 class="mb-3">Explorador de Presupuestos</h3>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-3"><input class="form-control" placeholder="RUC o Razón Social" @bind="filtroCliente" /></div>
+      <div class="col-md-2"><input type="date" class="form-control" @bind="filtroDesde" /></div>
+      <div class="col-md-2"><input type="date" class="form-control" @bind="filtroHasta" /></div>
+      <div class="col-md-2">
+        <select class="form-select" @bind="filtroEstado">
+          <option value="">Todos</option>
+          <option>Presupuesto</option>
+          <option>Convertido</option>
+          <option>Anulado</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i></button>
+        <button class="btn btn-secondary" @onclick="Limpiar">Limpiar</button>
+        <button class="btn btn-outline-success" title="Exportar CSV" @onclick="ExportarCsv"><i class="bi bi-filetype-csv"></i></button>
+        <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha</th>
+          <th>Cliente</th>
+          <th>Número</th>
+          <th class="text-end">Total</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var v in items)
+        {
+          <tr>
+            <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
+            <td>
+              <div class="fw-semibold">@v.ClienteNombre</div>
+              <div class="text-muted small">RUC: @v.ClienteRuc</div>
+            </td>
+            <td>@(string.IsNullOrWhiteSpace(v.Numero) ? "-" : v.Numero)</td>
+            <td class="text-end">@v.Total.ToString("N0")</td>
+            <td>
+              @if (v.Estado == "Convertido") { <span class="badge bg-success">Convertido</span> }
+              else if (v.Estado == "Anulado") { <span class="badge bg-danger">Anulado</span> }
+              else { <span class="badge bg-secondary">Presupuesto</span> }
+            </td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-primary" title="Imprimir" @onclick="() => Imprimir(v.Id)"><i class="bi bi-printer"></i></button>
+              <button class="btn btn-sm btn-success ms-2" title="Convertir a venta" disabled="@(v.Estado=="Convertido")" @onclick="() => Convertir(v.Id)"><i class="bi bi-arrow-right-circle"></i></button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (!items.Any())
+  {
+    <div class="p-3 text-muted">Sin resultados</div>
+  }
+</div>
+
+</PageProtection>
+
+@code {
+  // Definir la clase Item primero para que esté disponible en todas las declaraciones
+  private class Item
+  {
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string ClienteNombre { get; set; } = string.Empty;
+    public string ClienteRuc { get; set; } = string.Empty;
+    public string? Numero { get; set; }
+    public decimal Total { get; set; }
+    public string Estado { get; set; } = "Presupuesto";
+  }
+
+  private string filtroCliente = string.Empty;
+  private string filtroEstado = string.Empty;
+  private DateTime? filtroDesde = DateTime.Today.AddDays(-30);
+  private DateTime? filtroHasta = DateTime.Today;
+  private List<Item> items = new();
+
+  [SupplyParameterFromQuery(Name = "print")]
+  public int? PrintId { get; set; }
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!SucursalProvider.GetSucursalId().HasValue)
+    {
+      var ret = System.Net.WebUtility.UrlEncode(Nav.Uri);
+      Nav.NavigateTo($"/seleccionar-sucursal?returnUrl={ret}", true);
+      return;
+    }
+    await Buscar();
+    
+    // Si hay parámetro print, imprimir automáticamente
+    if (PrintId.HasValue && PrintId.Value > 0)
+    {
+      await Task.Delay(500); // Pequeño delay para asegurar que la página esté cargada
+      await Imprimir(PrintId.Value);
+    }
+  }
+
+  private async Task Buscar()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var sucSel = SucursalProvider.GetSucursalId();
+    var q = ctx.Presupuestos.AsNoTracking()
+      .Where(v => !sucSel.HasValue || v.IdSucursal == sucSel.Value)
+      .Select(v => new Item {
+        Id = v.IdPresupuesto,
+        Fecha = v.Fecha,
+        ClienteNombre = v.Cliente != null ? v.Cliente.RazonSocial : "",
+        ClienteRuc = v.Cliente != null ? (v.Cliente.RUC + '-' + v.Cliente.DV) : "",
+        Numero = v.NumeroPresupuesto,
+        Total = v.Total,
+        Estado = v.IdVentaConvertida != null ? "Convertido" : (v.Estado ?? "Presupuesto")
+      });
+    if (!string.IsNullOrWhiteSpace(filtroCliente))
+      q = q.Where(x => x.ClienteNombre.Contains(filtroCliente) || x.ClienteRuc.Contains(filtroCliente));
+    if (filtroDesde.HasValue)
+      q = q.Where(x => x.Fecha >= filtroDesde.Value);
+    if (filtroHasta.HasValue)
+      q = q.Where(x => x.Fecha < filtroHasta.Value.AddDays(1));
+    if (!string.IsNullOrWhiteSpace(filtroEstado))
+      q = q.Where(x => x.Estado == filtroEstado);
+
+    items = await q.OrderByDescending(x => x.Fecha).Take(200).ToListAsync();
+  }
+
+  private void Limpiar()
+  {
+    filtroCliente = string.Empty;
+    filtroEstado = string.Empty;
+    filtroDesde = DateTime.Today.AddDays(-30);
+    filtroHasta = DateTime.Today;
+  }
+
+  private void Convertir(int id)
+  {
+    // Redirigir a la página de ventas con el ID del presupuesto
+    Nav.NavigateTo($"/ventas?presupuesto={id}");
+  }
+
+  private async Task Imprimir(int id)
+  {
+    try
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      
+      // Cargar presupuesto con datos relacionados
+      var presupuesto = await ctx.Presupuestos
+        .Include(p => p.Cliente)
+        .Include(p => p.Sucursal)
+        .Include(p => p.Moneda)
+        .AsNoTracking()
+        .FirstOrDefaultAsync(p => p.IdPresupuesto == id);
+      
+      if (presupuesto == null)
+      {
+        await JS.InvokeVoidAsync("alert", "Presupuesto no encontrado");
+        return;
+      }
+      
+      // Cargar detalles
+      var detalles = await ctx.PresupuestosDetalles
+        .Include(d => d.Producto)
+        .AsNoTracking()
+        .Where(d => d.IdPresupuesto == id)
+        .ToListAsync();
+      
+      // Generar HTML del comprobante
+      var html = GenerarHtmlPresupuesto(presupuesto, detalles);
+      
+      // Imprimir usando JavaScript
+      await JS.InvokeVoidAsync("printHtmlWithHead", GenerarHead(), html);
+    }
+    catch (Exception ex)
+    {
+      await JS.InvokeVoidAsync("alert", $"Error al imprimir: {ex.Message}");
+      Console.WriteLine($"[ERROR] Impresión presupuesto: {ex.Message}");
+    }
+  }
+
+  private string GenerarHead()
+  {
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<meta charset=\"utf-8\"/>");
+    sb.AppendLine("<title>Presupuesto</title>");
+    sb.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+    sb.AppendLine("<style>");
+    sb.AppendLine("@media print { @page { size: A4; margin: 12mm; } body { margin: 0; } }");
+    sb.AppendLine("body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11pt; color: #000; }");
+    sb.AppendLine(".encabezado { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 3px solid #000; padding-bottom: 15px; }");
+    sb.AppendLine(".logo-empresa { display: flex; gap: 15px; align-items: center; }");
+    sb.AppendLine(".logo { max-width: 120px; max-height: 80px; object-fit: contain; }");
+    sb.AppendLine(".empresa { font-size: 12pt; }");
+    sb.AppendLine(".empresa .nombre { font-size: 16pt; font-weight: bold; margin-bottom: 5px; }");
+    sb.AppendLine(".info-doc { text-align: right; }");
+    sb.AppendLine(".titulo-doc { font-size: 18pt; font-weight: bold; color: #000; margin: 10px 0; }");
+    sb.AppendLine(".numero-doc { font-size: 14pt; font-weight: bold; }");
+    sb.AppendLine(".datos-cliente { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }");
+    sb.AppendLine(".datos-cliente .row { display: flex; gap: 20px; }");
+    sb.AppendLine(".datos-cliente .col { flex: 1; }");
+    sb.AppendLine(".tabla-items { width: 100%; border-collapse: collapse; margin-top: 20px; }");
+    sb.AppendLine(".tabla-items th, .tabla-items td { padding: 10px; border: 1px solid #dee2e6; text-align: left; }");
+    sb.AppendLine(".tabla-items th { background: #000; color: white; font-weight: bold; }");
+    sb.AppendLine(".tabla-items .text-end { text-align: right; }");
+    sb.AppendLine(".tabla-items .text-center { text-align: center; }");
+    sb.AppendLine(".totales { margin-top: 20px; }");
+    sb.AppendLine(".totales table { width: 100%; max-width: 400px; margin-left: auto; }");
+    sb.AppendLine(".totales td { padding: 8px; }");
+    sb.AppendLine(".totales .total-final { font-size: 14pt; font-weight: bold; background: #f8f9fa; }");
+    sb.AppendLine(".pie { text-align: center; margin-top: 30px; font-size: 10pt; color: #666; }");
+    sb.AppendLine("</style>");
+    return sb.ToString();
+  }
+
+  private string GenerarHtmlPresupuesto(Presupuesto presupuesto, List<PresupuestoDetalle> detalles)
+  {
+    var sb = new System.Text.StringBuilder();
+    
+    // Logo
+    string? logoDataUri = null;
+    if (presupuesto.Sucursal?.Logo != null && presupuesto.Sucursal.Logo.Length > 0)
+    {
+      var b64 = Convert.ToBase64String(presupuesto.Sucursal.Logo);
+      logoDataUri = $"data:image/png;base64,{b64}";
+    }
+    
+    sb.AppendLine("<div class=\"container-fluid\">");
+    
+    // ENCABEZADO
+    sb.AppendLine("  <div class=\"encabezado\">");
+    sb.AppendLine("    <div class=\"logo-empresa\">");
+    if (!string.IsNullOrEmpty(logoDataUri))
+    {
+      sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\" />");
+    }
+    sb.AppendLine("      <div class=\"empresa\">");
+    sb.AppendLine($"        <div class=\"nombre\">{System.Net.WebUtility.HtmlEncode(presupuesto.Sucursal?.NombreEmpresa ?? "Empresa")}</div>");
+    sb.AppendLine($"        <div>RUC: {presupuesto.Sucursal?.RUC}-{presupuesto.Sucursal?.DV}</div>");
+    sb.AppendLine($"        <div>{System.Net.WebUtility.HtmlEncode(presupuesto.Sucursal?.Direccion ?? string.Empty)}</div>");
+    if (!string.IsNullOrWhiteSpace(presupuesto.Sucursal?.Telefono))
+      sb.AppendLine($"        <div>Tel: {System.Net.WebUtility.HtmlEncode(presupuesto.Sucursal.Telefono)}</div>");
+    sb.AppendLine("      </div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"info-doc\">");
+    sb.AppendLine("      <div class=\"titulo-doc\">PRESUPUESTO</div>");
+    sb.AppendLine($"      <div class=\"numero-doc\">N°: {System.Net.WebUtility.HtmlEncode(presupuesto.NumeroPresupuesto ?? "S/N")}</div>");
+    sb.AppendLine($"      <div>Fecha: {presupuesto.Fecha:dd/MM/yyyy HH:mm}</div>");
+    if (presupuesto.ValidoHasta.HasValue)
+      sb.AppendLine($"      <div>Válido hasta: {presupuesto.ValidoHasta.Value:dd/MM/yyyy}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("  </div>");
+    
+    // DATOS DEL CLIENTE
+    sb.AppendLine("  <div class=\"datos-cliente\">");
+    sb.AppendLine("    <div class=\"row\">");
+    sb.AppendLine("      <div class=\"col\">");
+    sb.AppendLine($"        <div><strong>Cliente:</strong> {System.Net.WebUtility.HtmlEncode(presupuesto.Cliente?.RazonSocial ?? "Público General")}</div>");
+    sb.AppendLine($"        <div><strong>RUC:</strong> {presupuesto.Cliente?.RUC}-{presupuesto.Cliente?.DV}</div>");
+    sb.AppendLine("      </div>");
+    sb.AppendLine("      <div class=\"col\">");
+    if (!string.IsNullOrWhiteSpace(presupuesto.Cliente?.Direccion))
+      sb.AppendLine($"        <div><strong>Dirección:</strong> {System.Net.WebUtility.HtmlEncode(presupuesto.Cliente.Direccion)}</div>");
+    if (!string.IsNullOrWhiteSpace(presupuesto.Cliente?.Telefono))
+      sb.AppendLine($"        <div><strong>Teléfono:</strong> {System.Net.WebUtility.HtmlEncode(presupuesto.Cliente.Telefono)}</div>");
+    sb.AppendLine("      </div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("  </div>");
+    
+    // TABLA DE ITEMS
+    sb.AppendLine("  <table class=\"tabla-items\">");
+    sb.AppendLine("    <thead>");
+    sb.AppendLine("      <tr>");
+    sb.AppendLine("        <th class=\"text-center\" style=\"width: 50px;\">#</th>");
+    sb.AppendLine("        <th style=\"width: 100px;\">Código</th>");
+    sb.AppendLine("        <th>Descripción</th>");
+    sb.AppendLine("        <th class=\"text-end\" style=\"width: 100px;\">Cantidad</th>");
+    sb.AppendLine("        <th class=\"text-end\" style=\"width: 120px;\">Precio Unit.</th>");
+    sb.AppendLine("        <th class=\"text-end\" style=\"width: 120px;\">Subtotal</th>");
+    sb.AppendLine("      </tr>");
+    sb.AppendLine("    </thead>");
+    sb.AppendLine("    <tbody>");
+    
+    int idx = 0;
+    foreach (var d in detalles)
+    {
+      idx++;
+      var desc = d.Producto?.Descripcion ?? $"Producto #{d.IdProducto}";
+      var codigo = d.Producto?.CodigoInterno ?? "-";
+      
+      sb.AppendLine("      <tr>");
+      sb.AppendLine($"        <td class=\"text-center\">{idx}</td>");
+      sb.AppendLine($"        <td>{System.Net.WebUtility.HtmlEncode(codigo)}</td>");
+      sb.AppendLine($"        <td>{System.Net.WebUtility.HtmlEncode(desc)}</td>");
+      sb.AppendLine($"        <td class=\"text-end\">{d.Cantidad:N2}</td>");
+      sb.AppendLine($"        <td class=\"text-end\">{d.PrecioUnitario:N0}</td>");
+      sb.AppendLine($"        <td class=\"text-end\">{d.Importe:N0}</td>");
+      sb.AppendLine("      </tr>");
+    }
+    
+    sb.AppendLine("    </tbody>");
+    sb.AppendLine("  </table>");
+    
+    // TOTALES
+    var totalExentas = detalles.Sum(d => d.Exenta);
+    var totalGrav5 = detalles.Sum(d => d.Grabado5);
+    var totalGrav10 = detalles.Sum(d => d.Grabado10);
+    var totalIva5 = detalles.Sum(d => d.IVA5);
+    var totalIva10 = detalles.Sum(d => d.IVA10);
+    
+    sb.AppendLine("  <div class=\"totales\">");
+    sb.AppendLine("    <table>");
+    if (totalExentas > 0)
+    {
+      sb.AppendLine("      <tr>");
+      sb.AppendLine("        <td><strong>Total Exentas:</strong></td>");
+      sb.AppendLine($"        <td class=\"text-end\">{totalExentas:N0}</td>");
+      sb.AppendLine("      </tr>");
+    }
+    if (totalGrav5 > 0)
+    {
+      sb.AppendLine("      <tr>");
+      sb.AppendLine("        <td><strong>Total Gravadas 5%:</strong></td>");
+      sb.AppendLine($"        <td class=\"text-end\">{totalGrav5:N0}</td>");
+      sb.AppendLine("      </tr>");
+      sb.AppendLine("      <tr>");
+      sb.AppendLine("        <td><strong>IVA 5%:</strong></td>");
+      sb.AppendLine($"        <td class=\"text-end\">{totalIva5:N0}</td>");
+      sb.AppendLine("      </tr>");
+    }
+    if (totalGrav10 > 0)
+    {
+      sb.AppendLine("      <tr>");
+      sb.AppendLine("        <td><strong>Total Gravadas 10%:</strong></td>");
+      sb.AppendLine($"        <td class=\"text-end\">{totalGrav10:N0}</td>");
+      sb.AppendLine("      </tr>");
+      sb.AppendLine("      <tr>");
+      sb.AppendLine("        <td><strong>IVA 10%:</strong></td>");
+      sb.AppendLine($"        <td class=\"text-end\">{totalIva10:N0}</td>");
+      sb.AppendLine("      </tr>");
+    }
+    sb.AppendLine("      <tr class=\"total-final\">");
+    sb.AppendLine("        <td><strong>TOTAL:</strong></td>");
+    sb.AppendLine($"        <td class=\"text-end\"><strong>{presupuesto.Total:N0}</strong></td>");
+    sb.AppendLine("      </tr>");
+    if (!string.IsNullOrWhiteSpace(presupuesto.TotalEnLetras))
+    {
+      sb.AppendLine("      <tr>");
+      sb.AppendLine($"        <td colspan=\"2\" style=\"font-style: italic;\">{System.Net.WebUtility.HtmlEncode(presupuesto.TotalEnLetras)}</td>");
+      sb.AppendLine("      </tr>");
+    }
+    sb.AppendLine("    </table>");
+    sb.AppendLine("  </div>");
+    
+    // Comentarios
+    if (!string.IsNullOrWhiteSpace(presupuesto.Comentario))
+    {
+      sb.AppendLine("  <div style=\"margin-top: 20px; padding: 10px; background: #fff3cd; border-radius: 5px;\">");
+      sb.AppendLine($"    <strong>Comentarios:</strong> {System.Net.WebUtility.HtmlEncode(presupuesto.Comentario)}");
+      sb.AppendLine("  </div>");
+    }
+    
+    // PIE
+    sb.AppendLine("  <div class=\"pie\">");
+    sb.AppendLine("    <p>** Este documento es un presupuesto y no tiene validez fiscal **</p>");
+    sb.AppendLine("  </div>");
+    
+    sb.AppendLine("</div>");
+    
+    return sb.ToString();
+  }
+
+  private async Task ExportarCsv()
+  {
+    if (!items.Any()) return;
+    var sep = ';';
+    var sb = new System.Text.StringBuilder();
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+    sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
+    sb.AppendLine(string.Join(sep, new[]{"Fecha","Cliente","Número","Total","Estado"}));
+    foreach (var v in items)
+    {
+      string[] cols = new[]
+      {
+        v.Fecha.ToString("yyyy-MM-dd"),
+        v.ClienteNombre,
+        v.Numero ?? "",
+        v.Total.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        v.Estado
+      };
+      var line = string.Join(sep, cols.Select(val => !string.IsNullOrEmpty(val) && (val.Contains(sep) || val.Contains('"') || val.Contains('\n')) ? $"\"{val.Replace("\"","\"\"")}\"" : val ?? ""));
+      sb.AppendLine(line);
+    }
+    var utf8bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    var bytes = utf8bom.GetBytes(sb.ToString());
+    var b64 = Convert.ToBase64String(bytes);
+    var file = $"Presupuestos_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "text/csv;charset=utf-8");
+  }
+
+  private async Task ExportarXlsx()
+  {
+    if (!items.Any()) return;
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+    using var wb = new XLWorkbook();
+    var ws = wb.AddWorksheet("Presupuestos");
+    int row = 1;
+    ws.Cell(row,1).Value = "Generado"; ws.Cell(row,2).Value = DateTime.Now; ws.Cell(row,2).Style.DateFormat.Format = "yyyy-MM-dd HH:mm"; row++;
+    ws.Cell(row,1).Value = "Usuario"; ws.Cell(row,2).Value = usuario; row++;
+    ws.Cell(row,1).Value = "Sucursal"; ws.Cell(row,2).Value = suc; row += 2;
+    var headers = new[]{"Fecha","Cliente","Número","Total","Estado"};
+    for (int c=0;c<headers.Length;c++) ws.Cell(row, c+1).Value = headers[c];
+    ws.Range(row,1,row,headers.Length).Style.Font.Bold = true; row++;
+    foreach (var it in items)
+    {
+      ws.Cell(row,1).Value = it.Fecha; ws.Cell(row,1).Style.DateFormat.Format = "yyyy-MM-dd";
+      ws.Cell(row,2).Value = it.ClienteNombre;
+      ws.Cell(row,3).Value = it.Numero ?? "";
+      ws.Cell(row,4).Value = it.Total; ws.Cell(row,4).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,5).Value = it.Estado;
+      row++;
+    }
+    ws.Columns().AdjustToContents();
+    using var ms = new System.IO.MemoryStream();
+    wb.SaveAs(ms);
+    var b64 = Convert.ToBase64String(ms.ToArray());
+    var file = $"Presupuestos_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+}

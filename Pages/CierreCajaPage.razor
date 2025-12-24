@@ -1,0 +1,794 @@
+@page "/caja/cierre"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using SistemIA.Models
+@using SistemIA.Models.Enums
+@using SistemIA.Services
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ICajaService CajaService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+
+<PageProtection Modulo="/ventas" Permiso="VIEW">
+
+<h3 class="mb-4"><i class="bi bi-cash-stack me-2"></i>Cierre de Caja</h3>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger alert-dismissible fade show">
+        <i class="bi bi-exclamation-triangle me-2"></i>@error
+        <button type="button" class="btn-close" @onclick="@(() => error = null)"></button>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(mensaje))
+{
+    <div class="alert alert-success alert-dismissible fade show">
+        <i class="bi bi-check-circle me-2"></i>@mensaje
+        <button type="button" class="btn-close" @onclick="@(() => mensaje = null)"></button>
+    </div>
+}
+
+@if (cargando)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p class="mt-2 text-muted">Cargando información de caja...</p>
+    </div>
+}
+else if (caja == null)
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-2"></i>No hay caja configurada o activa.
+    </div>
+}
+else
+{
+    <!-- Información de la Caja Actual -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Información de Caja</h5>
+                </div>
+                <div class="col-auto">
+                    <span class="badge bg-light text-dark fs-6">Caja #@caja.IdCaja</span>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label text-muted small">Fecha de Caja</label>
+                    <div class="fw-bold fs-5">@(caja.FechaActualCaja?.ToString("dd/MM/yyyy") ?? "No definida")</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label text-muted small">Turno Actual</label>
+                    <div class="fw-bold fs-5">
+                        <span class="badge bg-info fs-6">@(caja.TurnoActual ?? 1) de @(caja.CantTurnos ?? 1)</span>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label text-muted small">Timbrado</label>
+                    <div class="fw-bold">@caja.Timbrado</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label text-muted small">Serie</label>
+                    <div class="fw-bold">@caja.Nivel1-@caja.Nivel2</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen del Turno -->
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Resumen del Turno</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="card bg-success text-white h-100">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Ventas Contado</h6>
+                            <h4 class="mb-0">@resumen.TotalVentasContado.ToString("N0") ₲</h4>
+                            <small>@resumen.CantVentasContado operaciones</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white h-100">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Ventas Crédito</h6>
+                            <h4 class="mb-0">@resumen.TotalVentasCredito.ToString("N0") ₲</h4>
+                            <small>@resumen.CantVentasCredito operaciones</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white h-100">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Cobros Crédito</h6>
+                            <h4 class="mb-0">@resumen.TotalCobrosCredito.ToString("N0") ₲</h4>
+                            <small>@resumen.CantCobros operaciones</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white h-100">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Anulaciones</h6>
+                            <h4 class="mb-0">@resumen.TotalAnulaciones.ToString("N0") ₲</h4>
+                            <small>@resumen.CantAnulaciones operaciones</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Desglose por Medio de Pago y Entregas -->
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="bi bi-cash-coin me-2"></i>Entregas por Medio de Pago</h5>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width:25%">Medio de Pago</th>
+                        <th class="text-end" style="width:20%">Esperado (₲)</th>
+                        <th style="width:25%">Entregado (₲)</th>
+                        <th class="text-end" style="width:15%">Diferencia</th>
+                        <th style="width:15%">Observación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entrega in entregas)
+                    {
+                        <tr>
+                            <td>
+                                <i class="bi @ObtenerIconoMedio(entrega.Medio) me-2"></i>
+                                @ObtenerNombreMedio(entrega.Medio)
+                            </td>
+                            <td class="text-end fw-bold">@entrega.MontoEsperado.ToString("N0")</td>
+                            <td>
+                                <input type="number" class="form-control form-control-sm text-end" 
+                                       @bind="entrega.MontoEntregado" 
+                                       @bind:event="oninput"
+                                       @onblur="CalcularDiferencias" 
+                                       step="1" min="0" />
+                            </td>
+                            <td class="text-end @(entrega.Diferencia < 0 ? "text-danger fw-bold" : entrega.Diferencia > 0 ? "text-success" : "")">
+                                @entrega.Diferencia.ToString("N0")
+                            </td>
+                            <td>
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="entrega.Observaciones" 
+                                       placeholder="..." maxlength="300" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot class="table-secondary">
+                    <tr class="fw-bold">
+                        <td>TOTAL</td>
+                        <td class="text-end">@entregas.Sum(e => e.MontoEsperado).ToString("N0")</td>
+                        <td class="text-end">@entregas.Sum(e => e.MontoEntregado).ToString("N0")</td>
+                        <td class="text-end @(diferenciaTotal < 0 ? "text-danger" : diferenciaTotal > 0 ? "text-success" : "")">
+                            @diferenciaTotal.ToString("N0")
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Observaciones generales -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <label class="form-label">Observaciones del cierre</label>
+            <textarea class="form-control" rows="2" @bind="observacionesCierre" 
+                      placeholder="Observaciones adicionales sobre el cierre de caja..." maxlength="500"></textarea>
+        </div>
+    </div>
+
+    <!-- Información del próximo turno -->
+    <div class="card mb-4 border-info">
+        <div class="card-body">
+            <h6 class="text-info"><i class="bi bi-info-circle me-2"></i>Próximo Estado de Caja</h6>
+            @{
+                var turnoActual = caja.TurnoActual ?? 1;
+                var cantTurnos = caja.CantTurnos ?? 1;
+                var fechaActual = caja.FechaActualCaja ?? DateTime.Today;
+                
+                int proximoTurno;
+                DateTime proximaFecha;
+                
+                if (turnoActual >= cantTurnos)
+                {
+                    proximoTurno = 1;
+                    proximaFecha = fechaActual.AddDays(1);
+                }
+                else
+                {
+                    proximoTurno = turnoActual + 1;
+                    proximaFecha = fechaActual;
+                }
+            }
+            <p class="mb-0">
+                Al cerrar este turno, la caja pasará a:
+                <strong class="text-primary">Fecha: @proximaFecha.ToString("dd/MM/yyyy")</strong> - 
+                <strong class="text-primary">Turno: @proximoTurno de @cantTurnos</strong>
+            </p>
+        </div>
+    </div>
+
+    <!-- Botones de acción -->
+    <div class="d-flex justify-content-between mb-5">
+        <button class="btn btn-outline-secondary" @onclick="Cancelar">
+            <i class="bi bi-x-circle me-1"></i>Cancelar
+        </button>
+        <div>
+            <button class="btn btn-outline-primary me-2" @onclick="VerHistorial">
+                <i class="bi bi-clock-history me-1"></i>Ver Historial
+            </button>
+            <button class="btn btn-success btn-lg" @onclick="CerrarCaja" disabled="@cerrando">
+                @if (cerrando)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-check-circle me-1"></i>
+                }
+                Cerrar Turno y Entregar
+            </button>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private Caja? caja;
+    private bool cargando = true;
+    private bool cerrando = false;
+    private string? error;
+    private string? mensaje;
+    private string? observacionesCierre;
+    private decimal diferenciaTotal = 0;
+
+    private ResumenTurno resumen = new();
+    private List<Models.EntregaCaja> entregas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        cargando = true;
+        error = null;
+        try
+        {
+            caja = await CajaService.ObtenerCajaActualAsync();
+            if (caja != null)
+            {
+                await CargarResumenTurno();
+                PrepararEntregas();
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al cargar datos: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task CargarResumenTurno()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        var fechaCaja = caja!.FechaActualCaja ?? DateTime.Today;
+        var turnoActual = caja.TurnoActual ?? 1;
+
+        // Buscar ventas del día (simplificado - en producción filtrar por turno si se guarda)
+        var ventas = await ctx.Ventas
+            .AsNoTracking()
+            .Where(v => v.Fecha.Date == fechaCaja.Date)
+            .ToListAsync();
+
+        // Ventas contado (no anuladas)
+        var ventasContado = ventas.Where(v => 
+            (v.FormaPago?.ToUpper() == "CONTADO" || v.CodigoCondicion?.ToUpper() == "CONTADO") && 
+            !string.Equals(v.Estado, "Anulado", StringComparison.OrdinalIgnoreCase)).ToList();
+        
+        resumen.CantVentasContado = ventasContado.Count;
+        resumen.TotalVentasContado = ventasContado.Sum(v => v.Total);
+
+        // Ventas crédito (no anuladas)
+        var ventasCredito = ventas.Where(v => 
+            (v.FormaPago?.ToUpper() == "CREDITO" || v.CodigoCondicion?.ToUpper() == "CREDITO") && 
+            !string.Equals(v.Estado, "Anulado", StringComparison.OrdinalIgnoreCase)).ToList();
+        
+        resumen.CantVentasCredito = ventasCredito.Count;
+        resumen.TotalVentasCredito = ventasCredito.Sum(v => v.Total);
+
+        // Anulaciones
+        var anuladas = ventas.Where(v => 
+            string.Equals(v.Estado, "Anulado", StringComparison.OrdinalIgnoreCase)).ToList();
+        
+        resumen.CantAnulaciones = anuladas.Count;
+        resumen.TotalAnulaciones = anuladas.Sum(v => v.Total);
+
+        // Cobros de crédito del día
+        var cobros = await ctx.CobrosCuotas
+            .AsNoTracking()
+            .Where(c => c.FechaCobro.Date == fechaCaja.Date)
+            .ToListAsync();
+        
+        resumen.CantCobros = cobros.Count;
+        resumen.TotalCobrosCredito = cobros.Sum(c => c.MontoTotal);
+
+        // Calcular totales por medio de pago desde ComposicionCajaDetalle
+        var idsVentasContado = ventasContado.Select(v => v.IdVenta).ToList();
+        var composiciones = await ctx.ComposicionesCaja
+            .AsNoTracking()
+            .Where(c => idsVentasContado.Contains(c.IdVenta))
+            .Include(c => c.Detalles)
+            .ToListAsync();
+
+        var detalles = composiciones.SelectMany(c => c.Detalles ?? Enumerable.Empty<ComposicionCajaDetalle>()).ToList();
+        
+        resumen.TotalEfectivo = detalles.Where(d => d.Medio == MedioPago.Efectivo).Sum(d => d.MontoGs);
+        resumen.TotalTarjetas = detalles.Where(d => d.Medio == MedioPago.Tarjeta).Sum(d => d.MontoGs);
+        resumen.TotalCheques = detalles.Where(d => d.Medio == MedioPago.Cheque || d.Medio == MedioPago.ChequeDia || d.Medio == MedioPago.ChequeDiferido).Sum(d => d.MontoGs);
+        resumen.TotalTransferencias = detalles.Where(d => d.Medio == MedioPago.Transferencia).Sum(d => d.MontoGs);
+        resumen.TotalQR = detalles.Where(d => d.Medio == MedioPago.QR).Sum(d => d.MontoGs);
+        resumen.TotalOtros = detalles.Where(d => 
+            d.Medio != MedioPago.Efectivo && 
+            d.Medio != MedioPago.Tarjeta && 
+            d.Medio != MedioPago.Cheque &&
+            d.Medio != MedioPago.ChequeDia &&
+            d.Medio != MedioPago.ChequeDiferido &&
+            d.Medio != MedioPago.Transferencia && 
+            d.Medio != MedioPago.QR).Sum(d => d.MontoGs);
+
+        // Agregar cobros de crédito al efectivo (asumiendo que los cobros son en efectivo por defecto)
+        // En una implementación más completa, los cobros también tendrían detalle por medio de pago
+        var cobrosDetalles = await ctx.CobrosDetalles
+            .AsNoTracking()
+            .Where(cd => cobros.Select(c => c.IdCobro).Contains(cd.IdCobro))
+            .ToListAsync();
+
+        foreach (var cd in cobrosDetalles)
+        {
+            switch (cd.MedioPago?.ToUpper())
+            {
+                case "EFECTIVO":
+                    resumen.TotalEfectivo += cd.Monto;
+                    break;
+                case "TARJETA":
+                    resumen.TotalTarjetas += cd.Monto;
+                    break;
+                case "CHEQUE":
+                    resumen.TotalCheques += cd.Monto;
+                    break;
+                case "TRANSFERENCIA":
+                    resumen.TotalTransferencias += cd.Monto;
+                    break;
+                case "QR":
+                    resumen.TotalQR += cd.Monto;
+                    break;
+                default:
+                    resumen.TotalOtros += cd.Monto;
+                    break;
+            }
+        }
+    }
+
+    private void PrepararEntregas()
+    {
+        entregas.Clear();
+        
+        // Crear entradas para cada medio de pago que tenga monto
+        if (resumen.TotalEfectivo > 0 || true) // Siempre mostrar efectivo
+        {
+            entregas.Add(new Models.EntregaCaja 
+            { 
+                Medio = MedioPago.Efectivo, 
+                MontoEsperado = resumen.TotalEfectivo,
+                MontoEntregado = resumen.TotalEfectivo
+            });
+        }
+        
+        if (resumen.TotalTarjetas > 0)
+        {
+            entregas.Add(new Models.EntregaCaja 
+            { 
+                Medio = MedioPago.Tarjeta, 
+                MontoEsperado = resumen.TotalTarjetas,
+                MontoEntregado = resumen.TotalTarjetas
+            });
+        }
+        
+        if (resumen.TotalCheques > 0)
+        {
+            entregas.Add(new Models.EntregaCaja 
+            { 
+                Medio = MedioPago.Cheque, 
+                MontoEsperado = resumen.TotalCheques,
+                MontoEntregado = resumen.TotalCheques
+            });
+        }
+        
+        if (resumen.TotalTransferencias > 0)
+        {
+            entregas.Add(new Models.EntregaCaja 
+            { 
+                Medio = MedioPago.Transferencia, 
+                MontoEsperado = resumen.TotalTransferencias,
+                MontoEntregado = resumen.TotalTransferencias
+            });
+        }
+        
+        if (resumen.TotalQR > 0)
+        {
+            entregas.Add(new Models.EntregaCaja 
+            { 
+                Medio = MedioPago.QR, 
+                MontoEsperado = resumen.TotalQR,
+                MontoEntregado = resumen.TotalQR
+            });
+        }
+        
+        if (resumen.TotalOtros > 0)
+        {
+            entregas.Add(new Models.EntregaCaja 
+            { 
+                Medio = MedioPago.Otros, 
+                MontoEsperado = resumen.TotalOtros,
+                MontoEntregado = resumen.TotalOtros
+            });
+        }
+
+        CalcularDiferencias();
+    }
+
+    private void CalcularDiferencias()
+    {
+        foreach (var e in entregas)
+        {
+            e.Diferencia = e.MontoEntregado - e.MontoEsperado;
+        }
+        diferenciaTotal = entregas.Sum(e => e.Diferencia);
+    }
+
+    private async Task CerrarCaja()
+    {
+        if (caja == null) return;
+
+        // Confirmar cierre
+        var confirmMsg = diferenciaTotal != 0 
+            ? $"Hay una diferencia de {diferenciaTotal:N0} ₲ en el cierre.\n¿Está seguro de cerrar el turno?"
+            : "¿Está seguro de cerrar el turno actual?";
+        
+        var confirmar = await JS.InvokeAsync<bool>("confirm", confirmMsg);
+        if (!confirmar) return;
+
+        cerrando = true;
+        error = null;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            // Obtener usuario actual
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var usuario = auth.User?.Identity?.Name ?? "Sistema";
+
+            // Crear registro de cierre
+            var cierre = new Models.CierreCaja
+            {
+                IdCaja = caja.IdCaja,
+                FechaCierre = DateTime.Now,
+                FechaCaja = caja.FechaActualCaja ?? DateTime.Today,
+                Turno = caja.TurnoActual ?? 1,
+                UsuarioCierre = usuario,
+                TotalVentasContado = resumen.TotalVentasContado,
+                TotalVentasCredito = resumen.TotalVentasCredito,
+                TotalCobrosCredito = resumen.TotalCobrosCredito,
+                TotalAnulaciones = resumen.TotalAnulaciones,
+                TotalEfectivo = resumen.TotalEfectivo,
+                TotalTarjetas = resumen.TotalTarjetas,
+                TotalCheques = resumen.TotalCheques,
+                TotalTransferencias = resumen.TotalTransferencias,
+                TotalQR = resumen.TotalQR,
+                TotalOtros = resumen.TotalOtros,
+                TotalEsperado = entregas.Sum(e => e.MontoEsperado),
+                TotalEntregado = entregas.Sum(e => e.MontoEntregado),
+                Diferencia = diferenciaTotal,
+                Observaciones = observacionesCierre,
+                Estado = "Cerrado"
+            };
+
+            ctx.CierresCaja.Add(cierre);
+            await ctx.SaveChangesAsync();
+
+            // Guardar entregas
+            foreach (var entrega in entregas)
+            {
+                entrega.IdCierreCaja = cierre.IdCierreCaja;
+                ctx.EntregasCaja.Add(entrega);
+            }
+            await ctx.SaveChangesAsync();
+
+            // Actualizar caja: cambiar turno o fecha
+            var cajaDb = await ctx.Cajas.FirstOrDefaultAsync(c => c.IdCaja == caja.IdCaja);
+            if (cajaDb != null)
+            {
+                var turnoActual = cajaDb.TurnoActual ?? 1;
+                var cantTurnos = cajaDb.CantTurnos ?? 1;
+                var fechaActual = cajaDb.FechaActualCaja ?? DateTime.Today;
+
+                if (turnoActual >= cantTurnos)
+                {
+                    // Último turno del día: pasar al día siguiente, turno 1
+                    cajaDb.TurnoActual = 1;
+                    cajaDb.FechaActualCaja = fechaActual.AddDays(1);
+                }
+                else
+                {
+                    // Siguiente turno del mismo día
+                    cajaDb.TurnoActual = turnoActual + 1;
+                }
+
+                await ctx.SaveChangesAsync();
+                CajaService.LimpiarCache();
+            }
+
+            mensaje = $"Turno cerrado correctamente. Cierre #{cierre.IdCierreCaja}";
+            
+            // Imprimir reporte de cierre automáticamente
+            await ImprimirCierreA4(cierre, entregas.ToList());
+            
+            // Recargar datos para mostrar el nuevo estado
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al cerrar caja: {ex.Message}";
+        }
+        finally
+        {
+            cerrando = false;
+        }
+    }
+
+    private void Cancelar()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private void VerHistorial()
+    {
+        Navigation.NavigateTo("/caja/historial-cierres");
+    }
+
+    private string ObtenerIconoMedio(MedioPago medio) => medio switch
+    {
+        MedioPago.Efectivo => "bi-cash",
+        MedioPago.Tarjeta => "bi-credit-card",
+        MedioPago.Cheque or MedioPago.ChequeDia or MedioPago.ChequeDiferido => "bi-bank",
+        MedioPago.Transferencia => "bi-arrow-left-right",
+        MedioPago.QR => "bi-qr-code",
+        _ => "bi-wallet2"
+    };
+
+    private string ObtenerNombreMedio(MedioPago medio) => medio switch
+    {
+        MedioPago.Efectivo => "Efectivo",
+        MedioPago.Tarjeta => "Tarjetas",
+        MedioPago.Cheque => "Cheques",
+        MedioPago.ChequeDia => "Cheques del Día",
+        MedioPago.ChequeDiferido => "Cheques Diferidos",
+        MedioPago.Transferencia => "Transferencias",
+        MedioPago.QR => "Pagos QR",
+        _ => "Otros"
+    };
+
+    private class ResumenTurno
+    {
+        public int CantVentasContado { get; set; }
+        public decimal TotalVentasContado { get; set; }
+        public int CantVentasCredito { get; set; }
+        public decimal TotalVentasCredito { get; set; }
+        public int CantCobros { get; set; }
+        public decimal TotalCobrosCredito { get; set; }
+        public int CantAnulaciones { get; set; }
+        public decimal TotalAnulaciones { get; set; }
+        public decimal TotalEfectivo { get; set; }
+        public decimal TotalTarjetas { get; set; }
+        public decimal TotalCheques { get; set; }
+        public decimal TotalTransferencias { get; set; }
+        public decimal TotalQR { get; set; }
+        public decimal TotalOtros { get; set; }
+    }
+
+    private async Task ImprimirCierreA4(Models.CierreCaja cierre, List<Models.EntregaCaja> entregasList)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+        
+        string empresa = suc?.NombreEmpresa ?? "Empresa";
+        string sucursal = suc?.NombreSucursal ?? "Sucursal";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+        string direccion = suc?.Direccion ?? "";
+        string telefono = suc?.Telefono ?? "";
+        string? logoDataUri = null;
+        if (suc?.Logo != null && suc.Logo.Length > 0)
+            logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset='utf-8'/>");
+        head.AppendLine("<title>Cierre de Caja</title>");
+        head.AppendLine("<link rel='stylesheet' href='/css/bootstrap/bootstrap.min.css' />");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: A4; margin: 10mm; } }");
+        head.AppendLine("body{font-size:11px;color:#111;}");
+        head.AppendLine(".header{border-bottom:2px solid #222;padding-bottom:10px;margin-bottom:15px;}");
+        head.AppendLine(".logo{max-width:100px;max-height:60px;object-fit:contain;}");
+        head.AppendLine(".tabla th,.tabla td{padding:.3rem .5rem;border-bottom:1px solid #ddd;}");
+        head.AppendLine(".right{text-align:right} .center{text-align:center} .bold{font-weight:bold}");
+        head.AppendLine(".resumen-card{background:#f8f9fa;border-radius:8px;padding:10px;margin-bottom:10px;}");
+        head.AppendLine(".diferencia-neg{color:#dc3545;font-weight:bold} .diferencia-pos{color:#198754;font-weight:bold}");
+        head.AppendLine("</style>");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class='container-fluid'>");
+        
+        // Encabezado
+        sb.AppendLine("<div class='header d-flex justify-content-between align-items-start'>");
+        sb.AppendLine("<div class='d-flex align-items-center gap-3'>");
+        if (!string.IsNullOrEmpty(logoDataUri))
+            sb.AppendLine($"<img class='logo' src='{logoDataUri}' alt='Logo' />");
+        sb.AppendLine($"<div><h4 class='mb-0'>{empresa}</h4><div class='small'>RUC: {ruc}</div><div class='small'>{sucursal}</div>");
+        if (!string.IsNullOrEmpty(direccion)) sb.AppendLine($"<div class='small'>{direccion}</div>");
+        if (!string.IsNullOrEmpty(telefono)) sb.AppendLine($"<div class='small'>Tel: {telefono}</div>");
+        sb.AppendLine("</div></div>");
+        sb.AppendLine($"<div class='text-end'><h5>CIERRE DE CAJA #{cierre.IdCierreCaja}</h5>");
+        sb.AppendLine($"<div><strong>Caja:</strong> {cierre.IdCaja} | <strong>Turno:</strong> {cierre.Turno}</div>");
+        sb.AppendLine($"<div><strong>Fecha Caja:</strong> {cierre.FechaCaja:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div><strong>Cerrado:</strong> {cierre.FechaCierre:dd/MM/yyyy HH:mm}</div>");
+        sb.AppendLine($"<div><strong>Usuario:</strong> {cierre.UsuarioCierre}</div>");
+        sb.AppendLine("</div></div>");
+
+        // Resumen de operaciones
+        sb.AppendLine("<h6 class='mt-3 mb-2'>Resumen de Operaciones</h6>");
+        sb.AppendLine("<div class='row mb-3'>");
+        sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center'><div class='small text-muted'>Ventas Contado</div><div class='fw-bold text-success fs-5'>{cierre.TotalVentasContado:N0} ₲</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center'><div class='small text-muted'>Ventas Crédito</div><div class='fw-bold text-primary fs-5'>{cierre.TotalVentasCredito:N0} ₲</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center'><div class='small text-muted'>Cobros Crédito</div><div class='fw-bold text-info fs-5'>{cierre.TotalCobrosCredito:N0} ₲</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center'><div class='small text-muted'>Anulaciones</div><div class='fw-bold text-danger fs-5'>{cierre.TotalAnulaciones:N0} ₲</div></div></div>");
+        sb.AppendLine("</div>");
+
+        // Entregas por medio de pago
+        sb.AppendLine("<h6 class='mb-2'>Entregas por Medio de Pago</h6>");
+        sb.AppendLine("<table class='table table-sm tabla'>");
+        sb.AppendLine("<thead class='table-dark'><tr><th>Medio de Pago</th><th class='right'>Esperado</th><th class='right'>Entregado</th><th class='right'>Diferencia</th><th>Observación</th></tr></thead>");
+        sb.AppendLine("<tbody>");
+        foreach (var e in entregasList)
+        {
+            var difClass = e.Diferencia < 0 ? "diferencia-neg" : e.Diferencia > 0 ? "diferencia-pos" : "";
+            sb.AppendLine($"<tr><td>{ObtenerNombreMedio(e.Medio)}</td><td class='right'>{e.MontoEsperado:N0}</td><td class='right'>{e.MontoEntregado:N0}</td><td class='right {difClass}'>{e.Diferencia:N0}</td><td class='small'>{e.Observaciones ?? ""}</td></tr>");
+        }
+        sb.AppendLine("</tbody>");
+        var difTotalClass = cierre.Diferencia < 0 ? "diferencia-neg" : cierre.Diferencia > 0 ? "diferencia-pos" : "";
+        sb.AppendLine($"<tfoot class='table-secondary'><tr class='fw-bold'><td>TOTAL</td><td class='right'>{cierre.TotalEsperado:N0}</td><td class='right'>{cierre.TotalEntregado:N0}</td><td class='right {difTotalClass}'>{cierre.Diferencia:N0}</td><td></td></tr></tfoot>");
+        sb.AppendLine("</table>");
+
+        // Observaciones
+        if (!string.IsNullOrEmpty(cierre.Observaciones))
+        {
+            sb.AppendLine($"<div class='alert alert-secondary mt-3'><strong>Observaciones:</strong> {cierre.Observaciones}</div>");
+        }
+
+        // Firmas
+        sb.AppendLine("<div class='row mt-5 pt-4'>");
+        sb.AppendLine("<div class='col-4 text-center'><div style='border-top:1px solid #333;padding-top:5px;'>Cajero/a</div></div>");
+        sb.AppendLine("<div class='col-4 text-center'><div style='border-top:1px solid #333;padding-top:5px;'>Supervisor/a</div></div>");
+        sb.AppendLine("<div class='col-4 text-center'><div style='border-top:1px solid #333;padding-top:5px;'>Recibido por</div></div>");
+        sb.AppendLine("</div>");
+
+        sb.AppendLine("</div>");
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+
+    private async Task ImprimirCierreTicket(Models.CierreCaja cierre, List<Models.EntregaCaja> entregasList)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+        
+        string empresa = suc?.NombreEmpresa ?? "Empresa";
+        string sucursal = suc?.NombreSucursal ?? "Sucursal";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset='utf-8'/>");
+        head.AppendLine("<title>Cierre de Caja - Ticket</title>");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: 80mm auto; margin: 2mm; } }");
+        head.AppendLine("body{font-family:'Courier New',monospace;font-size:12px;width:76mm;margin:0 auto;color:#000;}");
+        head.AppendLine(".center{text-align:center} .right{text-align:right} .bold{font-weight:bold}");
+        head.AppendLine(".line{border-top:1px dashed #000;margin:5px 0;}");
+        head.AppendLine(".doble-line{border-top:2px solid #000;margin:5px 0;}");
+        head.AppendLine("table{width:100%;border-collapse:collapse;} td{padding:2px 0;}");
+        head.AppendLine(".small{font-size:10px}");
+        head.AppendLine("</style>");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class='center bold'>" + empresa + "</div>");
+        sb.AppendLine("<div class='center small'>RUC: " + ruc + "</div>");
+        sb.AppendLine("<div class='center small'>" + sucursal + "</div>");
+        sb.AppendLine("<div class='doble-line'></div>");
+        sb.AppendLine("<div class='center bold'>CIERRE DE CAJA</div>");
+        sb.AppendLine("<div class='line'></div>");
+        sb.AppendLine($"<div>Cierre #: {cierre.IdCierreCaja}</div>");
+        sb.AppendLine($"<div>Caja: {cierre.IdCaja} - Turno: {cierre.Turno}</div>");
+        sb.AppendLine($"<div>Fecha Caja: {cierre.FechaCaja:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div>Cerrado: {cierre.FechaCierre:dd/MM/yyyy HH:mm}</div>");
+        sb.AppendLine($"<div>Usuario: {cierre.UsuarioCierre}</div>");
+        sb.AppendLine("<div class='line'></div>");
+        
+        sb.AppendLine("<div class='bold'>RESUMEN OPERACIONES</div>");
+        sb.AppendLine("<table>");
+        sb.AppendLine($"<tr><td>Ventas Contado:</td><td class='right'>{cierre.TotalVentasContado:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>Ventas Crédito:</td><td class='right'>{cierre.TotalVentasCredito:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>Cobros Crédito:</td><td class='right'>{cierre.TotalCobrosCredito:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>Anulaciones:</td><td class='right'>{cierre.TotalAnulaciones:N0}</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='line'></div>");
+
+        sb.AppendLine("<div class='bold'>ENTREGAS</div>");
+        sb.AppendLine("<table>");
+        foreach (var e in entregasList)
+        {
+            sb.AppendLine($"<tr><td>{ObtenerNombreMedio(e.Medio)}:</td><td class='right'>{e.MontoEntregado:N0}</td></tr>");
+        }
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='line'></div>");
+        
+        sb.AppendLine("<table>");
+        sb.AppendLine($"<tr class='bold'><td>ESPERADO:</td><td class='right'>{cierre.TotalEsperado:N0}</td></tr>");
+        sb.AppendLine($"<tr class='bold'><td>ENTREGADO:</td><td class='right'>{cierre.TotalEntregado:N0}</td></tr>");
+        sb.AppendLine($"<tr class='bold'><td>DIFERENCIA:</td><td class='right'>{cierre.Diferencia:N0}</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='doble-line'></div>");
+        
+        if (!string.IsNullOrEmpty(cierre.Observaciones))
+        {
+            sb.AppendLine($"<div class='small'>Obs: {cierre.Observaciones}</div>");
+            sb.AppendLine("<div class='line'></div>");
+        }
+
+        sb.AppendLine("<br/><br/>");
+        sb.AppendLine("<div class='center'>____________________</div>");
+        sb.AppendLine("<div class='center small'>Firma Cajero</div>");
+        sb.AppendLine("<br/><br/>");
+        sb.AppendLine("<div class='center'>____________________</div>");
+        sb.AppendLine("<div class='center small'>Firma Receptor</div>");
+
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+}

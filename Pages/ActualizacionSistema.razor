@@ -1,0 +1,1318 @@
+@page "/actualizacion-sistema"
+@using SistemIA.Services
+@inject ActualizacionService ActualizacionService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Actualización del Sistema</PageTitle>
+
+@* Modal de Actualización con Reinicio - Siempre visible cuando está en proceso *@
+@if (actualizacionConReinicioActiva)
+{
+    <div class="update-overlay">
+        <div class="update-modal">
+            <div class="update-header @GetHeaderClass()">
+                <i class="@GetHeaderIcon() fa-2x me-3"></i>
+                <h4 class="mb-0">@GetHeaderTitle()</h4>
+            </div>
+            <div class="update-body">
+                @if (estadoActualizacion?.Estado == "error")
+                {
+                    <div class="alert alert-danger">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Error:</strong> @(estadoActualizacion?.Error ?? "Error desconocido")
+                    </div>
+                }
+                else if (estadoActualizacion?.Estado == "completado")
+                {
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>¡Actualización completada exitosamente!</strong>
+                    </div>
+                }
+                else if (reconectando)
+                {
+                    <div class="alert alert-warning">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            <span>Reconectando al servidor... Intento @intentosReconexion de 30</span>
+                        </div>
+                    </div>
+                }
+                
+                <div class="progress mb-3" style="height: 30px;">
+                    <div class="progress-bar progress-bar-striped @(estadoActualizacion?.Estado == "error" ? "bg-danger" : estadoActualizacion?.Estado == "completado" ? "bg-success" : "progress-bar-animated")" 
+                         role="progressbar" 
+                         style="width: @(estadoActualizacion?.Progreso ?? 0)%">
+                        @(estadoActualizacion?.Progreso ?? 0)%
+                    </div>
+                </div>
+                
+                <div class="status-message mb-3">
+                    <strong>Estado:</strong> @(estadoActualizacion?.Mensaje ?? "Preparando...")
+                </div>
+
+                <div class="log-container-mini">
+                    @if (estadoActualizacion?.Logs != null)
+                    {
+                        @foreach (var log in estadoActualizacion.Logs.TakeLast(10))
+                        {
+                            <div class="log-entry-mini">@log</div>
+                        }
+                    }
+                </div>
+
+                @if (estadoActualizacion?.Estado == "completado" || estadoActualizacion?.Estado == "error")
+                {
+                    <div class="mt-3 text-center">
+                        @if (estadoActualizacion?.Estado == "completado")
+                        {
+                            <button class="btn btn-success btn-lg" @onclick="RecargarPagina">
+                                <i class="fas fa-check me-2"></i>
+                                ¡Listo! Recargar Página
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-warning me-2" @onclick="CerrarModalActualizacion">
+                                <i class="fas fa-times me-2"></i>
+                                Cerrar
+                            </button>
+                            <button class="btn btn-primary" @onclick="ReintentarActualizacion">
+                                <i class="fas fa-redo me-2"></i>
+                                Reintentar
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-sync-alt me-2"></i>
+                        Actualización del Sistema
+                    </h4>
+                </div>
+                <div class="card-body">
+                    
+                    <!-- Información de Versión Actual -->
+                    <div class="alert alert-info d-flex align-items-center mb-4">
+                        <i class="fas fa-info-circle fa-2x me-3"></i>
+                        <div>
+                            <strong>Versión Actual:</strong> @versionActual.Version <br/>
+                            <small>Compilación: @versionActual.FechaCompilacion.ToString("dd/MM/yyyy HH:mm")</small><br/>
+                            <small>Entorno: @versionActual.Entorno</small>
+                        </div>
+                    </div>
+
+                    <!-- Acceso rápido a generar paquetes -->
+                    <div class="mb-3">
+                        <a href="/generar-paquete-actualizacion" class="btn btn-success">
+                            <i class="fas fa-box me-2"></i>
+                            Generar Paquete de Actualización
+                        </a>
+                    </div>
+
+                    <!-- Pestañas -->
+                    <ul class="nav nav-tabs mb-4">
+                        <li class="nav-item">
+                            <button class="@GetTabClass("aplicar")" @onclick="ActivarPestanaAplicar" type="button">
+                                Aplicar Actualización
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="@GetTabClass("generar")" @onclick="ActivarPestanaGenerar" type="button">
+                                Generar Paquete
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="@GetTabClass("backups")" @onclick="ActivarPestanaBackups" type="button">
+                                Backups
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Contenido de Aplicar Actualización -->
+                    @if (pestanaActiva == "aplicar")
+                    {
+                        @if (!actualizando && resultado == null)
+                        {
+                            <!-- Formulario de Actualización -->
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <!-- Opción 1: Seleccionar archivo desde carpeta Releases del servidor -->
+                                    @if (archivosEnReleases.Any())
+                                    {
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold">
+                                                <i class="fas fa-server me-2"></i>
+                                                Paquetes disponibles en el servidor
+                                            </label>
+                                            <select class="form-select" @onchange="SeleccionarArchivoServidor">
+                                                <option value="">-- Seleccione un paquete del servidor --</option>
+                                                @foreach (var archivo in archivosEnReleases)
+                                                {
+                                                    <option value="@archivo.RutaCompleta">
+                                                        @archivo.Nombre (@archivo.TamanoMB.ToString("F2") MB) - @archivo.FechaModificacion.ToString("dd/MM/yyyy HH:mm")
+                                                    </option>
+                                                }
+                                            </select>
+                                            <div class="form-text text-success">
+                                                <i class="fas fa-check-circle me-1"></i>
+                                                Paquetes copiados a la carpeta Releases del servidor
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="text-center my-3">
+                                            <span class="text-muted">─── o ───</span>
+                                        </div>
+                                    }
+
+                                    <!-- Opción 2: Subir archivo desde el navegador -->
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">
+                                            <i class="fas fa-upload me-2"></i>
+                                            Subir archivo desde su PC
+                                        </label>
+                                        <InputFile OnChange="ArchivoSeleccionado" class="form-control" accept=".zip" />
+                                        <div class="form-text">
+                                            Sube un archivo ZIP desde tu computadora local.
+                                        </div>
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(archivoSubido))
+                                    {
+                                        <div class="alert alert-success">
+                                            <i class="fas fa-check-circle me-2"></i>
+                                            Archivo seleccionado: <strong>@archivoSubido</strong>
+                                            <br/>
+                                            Tamaño: @((tamanoArchivo / 1024.0 / 1024.0).ToString("F2")) MB
+                                            @if (archivoDesdeServidor)
+                                            {
+                                                <br/><span class="badge bg-info">Desde servidor</span>
+                                            }
+                                        </div>
+                                    }
+
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" @bind="aplicarMigraciones" id="checkMigraciones">
+                                        <label class="form-check-label" for="checkMigraciones">
+                                            <strong>Aplicar migraciones de base de datos</strong>
+                                            <br/>
+                                            <small class="text-muted">Actualiza automáticamente el esquema de la BD</small>
+                                        </label>
+                                    </div>
+
+                                    <div class="d-flex gap-3 flex-wrap">
+                                        <button class="btn btn-primary btn-lg" 
+                                                @onclick="IniciarActualizacion" 
+                                                disabled="@string.IsNullOrEmpty(archivoTempPath)">
+                                            <i class="fas fa-rocket me-2"></i>
+                                            Actualización Estándar
+                                        </button>
+                                        
+                                        <button class="btn btn-warning btn-lg" 
+                                                @onclick="IniciarActualizacionConReinicio" 
+                                                disabled="@string.IsNullOrEmpty(archivoTempPath)">
+                                            <i class="fas fa-sync-alt me-2"></i>
+                                            Actualizar con Reinicio
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="alert alert-info mt-3 small">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Actualización Estándar:</strong> Intenta actualizar sin reiniciar. Puede fallar si hay archivos en uso.<br/>
+                                        <strong>Actualizar con Reinicio:</strong> Detiene el servicio, actualiza todos los archivos (incluyendo DLLs) y reinicia. <strong class="text-danger">Recomendado para servidores.</strong>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="card bg-light">
+                                        <div class="card-body">
+                                            <h6 class="card-title">
+                                                <i class="fas fa-shield-alt me-2"></i>
+                                                Proceso de Seguridad
+                                            </h6>
+                                            <ol class="mb-0" style="font-size: 0.9rem;">
+                                                <li>Validación del archivo ZIP</li>
+                                                <li>Backup de la aplicación</li>
+                                                <li>Backup de la base de datos</li>
+                                                <li>Actualización de archivos</li>
+                                                <li>Migraciones de BD (opcional)</li>
+                                                <li>Verificación final</li>
+                                            </ol>
+                                            <div class="alert alert-warning mt-3 mb-0" style="font-size: 0.85rem;">
+                                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                                Se recomienda hacer backup manual antes de actualizar.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @if (actualizando)
+                        {
+                            <!-- Progreso de Actualización -->
+                            <div class="card border-primary">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                        Actualizando Sistema...
+                                    </h5>
+                                    
+                                    <div class="progress mb-3" style="height: 25px;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                             role="progressbar" 
+                                             style="width: @progresoActual%">
+                                            @progresoActual%
+                                        </div>
+                                    </div>
+
+                                    <div class="log-container border rounded p-3 bg-light" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 0.9rem;">
+                                        @foreach (var log in logsActualizacion)
+                                        {
+                                            <div class="mb-1">@log</div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @if (resultado != null)
+                        {
+                            <!-- Resultado de Actualización -->
+                            <div class="card @(resultado.Exitoso ? "border-success" : "border-danger")">
+                                <div class="card-header @(resultado.Exitoso ? "bg-success" : "bg-danger") text-white">
+                                    <h5 class="mb-0">
+                                        <i class="fas @(resultado.Exitoso ? "fa-check-circle" : "fa-exclamation-circle") me-2"></i>
+                                        @(resultado.Exitoso ? "¡Actualización Completada!" : "Error en la Actualización")
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    @if (resultado.Exitoso)
+                                    {
+                                        <div class="alert alert-success">
+                                            <h6><i class="fas fa-check me-2"></i>La actualización se completó exitosamente</h6>
+                                            <hr/>
+                                            <ul class="mb-0">
+                                                <li><strong>Tiempo total:</strong> @resultado.TiempoTotal.TotalSeconds.ToString("F1") segundos</li>
+                                                <li><strong>Backup aplicación:</strong> @Path.GetFileName(resultado.BackupAppPath)</li>
+                                                <li><strong>Backup BD:</strong> @Path.GetFileName(resultado.BackupBdPath)</li>
+                                                @if (resultado.MigracionesAplicadas > 0)
+                                                {
+                                                    <li><strong>Migraciones aplicadas:</strong> @resultado.MigracionesAplicadas</li>
+                                                }
+                                            </ul>
+                                        </div>
+
+                                        <div class="alert alert-warning">
+                                            <i class="fas fa-exclamation-triangle me-2"></i>
+                                            <strong>¡IMPORTANTE!</strong> Se recomienda reiniciar la aplicación para aplicar todos los cambios.
+                                        </div>
+
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-warning" @onclick="ReiniciarAplicacion">
+                                                <i class="fas fa-redo me-2"></i>
+                                                Reiniciar Aplicación
+                                            </button>
+                                            <button class="btn btn-secondary" @onclick="NuevaActualizacion">
+                                                <i class="fas fa-sync me-2"></i>
+                                                Nueva Actualización
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="alert alert-danger">
+                                            <h6><i class="fas fa-times me-2"></i>Error durante la actualización</h6>
+                                            <hr/>
+                                            <p><strong>Error:</strong> @resultado.Error</p>
+                                            @if (resultado.RollbackAplicado)
+                                            {
+                                                <p class="mb-0">
+                                                    <i class="fas fa-undo me-2"></i>
+                                                    Se aplicó rollback. La aplicación fue restaurada a su estado anterior.
+                                                </p>
+                                            }
+                                        </div>
+
+                                        <div class="log-container border rounded p-3 bg-light" style="max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
+                                            @foreach (var log in logsActualizacion)
+                                            {
+                                                <div class="mb-1">@log</div>
+                                            }
+                                        </div>
+
+                                        <button class="btn btn-primary mt-3" @onclick="NuevaActualizacion">
+                                            <i class="fas fa-sync me-2"></i>
+                                            Reintentar
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    <!-- Contenido de Generar Paquete -->
+                    @if (pestanaActiva == "generar")
+                    {
+                        @if (!generandoPaquete && resultadoGeneracion == null)
+                        {
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Generar Paquete de Actualización</strong><br/>
+                                        Esta función compila el proyecto actual y crea un paquete ZIP listo para distribuir a otros servidores.
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">
+                                            <i class="fas fa-tag me-2"></i>
+                                            Versión del Paquete
+                                        </label>
+                                        <input type="text" class="form-control" @bind="versionPaquete" 
+                                               placeholder="ej: 1.2.0" />
+                                        <div class="form-text">
+                                            Número de versión para identificar este paquete (formato: X.Y.Z)
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">
+                                            <i class="fas fa-edit me-2"></i>
+                                            Descripción de Cambios
+                                        </label>
+                                        <textarea class="form-control" rows="6" @bind="descripcionCambios" 
+                                                  placeholder="Describa los cambios incluidos en esta actualización:&#10;- Nueva característica X&#10;- Corrección de bug Y&#10;- Mejora en módulo Z"></textarea>
+                                        <div class="form-text">
+                                            Detalle los cambios que se incluyen en esta actualización
+                                        </div>
+                                    </div>
+
+                                    <button class="btn btn-success btn-lg" 
+                                            @onclick="IniciarGeneracionPaquete" 
+                                            disabled="@(string.IsNullOrWhiteSpace(versionPaquete) || string.IsNullOrWhiteSpace(descripcionCambios))">
+                                        <i class="fas fa-box me-2"></i>
+                                        Generar Paquete
+                                    </button>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="card bg-light">
+                                        <div class="card-body">
+                                            <h6 class="card-title">
+                                                <i class="fas fa-cogs me-2"></i>
+                                                Proceso de Generación
+                                            </h6>
+                                            <ol class="mb-0" style="font-size: 0.9rem;">
+                                                <li>Limpieza de compilaciones previas</li>
+                                                <li>Compilación en modo Release</li>
+                                                <li>Publicación de la aplicación</li>
+                                                <li>Verificación de archivos críticos</li>
+                                                <li>Creación del archivo ZIP</li>
+                                                <li>Cálculo de hash SHA256</li>
+                                                <li>Generación de CHANGELOG</li>
+                                            </ol>
+                                            <div class="alert alert-success mt-3 mb-0" style="font-size: 0.85rem;">
+                                                <i class="fas fa-check-circle me-2"></i>
+                                                El paquete se guardará en la carpeta <strong>Releases</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @if (generandoPaquete)
+                        {
+                            <!-- Progreso de generación -->
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-cog fa-spin me-2"></i>
+                                        Generando Paquete...
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="progress mb-3" style="height: 30px;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                             role="progressbar" 
+                                             style="width: @(progresoGeneracion)%">
+                                            @progresoGeneracion%
+                                        </div>
+                                    </div>
+
+                                    <div class="log-container">
+                                        @foreach (var log in logsGeneracion)
+                                        {
+                                            <div class="log-entry">@log</div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @if (resultadoGeneracion != null)
+                        {
+                            @if (resultadoGeneracion.Exitoso)
+                            {
+                                <div class="alert alert-success border-success">
+                                    <h5 class="alert-heading">
+                                        <i class="fas fa-check-circle me-2"></i>
+                                        ¡Paquete Generado Exitosamente!
+                                    </h5>
+                                    <hr/>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <p><strong>Archivo:</strong> @resultadoGeneracion.NombreArchivo</p>
+                                            <p><strong>Ubicación:</strong> <code>@resultadoGeneracion.RutaZip</code></p>
+                                            <p><strong>Tamaño:</strong> @resultadoGeneracion.TamanoMB.ToString("F2") MB</p>
+                                            <p><strong>Archivos:</strong> @resultadoGeneracion.TotalArchivos</p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p><strong>Hash SHA256:</strong><br/><code style="font-size: 0.75rem; word-break: break-all;">@resultadoGeneracion.HashSHA256</code></p>
+                                            <p><strong>Tiempo:</strong> @resultadoGeneracion.TiempoTotal.ToString(@"mm\:ss")</p>
+                                        </div>
+                                    </div>
+                                    <hr/>
+                                    <p class="mb-0">
+                                        <strong>CHANGELOG generado:</strong> <code>@resultadoGeneracion.RutaChangelog</code>
+                                    </p>
+                                    <div class="mt-3">
+                                        <button class="btn btn-primary" @onclick="AbrirCarpetaReleases">
+                                            <i class="fas fa-folder-open me-2"></i>
+                                            Abrir Carpeta Releases
+                                        </button>
+                                        <button class="btn btn-secondary" @onclick='() => { resultadoGeneracion = null; versionPaquete = ""; descripcionCambios = ""; }'>
+                                            <i class="fas fa-redo me-2"></i>
+                                            Generar Otro Paquete
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-danger border-danger">
+                                    <h5 class="alert-heading">
+                                        <i class="fas fa-times-circle me-2"></i>
+                                        Error al Generar Paquete
+                                    </h5>
+                                    <p class="mb-0">@resultadoGeneracion.Error</p>
+                                    <div class="mt-3">
+                                        <button class="btn btn-warning" @onclick='() => { resultadoGeneracion = null; generandoPaquete = false; }'>
+                                            <i class="fas fa-redo me-2"></i>
+                                            Intentar Nuevamente
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+
+                    <!-- Contenido de Backups (existente) -->
+                    @if (pestanaActiva == "backups")
+                    {
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5>
+                                <i class="fas fa-database me-2"></i>
+                                Backups Disponibles
+                            </h5>
+                            <button class="btn btn-warning" @onclick="LimpiarBackupsAntiguos">
+                                <i class="fas fa-trash-alt me-2"></i>
+                                Limpiar Antiguos
+                            </button>
+                        </div>
+
+                        @if (backups.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Archivo</th>
+                                            <th>Fecha</th>
+                                            <th>Tamaño</th>
+                                            <th>Ubicación</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var backup in backups)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <span class="badge @(backup.Tipo == "Aplicación" ? "bg-primary" : "bg-info")">
+                                                        @backup.Tipo
+                                                    </span>
+                                                </td>
+                                                <td>@backup.NombreArchivo</td>
+                                                <td>@backup.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                                                <td>@backup.TamanoMB.ToString("F2") MB</td>
+                                                <td><small class="text-muted">@backup.RutaCompleta</small></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                No hay backups disponibles.
+                            </div>
+                        }
+                    }
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private VersionInfo versionActual = new();
+    private List<BackupInfo> backups = new();
+    private List<ArchivoReleaseInfo> archivosEnReleases = new();
+    
+    // Control de pestañas
+    private string pestanaActiva = "aplicar";
+    
+    // Aplicar actualización
+    private string archivoSubido = "";
+    private string archivoTempPath = "";
+    private long tamanoArchivo = 0;
+    private bool aplicarMigraciones = true;
+    private bool archivoDesdeServidor = false;
+    
+    private bool actualizando = false;
+    private int progresoActual = 0;
+    private List<string> logsActualizacion = new();
+    private ResultadoActualizacion? resultado = null;
+
+    // Generar paquete
+    private string versionPaquete = "";
+    private string descripcionCambios = "";
+    private bool generandoPaquete = false;
+    private int progresoGeneracion = 0;
+    private List<string> logsGeneracion = new();
+    private ResultadoGeneracionPaquete? resultadoGeneracion = null;
+
+    // Actualización con reinicio
+    private bool actualizacionConReinicioActiva = false;
+    private EstadoActualizacion? estadoActualizacion = null;
+    private bool reconectando = false;
+    private int intentosReconexion = 0;
+    private System.Threading.Timer? pollingTimer;
+    private string? archivoParaReintento;
+
+    protected override async Task OnInitializedAsync()
+    {
+        versionActual = ActualizacionService.ObtenerVersionActual();
+        await CargarBackups();
+        CargarArchivosReleases();
+        
+        // Verificar si hay una actualización en progreso al cargar la página
+        await VerificarActualizacionEnProgreso();
+    }
+
+    private async Task VerificarActualizacionEnProgreso()
+    {
+        try
+        {
+            var estado = await ActualizacionService.LeerEstadoActualizacion();
+            if (estado != null && estado.Estado != "idle" && estado.Estado != "completado" && estado.Estado != "error")
+            {
+                // Hay una actualización en progreso, mostrar el modal y continuar polling
+                estadoActualizacion = estado;
+                actualizacionConReinicioActiva = true;
+                IniciarPolling();
+            }
+        }
+        catch { }
+    }
+
+    private void CargarArchivosReleases()
+    {
+        archivosEnReleases.Clear();
+        try
+        {
+            var appDir = AppContext.BaseDirectory;
+            var releasesDir = Path.Combine(appDir, "Releases");
+            
+            if (!Directory.Exists(releasesDir))
+            {
+                // Buscar en directorio padre (para desarrollo)
+                releasesDir = Path.Combine(Directory.GetParent(appDir)?.Parent?.Parent?.Parent?.FullName ?? appDir, "Releases");
+            }
+            
+            if (Directory.Exists(releasesDir))
+            {
+                var archivos = Directory.GetFiles(releasesDir, "*.zip", SearchOption.TopDirectoryOnly)
+                    .Select(f => new FileInfo(f))
+                    .OrderByDescending(f => f.LastWriteTime)
+                    .Take(10) // Mostrar los últimos 10
+                    .ToList();
+
+                foreach (var archivo in archivos)
+                {
+                    archivosEnReleases.Add(new ArchivoReleaseInfo
+                    {
+                        Nombre = archivo.Name,
+                        RutaCompleta = archivo.FullName,
+                        TamanoMB = archivo.Length / (1024.0 * 1024.0),
+                        FechaModificacion = archivo.LastWriteTime
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando archivos Releases: {ex.Message}");
+        }
+    }
+
+    private void SeleccionarArchivoServidor(ChangeEventArgs e)
+    {
+        var rutaArchivo = e.Value?.ToString();
+        if (string.IsNullOrEmpty(rutaArchivo))
+        {
+            archivoSubido = "";
+            archivoTempPath = "";
+            tamanoArchivo = 0;
+            archivoDesdeServidor = false;
+            return;
+        }
+
+        try
+        {
+            var fileInfo = new FileInfo(rutaArchivo);
+            if (fileInfo.Exists)
+            {
+                archivoSubido = fileInfo.Name;
+                archivoTempPath = fileInfo.FullName; // Usar directamente la ruta del servidor
+                tamanoArchivo = fileInfo.Length;
+                archivoDesdeServidor = true;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error seleccionando archivo: {ex.Message}");
+        }
+    }
+
+    private async Task ArchivoSeleccionado(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var archivo = e.File;
+            
+            if (archivo.Size > 500 * 1024 * 1024) // 500 MB máximo
+            {
+                await JS.InvokeVoidAsync("alert", "El archivo es demasiado grande. Máximo 500 MB.");
+                return;
+            }
+
+            archivoSubido = archivo.Name;
+            tamanoArchivo = archivo.Size;
+            archivoDesdeServidor = false;
+
+            // Guardar archivo temporalmente
+            var tempDir = Path.Combine(Path.GetTempPath(), "SistemIA");
+            Directory.CreateDirectory(tempDir);
+            
+            // Limpiar archivos temporales anteriores
+            try
+            {
+                foreach (var oldFile in Directory.GetFiles(tempDir, "update_*.zip"))
+                {
+                    try { File.Delete(oldFile); } catch { }
+                }
+            }
+            catch { }
+            
+            archivoTempPath = Path.Combine(tempDir, $"update_{DateTime.Now:yyyyMMddHHmmss}.zip");
+
+            // Copiar archivo asegurando cierre de streams
+            using (var stream = archivo.OpenReadStream(500 * 1024 * 1024))
+            {
+                using (var fileStream = new FileStream(archivoTempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    await stream.CopyToAsync(fileStream);
+                    await fileStream.FlushAsync();
+                }
+            }
+            
+            // Esperar un momento para que Windows libere el archivo
+            await Task.Delay(100);
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al cargar archivo: {ex.Message}");
+        }
+    }
+
+    private async Task IniciarActualizacion()
+    {
+        if (string.IsNullOrEmpty(archivoTempPath))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar un archivo de actualización.");
+            return;
+        }
+
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            "¿Está seguro de continuar con la actualización?\n\n" +
+            "Se crearán backups automáticos de la aplicación y base de datos.\n" +
+            "El proceso puede tardar varios minutos.");
+
+        if (!confirmar)
+            return;
+
+        actualizando = true;
+        progresoActual = 0;
+        logsActualizacion.Clear();
+        resultado = null;
+        StateHasChanged();
+
+        var progress = new Progress<string>(mensaje =>
+        {
+            InvokeAsync(() =>
+            {
+                logsActualizacion.Add($"[{DateTime.Now:HH:mm:ss}] {mensaje}");
+                
+                // Actualizar progreso
+                if (mensaje.Contains("Validando")) progresoActual = 10;
+                else if (mensaje.Contains("backup de la aplicación")) progresoActual = 20;
+                else if (mensaje.Contains("backup de la base")) progresoActual = 35;
+                else if (mensaje.Contains("Extrayendo")) progresoActual = 50;
+                else if (mensaje.Contains("Actualizando archivos")) progresoActual = 65;
+                else if (mensaje.Contains("Restaurando configuración")) progresoActual = 75;
+                else if (mensaje.Contains("migraciones")) progresoActual = 85;
+                else if (mensaje.Contains("Limpiando")) progresoActual = 95;
+                else if (mensaje.Contains("completada exitosamente")) progresoActual = 100;
+
+                StateHasChanged();
+            });
+        });
+
+        resultado = await ActualizacionService.ActualizarSistema(archivoTempPath, aplicarMigraciones, progress);
+        
+        actualizando = false;
+        progresoActual = 100;
+        StateHasChanged();
+
+        // Limpiar archivo temporal
+        try
+        {
+            if (File.Exists(archivoTempPath))
+                File.Delete(archivoTempPath);
+        }
+        catch { }
+    }
+
+    private async Task IniciarActualizacionConReinicio()
+    {
+        if (string.IsNullOrEmpty(archivoTempPath))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar un archivo de actualización.");
+            return;
+        }
+
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            "⚠️ ACTUALIZACIÓN CON REINICIO ⚠️\n\n" +
+            "Esta operación:\n" +
+            "1. Detendrá el servicio SistemIA\n" +
+            "2. Actualizará TODOS los archivos (incluyendo DLLs)\n" +
+            "3. Aplicará migraciones de base de datos (si hay)\n" +
+            "4. Reiniciará el servicio\n\n" +
+            "La página mostrará el progreso en tiempo real.\n" +
+            "¿Desea continuar?");
+
+        if (!confirmar)
+            return;
+
+        try
+        {
+            archivoParaReintento = archivoTempPath;
+            
+            // Iniciar la actualización
+            var (iniciado, mensaje) = await ActualizacionService.IniciarActualizacionConReinicio(
+                archivoTempPath, 
+                aplicarMigraciones);
+
+            if (iniciado)
+            {
+                // Mostrar el modal de progreso
+                actualizacionConReinicioActiva = true;
+                reconectando = false;
+                intentosReconexion = 0;
+                
+                // Obtener estado inicial
+                estadoActualizacion = await ActualizacionService.LeerEstadoActualizacion();
+                StateHasChanged();
+                
+                // Iniciar polling para actualizar el estado
+                IniciarPolling();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"Error al iniciar actualización:\n{mensaje}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error inesperado:\n{ex.Message}");
+        }
+    }
+
+    private void IniciarPolling()
+    {
+        DetenerPolling();
+        pollingTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await ConsultarEstadoActualizacion();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(1));
+    }
+
+    private void DetenerPolling()
+    {
+        pollingTimer?.Dispose();
+        pollingTimer = null;
+    }
+
+    private async Task ConsultarEstadoActualizacion()
+    {
+        try
+        {
+            // Intentar consultar el estado via HTTP (para cuando el servidor está vivo)
+            using var http = new HttpClient();
+            http.Timeout = TimeSpan.FromSeconds(3);
+            
+            var baseUrl = Nav.BaseUri.TrimEnd('/');
+            var response = await http.GetAsync($"{baseUrl}/api/actualizacion/estado");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var estado = System.Text.Json.JsonSerializer.Deserialize<EstadoActualizacion>(json, 
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (estado != null)
+                {
+                    estadoActualizacion = estado;
+                    reconectando = false;
+                    intentosReconexion = 0;
+                    
+                    // Si completó o error, detener polling después de un momento
+                    if (estado.Estado == "completado" || estado.Estado == "error")
+                    {
+                        DetenerPolling();
+                    }
+                }
+            }
+        }
+        catch (HttpRequestException)
+        {
+            // El servidor no responde - probablemente reiniciando
+            reconectando = true;
+            intentosReconexion++;
+            
+            // Si llevamos muchos intentos sin respuesta, intentar ver si volvió
+            if (intentosReconexion > 30)
+            {
+                // Demasiados intentos, mostrar error
+                estadoActualizacion = new EstadoActualizacion
+                {
+                    Estado = "error",
+                    Progreso = 95,
+                    Mensaje = "No se pudo reconectar al servidor",
+                    Error = "El servidor no respondió después de 30 intentos. Verifique manualmente si la actualización fue exitosa.",
+                    Logs = estadoActualizacion?.Logs ?? new List<string>()
+                };
+                DetenerPolling();
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Timeout - servidor reiniciando
+            reconectando = true;
+            intentosReconexion++;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error consultando estado: {ex.Message}");
+        }
+    }
+
+    private async Task RecargarPagina()
+    {
+        // Limpiar estado y recargar
+        ActualizacionService.LimpiarEstadoActualizacion();
+        await JS.InvokeVoidAsync("location.reload");
+    }
+
+    private void CerrarModalActualizacion()
+    {
+        actualizacionConReinicioActiva = false;
+        DetenerPolling();
+        ActualizacionService.LimpiarEstadoActualizacion();
+        StateHasChanged();
+    }
+
+    private async Task ReintentarActualizacion()
+    {
+        CerrarModalActualizacion();
+        
+        if (!string.IsNullOrEmpty(archivoParaReintento))
+        {
+            archivoTempPath = archivoParaReintento;
+            await IniciarActualizacionConReinicio();
+        }
+    }
+
+    private string GetHeaderClass()
+    {
+        return estadoActualizacion?.Estado switch
+        {
+            "error" => "bg-danger",
+            "completado" => "bg-success",
+            _ => "bg-primary"
+        };
+    }
+
+    private string GetHeaderIcon()
+    {
+        return estadoActualizacion?.Estado switch
+        {
+            "error" => "fas fa-times-circle",
+            "completado" => "fas fa-check-circle",
+            "deteniendo" => "fas fa-stop-circle",
+            "extrayendo" => "fas fa-file-archive",
+            "copiando" => "fas fa-copy",
+            "migrando" => "fas fa-database",
+            "reiniciando" => "fas fa-redo",
+            _ => "fas fa-sync fa-spin"
+        };
+    }
+
+    private string GetHeaderTitle()
+    {
+        return estadoActualizacion?.Estado switch
+        {
+            "error" => "Error en la Actualización",
+            "completado" => "¡Actualización Completada!",
+            "deteniendo" => "Deteniendo el Servicio...",
+            "extrayendo" => "Extrayendo Archivos...",
+            "copiando" => "Copiando Archivos...",
+            "migrando" => "Aplicando Migraciones...",
+            "reiniciando" => "Reiniciando el Servicio...",
+            "iniciando" => "Preparando Actualización...",
+            _ => "Actualizando el Sistema..."
+        };
+    }
+
+    public void Dispose()
+    {
+        DetenerPolling();
+    }
+
+    private async Task IniciarGeneracionPaquete()
+    {
+        if (string.IsNullOrWhiteSpace(versionPaquete) || string.IsNullOrWhiteSpace(descripcionCambios))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe completar versión y descripción de cambios.");
+            return;
+        }
+
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            $"¿Generar paquete de actualización versión {versionPaquete}?\n\n" +
+            "Este proceso compilará el proyecto y creará un ZIP listo para distribuir.\n" +
+            "Puede tardar varios minutos.");
+
+        if (!confirmar)
+            return;
+
+        generandoPaquete = true;
+        progresoGeneracion = 0;
+        logsGeneracion.Clear();
+        resultadoGeneracion = null;
+        StateHasChanged();
+
+        var progress = new Progress<string>(mensaje =>
+        {
+            InvokeAsync(() =>
+            {
+                logsGeneracion.Add($"[{DateTime.Now:HH:mm:ss}] {mensaje}");
+                
+                // Actualizar progreso
+                if (mensaje.Contains("[1/")) progresoGeneracion = 10;
+                else if (mensaje.Contains("[2/")) progresoGeneracion = 25;
+                else if (mensaje.Contains("[3/")) progresoGeneracion = 45;
+                else if (mensaje.Contains("[4/")) progresoGeneracion = 65;
+                else if (mensaje.Contains("[5/")) progresoGeneracion = 80;
+                else if (mensaje.Contains("[6/")) progresoGeneracion = 95;
+                else if (mensaje.Contains("exitosamente")) progresoGeneracion = 100;
+
+                StateHasChanged();
+            });
+        });
+
+        resultadoGeneracion = await ActualizacionService.GenerarPaqueteActualizacion(versionPaquete, descripcionCambios, progress);
+        
+        generandoPaquete = false;
+        progresoGeneracion = 100;
+        StateHasChanged();
+    }
+
+    private async Task AbrirCarpetaReleases()
+    {
+        try
+        {
+            var rutaCarpeta = Path.Combine(versionActual.RutaAplicacion, "Releases");
+            if (Directory.Exists(rutaCarpeta))
+            {
+                System.Diagnostics.Process.Start("explorer.exe", rutaCarpeta);
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "La carpeta Releases no existe.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al abrir carpeta: {ex.Message}");
+        }
+    }
+
+    private void NuevaActualizacion()
+    {
+        resultado = null;
+        archivoSubido = "";
+        archivoTempPath = "";
+        tamanoArchivo = 0;
+        logsActualizacion.Clear();
+        progresoActual = 0;
+        StateHasChanged();
+    }
+
+    private async Task ReiniciarAplicacion()
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            "¿Reiniciar la aplicación ahora?\n\n" +
+            "La aplicación se cerrará y deberá iniciarse manualmente.");
+
+        if (confirmar)
+        {
+            Environment.Exit(0);
+        }
+    }
+
+    private async Task CargarBackups()
+    {
+        backups = ActualizacionService.ListarBackups();
+        StateHasChanged();
+    }
+
+    private async Task LimpiarBackupsAntiguos()
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            "¿Eliminar backups antiguos?\n\nSe mantendrán los últimos 5 backups de cada tipo.");
+
+        if (!confirmar)
+            return;
+
+        var eliminados = await ActualizacionService.LimpiarBackupsAntiguos(5);
+        await JS.InvokeVoidAsync("alert", $"Se eliminaron {eliminados} backup(s) antiguos.");
+        await CargarBackups();
+    }
+
+    private string GetTabClass(string tab)
+    {
+        return pestanaActiva == tab ? "nav-link active" : "nav-link";
+    }
+
+    private void ActivarPestanaAplicar() => pestanaActiva = "aplicar";
+    private void ActivarPestanaGenerar() => pestanaActiva = "generar";
+    private void ActivarPestanaBackups() => pestanaActiva = "backups";
+
+    // Clase para archivos en Releases
+    private class ArchivoReleaseInfo
+    {
+        public string Nombre { get; set; } = "";
+        public string RutaCompleta { get; set; } = "";
+        public double TamanoMB { get; set; }
+        public DateTime FechaModificacion { get; set; }
+    }
+}
+
+<style>
+    .log-container {
+        max-height: 400px;
+        overflow-y: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 1rem;
+    }
+
+    .log-entry {
+        padding: 2px 0;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .log-entry:last-child {
+        border-bottom: none;
+    }
+
+    .log-container::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .log-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+
+    .log-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+    }
+
+    .log-container::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    .nav-tabs .nav-link {
+        cursor: pointer;
+    }
+
+    /* Estilos para el modal de actualización con reinicio */
+    .update-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(5px);
+    }
+
+    .update-modal {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 600px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @@keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .update-header {
+        padding: 1.5rem;
+        color: white;
+        display: flex;
+        align-items: center;
+    }
+
+    .update-header.bg-primary {
+        background: linear-gradient(135deg, #0d6efd, #0b5ed7);
+    }
+
+    .update-header.bg-success {
+        background: linear-gradient(135deg, #198754, #157347);
+    }
+
+    .update-header.bg-danger {
+        background: linear-gradient(135deg, #dc3545, #bb2d3b);
+    }
+
+    .update-body {
+        padding: 1.5rem;
+    }
+
+    .status-message {
+        font-size: 1.1rem;
+        padding: 0.75rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 4px solid #0d6efd;
+    }
+
+    .log-container-mini {
+        max-height: 200px;
+        overflow-y: auto;
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 0.8rem;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        border-radius: 6px;
+        padding: 0.75rem;
+    }
+
+    .log-entry-mini {
+        padding: 2px 0;
+        border-bottom: 1px solid #333;
+    }
+
+    .log-entry-mini:last-child {
+        border-bottom: none;
+    }
+
+    .log-container-mini::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .log-container-mini::-webkit-scrollbar-track {
+        background: #2d2d2d;
+    }
+
+    .log-container-mini::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 3px;
+    }
+
+    .progress {
+        border-radius: 15px;
+        overflow: hidden;
+    }
+
+    .progress-bar {
+        border-radius: 15px;
+        font-weight: bold;
+        font-size: 0.9rem;
+    }
+</style>
+

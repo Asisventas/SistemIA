@@ -1,0 +1,74 @@
+@using SistemIA.Services
+@using SistemIA.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject PermisosService PermisosService
+
+@if (tienePermiso)
+{
+    @ChildContent
+}
+else if (MostrarMensajeDenegado)
+{
+    <div class="alert alert-warning" role="alert">
+        <i class="bi bi-shield-lock"></i> No tiene permisos para acceder a esta función.
+    </div>
+}
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Ruta del módulo (ej: "/ventas", "/productos")
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string Modulo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Código del permiso requerido (VIEW, CREATE, EDIT, DELETE, EXPORT, PRINT)
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string Permiso { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Si debe mostrar un mensaje cuando el acceso es denegado
+    /// </summary>
+    [Parameter]
+    public bool MostrarMensajeDenegado { get; set; } = false;
+
+    private bool tienePermiso = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await VerificarPermiso();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await VerificarPermiso();
+    }
+
+    private async Task VerificarPermiso()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var idUsuarioClaim = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+                if (idUsuarioClaim != null && int.TryParse(idUsuarioClaim.Value, out int idUsuario))
+                {
+                    tienePermiso = await PermisosService.TienePermisoAsync(idUsuario, Modulo, Permiso);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al verificar permiso: {ex.Message}");
+            tienePermiso = false;
+        }
+    }
+}

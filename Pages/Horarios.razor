@@ -1,8 +1,10 @@
 ﻿@page "/horarios"
 @using Microsoft.EntityFrameworkCore
-@inject SistemIA.Models.AppDbContext Db
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+
+<PageProtection Modulo="/personal" Permiso="VIEW">
 
 <PageTitle>Configurar Horarios</PageTitle>
 
@@ -173,6 +175,8 @@ else
     </table>
 }
 
+</PageProtection>
+
 @code {
     private SistemIA.Models.HorarioTrabajo nuevoHorario = new();
     private string? horaEntradaStr;
@@ -182,8 +186,11 @@ else
     private List<SistemIA.Models.HorarioTrabajo>? horarios;
     private List<SistemIA.Models.Sucursal>? sucursales;
 
+
     protected override async Task OnInitializedAsync()
     {
+
+        await using var Db = await DbFactory.CreateDbContextAsync();
         sucursales = await Db.Sucursal.OrderBy(s => s.NombreSucursal).ToListAsync();
         await CargarHorarios();
         LimpiarFormulario(); // Inicializa el modelo al cargar
@@ -191,6 +198,7 @@ else
 
     private async Task CargarHorarios()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         horarios = await Db.HorariosTrabajo
             .Include(h => h.SucursalNavigation)
             .OrderBy(h => h.NombreHorario)
@@ -209,6 +217,7 @@ else
 
     private async Task GuardarHorario()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         if (nuevoHorario.Id_Sucursal == 0)
         {
             await JS.InvokeVoidAsync("alert", "Debe seleccionar una sucursal para el horario.");
@@ -269,6 +278,7 @@ else
     // 🔥 CORRECCIÓN PRINCIPAL: Lógica de eliminación simplificada 🔥
     private async Task EliminarHorario(int id)
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         bool confirmed = await JS.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este horario? Se eliminarán todas las asignaciones de este horario a los empleados.");
         if (confirmed)
         {

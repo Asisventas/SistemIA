@@ -1,0 +1,207 @@
+@page "/admin/sucursal"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Utils
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Navigation
+
+<h3>Configurar Sucursal para DNIT</h3>
+
+@if (isLoading)
+{
+    <div class="alert alert-info">Cargando configuracion...</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            <h5>Configuracion de Sucursal</h5>
+        </div>
+        <div class="card-body">
+            @if (sucursal is not null)
+            {
+                <div class="alert alert-success">
+                    <strong>Sucursal existente:</strong> @sucursal.NombreSucursal
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-warning">
+                    <strong>No hay sucursal configurada.</strong> Se creara una nueva.
+                </div>
+            }
+
+            <form @onsubmit="GuardarConfiguracion" @onsubmit:preventDefault="true">
+                <div class="mb-3">
+                    <label class="form-label">Nombre Sucursal</label>
+                    <input type="text" class="form-control" @bind="nombreSucursal" />
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Nombre Empresa</label>
+                    <input type="text" class="form-control" @bind="nombreEmpresa" />
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">RUC</label>
+                    <input type="text" class="form-control" @bind="ruc" />
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Certificado Digital (.p12)</label>
+                    <select class="form-select" @bind="certificadoSeleccionado">
+                        <option value="">-- Seleccionar certificado --</option>
+                        @foreach (var cert in certificadosDisponibles)
+                        {
+                            <option value="@cert">@Path.GetFileName(cert)</option>
+                        }
+                    </select>
+                    <div class="form-text">Certificados disponibles en la carpeta /certificados</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Contraseña del Certificado</label>
+                    <input type="password" class="form-control" @bind="passwordCertificado" />
+                </div>
+                
+                <button type="button" class="btn btn-primary" @onclick="GuardarConfiguracion" disabled="@guardando">
+                    @if (guardando)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <text>Guardando...</text>
+                    }
+                    else
+                    {
+                        <text>Guardar Configuracion</text>
+                    }
+                </button>
+            </form>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(mensaje))
+{
+    <div class="alert @(esError ? "alert-danger" : "alert-success") mt-3">
+        @mensaje
+    </div>
+}
+
+@code {
+    private Sucursal? sucursal;
+    private bool isLoading = true;
+    private bool guardando = false;
+    private string? mensaje;
+    private bool esError = false;
+    
+    private string nombreSucursal = "Sucursal Principal";
+    private string nombreEmpresa = "Mi Empresa";
+    private string ruc = "80000000";
+    private string certificadoSeleccionado = "";
+    private string passwordCertificado = "";
+    
+    private List<string> certificadosDisponibles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Buscar certificados disponibles
+            var carpetaCertificados = Path.Combine(Directory.GetCurrentDirectory(), "certificados");
+            if (Directory.Exists(carpetaCertificados))
+            {
+                var archivosP12 = Directory.GetFiles(carpetaCertificados, "*.p12");
+                certificadosDisponibles = archivosP12.ToList();
+            }
+
+            // Cargar sucursal existente
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            sucursal = await dbContext.Sucursal.FirstOrDefaultAsync();
+            
+            if (sucursal is not null)
+            {
+                nombreSucursal = sucursal.NombreSucursal;
+                nombreEmpresa = sucursal.NombreEmpresa;
+                ruc = sucursal.RUC;
+                certificadoSeleccionado = sucursal.CertificadoRuta ?? "";
+                passwordCertificado = sucursal.CertificadoPassword ?? "";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al cargar configuracion: {ex.Message}";
+            esError = true;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task GuardarConfiguracion()
+    {
+        if (string.IsNullOrWhiteSpace(nombreSucursal) || 
+            string.IsNullOrWhiteSpace(nombreEmpresa) || 
+            string.IsNullOrWhiteSpace(ruc) ||
+            string.IsNullOrWhiteSpace(certificadoSeleccionado) ||
+            string.IsNullOrWhiteSpace(passwordCertificado))
+        {
+            mensaje = "Todos los campos son obligatorios";
+            esError = true;
+            return;
+        }
+
+        guardando = true;
+        mensaje = null;
+        
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            if (sucursal is null)
+            {
+                // Crear nueva sucursal
+                sucursal = new Sucursal
+                {
+                    NumSucursal = "001",
+                    NombreSucursal = nombreSucursal,
+                    NombreEmpresa = nombreEmpresa,
+                    Direccion = "Asuncion",
+                    RUC = ruc,
+                    DV = RucHelper.CalcularDvRuc(ruc),
+                    CertificadoRuta = certificadoSeleccionado,
+                    CertificadoPassword = passwordCertificado,
+                    IdCiudad = 1 // Asumiendo que existe una ciudad con ID 1
+                };
+                
+                dbContext.Sucursal.Add(sucursal);
+            }
+            else
+            {
+                // Actualizar sucursal existente
+                sucursal.NombreSucursal = nombreSucursal;
+                sucursal.NombreEmpresa = nombreEmpresa;
+                sucursal.RUC = ruc;
+                sucursal.DV = RucHelper.CalcularDvRuc(ruc);
+                sucursal.CertificadoRuta = certificadoSeleccionado;
+                sucursal.CertificadoPassword = passwordCertificado;
+                
+                dbContext.Sucursal.Update(sucursal);
+            }
+            
+            await dbContext.SaveChangesAsync();
+            
+            mensaje = "Configuracion guardada correctamente. La consulta RUC de DNIT ya deberia funcionar.";
+            esError = false;
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al guardar: {ex.Message}";
+            esError = true;
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+}

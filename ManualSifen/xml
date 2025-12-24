@@ -1,0 +1,165 @@
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <rEnvioLote xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+      <dId>160420241700</dId>
+      <xDE>
+        <rLoteDE>
+          <rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd">
+            <dVerFor>150</dVerFor>
+            <DE Id="01014529980001001000115312025051710881048330">
+              <dDVId>0</dDVId>
+              <dFecFirma>2025-09-19T09:07:31</dFecFirma>
+              <dSisFact>1</dSisFact>
+              <gOpeDE>
+                <iTipEmi>1</iTipEmi>
+                <dDesTipEmi>Normal</dDesTipEmi>
+                <dCodSeg>088104833</dCodSeg>
+              </gOpeDE>
+              <gTimb>
+                <iTiDE>1</iTiDE>
+                <dDesTiDE>Factura electrónica</dDesTiDE>
+                <dNumTim>01452998</dNumTim>
+                <dEst>001</dEst>
+                <dPunExp>001</dPunExp>
+                <dNumDoc>0001153</dNumDoc>
+                <dFeIniT>2024-11-07</dFeIniT>
+              </gTimb>
+              <gDatGralOpe>
+                <dFeEmiDE>2025-05-17T00:00:00</dFeEmiDE>
+                <gOpeCom>
+                  <iTipTra>3</iTipTra>
+                  <dDesTipTra>Mixto (Venta de mercadería y servicios)</dDesTipTra>
+                  <iTImp>1</iTImp>
+                  <dDesTImp>IVA</dDesTImp>
+                  <cMoneOpe>PYG</cMoneOpe>
+                  <dDesMoneOpe>Guarani</dDesMoneOpe>
+                  <gOblAfe>
+                    <cOblAfe>211</cOblAfe>
+                    <dDesOblAfe>IMPUESTO AL VALOR AGREGADO - GRAVADAS Y EXONERADAS - EXPORTADORES</dDesOblAfe>
+                  </gOblAfe>
+                </gOpeCom>
+                <gEmis>
+                  <dRucEm>1452998</dRucEm>
+                  <dDVEmi>0</dDVEmi>
+                  <iTipCont>1</iTipCont>
+                  <dNomEmi>FERRER MIRANDA NESTOR FABIAN</dNomEmi>
+                  <dDirEmi>AVDA. AVELINO MARTINEZ Y DEL MAESTRO</dDirEmi>
+                  <dNumCas>0</dNumCas>
+                  <cDepEmi>12</cDepEmi>
+                  <dDesDepEmi>CENTRAL</dDesDepEmi>
+                  <cDisEmi>164</cDisEmi>
+                  <dDesDisEmi>SAN LORENZO</dDesDisEmi>
+                  <cCiuEmi>6010</cCiuEmi>
+                  <dDesCiuEmi>SAN LORENZO</dDesCiuEmi>
+                  <dTelEmi>21573291</dTelEmi>
+                  <dEmailE>CONSULTORAWEMAG@HOTMAIL.COM</dEmailE>
+                  <gActEco>
+                    <cActEco>47300</cActEco>
+                    <dDesActEco>COMERCIO AL POR MENOR DE COMBUSTIBLE PARA VEHÍCULOS AUTOMOTORES EN COMERCIOS ESPECIALIZADOS</dDesActEco>
+                  </gActEco>
+                </gEmis>
+                <gDatRec>
+                  <iNatRec>2</iNatRec>
+                  <iTiOpe>2</iTiOpe>
+                  <cPaisRec>PRY</cPaisRec>
+                  <dDesPaisRe>Paraguay</dDesPaisRe>
+                  <iTipIDRec>5</iTipIDRec>
+                  <dDTipIDRec>Innominado</dDTipIDRec>
+                  <dNumIDRec>0</dNumIDRec>
+                  <dNomRec>Sin Nombre</dNomRec>
+                  <dNumCasRec>0</dNumCasRec>
+                </gDatRec>
+              </gDatGralOpe>
+              <gDtipDE>
+                <gCamFE>
+                  <iIndPres>1</iIndPres>
+                  <dDesIndPres>Operación presencial</dDesIndPres>
+                </gCamFE>
+                <gCamCond>
+                  <iCondOpe>1</iCondOpe>
+                  <dDCondOpe>Contado</dDCondOpe>
+                  <gPaConEIni>
+                    <iTiPago>1</iTiPago>
+                    <dDesTiPag>Efectivo</dDesTiPag>
+                    <dMonTiPag>5.000</dMonTiPag>
+                    <cMoneTiPag>PYG</cMoneTiPag>
+                    <dDMoneTiPag>Guarani</dDMoneTiPag>
+                  </gPaConEIni>
+                </gCamCond>
+                <gCamItem>
+                  <dCodInt>1</dCodInt>
+                  <dDesProSer>COMB. DIESEL DE PRUEBA</dDesProSer>
+                  <cUniMed>77</cUniMed>
+                  <dDesUniMed>UNI</dDesUniMed>
+                  <dCantProSer>10000</dCantProSer>
+                  <gValorItem>
+                    <dPUniProSer>5.000</dPUniProSer>
+                    <dTotBruOpeItem>5.000</dTotBruOpeItem>
+                    <gValorRestaItem>
+                      <dDescItem>0</dDescItem>
+                      <dPorcDesIt>000</dPorcDesIt>
+                      <dTotOpeItem>5.000</dTotOpeItem>
+                    </gValorRestaItem>
+                  </gValorItem>
+                  <gCamIVA>
+                    <iAfecIVA>3</iAfecIVA>
+                    <dDesAfecIVA>Exento</dDesAfecIVA>
+                    <dPropIVA>0</dPropIVA>
+                    <dTasaIVA>0</dTasaIVA>
+                    <dBasGravIVA>0</dBasGravIVA>
+                    <dLiqIVAItem>0</dLiqIVAItem>
+                    <dBasExe>0</dBasExe>
+                  </gCamIVA>
+                </gCamItem>
+              </gDtipDE>
+              <gTotSub>
+                <dSubExe>5.000</dSubExe>
+                <dSub5>0</dSub5>
+                <dSub10>0</dSub10>
+                <dTotOpe>5.000</dTotOpe>
+                <dTotDesc>0</dTotDesc>
+                <dTotDescGlotem>0</dTotDescGlotem>
+                <dTotAntItem>0</dTotAntItem>
+                <dTotAnt>0</dTotAnt>
+                <dPorcDescTotal>0</dPorcDescTotal>
+                <dDescTotal>0</dDescTotal>
+                <dAnticipo>0</dAnticipo>
+                <dRedon>0</dRedon>
+                <dTotGralOpe>5.000</dTotGralOpe>
+                <dIVA5>0</dIVA5>
+                <dIVA10>0</dIVA10>
+                <dTotIVA>0</dTotIVA>
+                <dBaseGrav5>0</dBaseGrav5>
+                <dBaseGrav10>0</dBaseGrav10>
+                <dTBasGraIVA>0</dTBasGraIVA>
+              </gTotSub>
+            </DE>
+            <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+              <SignedInfo>
+                <CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" />
+                <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+                <Reference URI="#01014529980001001000115312025051710881048330">
+                  <Transforms>
+                    <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
+                    <Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" />
+                  </Transforms>
+                  <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+                  <DigestValue>uX3+bhM0dtqgDjLtQZpMLoNOZY1sGkKVDUmdFv9kDd0=</DigestValue>
+                </Reference>
+              </SignedInfo>
+              <SignatureValue>v4YNc936BxeDBi/j1Q68l5jwmXlY7yV9GVvIEsdZSVOPJedoSb5dhy7E7/448ZYChry4WNtFDc96RbXD4HPck3gfQsDfMXPxn7IRUd2rYD4MCduUFR9Fsumc8QR9TpWtgHHHJuFst8PYxi8FcOXLECKrzdo2N/hyXNXjp6PF9TebErzStwPPPLSpV9PCTO1TK6j76w3CIywxtL4CmNoyuhcFb3/QGQEEjqnHuPqrOFuv3xRPiQOlEek9qaAebt+ENnJDrrXmLu0DXV45+6dvWkKHzZFmGQhRAUS4uss7yRIaUkyySZ7NtBSh9yjZK69VzDvUShzzv9tFy7jht9NaBQ==</SignatureValue>
+              <KeyInfo>
+                <X509Data>
+                  <X509Certificate>MIIH+zCCBeOgAwIBAgIRALPFCa/TZYylQtpj1z45/NwwDQYJKoZIhvcNAQELBQAwgYUxCzAJBgNVBAYTAlBZMQ0wCwYDVQQKEwRJQ1BQMTgwNgYDVQQLEy9QcmVzdGFkb3IgQ3VhbGlmaWNhZG8gZGUgU2VydmljaW9zIGRlIENvbmZpYW56YTEVMBMGA1UEAxMMQ09ERTEwMCBTLkEuMRYwFAYDVQQFEw1SVUM4MDA4MDYxMC03MB4XDTI0MTExMzE2MjExMFoXDTI1MTExMzE2MjExMFowgbMxCzAJBgNVBAYTAlBZMSswKQYDVQQKEyJDRVJUSUZJQ0FETyBDVUFMSUZJQ0FETyBUUklCVVRBUklPMQswCQYDVQQLEwJGMTEXMBUGA1UEBBMORkVSUkVSIE1JUkFOREExFjAUBgNVBCoTDU5FU1RPUiBGQUJJQU4xJTAjBgNVBAMTHE5FU1RPUiBGQUJJQU4gRkVSUkVSIE1JUkFOREExEjAQBgNVBAUTCUNJMTQ1Mjk5ODCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANbxcFL9o959eubq8CwNUe/lXUUfWkdDkvAj+/adgh5S3ghq2L5kWXGhQUqsZnRIUPscSdTaskMEhNLIgoFVlnsBAv//nOMK5XFvzRiy6HPCxhZ2ST8EBc5Vy08dMSFfyVDrnPX3zieOIYOD6Dk/iAvOg2sgabQ+0nOcxdlT+82LK+GkzrM9f01HQnluM6JxakIr8tWVXgHf6EWm4KX1skCeFKD587lk/2txM7vO6dDPO2TygBjVTN7yU2knKIX0iEQFkiFMrQrU7NxqVDwa4t6IaR5watinjKZUj1Unyfg6LmuylnikhJ0N7/Ahi5CFfxH5W+hIDPShHMRGqmk6iiECAwEAAaOCAzQwggMwMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFDL64f6hLJA/ozMfO1fCFEXKVZA3MB8GA1UdIwQYMBaAFL41VGJoYOcm0zHBX5ex4vZkzgf1MA4GA1UdDwEB/wQEAwIF4DCBqgYDVR0RBIGiMIGfgRdHUlVQT0hFTkUyMDI0QEdNQUlMLkNPTaSBgzCBgDElMCMGA1UEChMcRkVSUkVSIE1JUkFOREEgTkVTVE9SIEZBQklBTjEUMBIGA1UEDBMLUFJPUElFVEFSSU8xKjAoBgNVBA0MIUZJUk1BIEVMRUNUUsOTTklDQSBkZSBuaXZlbCBtZWRpbzEVMBMGA1UEBRMMUlVDMTQ1Mjk5OC0wMIH3BgNVHSAEge8wgewwgekGCysGAQQBg65wAQEEMIHZMEYGCCsGAQUFBwIBFjpodHRwczovL2NvZGUxMDAuY29tLnB5L3JlcG9zaXRvcmlvLWRlLWRvY3VtZW50b3MtcHVibGljb3MvMIGOBggrBgEFBQcCAjCBgQx/Y2VydGlmaWNhZG8gY3VhbGlmaWNhZG8gZGUgZmlybWEgZWxlY3Ryw7NuaWNhIHRpcG8gRjEgc3VqZXRhIGEgbGFzIGNvbmRpY2lvbmVzIGRlIHVzbyBleHB1ZXN0YXMgZW4gbGEgRFBDIGRlbCBQQ1NDIENPREUxMDAgUy5BLjB7BgNVHR8EdDByMDegNaAzhjFodHRwOi8vcGNhMS5jb2RlMTAwLmNvbS5weS9jcmxzL2NhLWNvZGUxMDAtc2EuY3JsMDegNaAzhjFodHRwOi8vcGNhMi5jb2RlMTAwLmNvbS5weS9jcmxzL2NhLWNvZGUxMDAtc2EuY3JsMCAGA1UdJQEB/wQWMBQGCCsGAQUFBwMCBggrBgEFBQcDATCBiQYIKwYBBQUHAQEEfTB7MDkGCCsGAQUFBzABhi1odHRwOi8vb2NzcC5jb2RlMTAwLmNvbS5weS9vY3NwL2NhLWNvZGUxMDAtc2EwPgYIKwYBBQUHMAKGMmh0dHA6Ly9wY2ExLmNvZGUxMDAuY29tLnB5L2NlcnRzL2NhLWNvZGUxMDAtc2EuY2VyMA0GCSqGSIb3DQEBCwUAA4ICAQCxKelukpZdwjL0wWr4AM0z2rbh7ohlqBOcb6FAa0bRFoU/KehlEeSvW7ISrRPiwVYb8t3XB9M5Fcd1R+6v7eH9RQiKVMt5SuJikNrCb3Wsv3wpGlrtW8vk7xpTakPxUkDCVXMNCpuvp8hd6fPgVqz+3ejwbu7TuUapNAW3yWCdxlkcjWDF0P1u5sFGxz9UNoR+9cDE/ld+39gHPq//IzlGRPWyyk+Zp9m9pVU+jBqCvYJHrfO+34x4Jfb8WcP4w5quWFPZhFFqCAFa6lklaxCXMVQcpmr8pOJbwyclXur5WeYorqbRPoTaqsy/6FsqTffyCUsjWsONSqcS7N/DrR1WuF2ilKZ/Xizj7hhfJUQi+5hQS7h4Kc2EkmApICILJ/ZDwQEYwtMvAMR/GhBstwceOjfX+fE/l7WZASSg6s3rnSW63WUvJ5jEZ1z9hCJX3bD2+6lIOZc6JPPG3t1JGEOxCWOyuhBwfP48J3GvtzXWiQYHJhAYYTu8XHPTo5gek37v/eAuvm7A5bVSsLcKevNJBTCb1NB+YMU6oePMaj0XV2cnjdO6XXyUCCcxyvyjX5QsBYxxwe1WCmSeLhZsINFsDViJy2CHf5Aq9UXUXTXYCK8ue/RFlO0TN6yvRPtej6bH+Ujhmk/LJZ0/VTYvLwA3OJDHz5vtv/KOTDsMpjhuZw==</X509Certificate>
+                </X509Data>
+              </KeyInfo>
+            </Signature>
+            <gCamFuFD>
+              <dCarQR>https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&amp;Id=01014529980001001000115312025051710881048330&amp;dFeEmiDE=323032352d30352d31375430303a30303a3030&amp;dNumIDRec=0&amp;dTotGralOpe=5.000&amp;dTotIVA=0&amp;cItems=1&amp;DigestValue=7558332b62684d3064747167446a4c74515a704d4c6f4e4f5a593173476b4b5644556d644676396b4464303d&amp;IdCSC=1&amp;cHashQR=b44dfd094aaf910a0c6b9c73e50548711ff6364b6b77b15ef17e20d160645a7c</dCarQR>
+            </gCamFuFD>
+          </rDE>
+        </rLoteDE>
+      </xDE>
+    </rEnvioLote>
+  </soap:Body>
+</soap:Envelope>

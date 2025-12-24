@@ -1,0 +1,118 @@
+/* Estilos para la página de preview de ventas */
+
+.preview-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  background: white;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.preview-help {
+  font-size: 0.875rem;
+}
+
+.preview-container {
+  background: #f8f9fa;
+  min-height: calc(100vh - 120px);
+  padding: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: auto; /* Permite scroll si es necesario */
+}
+
+/* Contenedor específico para la factura */
+.preview-container > div {
+  width: 100%;
+  max-width: 900px; /* Límite más práctico */
+  overflow: visible;
+}
+
+@media screen and (max-width: 768px) {
+  .preview-container {
+    padding: 0.5rem;
+  }
+  
+  .preview-container > div {
+    max-width: 100%;
+  }
+}
+
+/* Mejoras para impresión */
+@media print {
+  .preview-toolbar,
+  .preview-help {
+    display: none !important;
+  }
+  
+  .preview-container {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  body {
+    background: white !important;
+  }
+}
+
+/* Botones mejorados */
+.btn-group .btn {
+  border: 1px solid var(--bs-border-color);
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--bs-secondary);
+  border-color: var(--bs-secondary);
+}
+
+.btn-outline-success:hover:not(:disabled) {
+  background-color: var(--bs-success);
+  border-color: var(--bs-success);
+}
+
+/* Responsividad */
+@media (max-width: 1200px) {
+  .preview-container {
+    padding: 1rem 0.5rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .preview-container {
+    padding: 1rem 0.25rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .preview-toolbar .row {
+    gap: 0.5rem;
+  }
+  
+  .preview-toolbar .col-md-6 {
+    order: -1;
+    margin-bottom: 0.5rem;
+  }
+  
+  .btn-group {
+    width: 100%;
+  }
+  
+  .btn-group .btn {
+    flex: 1;
+  }
+  
+  .preview-container {
+    padding: 0.5rem 0.25rem;
+  }
+}
+
+/* Animaciones sutiles */
+.btn {
+  transition: all 0.2s ease-in-out;
+}
+
+.preview-toolbar {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}

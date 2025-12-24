@@ -1,0 +1,204 @@
+@* Componente Modal para Seleccionar Impresora e Imprimir Directamente *@
+@using SistemIA.Services
+@inject ImpresionDirectaService ImpresionService
+@inject IJSRuntime JS
+
+<div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.6);" @onclick="Cerrar">
+    <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white py-2">
+                <h5 class="modal-title">
+                    <i class="bi bi-printer me-2"></i>Seleccionar Impresora
+                </h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                @if (_cargando)
+                {
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-muted">Cargando impresoras...</p>
+                    </div>
+                }
+                else if (_error != null)
+                {
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>@_error
+                    </div>
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Formato de Impresión:</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="formato" id="formatoTicket" 
+                                   checked="@(FormatoSeleccionado == "TICKET")" 
+                                   @onchange="@(() => SeleccionarFormato("TICKET"))">
+                            <label class="btn btn-outline-primary" for="formatoTicket">
+                                <i class="bi bi-receipt me-1"></i>Ticket 80mm
+                            </label>
+
+                            <input type="radio" class="btn-check" name="formato" id="formatoA4" 
+                                   checked="@(FormatoSeleccionado == "A4")" 
+                                   @onchange="@(() => SeleccionarFormato("A4"))">
+                            <label class="btn btn-outline-primary" for="formatoA4">
+                                <i class="bi bi-file-earmark me-1"></i>A4
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Impresora:</label>
+                        @if (_impresoras.Count == 0)
+                        {
+                            <div class="alert alert-warning mb-0">
+                                <i class="bi bi-exclamation-circle me-2"></i>
+                                No se encontraron impresoras instaladas
+                            </div>
+                        }
+                        else
+                        {
+                            <select class="form-select" @bind="ImpresoraSeleccionada">
+                                @foreach (var imp in _impresoras)
+                                {
+                                    <option value="@imp">
+                                        @imp @(imp == _impresoraPredeterminada ? "(predeterminada)" : "")
+                                    </option>
+                                }
+                            </select>
+                        }
+                    </div>
+
+                    @if (_resultado != null)
+                    {
+                        <div class="alert @(_resultado.Exitoso ? "alert-success" : "alert-danger") mb-0">
+                            <i class="bi @(_resultado.Exitoso ? "bi-check-circle" : "bi-x-circle") me-2"></i>
+                            @_resultado.Mensaje
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="Cerrar">
+                    <i class="bi bi-x-lg me-1"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-success" 
+                        @onclick="ImprimirAsync" 
+                        disabled="@(_cargando || _imprimiendo || _impresoras.Count == 0)">
+                    @if (_imprimiendo)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>Imprimiendo...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-printer me-1"></i>
+                        <span>Imprimir Directo</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public DatosTicket? Ticket { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+    [Parameter] public EventCallback<ResultadoImpresion> OnImpresionCompletada { get; set; }
+    [Parameter] public string FormatoInicial { get; set; } = "TICKET";
+
+    private List<string> _impresoras = new();
+    private string? _impresoraPredeterminada;
+    private string ImpresoraSeleccionada { get; set; } = "";
+    private string FormatoSeleccionado { get; set; } = "TICKET";
+    
+    private bool _cargando = true;
+    private bool _imprimiendo;
+    private string? _error;
+    private ResultadoImpresion? _resultado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        FormatoSeleccionado = FormatoInicial;
+        await CargarImpresorasAsync();
+    }
+
+    private async Task CargarImpresorasAsync()
+    {
+        _cargando = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _impresoras = ImpresionService.ObtenerImpresoras();
+            _impresoraPredeterminada = ImpresionService.ObtenerImpresoraPredeterminada();
+            
+            if (_impresoras.Count > 0)
+            {
+                // Seleccionar la impresora predeterminada o la primera
+                ImpresoraSeleccionada = _impresoraPredeterminada ?? _impresoras[0];
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al obtener impresoras: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SeleccionarFormato(string formato)
+    {
+        FormatoSeleccionado = formato;
+        _resultado = null;
+    }
+
+    private async Task ImprimirAsync()
+    {
+        if (Ticket == null || string.IsNullOrEmpty(ImpresoraSeleccionada))
+            return;
+
+        _imprimiendo = true;
+        _resultado = null;
+        StateHasChanged();
+
+        try
+        {
+            if (FormatoSeleccionado == "A4")
+            {
+                _resultado = await ImpresionService.ImprimirFacturaA4(Ticket, ImpresoraSeleccionada);
+            }
+            else
+            {
+                _resultado = await ImpresionService.ImprimirTicket80mm(Ticket, ImpresoraSeleccionada);
+            }
+
+            if (_resultado.Exitoso)
+            {
+                await OnImpresionCompletada.InvokeAsync(_resultado);
+            }
+        }
+        catch (Exception ex)
+        {
+            _resultado = new ResultadoImpresion
+            {
+                Exitoso = false,
+                Mensaje = ex.Message
+            };
+        }
+        finally
+        {
+            _imprimiendo = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Cerrar()
+    {
+        await OnCerrar.InvokeAsync();
+    }
+}

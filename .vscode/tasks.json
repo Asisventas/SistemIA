@@ -1,0 +1,1367 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build",
+			"command": "dotnet",
+			"type": "process",
+			"args": [
+				"build",
+				"${workspaceFolder}/SistemIA.csproj",
+				"/property:GenerateFullPaths=true",
+				"/consoleloggerparameters:NoSummary"
+			],
+			"problemMatcher": "$msCompile",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"label": "clean-build",
+			"type": "shell",
+			"command": "dotnet clean; dotnet build",
+			"args": [],
+			"problemMatcher": "$msCompile",
+			"group": "build"
+		},
+		{
+			"label": "watch",
+			"command": "dotnet",
+			"type": "process",
+			"args": [
+				"watch",
+				"run",
+				"--project",
+				"${workspaceFolder}/SistemIA.csproj"
+			],
+			"problemMatcher": "$msCompile",
+			"isBackground": true
+		},
+		{
+			"label": "Run SistemIA LAN HTTPS (7060) watch",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$env:ASPNETCORE_URLS='http://0.0.0.0:5095;https://0.0.0.0:7060'; $env:ASPNETCORE_HTTPS_PORT='7060'; dotnet watch run"
+			],
+			"isBackground": true,
+			"group": "build",
+			"problemMatcher": ["$msCompile"]
+		},
+		{
+			"label": "Run SistemIA LAN HTTPS (7060) watch [dotnet-urls]",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run",
+				"--urls",
+				"http://0.0.0.0:5095;https://0.0.0.0:7060"
+			],
+			"isBackground": true,
+			"group": "build",
+			"problemMatcher": ["$msCompile"]
+		},
+		{
+			"label": "Run SistemIA LAN (0.0.0.0:5095)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$env:ASPNETCORE_URLS='http://0.0.0.0:5095'; dotnet run"
+			],
+			"isBackground": true,
+			"group": "build",
+			"problemMatcher": ["$msCompile"]
+		},
+		{
+			"label": "Run SistemIA LAN watch (0.0.0.0:5095)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$env:ASPNETCORE_URLS='http://0.0.0.0:5095'; dotnet watch run"
+			],
+			"isBackground": true,
+			"group": "build",
+			"problemMatcher": ["$msCompile"]
+		},
+		{
+			"type": "shell",
+			"label": "Run Blazor Server",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"group": "build",
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Run Blazor Server",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for deposito predeterminado",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Producto_DepositoPredeterminado",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Update database for deposito predeterminado",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Update database for deposito predeterminado (second attempt)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for ventas",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Crear_Ventas_y_Detalles",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			]
+		},
+		{
+			"label": "Update database for ventas",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			]
+		},
+		{
+			"label": "Add EF migration for Ventas tables",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Crear_Tablas_Ventas",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			]
+		},
+		{
+			"label": "Add EF migration for presupuestos",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Agregar_Presupuestos",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Update database for presupuestos",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for geo catalog",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Crear_Catalogo_Geografico_Sifen",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj"
+			]
+		},
+		{
+			"label": "Add EF migration for geo catalog (retry)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Crear_Catalogo_Geografico_Sifen",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			]
+		},
+		{
+			"label": "Update database for geo catalog",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj"
+			]
+		},
+		{
+			"label": "Add EF migration fix ciudad length",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Fix_CiudadCatalogo_Longitud",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj"
+			]
+		},
+		{
+			"label": "Update database for geo catalog fix",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj"
+			]
+		},
+		{
+			"label": "Remove faulty migration Fix_CiudadCatalogo_Longitud",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"remove",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj"
+			]
+		},
+		{
+			"label": "Add EF migration to drop legacy geography tables",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Drop_Legacy_Ciudades_Distritos",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration to drop legacy Ciudades/Distritos only",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"DropOnly_Legacy_Ciudades_Distritos",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server (watch)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for pagos y timbrado",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Agregar_Pagos_Cuotas_Timbrado_ComposicionCaja",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "EF remove last migration",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"remove",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for pagos y timbrado (2)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Agregar_Pagos_Cuotas_Timbrado_ComposicionCaja",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for fix ClientePrecio FKs",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Fix_ClientePrecio_FKs",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Update database after fix ClientePrecio FKs",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for IdLote en Ventas",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Agregar_IdLote_en_Ventas",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Update database for presupuestos",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for IdLote index",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Agregar_Index_IdLote",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Update database for IdLote index",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server (7060)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run",
+				"--urls",
+				"https://localhost:7060;http://localhost:5060"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run SistemIA on HTTP 5095",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$env:ASPNETCORE_URLS='http://localhost:5095'; dotnet watch run"
+			],
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server (HTTP 5095)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "GET debug venta 21",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/21/mensaje-sifen' -Method GET -TimeoutSec 15 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "POST enviar-sifen venta 21",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/ventas/21/enviar-sifen' -Method POST -TimeoutSec 30 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET validar venta 21",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/admin/de/validar/21' -Method GET -TimeoutSec 20 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "POST enviar-sifen venta 21 (diagnose)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { $r = Invoke-WebRequest -Uri 'http://localhost:5095/ventas/21/enviar-sifen' -Method POST -TimeoutSec 30 -ErrorAction Stop; Write-Host ($r.Content) } catch { if ($_.Exception.Response -ne $null) { $resp = $_.Exception.Response; $sr = New-Object System.IO.StreamReader($resp.GetResponseStream()); $body = $sr.ReadToEnd(); Write-Host \"STATUS:\" $resp.StatusCode \"- BODY:\" $body } else { Write-Host \"ERROR:\" $_.Exception.Message } }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "POST enviar-sifen venta 21",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/ventas/21/enviar-sifen' -Method POST -TimeoutSec 30 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET debug venta 21",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/21/mensaje-sifen' -Method GET -TimeoutSec 15 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA (after add cred test endpoint)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA (on-demand)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Blazor Server (watch)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA (on-demand)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET de-firmado 36",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/36/de-firmado' -Method GET -TimeoutSec 20 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Save XML 36 to Debug",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { Invoke-WebRequest -Uri 'http://localhost:5095/ventas/36/xml' -Method GET -TimeoutSec 25 -OutFile 'Debug\\FacturaElectronica_36.xml'; Write-Host 'OK' } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build after DE XML fixes",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET DE firmado venta 37",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/de-firmado' -Method GET -TimeoutSec 20 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET DE firmado venta 37 (2)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/de-firmado' -Method GET -TimeoutSec 20 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET SOAP lote venta 37",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/soap-lote' -Method GET -TimeoutSec 25 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET comparar-xml venta 37",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/comparar-xml' -Method GET -TimeoutSec 20 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "POST comparar-xml venta 37 (body=DE de la 37)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$xml = (Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/de-firmado' -Method GET -TimeoutSec 20).contenido; try { (Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/comparar-xml' -Method POST -Body $xml -ContentType 'application/xml' -TimeoutSec 25 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "POST comparar-xml venta 37 (diagnose)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$json = Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/de-firmado' -Method GET -TimeoutSec 20; $xml = $json.contenido; try { $r = Invoke-WebRequest -Uri 'https://localhost:7060/debug/ventas/37/comparar-xml' -Method POST -Body $xml -ContentType 'application/xml' -TimeoutSec 30 -ErrorAction Stop; Write-Host ($r.Content) } catch { if ($_.Exception.Response -ne $null) { $resp = $_.Exception.Response; $sr = New-Object System.IO.StreamReader($resp.GetResponseStream()); $body = $sr.ReadToEnd(); Write-Host \"STATUS:\" $resp.StatusCode \"- BODY:\" $body } else { Write-Host \"ERROR:\" $_.Exception.Message } }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA after XML compare tweaks",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "POST comparar-xml venta 37 (retry)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$json = Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/de-firmado' -Method GET -TimeoutSec 25; $xml = $json.contenido; try { $r = Invoke-WebRequest -Uri 'https://localhost:7060/debug/ventas/37/comparar-xml' -Method POST -Body $xml -ContentType 'application/xml; charset=utf-8' -TimeoutSec 40 -ErrorAction Stop; Write-Host ($r.Content) } catch { if ($_.Exception.Response -ne $null) { $resp = $_.Exception.Response; $sr = New-Object System.IO.StreamReader($resp.GetResponseStream()); $body = $sr.ReadToEnd(); Write-Host \"STATUS:\" $resp.StatusCode \"- BODY:\" $body } else { Write-Host \"ERROR:\" $_.Exception.Message } }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "POST comparar-xml venta 37 (retry fixed quoting)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$json = Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/de-firmado' -Method GET -TimeoutSec 25; $xml = $json.contenido; try { $headers = @{ 'Content-Type' = 'application/xml; charset=utf-8' }; $r = Invoke-WebRequest -Uri 'https://localhost:7060/debug/ventas/37/comparar-xml' -Method POST -Body $xml -Headers $headers -TimeoutSec 40 -ErrorAction Stop; Write-Host ($r.Content) } catch { if ($_.Exception.Response -ne $null) { $resp = $_.Exception.Response; $sr = New-Object System.IO.StreamReader($resp.GetResponseStream()); $body = $sr.ReadToEnd(); Write-Host \"STATUS:\" $resp.StatusCode \"- BODY:\" $body } else { Write-Host \"ERROR:\" $_.Exception.Message } }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Invoke POST comparar-xml from PowerShell (clean)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$j = Invoke-RestMethod -Uri 'https://localhost:7060/debug/ventas/37/de-firmado' -Method GET -TimeoutSec 20; $xml = [string]$j.contenido; $headers = New-Object 'System.Collections.Generic.Dictionary[String,String]'; $headers.Add('Content-Type','application/xml; charset=utf-8'); try { $r = Invoke-WebRequest -Uri 'https://localhost:7060/debug/ventas/37/comparar-xml' -Method POST -Body $xml -Headers $headers -TimeoutSec 25 -ErrorAction Stop; Write-Host ($r.Content) } catch { if ($_.Exception.Response -ne $null) { $resp = $_.Exception.Response; $sr = New-Object System.IO.StreamReader($resp.GetResponseStream()); $body = $sr.ReadToEnd(); Write-Host \"STATUS:\" $resp.StatusCode \"- BODY:\" $body } else { Write-Host \"ERROR:\" $_.Exception.Message } }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Add EF migration for actividades económicas",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"Agregar_Actividad_Economica_Sociedad",
+				"--project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--startup-project",
+				"c:\\asis\\SistemIA\\SistemIA.csproj",
+				"--no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET comparar xml oficial venta 43",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/43/comparar-xml-oficial' -Method GET -TimeoutSec 25 | ConvertTo-Json -Depth 8) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "GET comparar xml oficial venta 43 (post-serie)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/43/comparar-xml-oficial' -Method GET -TimeoutSec 25 | ConvertTo-Json -Depth 8) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "Run SistemIA on HTTP 5095 (single)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$env:ASPNETCORE_URLS='http://localhost:5095'; dotnet watch run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run SistemIA on HTTP 5095 (quoted)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$env:ASPNETCORE_URLS='http://localhost:5095'; dotnet watch run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "POST enviar-sifen venta 43 (5060)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5060/ventas/43/enviar-sifen' -Method POST -TimeoutSec 60 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "HTTP 5060 root probe",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { $r = Invoke-WebRequest -Uri 'http://localhost:5060/' -Method GET -TimeoutSec 10 -UseBasicParsing; Write-Host ('STATUS: ' + [int]$r.StatusCode) } catch { Write-Host ('ERROR: ' + $_.Exception.Message) }"
+			]
+		},
+		{
+			"label": "HTTPS 7060 root probe (ignore cert)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; $r = Invoke-WebRequest -Uri 'https://localhost:7060/' -Method GET -TimeoutSec 10 -UseBasicParsing; Write-Host ('STATUS: ' + [int]$r.StatusCode) } catch { Write-Host ('ERROR: ' + $_.Exception.Message) }"
+			]
+		},
+		{
+			"label": "Probe HTTPS 7060 root",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; $r = Invoke-WebRequest -Uri 'https://localhost:7060/' -Method GET -TimeoutSec 20 -UseBasicParsing; Write-Host \"STATUS: $([int]$r.StatusCode)\" } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "Run on 5080 (watch)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$env:ASPNETCORE_URLS='http://localhost:5080'; dotnet watch run"
+			],
+			"isBackground": true
+		},
+		{
+			"label": "POST enviar-sifen venta 43 (5095)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/ventas/43/enviar-sifen' -Method POST -TimeoutSec 60 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "GET consultar-sifen venta 43 (idLote null)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/ventas/43/consultar-sifen' -Method GET -TimeoutSec 30 | ConvertTo-Json -Depth 8) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "GET debug soap-lote venta 43",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/43/soap-lote' -Method GET -TimeoutSec 15 | ConvertTo-Json -Depth 8) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "GET consultar-sifen venta 43 (retry)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/ventas/43/consultar-sifen' -Method GET -TimeoutSec 45 | ConvertTo-Json -Depth 12) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "GET debug mensaje venta 43 (5095)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/43/mensaje-sifen' -Method GET -TimeoutSec 20 | ConvertTo-Json -Depth 10) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "Build SistemIA after SIFEN lote packaging change",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "POST enviar-sifen venta 43 (retry)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/ventas/43/enviar-sifen' -Method POST -TimeoutSec 60 | ConvertTo-Json -Depth 10) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "GET debug envio-detalle venta 43",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/43/envio-detalle' -Method GET -TimeoutSec 20 | ConvertTo-Json -Depth 10) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "Build SistemIA after schemaLocation+declaration",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "GET debug venta 43 de-firmado (para ver encabezado)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/debug/ventas/43/de-firmado' -Method GET -TimeoutSec 20 | ConvertTo-Json -Depth 6) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "POST enviar-sifen venta 43 (retry 2)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/ventas/43/enviar-sifen' -Method POST -TimeoutSec 60 | ConvertTo-Json -Depth 10) } catch { Write-Host \"ERROR: $($_.Exception.Message)\" }"
+			]
+		},
+		{
+			"label": "Build SistemIA (after sync endpoint)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run SistemIA on HTTP 5095 (sync test)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$env:ASPNETCORE_URLS='http://localhost:5095'; dotnet watch run"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "POST enviar-sifen venta 45 (sync)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { (Invoke-RestMethod -Uri 'http://localhost:5095/ventas/45/enviar-sifen-sync' -Method POST -TimeoutSec 60 | ConvertTo-Json -Depth 6) } catch { if ($_.Exception.Response -ne $null) { $resp = $_.Exception.Response; $sr = New-Object System.IO.StreamReader($resp.GetResponseStream()); $body = $sr.ReadToEnd(); Write-Host \"STATUS:\" $resp.StatusCode \"- BODY:\" $body } else { Write-Host \"ERROR:\" $_.Exception.Message } }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Diagnose enviar-sifen-sync venta 45",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"try { $r = Invoke-WebRequest -Uri 'http://localhost:5095/ventas/45/enviar-sifen-sync' -Method POST -TimeoutSec 60 -ErrorAction Stop; Write-Host ($r.Content) } catch { if ($_.Exception.Response -ne $null) { $resp = $_.Exception.Response; $sr = New-Object System.IO.StreamReader($resp.GetResponseStream()); $body = $sr.ReadToEnd(); Write-Host \"STATUS:\" $resp.StatusCode \"- BODY:\" $body } else { Write-Host \"ERROR:\" $_.Exception.Message } }"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build SistemIA (post gDatRec fix)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		}
+	]
+}

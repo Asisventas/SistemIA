@@ -1,0 +1,597 @@
+@page "/cobros/recibo/{IdCobro:int}"
+@using SistemIA.Models
+@using SistemIA.Utils
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Recibo de Cobro</PageTitle>
+
+@if (_cobro == null || _sociedad == null)
+{
+    <p><em>Cargando recibo...</em></p>
+}
+else
+{
+    <div class="recibo-container">
+        <div class="recibo-print-area" id="reciboPrintArea">
+            @* ENCABEZADO *@
+            <div class="recibo-header">
+                @* LOGO *@
+                @if (_caja?.MostrarLogo == true && _sucursal?.Logo != null && _sucursal.Logo.Length > 0)
+                {
+                    <div class="recibo-logo">
+                        <img src="@GetLogoBase64()" alt="Logo" />
+                    </div>
+                }
+                
+                <div class="recibo-empresa">
+                    <strong>@_sociedad.Nombre</strong>
+                </div>
+                
+                <div class="recibo-ruc">
+                    RUC: @_sociedad.RUC
+                </div>
+                
+                @if (!string.IsNullOrEmpty(_sociedad.Direccion))
+                {
+                    <div class="recibo-direccion">@_sociedad.Direccion</div>
+                }
+                
+                @if (!string.IsNullOrEmpty(_sociedad.Telefono))
+                {
+                    <div class="recibo-telefono">Tel: @_sociedad.Telefono</div>
+                }
+                
+                <div class="recibo-tipo-doc">
+                    <strong>RECIBO DE COBRO</strong>
+                </div>
+            </div>
+            
+            <div class="recibo-separator">========================================</div>
+            
+            @* DATOS DEL RECIBO *@
+            <div class="recibo-info">
+                <div class="recibo-row">
+                    <span class="recibo-label">Nro Recibo:</span>
+                    <span class="recibo-value">@_cobro.NumeroRecibo</span>
+                </div>
+                
+                <div class="recibo-row">
+                    <span class="recibo-label">Fecha:</span>
+                    <span class="recibo-value">@_cobro.FechaCobro.ToString("dd/MM/yyyy HH:mm")</span>
+                </div>
+                
+                @if (_sucursal != null)
+                {
+                    <div class="recibo-row">
+                        <span class="recibo-label">Sucursal:</span>
+                        <span class="recibo-value">@_sucursal.NombreSucursal</span>
+                    </div>
+                }
+                
+                @if (_caja != null)
+                {
+                    <div class="recibo-row">
+                        <span class="recibo-label">Caja:</span>
+                        <span class="recibo-value">Caja #@_caja.IdCaja @(_cobro.Turno.HasValue ? $"- Turno {_cobro.Turno}" : "")</span>
+                    </div>
+                }
+                
+                @if (!string.IsNullOrEmpty(_usuario?.UsuarioNombre))
+                {
+                    <div class="recibo-row">
+                        <span class="recibo-label">Cajero:</span>
+                        <span class="recibo-value">@_usuario.UsuarioNombre</span>
+                    </div>
+                }
+            </div>
+            
+            <div class="recibo-separator">========================================</div>
+            
+            @* DATOS DEL CLIENTE *@
+            @if (_cliente != null)
+            {
+                <div class="recibo-cliente">
+                    <div class="recibo-row">
+                        <span class="recibo-label">Cliente:</span>
+                        <span class="recibo-value">@_cliente.RazonSocial</span>
+                    </div>
+                    
+                    <div class="recibo-row">
+                        <span class="recibo-label">RUC/CI:</span>
+                        <span class="recibo-value">@_cliente.RUC-@_cliente.DV</span>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(_cliente.Direccion))
+                    {
+                        <div class="recibo-row">
+                            <span class="recibo-label">Dirección:</span>
+                            <span class="recibo-value">@_cliente.Direccion</span>
+                        </div>
+                    }
+                </div>
+                
+                <div class="recibo-separator">========================================</div>
+            }
+            
+            @* REFERENCIA A VENTA *@
+            @if (_cuenta != null && _venta != null)
+            {
+                <div class="recibo-referencia">
+                    <div class="recibo-row">
+                        <span class="recibo-label">Ref. Venta:</span>
+                        <span class="recibo-value">@_venta.NumeroFactura</span>
+                    </div>
+                    
+                    <div class="recibo-row">
+                        <span class="recibo-label">Fecha Venta:</span>
+                        <span class="recibo-value">@_venta.Fecha.ToString("dd/MM/yyyy")</span>
+                    </div>
+                    
+                    <div class="recibo-row">
+                        <span class="recibo-label">Monto Venta:</span>
+                        <span class="recibo-value">@FormatearPrecio(_cuenta.MontoTotal, _cuenta.IdMoneda) @ObtenerSimboloMoneda(_cuenta.IdMoneda)</span>
+                    </div>
+                    
+                    <div class="recibo-row">
+                        <span class="recibo-label">Saldo Ant.:</span>
+                        <span class="recibo-value">@FormatearPrecio(_cuenta.SaldoPendiente + _cobro.MontoTotal, _cuenta.IdMoneda) @ObtenerSimboloMoneda(_cuenta.IdMoneda)</span>
+                    </div>
+                </div>
+                
+                <div class="recibo-separator">========================================</div>
+            }
+            
+            @* DETALLE DE PAGOS *@
+            @if (_detalles != null && _detalles.Any())
+            {
+                <div class="recibo-pagos">
+                    <div class="recibo-subtitulo">MEDIOS DE PAGO:</div>
+                    
+                    @foreach (var detalle in _detalles)
+                    {
+                        <div class="recibo-pago-item">
+                            <div class="recibo-row">
+                                <span class="recibo-label">@detalle.MedioPago:</span>
+                                <span class="recibo-value">@FormatearPrecio(detalle.Monto, detalle.IdMoneda) @(detalle.Moneda?.Simbolo ?? ObtenerSimboloMoneda(detalle.IdMoneda))</span>
+                            </div>
+                            
+                            @if (detalle.MedioPago == "TARJETA" && !string.IsNullOrEmpty(detalle.BancoTarjeta))
+                            {
+                                <div class="recibo-row-small">
+                                    <span>@detalle.BancoTarjeta @(!string.IsNullOrEmpty(detalle.Ultimos4Tarjeta) ? $"****{detalle.Ultimos4Tarjeta}" : "")</span>
+                                </div>
+                            }
+                            
+                            @if (detalle.MedioPago == "CHEQUE" && !string.IsNullOrEmpty(detalle.NumeroCheque))
+                            {
+                                <div class="recibo-row-small">
+                                    <span>Cheque Nro: @detalle.NumeroCheque @(!string.IsNullOrEmpty(detalle.BancoCheque) ? $"({detalle.BancoCheque})" : "")</span>
+                                </div>
+                            }
+                            
+                            @if (detalle.MedioPago == "TRANSFERENCIA" && !string.IsNullOrEmpty(detalle.NumeroTransferencia))
+                            {
+                                <div class="recibo-row-small">
+                                    <span>Ref: @detalle.NumeroTransferencia</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                
+                <div class="recibo-separator">========================================</div>
+            }
+            
+            @* TOTALES *@
+            <div class="recibo-totales">
+                <div class="recibo-total">
+                    <span class="recibo-label">TOTAL COBRADO:</span>
+                    <span class="recibo-value">@ObtenerSimboloMoneda(_venta?.Moneda?.IdMoneda) @FormatearPrecio(_cobro.MontoTotal, _venta?.Moneda?.IdMoneda)</span>
+                </div>
+                
+                @if (_cuenta != null)
+                {
+                    <div class="recibo-row">
+                        <span class="recibo-label">Saldo Restante:</span>
+                        <span class="recibo-value">@FormatearPrecio(_cuenta.SaldoPendiente, _cuenta.IdMoneda) @ObtenerSimboloMoneda(_cuenta.IdMoneda)</span>
+                    </div>
+                }
+                
+                <div class="recibo-total-letras">
+                    Son: @NumeroALetras.ConvertirALetras((long)_cobro.MontoTotal, _venta?.Moneda?.CodigoISO ?? "PYG")
+                </div>
+            </div>
+            
+            @* OBSERVACIONES *@
+            @if (!string.IsNullOrEmpty(_cobro.Observaciones))
+            {
+                <div class="recibo-separator">========================================</div>
+                
+                <div class="recibo-observaciones">
+                    <div class="recibo-subtitulo">Observaciones:</div>
+                    <div class="recibo-texto">@_cobro.Observaciones</div>
+                </div>
+            }
+            
+            <div class="recibo-separator">========================================</div>
+            
+            @* FOOTER *@
+            <div class="recibo-footer">
+                <div class="recibo-gracias">
+                    ¡Gracias por su pago!
+                </div>
+                
+                <div class="recibo-firma">
+                    <div class="recibo-linea-firma">_________________________</div>
+                    <div>Firma del Cliente</div>
+                </div>
+                
+                <div class="recibo-sistema">
+                    Sistema: SistemIA
+                </div>
+            </div>
+        </div>
+        
+        <div class="recibo-actions no-print">
+            <button class="btn btn-primary" @onclick="ImprimirRecibo">
+                <i class="bi bi-printer-fill"></i> Imprimir
+            </button>
+            <button class="btn btn-secondary" @onclick="Cerrar">
+                <i class="bi bi-x-circle"></i> Cerrar
+            </button>
+        </div>
+    </div>
+}
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+    }
+    
+    .recibo-container {
+        max-width: 80mm;
+        width: 80mm;
+        margin: 0 auto;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 12px;
+        line-height: 1.3;
+    }
+    
+    .recibo-print-area {
+        background: white;
+        padding: 5px;
+        color: #000;
+    }
+    
+    .recibo-header {
+        text-align: center;
+        margin-bottom: 3px;
+    }
+    
+    .recibo-logo {
+        text-align: center;
+        margin-bottom: 5px;
+    }
+    
+    .recibo-logo img {
+        max-width: 200px;
+        max-height: 90px;
+        margin-bottom: 3px;
+    }
+    
+    .recibo-empresa {
+        font-size: 13px;
+        font-weight: bold;
+        margin-bottom: 2px;
+        line-height: 1.2;
+    }
+    
+    .recibo-ruc, .recibo-direccion, .recibo-telefono {
+        font-size: 10px;
+        margin: 1px 0;
+        line-height: 1.2;
+    }
+    
+    .recibo-tipo-doc {
+        font-size: 12px;
+        font-weight: bold;
+        margin-top: 3px;
+        margin-bottom: 2px;
+    }
+    
+    .recibo-separator {
+        text-align: center;
+        font-size: 8px;
+        margin: 2px 0;
+        line-height: 1;
+        color: #666;
+    }
+    
+    .recibo-info, .recibo-cliente, .recibo-referencia {
+        font-size: 10px;
+        margin: 3px 0;
+    }
+    
+    .recibo-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 1px 0;
+        line-height: 1.3;
+    }
+    
+    .recibo-row-small {
+        font-size: 9px;
+        margin-left: 10px;
+        color: #666;
+        line-height: 1.2;
+    }
+    
+    .recibo-label {
+        font-weight: bold;
+        margin-right: 5px;
+    }
+    
+    .recibo-value {
+        text-align: right;
+    }
+    
+    .recibo-subtitulo {
+        font-weight: bold;
+        font-size: 11px;
+        margin: 3px 0 2px 0;
+        text-align: center;
+    }
+    
+    .recibo-pagos {
+        margin: 3px 0;
+    }
+    
+    .recibo-pago-item {
+        margin: 2px 0;
+        padding: 2px 0;
+    }
+    
+    .recibo-totales {
+        font-size: 11px;
+        margin: 3px 0;
+    }
+    
+    .recibo-total {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        font-weight: bold;
+        margin: 3px 0;
+        padding: 3px 0;
+        border-top: 1px solid #000;
+        border-bottom: 1px solid #000;
+    }
+    
+    .recibo-total-letras {
+        font-size: 9px;
+        margin-top: 2px;
+        text-align: center;
+        font-style: italic;
+        line-height: 1.2;
+    }
+    
+    .recibo-observaciones {
+        font-size: 9px;
+        margin: 3px 0;
+    }
+    
+    .recibo-texto {
+        margin-top: 2px;
+        line-height: 1.3;
+    }
+    
+    .recibo-footer {
+        text-align: center;
+        font-size: 10px;
+        margin-top: 5px;
+    }
+    
+    .recibo-gracias {
+        font-weight: bold;
+        margin: 3px 0;
+    }
+    
+    .recibo-firma {
+        margin: 15px 0 5px 0;
+    }
+    
+    .recibo-linea-firma {
+        margin-bottom: 2px;
+    }
+    
+    .recibo-sistema {
+        font-size: 8px;
+        color: #666;
+        margin-top: 3px;
+    }
+    
+    .recibo-actions {
+        text-align: center;
+        margin-top: 15px;
+        padding: 10px;
+    }
+    
+    .recibo-actions button {
+        margin: 0 5px;
+    }
+    
+    .no-print {
+        display: block;
+    }
+    
+    @@media print {
+        .recibo-container {
+            margin: 0;
+            max-width: 80mm;
+            width: 80mm;
+        }
+        
+        .recibo-print-area {
+            border: none;
+            padding: 2mm;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-size: 11px;
+        }
+        
+        @@page {
+            size: 80mm auto;
+            margin: 0;
+        }
+        
+        .no-print {
+            display: none !important;
+        }
+        
+        .recibo-separator {
+            color: #000 !important;
+        }
+        
+        .recibo-row, .recibo-pago-item {
+            margin: 0.5mm 0;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public int IdCobro { get; set; }
+    
+    private CobroCuota? _cobro;
+    private Cliente? _cliente;
+    private Sociedad? _sociedad;
+    private Sucursal? _sucursal;
+    private CuentaPorCobrar? _cuenta;
+    private Venta? _venta;
+    private Usuario? _usuario;
+    private Caja? _caja;
+    private List<CobroDetalle> _detalles = new();
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosAsync();
+    }
+    
+    private async Task CargarDatosAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        // Cargar cobro
+        _cobro = await ctx.CobrosCuotas
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IdCobro == IdCobro);
+            
+        if (_cobro == null) return;
+        
+        // Cargar detalles de medios de pago
+        _detalles = await ctx.CobrosDetalles
+            .Include(d => d.Moneda)
+            .AsNoTracking()
+            .Where(d => d.IdCobro == IdCobro)
+            .OrderBy(d => d.IdCobroDetalle)
+            .ToListAsync();
+        
+        // Cargar cliente
+        _cliente = await ctx.Clientes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IdCliente == _cobro.IdCliente);
+        
+        // Cargar sociedad
+        _sociedad = await ctx.Sociedades
+            .AsNoTracking()
+            .FirstOrDefaultAsync();
+        
+        // Cargar cuenta por cobrar
+        _cuenta = await ctx.CuentasPorCobrar
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IdCuentaPorCobrar == _cobro.IdCuentaPorCobrar);
+        
+        // Cargar venta relacionada
+        if (_cuenta != null)
+        {
+            _venta = await ctx.Ventas
+                .Include(v => v.Moneda)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(v => v.IdVenta == _cuenta.IdVenta);
+            
+            // Cargar sucursal con logo
+            if (_venta != null)
+            {
+                _sucursal = await ctx.Sucursal
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == _venta.IdSucursal);
+            }
+        }
+        
+        // Cargar usuario
+        if (_cobro.IdUsuario.HasValue)
+        {
+            _usuario = await ctx.Usuarios
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id_Usu == _cobro.IdUsuario.Value);
+        }
+        
+        // Cargar configuración de caja
+        _caja = await ctx.Cajas
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.CajaActual == 1);
+    }
+    
+    private string GetLogoBase64()
+    {
+        if (_sucursal?.Logo == null || _sucursal.Logo.Length == 0)
+            return string.Empty;
+        
+        var base64 = Convert.ToBase64String(_sucursal.Logo);
+        return $"data:image/png;base64,{base64}";
+    }
+    
+    private string ObtenerSimboloMoneda(int? idMoneda)
+    {
+        if (idMoneda.HasValue && _venta?.Moneda != null)
+        {
+            return _venta.Moneda.Simbolo ?? "Gs.";
+        }
+        return "Gs.";
+    }
+    
+    private string FormatearPrecio(decimal valor, int? idMoneda)
+    {
+        var simbolo = ObtenerSimboloMoneda(idMoneda);
+        
+        // Si es dólar (símbolo $), formatea con 2 decimales
+        if (simbolo == "$")
+            return valor.ToString("N2");
+        
+        // Para moneda local (Gs.), formatea sin decimales
+        return valor.ToString("N0");
+    }
+    
+    private async Task ImprimirRecibo()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("window.print");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al imprimir: {ex.Message}");
+        }
+    }
+    
+    private void Cerrar()
+    {
+        Nav.NavigateTo("/cobros");
+    }
+}

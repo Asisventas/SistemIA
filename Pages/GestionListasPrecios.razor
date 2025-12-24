@@ -1,0 +1,574 @@
+@page "/configuracion/listas-precios"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using SistemIA.Models
+@using SistemIA.Services
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject ITipoCambioService TipoCambioService
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<h3 class="mb-4">💰 Gestión de Listas de Precios</h3>
+
+<div class="row mb-3">
+    <div class="col">
+        <button class="btn btn-primary" @onclick="MostrarFormularioCrear">
+            <i class="bi bi-plus-circle"></i> Nueva Lista de Precios
+        </button>
+        <button class="btn btn-outline-info ms-2" @onclick="CargarListasPrecios">
+            <i class="bi bi-arrow-clockwise"></i> Actualizar
+        </button>
+        <button class="btn btn-outline-warning ms-2" @onclick="ActualizarTiposCambio">
+            <i class="bi bi-currency-exchange"></i> Actualizar Tipos de Cambio
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (!string.IsNullOrEmpty(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
+
+<!-- Tipos de cambio con banderas y formato compacto (reutilizable) -->
+<SistemIA.Shared.TablaTiposCambio />
+
+<!-- Tabla de Listas de Precios -->
+@if (listasPrecios == null)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p>Cargando listas de precios...</p>
+    </div>
+}
+else if (!listasPrecios.Any())
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i> No hay listas de precios configuradas.
+        <br>Haga clic en "Nueva Lista de Precios" para agregar la primera.
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul"></i> Listas de Precios Configuradas
+                <span class="badge bg-primary ms-2">@listasPrecios.Count</span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Moneda</th>
+                            <th class="text-center">Estado</th>
+                            <th class="text-center">Predeterminada</th>
+                            <th class="text-center">Vigencia</th>
+                            <th class="text-center">Descuento</th>
+                            <th class="text-center">Productos</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var lista in listasPrecios.OrderBy(l => l.Orden).ThenBy(l => l.Nombre))
+                        {
+                            <tr class="@(lista.Estado ? (lista.EsVigente ? "" : "table-warning") : "table-secondary")">
+                                <td>
+                                    <strong>@lista.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(lista.Descripcion))
+                                    {
+                                        <br><small class="text-muted">@lista.Descripcion</small>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">
+                                        @lista.Moneda?.Simbolo @lista.Moneda?.CodigoISO
+                                    </span>
+                                    <br><small class="text-muted">@lista.Moneda?.Nombre</small>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge @(lista.Estado ? "bg-success" : "bg-danger")">
+                                        @(lista.Estado ? "Activa" : "Inactiva")
+                                    </span>
+                                    @if (!lista.EsVigente && lista.Estado)
+                                    {
+                                        <br><small class="text-warning">⚠️ Fuera de vigencia</small>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (lista.EsPredeterminada)
+                                    {
+                                        <i class="bi bi-star-fill text-warning" title="Lista predeterminada"></i>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <small class="text-muted">@lista.VigenciaDescripcion</small>
+                                </td>
+                                <td class="text-center">
+                                    @if (lista.AplicarDescuentoGlobal && lista.PorcentajeDescuento > 0)
+                                    {
+                                        <span class="badge bg-warning">@lista.PorcentajeDescuento.ToString("0.##")%</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-secondary">@(lista.Detalles?.Count ?? 0)</span>
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" @onclick="() => EditarLista(lista)" title="Editar">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn @(lista.Estado ? "btn-outline-warning" : "btn-outline-success")"
+                                                @onclick="() => CambiarEstado(lista)" 
+                                                title="@(lista.Estado ? "Desactivar" : "Activar")">
+                                            <i class="bi @(lista.Estado ? "bi-pause" : "bi-play")"></i>
+                                        </button>
+                                        @if (!lista.EsPredeterminada)
+                                        {
+                                            <button class="btn btn-outline-danger" @onclick="() => EliminarLista(lista)" title="Eliminar">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal para Crear/Editar Lista de Precios -->
+@if (mostrarModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi @(esEdicion ? "bi-pencil" : "bi-plus-circle")"></i>
+                        @(esEdicion ? "Editar" : "Nueva") Lista de Precios
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@listaActual" OnValidSubmit="GuardarLista">
+                        <DataAnnotationsValidator />
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Nombre: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="listaActual.Nombre" 
+                                          placeholder="Ej: Lista Retail, Lista Mayorista" maxlength="100" />
+                                <ValidationMessage For="@(() => listaActual.Nombre)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Moneda: <span class="text-danger">*</span></label>
+                                <InputSelect class="form-select" @bind-Value="listaActual.IdMoneda">
+                                    <option value="0">Seleccionar moneda...</option>
+                                    @if (monedas != null)
+                                    {
+                                        @foreach (var moneda in monedas.Where(m => m.Estado).OrderBy(m => m.Orden))
+                                        {
+                                            <option value="@moneda.IdMoneda">@moneda.DisplayName</option>
+                                        }
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => listaActual.IdMoneda)" />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Descripción:</label>
+                            <InputTextArea class="form-control" @bind-Value="listaActual.Descripcion" 
+                                         rows="2" maxlength="255" 
+                                         placeholder="Descripción opcional de la lista de precios" />
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Fecha Vigencia Desde:</label>
+                                <InputDate class="form-control" @bind-Value="listaActual.FechaVigenciaDesde" />
+                                <div class="form-text">Dejar vacío para vigencia indefinida</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fecha Vigencia Hasta:</label>
+                                <InputDate class="form-control" @bind-Value="listaActual.FechaVigenciaHasta" />
+                                <div class="form-text">Dejar vacío para vigencia indefinida</div>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <div class="form-check mb-2">
+                                    <InputCheckbox class="form-check-input" @bind-Value="listaActual.AplicarDescuentoGlobal" id="chkDescuentoGlobal" />
+                                    <label class="form-check-label" for="chkDescuentoGlobal">
+                                        Aplicar descuento global a todos los productos
+                                    </label>
+                                </div>
+                                @if (listaActual.AplicarDescuentoGlobal)
+                                {
+                                    <div class="input-group">
+                                        <InputNumber class="form-control" @bind-Value="listaActual.PorcentajeDescuento" 
+                                                   step="0.01" min="0" max="100" />
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                    <ValidationMessage For="@(() => listaActual.PorcentajeDescuento)" />
+                                }
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="listaActual.Estado" id="chkEstado" />
+                                    <label class="form-check-label" for="chkEstado">
+                                        Lista activa
+                                    </label>
+                                </div>
+                                @if (!esEdicion)
+                                {
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" @bind-Value="listaActual.EsPredeterminada" id="chkPredeterminada" />
+                                        <label class="form-check-label" for="chkPredeterminada">
+                                            Lista predeterminada
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CerrarModal">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> @(esEdicion ? "Actualizar" : "Crear")
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private List<SistemIA.Models.ListaPrecio>? listasPrecios;
+    private List<SistemIA.Models.Moneda>? monedas;
+    private List<SistemIA.Models.TipoCambio>? tiposCambio;
+    private SistemIA.Models.ListaPrecio listaActual = new();
+    private bool mostrarModal = false;
+    private bool esEdicion = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        await CargarListasPrecios();
+        await CargarMonedas();
+        await CargarTiposCambio();
+    }
+
+    private async Task CargarListasPrecios()
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            listasPrecios = await dbContext.ListasPrecios
+                .Include(lp => lp.Moneda)
+                .Include(lp => lp.Detalles)
+                .OrderBy(lp => lp.Orden)
+                .ThenBy(lp => lp.Nombre)
+                .ToListAsync();
+            
+            Console.WriteLine($"[LISTAS PRECIOS] Cargadas {listasPrecios?.Count ?? 0} listas de precios");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar listas de precios: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task CargarMonedas()
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            // Limitar catálogo de monedas visibles a USD, BRL, ARS y PYG
+            var cods = new[] { "USD", "BRL", "ARS", "PYG" };
+            monedas = await dbContext.Monedas
+                .Where(m => m.Estado && cods.Contains(m.CodigoISO))
+                .OrderBy(m => m.CodigoISO)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Error al cargar monedas: {ex.Message}");
+        }
+    }
+
+    private async Task CargarTiposCambio()
+    {
+        try
+        {
+            Console.WriteLine("[TIPOS CAMBIO] Iniciando carga desde servicio...");
+            var tcAll = await TipoCambioService.ObtenerTiposCambioActualesAsync();
+            // Deduplicar por moneda origen (USD/BRL/ARS) destino PYG tomando el más reciente
+            if (tcAll != null)
+            {
+                var permitidas = new[] { "USD", "BRL", "ARS" };
+                tiposCambio = tcAll
+                    .Where(t => t.MonedaDestino?.CodigoISO == "PYG" && permitidas.Contains(t.MonedaOrigen?.CodigoISO ?? ""))
+                    .GroupBy(t => t.MonedaOrigen!.CodigoISO)
+                    .Select(g => g.OrderByDescending(x => x.FechaTipoCambio).First())
+                    .ToList();
+            }
+
+            if (tiposCambio != null && tiposCambio.Any())
+            {
+                Console.WriteLine($"[TIPOS CAMBIO] ✅ Cargados {tiposCambio.Count} tipos de cambio");
+                foreach (var tc in tiposCambio.Take(3))
+                {
+                    var ventaTxt = tc.TasaCompra.HasValue ? tc.TasaCompra.Value.ToString("N4") : "-";
+                    Console.WriteLine($"[TIPOS CAMBIO] - {tc.MonedaOrigen?.CodigoISO} → {tc.MonedaDestino?.CodigoISO}: Compra {tc.TasaCambio:N4} | Venta {ventaTxt}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[TIPOS CAMBIO] ❌ No se obtuvieron tipos de cambio del servicio");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR TIPOS CAMBIO] Error al cargar tipos de cambio: {ex.Message}");
+            Console.WriteLine($"[ERROR TIPOS CAMBIO] Stack trace: {ex.StackTrace}");
+        }
+    }
+
+    private async Task ActualizarTiposCambio()
+    {
+        try
+        {
+            errorMessage = "";
+            successMessage = "🔄 Actualizando tipos de cambio desde API Cambios Chacho...";
+            StateHasChanged();
+            
+            Console.WriteLine("[TIPOS CAMBIO] Iniciando actualización desde API...");
+            
+            await TipoCambioService.ActualizarTiposCambioAsync();
+            
+            Console.WriteLine("[TIPOS CAMBIO] Recargando tipos de cambio actualizados...");
+            await CargarTiposCambio();
+            
+            if (tiposCambio != null && tiposCambio.Any())
+            {
+                successMessage = $"✅ Tipos de cambio actualizados exitosamente. {tiposCambio.Count} tasas obtenidas desde APIs externas.";
+                Console.WriteLine($"[TIPOS CAMBIO] ✅ {tiposCambio.Count} tipos de cambio cargados exitosamente");
+            }
+            else
+            {
+                successMessage = "⚠️ Actualización completada, pero no se obtuvieron tipos de cambio. Verificar conectividad a APIs.";
+                Console.WriteLine("[TIPOS CAMBIO] ⚠️ No se obtuvieron tipos de cambio después de la actualización");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Error al actualizar tipos de cambio: {ex.Message}";
+            successMessage = "";
+            Console.WriteLine($"[ERROR TIPOS CAMBIO] {ex.Message}");
+            Console.WriteLine($"[ERROR TIPOS CAMBIO] Stack trace: {ex.StackTrace}");
+        }
+    }
+
+    private void MostrarFormularioCrear()
+    {
+        listaActual = new SistemIA.Models.ListaPrecio
+        {
+            Estado = true,
+            AplicarDescuentoGlobal = false,
+            PorcentajeDescuento = 0,
+            Orden = (listasPrecios?.Count ?? 0) + 1,
+            FechaCreacion = DateTime.Now,
+            UsuarioCreacion = "Sistema" // TODO: Obtener usuario actual
+        };
+        esEdicion = false;
+        mostrarModal = true;
+        LimpiarMensajes();
+    }
+
+    private void EditarLista(SistemIA.Models.ListaPrecio lista)
+    {
+        listaActual = new SistemIA.Models.ListaPrecio
+        {
+            IdListaPrecio = lista.IdListaPrecio,
+            Nombre = lista.Nombre,
+            Descripcion = lista.Descripcion,
+            IdMoneda = lista.IdMoneda,
+            EsPredeterminada = lista.EsPredeterminada,
+            Estado = lista.Estado,
+            AplicarDescuentoGlobal = lista.AplicarDescuentoGlobal,
+            PorcentajeDescuento = lista.PorcentajeDescuento,
+            FechaVigenciaDesde = lista.FechaVigenciaDesde,
+            FechaVigenciaHasta = lista.FechaVigenciaHasta,
+            Orden = lista.Orden,
+            FechaCreacion = lista.FechaCreacion,
+            UsuarioCreacion = lista.UsuarioCreacion
+        };
+        esEdicion = true;
+        mostrarModal = true;
+        LimpiarMensajes();
+    }
+
+    private async Task GuardarLista()
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            if (esEdicion)
+            {
+                // Actualizar
+                listaActual.FechaModificacion = DateTime.Now;
+                listaActual.UsuarioModificacion = "Sistema"; // TODO: Obtener usuario actual
+                
+                dbContext.ListasPrecios.Update(listaActual);
+                await dbContext.SaveChangesAsync();
+                
+                successMessage = $"✅ Lista de precios '{listaActual.Nombre}' actualizada exitosamente.";
+            }
+            else
+            {
+                // Crear nueva
+                dbContext.ListasPrecios.Add(listaActual);
+                await dbContext.SaveChangesAsync();
+                
+                successMessage = $"✅ Lista de precios '{listaActual.Nombre}' creada exitosamente.";
+            }
+            
+            await CargarListasPrecios();
+            CerrarModal();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al guardar: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task CambiarEstado(SistemIA.Models.ListaPrecio lista)
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            lista.Estado = !lista.Estado;
+            lista.FechaModificacion = DateTime.Now;
+            lista.UsuarioModificacion = "Sistema"; // TODO: Obtener usuario actual
+            
+            dbContext.ListasPrecios.Update(lista);
+            await dbContext.SaveChangesAsync();
+            
+            successMessage = $"✅ Lista de precios '{lista.Nombre}' {(lista.Estado ? "activada" : "desactivada")} exitosamente.";
+            await CargarListasPrecios();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cambiar estado: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task EliminarLista(SistemIA.Models.ListaPrecio lista)
+    {
+        try
+        {
+            var confirmacion = await JS.InvokeAsync<bool>("confirm", 
+                $"¿Está seguro de eliminar la lista de precios '{lista.Nombre}'?\n\nEsta acción también eliminará todos los precios asociados y no se puede deshacer.");
+            
+            if (!confirmacion) return;
+            
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            dbContext.ListasPrecios.Remove(lista);
+            await dbContext.SaveChangesAsync();
+            
+            successMessage = $"✅ Lista de precios '{lista.Nombre}' eliminada exitosamente.";
+            await CargarListasPrecios();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al eliminar: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        listaActual = new();
+        esEdicion = false;
+    }
+
+    private void LimpiarMensajes()
+    {
+        errorMessage = "";
+        successMessage = "";
+    }
+
+    // Métodos auxiliares para mejorar la presentación de tipos de cambio
+    private string GetCurrencyFlag(string? codigoISO)
+    {
+        return codigoISO switch
+        {
+            "USD" => "🇺🇸",
+            "EUR" => "🇪🇺", 
+            "BRL" => "🇧🇷",
+            "ARS" => "🇦🇷",
+            "CLP" => "🇨🇱",
+            "UYU" => "🇺🇾",
+            "BOB" => "🇧🇴",
+            "PEN" => "🇵🇪",
+            "GBP" => "🇬🇧",
+            "JPY" => "🇯🇵",
+            "CAD" => "🇨🇦",
+            "CHF" => "🇨🇭",
+            "CNY" => "🇨🇳",
+            _ => "💱"
+        };
+    }
+
+    private string GetColorClass(string? codigoISO)
+    {
+        return codigoISO switch
+        {
+            "USD" => "border-success bg-success bg-opacity-10",
+            "EUR" => "border-primary bg-primary bg-opacity-10",
+            "BRL" => "border-warning bg-warning bg-opacity-10",
+            "ARS" => "border-info bg-info bg-opacity-10",
+            _ => "border-secondary bg-light"
+        };
+    }
+}

@@ -2,8 +2,12 @@
 @page "/configuracion-sucursal/{id:int?}"
 @using Microsoft.EntityFrameworkCore
 @using SistemIA.Models
-@inject AppDbContext Db
+@using SistemIA.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
+@inject BackupService BackupService
+@inject IJSRuntime JS
 
 <h3>Configuración de Sucursal</h3>
 
@@ -61,10 +65,11 @@
             <option value="">-- Seleccione una ciudad --</option>
             @foreach (var ciudad in ciudades)
             {
-                <option value="@ciudad.IdCiudad">@ciudad.Nombre</option>
+                <option value="@ciudad.Numero">@ciudad.Nombre (@ciudad.Departamento.ToString("00"))</option>
             }
         </InputSelect>
     </div>
+    @* Sección SIFEN oculta - descomentar si se necesita
     <div class="mb-3">
         <label>Ruta del certificado (.p12):</label>
         <InputText @bind-Value="sucursal.CertificadoRuta" class="form-control" />
@@ -88,6 +93,7 @@
         <label>Punto de Expedición:</label>
         <InputText @bind-Value="sucursal.PuntoExpedicion" class="form-control" />
     </div>
+    *@
 
     <div class="mb-3">
         <label>IP Consola:</label>
@@ -129,6 +135,18 @@
     </div>
 
     <button type="submit" class="btn btn-primary">Guardar</button>
+    <button type="button" class="btn btn-success ms-2" @onclick="CrearBackup" disabled="@creandoBackup">
+        @if (creandoBackup)
+        {
+            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <span>Creando backup...</span>
+        }
+        else
+        {
+            <i class="fas fa-database me-2"></i>
+            <span>Crear Backup Completo</span>
+        }
+    </button>
 </EditForm>
 
 @if (!string.IsNullOrEmpty(mensaje))
@@ -143,13 +161,15 @@
     private Sucursal sucursal = new();
     private string mensaje = "";
     private string? logoPreview;
-    private List<Ciudades> ciudades = new();
+    private List<CiudadCatalogo> ciudades = new();
     private string nombreArchivoCertificado = "";
     private readonly string saveFolder = Path.Combine(Environment.CurrentDirectory, "Certificados");
+    private bool creandoBackup = false;
 
     protected override async Task OnInitializedAsync()
     {
-        ciudades = await Db.Ciudades.OrderBy(c => c.Nombre).ToListAsync();
+    await using var Db = await DbFactory.CreateDbContextAsync();
+    ciudades = await Db.CiudadesCatalogo.OrderBy(c => c.Nombre).ToListAsync();
 
         if (id.HasValue && id.Value > 0)
         {
@@ -206,6 +226,7 @@
 
     private async Task Guardar()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         try
         {
             if (sucursal.Id == 0)
@@ -220,6 +241,49 @@
         catch (Exception ex)
         {
             mensaje = $"Error: {ex.Message}";
+        }
+    }
+
+    private async Task CrearBackup()
+    {
+        creandoBackup = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await BackupService.CrearBackupCompleto();
+            
+            if (result.Success)
+            {
+                var alertMessage = $@"
+🎉 ¡Backup creado exitosamente!
+
+📊 Base de datos: {result.DatabaseName}
+💾 Archivo backup: {Path.GetFileName(result.BackupPath)}
+📦 Archivo proyecto: {Path.GetFileName(result.ZipPath)}
+📂 Ubicación: C:\backup\
+⏰ Timestamp: {result.Timestamp}
+
+Los archivos están listos para ser utilizados.";
+
+                await JS.InvokeVoidAsync("alert", alertMessage);
+                mensaje = $"Backup creado exitosamente en C:\\backup\\ - {result.Timestamp}";
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"❌ Error al crear backup: {result.Error}");
+                mensaje = $"Error al crear backup: {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ Error inesperado: {ex.Message}");
+            mensaje = $"Error inesperado: {ex.Message}";
+        }
+        finally
+        {
+            creandoBackup = false;
+            StateHasChanged();
         }
     }
 }

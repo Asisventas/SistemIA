@@ -1,0 +1,517 @@
+@page "/proveedores/sifen/timbrados"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Utils
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<h3 class="mb-4">📅 Control de Timbrados SIFEN</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @errorMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- Resumen General -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-danger text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                <h5 class="card-title">@timbradosVencidos.Count</h5>
+                <p class="card-text">Timbrados Vencidos</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-clock fa-2x mb-2"></i>
+                <h5 class="card-title">@timbradosProximosVencer.Count</h5>
+                <p class="card-text">Próximos a Vencer</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-check-circle fa-2x mb-2"></i>
+                <h5 class="card-title">@timbradosVigentes.Count</h5>
+                <p class="card-text">Timbrados Vigentes</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-building fa-2x mb-2"></i>
+                <h5 class="card-title">@totalProveedores</h5>
+                <p class="card-text">Total Proveedores</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="fas fa-filter"></i> Filtros de Búsqueda</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <label class="form-label">Estado del Timbrado:</label>
+                <select class="form-select" @bind="filtroEstado">
+                    <option value="">Todos los estados</option>
+                    <option value="vencido">❌ Vencidos</option>
+                    <option value="proximo">⚠️ Próximos a vencer</option>
+                    <option value="vigente">✅ Vigentes</option>
+                </select>
+            </div>
+            
+            <div class="col-md-3">
+                <label class="form-label">Ambiente:</label>
+                <select class="form-select" @bind="filtroAmbiente">
+                    <option value="">Todos los ambientes</option>
+                    <option value="test">🧪 Pruebas</option>
+                    <option value="prod">🚀 Producción</option>
+                </select>
+            </div>
+            
+            <div class="col-md-4">
+                <label class="form-label">Buscar por Razón Social:</label>
+                <input type="text" class="form-control" @bind="filtroBusqueda" @onkeyup="AplicarFiltros" 
+                       placeholder="Escriba para buscar..." />
+            </div>
+            
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <button class="btn btn-primary w-100" @onclick="CargarDatos">
+                    <i class="fas fa-sync-alt"></i> Actualizar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla de Timbrados -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0">
+            <i class="fas fa-list"></i> Lista de Timbrados 
+            <span class="badge bg-secondary">@proveedoresFiltrados.Count() de @totalProveedores</span>
+        </h6>
+    </div>
+    <div class="card-body">
+        @if (proveedoresFiltrados.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Estado</th>
+                            <th>Proveedor</th>
+                            <th>RUC-DV</th>
+                            <th>Timbrado</th>
+                            <th>Vencimiento</th>
+                            <th>Días Restantes</th>
+                            <th>Ambiente</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var proveedor in proveedoresFiltrados.OrderBy(p => p.VencimientoTimbrado))
+                        {
+                            var (estado, dias, claseEstado) = ProveedorSifenHelper.VerificarTimbrado(proveedor.VencimientoTimbrado);
+                            var requiereRenovacion = dias <= 30;
+                            
+                            <tr class="@GetRowClass(dias)">
+                                <td>
+                                    <span class="badge @GetEstadoBadgeClass(dias)">
+                                        @GetEstadoIcono(dias) @estado
+                                    </span>
+                                </td>
+                                <td>
+                                    <strong>@proveedor.RazonSocial</strong>
+                                    @if (!string.IsNullOrEmpty(proveedor.NombreFantasia))
+                                    {
+                                        <br><small class="text-muted">@proveedor.NombreFantasia</small>
+                                    }
+                                </td>
+                                <td><code>@proveedor.RUCCompleto</code></td>
+                                <td><code>@proveedor.Timbrado</code></td>
+                                <td>@proveedor.VencimientoTimbrado.ToString("dd/MM/yyyy")</td>
+                                <td>
+                                    <span class="@GetDiasTextClass(dias)">
+                                        @if (dias < 0)
+                                        {
+                                            <strong>@Math.Abs(dias) días vencido</strong>
+                                        }
+                                        else
+                                        {
+                                            <text>@dias días</text>
+                                        }
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-@(proveedor.Ambiente == "prod" ? "success" : "warning")">
+                                        @proveedor.Ambiente.ToUpper()
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" @onclick="() => VerDetalle(proveedor.IdProveedor)" 
+                                                title="Ver detalle">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        
+                                        @if (requiereRenovacion)
+                                        {
+                                            <button class="btn btn-outline-warning" @onclick="() => RenovarTimbrado(proveedor.IdProveedor)" 
+                                                    title="Renovar timbrado">
+                                                <i class="fas fa-sync-alt"></i>
+                                            </button>
+                                        }
+                                        
+                                        <button class="btn btn-outline-info" @onclick="() => EnviarNotificacion(proveedor.IdProveedor)" 
+                                                title="Enviar notificación">
+                                            <i class="fas fa-envelope"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-4">
+                <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                <p class="text-muted">No se encontraron timbrados con los filtros seleccionados.</p>
+                <button class="btn btn-primary" @onclick="LimpiarFiltros">
+                    <i class="fas fa-filter"></i> Limpiar Filtros
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Modal para renovar timbrado -->
+@if (mostrarModalRenovacion)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">🔄 Renovar Timbrado</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModalRenovacion"></button>
+                </div>
+                <div class="modal-body">
+                    @if (proveedorRenovando != null)
+                    {
+                        <p><strong>Proveedor:</strong> @proveedorRenovando.RazonSocial</p>
+                        <p><strong>RUC:</strong> @proveedorRenovando.RUCCompleto</p>
+                        <p><strong>Timbrado Actual:</strong> @proveedorRenovando.Timbrado</p>
+                        <p><strong>Vencimiento Actual:</strong> @proveedorRenovando.VencimientoTimbrado.ToString("dd/MM/yyyy")</p>
+                        
+                        <hr />
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Nuevo Timbrado:</label>
+                            <input type="text" class="form-control" @bind="nuevoTimbrado" maxlength="8" 
+                                   placeholder="Ingrese el nuevo timbrado (8 dígitos)" />
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Nueva Fecha de Vencimiento:</label>
+                            <input type="date" class="form-control" @bind="nuevoVencimiento" />
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalRenovacion">Cancelar</button>
+                    <button type="button" class="btn btn-success" @onclick="ConfirmarRenovacion">
+                        <i class="fas fa-save"></i> Renovar Timbrado
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ProveedorSifenMejorado> todosProveedores = new();
+    private IEnumerable<ProveedorSifenMejorado> proveedoresFiltrados = new List<ProveedorSifenMejorado>();
+    private List<ProveedorSifenMejorado> timbradosVencidos = new();
+    private List<ProveedorSifenMejorado> timbradosProximosVencer = new();
+    private List<ProveedorSifenMejorado> timbradosVigentes = new();
+    
+    private string filtroEstado = "";
+    private string filtroAmbiente = "";
+    private string filtroBusqueda = "";
+    private int totalProveedores = 0;
+    
+    private bool mostrarModalRenovacion = false;
+    private ProveedorSifenMejorado? proveedorRenovando;
+    private string nuevoTimbrado = "";
+    private DateTime nuevoVencimiento = DateTime.Now.AddYears(1);
+    
+    private string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            todosProveedores = await dbContext.ProveedoresSifen
+                .Where(p => p.Estado)
+                .OrderBy(p => p.VencimientoTimbrado)
+                .ToListAsync();
+            
+            totalProveedores = todosProveedores.Count;
+            
+            // Clasificar timbrados por estado
+            ClasificarTimbrados();
+            
+            // Aplicar filtros iniciales
+            AplicarFiltros();
+            
+            Console.WriteLine($"[TIMBRADOS] Cargados {totalProveedores} proveedores");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar los datos: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private void ClasificarTimbrados()
+    {
+        timbradosVencidos.Clear();
+        timbradosProximosVencer.Clear();
+        timbradosVigentes.Clear();
+        
+        foreach (var proveedor in todosProveedores)
+        {
+            var (_, dias, _) = ProveedorSifenHelper.VerificarTimbrado(proveedor.VencimientoTimbrado);
+            
+            if (dias < 0)
+                timbradosVencidos.Add(proveedor);
+            else if (dias <= 30)
+                timbradosProximosVencer.Add(proveedor);
+            else
+                timbradosVigentes.Add(proveedor);
+        }
+    }
+
+    private void AplicarFiltros()
+    {
+        proveedoresFiltrados = todosProveedores.AsEnumerable();
+        
+        // Filtro por estado
+        if (!string.IsNullOrEmpty(filtroEstado))
+        {
+            proveedoresFiltrados = filtroEstado switch
+            {
+                "vencido" => timbradosVencidos,
+                "proximo" => timbradosProximosVencer,
+                "vigente" => timbradosVigentes,
+                _ => proveedoresFiltrados
+            };
+        }
+        
+        // Filtro por ambiente
+        if (!string.IsNullOrEmpty(filtroAmbiente))
+        {
+            proveedoresFiltrados = proveedoresFiltrados.Where(p => p.Ambiente == filtroAmbiente);
+        }
+        
+        // Filtro por búsqueda de texto
+        if (!string.IsNullOrEmpty(filtroBusqueda))
+        {
+            var busqueda = filtroBusqueda.ToLower();
+            proveedoresFiltrados = proveedoresFiltrados.Where(p => 
+                p.RazonSocial.ToLower().Contains(busqueda) ||
+                p.RUC.Contains(busqueda) ||
+                (!string.IsNullOrEmpty(p.NombreFantasia) && p.NombreFantasia.ToLower().Contains(busqueda))
+            );
+        }
+        
+        proveedoresFiltrados = proveedoresFiltrados.ToList();
+        StateHasChanged();
+    }
+
+    private void LimpiarFiltros()
+    {
+        filtroEstado = "";
+        filtroAmbiente = "";
+        filtroBusqueda = "";
+        AplicarFiltros();
+    }
+
+    private async Task VerDetalle(int idProveedor)
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            var proveedor = await dbContext.ProveedoresSifen.FindAsync(idProveedor);
+            
+            if (proveedor != null)
+            {
+                var resumen = proveedor.GenerarResumenSifen();
+                await JS.InvokeVoidAsync("alert", resumen);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al obtener el detalle: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task RenovarTimbrado(int idProveedor)
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            proveedorRenovando = await dbContext.ProveedoresSifen.FindAsync(idProveedor);
+            
+            if (proveedorRenovando != null)
+            {
+                nuevoTimbrado = "";
+                nuevoVencimiento = DateTime.Now.AddYears(1);
+                mostrarModalRenovacion = true;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al preparar la renovación: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task ConfirmarRenovacion()
+    {
+        try
+        {
+            if (proveedorRenovando == null || string.IsNullOrEmpty(nuevoTimbrado) || nuevoTimbrado.Length != 8)
+            {
+                await JS.InvokeVoidAsync("alert", "❌ Debe ingresar un timbrado válido de 8 dígitos");
+                return;
+            }
+
+            if (nuevoVencimiento <= DateTime.Now)
+            {
+                await JS.InvokeVoidAsync("alert", "❌ La fecha de vencimiento debe ser futura");
+                return;
+            }
+
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            var proveedor = await dbContext.ProveedoresSifen.FindAsync(proveedorRenovando.IdProveedor);
+            
+            if (proveedor != null)
+            {
+                proveedor.Timbrado = nuevoTimbrado;
+                proveedor.VencimientoTimbrado = nuevoVencimiento;
+                proveedor.FechaModificacion = DateTime.Now;
+                proveedor.UsuarioModificacion = "Sistema"; // TODO: Usuario actual
+                
+                await dbContext.SaveChangesAsync();
+                
+                await JS.InvokeVoidAsync("alert", $"✅ Timbrado renovado exitosamente.\nNuevo timbrado: {nuevoTimbrado}\nVencimiento: {nuevoVencimiento:dd/MM/yyyy}");
+                
+                CerrarModalRenovacion();
+                await CargarDatos();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al renovar el timbrado: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private void CerrarModalRenovacion()
+    {
+        mostrarModalRenovacion = false;
+        proveedorRenovando = null;
+        nuevoTimbrado = "";
+        StateHasChanged();
+    }
+
+    private async Task EnviarNotificacion(int idProveedor)
+    {
+        try
+        {
+            using var dbContext = await DbFactory.CreateDbContextAsync();
+            var proveedor = await dbContext.ProveedoresSifen.FindAsync(idProveedor);
+            
+            if (proveedor != null)
+            {
+                var (estado, dias, _) = ProveedorSifenHelper.VerificarTimbrado(proveedor.VencimientoTimbrado);
+                
+                var mensaje = $"🔔 NOTIFICACIÓN DE TIMBRADO\n\n" +
+                             $"Empresa: {proveedor.RazonSocial}\n" +
+                             $"RUC: {proveedor.RUCCompleto}\n" +
+                             $"Timbrado: {proveedor.Timbrado}\n" +
+                             $"Estado: {estado}\n" +
+                             $"Vencimiento: {proveedor.VencimientoTimbrado:dd/MM/yyyy}\n" +
+                             $"Días restantes: {dias}\n\n" +
+                             $"Email de contacto: {proveedor.Email}";
+                
+                await JS.InvokeVoidAsync("alert", mensaje);
+                
+                // TODO: Implementar envío real de email
+                Console.WriteLine($"[NOTIFICACIÓN] Enviada a {proveedor.Email}");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al enviar la notificación: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    // Métodos de estilo CSS
+    private string GetRowClass(int dias)
+    {
+        if (dias < 0) return "table-danger";
+        if (dias <= 30) return "table-warning";
+        return "";
+    }
+
+    private string GetEstadoBadgeClass(int dias)
+    {
+        if (dias < 0) return "bg-danger";
+        if (dias <= 30) return "bg-warning";
+        return "bg-success";
+    }
+
+    private string GetEstadoIcono(int dias)
+    {
+        if (dias < 0) return "❌";
+        if (dias <= 30) return "⚠️";
+        return "✅";
+    }
+
+    private string GetDiasTextClass(int dias)
+    {
+        if (dias < 0) return "text-danger fw-bold";
+        if (dias <= 30) return "text-warning fw-bold";
+        return "text-success";
+    }
+}

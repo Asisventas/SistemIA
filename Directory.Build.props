@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <UseSharedCompilation>false</UseSharedCompilation>
+    <ConcurrentBuild>false</ConcurrentBuild>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+</Project>

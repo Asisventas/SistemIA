@@ -1,0 +1,888 @@
+@page "/informes/resumen-caja"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using SistemIA.Models
+@attribute [Authorize]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject NavigationManager Nav
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using ClosedXML.Excel
+
+<PageProtection Modulo="/reportes" Permiso="VIEW">
+
+<h3 class="mb-3"><i class="bi bi-journal-check me-2"></i>Informe Resumen de Caja</h3>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">Desde</label>
+                <input type="date" class="form-control" @bind="fDesde" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Hasta</label>
+                <input type="date" class="form-control" @bind="fHasta" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Caja</label>
+                <select class="form-select" @bind="fIdCaja">
+                    <option value="0">Todas</option>
+                    @foreach (var c in cajas)
+                    {
+                        <option value="@c.IdCaja">Caja @c.IdCaja</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Turno</label>
+                <select class="form-select" @bind="fTurno">
+                    <option value="0">Todos</option>
+                    @for (int i = 1; i <= 4; i++)
+                    {
+                        <option value="@i">Turno @i</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Usuario</label>
+                <select class="form-select" @bind="fUsuario">
+                    <option value="">Todos</option>
+                    @foreach (var u in usuarios)
+                    {
+                        <option value="@u.UsuarioNombre">@u.UsuarioNombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2 justify-content-end flex-wrap">
+                <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
+                <button class="btn btn-outline-success" title="Exportar CSV" @onclick="ExportarCsv"><i class="bi bi-filetype-csv"></i></button>
+                <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
+                <button class="btn btn-outline-primary" title="Imprimir Ticket" @onclick="ImprimirTicket"><i class="bi bi-receipt"></i></button>
+                <button class="btn btn-outline-secondary" title="Imprimir A4" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (cargando)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2 text-muted">Cargando información...</p>
+    </div>
+}
+else
+{
+    <!-- Resumen General -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1"><i class="bi bi-cash me-1"></i>Ventas Contado</h6>
+                    <h3 class="mb-0">@resumen.VentasContado.ToString("N0") ₲</h3>
+                    <small>@resumen.CantVentasContado ventas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1"><i class="bi bi-credit-card me-1"></i>Ventas Crédito</h6>
+                    <h3 class="mb-0">@resumen.VentasCredito.ToString("N0") ₲</h3>
+                    <small>@resumen.CantVentasCredito ventas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1"><i class="bi bi-wallet2 me-1"></i>Cobros Crédito</h6>
+                    <h3 class="mb-0">@resumen.CobrosCredito.ToString("N0") ₲</h3>
+                    <small>@resumen.CantCobros cobros</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1"><i class="bi bi-x-circle me-1"></i>Anulaciones</h6>
+                    <h3 class="mb-0">@resumen.Anulaciones.ToString("N0") ₲</h3>
+                    <small>@resumen.CantAnulaciones ventas</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Total Efectivo en Caja -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card border-primary h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Efectivo Esperado en Caja</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            <tr>
+                                <td>Ventas Contado (Efectivo)</td>
+                                <td class="text-end fw-bold text-success">+ @resumen.VentasEfectivo.ToString("N0") ₲</td>
+                            </tr>
+                            <tr>
+                                <td>Cobros de Crédito (Efectivo)</td>
+                                <td class="text-end fw-bold text-success">+ @resumen.CobrosEfectivo.ToString("N0") ₲</td>
+                            </tr>
+                            <tr class="table-primary">
+                                <td class="fw-bold">TOTAL EFECTIVO ESPERADO</td>
+                                <td class="text-end fw-bold fs-4">@((resumen.VentasEfectivo + resumen.CobrosEfectivo).ToString("N0")) ₲</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-secondary h-100">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Desglose por Medio de Pago</h5>
+                </div>
+                <div class="card-body">
+                    @foreach (var item in desgloseMedioPago.OrderByDescending(d => d.Total))
+                    {
+                        var pct = resumen.TotalIngresos > 0 ? (item.Total / resumen.TotalIngresos * 100) : 0;
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span><i class="bi @ObtenerIconoMedio(item.MedioPago) me-1"></i>@item.MedioPago</span>
+                                <span class="badge bg-primary">@item.Total.ToString("N0") ₲</span>
+                            </div>
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-success" style="width: @pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cierres de Caja del período -->
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-lock me-2"></i>Cierres de Caja del Período</h5>
+            <span class="badge bg-light text-dark">@cierresCaja.Count cierres</span>
+        </div>
+        <div class="card-body p-0">
+            @if (cierresCaja.Any())
+            {
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Caja</th>
+                            <th>Turno</th>
+                            <th>Usuario</th>
+                            <th class="text-end">Total Sistema</th>
+                            <th class="text-end">Entregado</th>
+                            <th class="text-end">Diferencia</th>
+                            <th>Estado</th>
+                            <th class="text-center">Detalle</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cierre in cierresCaja)
+                        {
+                            var dif = cierre.TotalEntregado - cierre.TotalEsperado;
+                            <tr>
+                                <td>@cierre.FechaCierre.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>Caja @cierre.IdCaja</td>
+                                <td>Turno @cierre.Turno</td>
+                                <td>@cierre.UsuarioCierre</td>
+                                <td class="text-end">@cierre.TotalEsperado.ToString("N0")</td>
+                                <td class="text-end">@cierre.TotalEntregado.ToString("N0")</td>
+                                <td class="text-end @(dif >= 0 ? "text-success" : "text-danger") fw-bold">
+                                    @(dif >= 0 ? "+" : "")@dif.ToString("N0")
+                                </td>
+                                <td>
+                                    <span class="badge @(cierre.Estado == "Cerrado" ? "bg-success" : cierre.Estado == "Parcial" ? "bg-warning text-dark" : "bg-secondary")">
+                                        @cierre.Estado
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => VerDetalleCierre(cierre)">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div class="p-3 text-center text-muted">
+                    <i class="bi bi-info-circle fs-4"></i>
+                    <p class="mb-0">No hay cierres de caja en el período seleccionado</p>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Operaciones detalladas -->
+    <div class="card">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Operaciones del Período</h5>
+            <span class="badge bg-light text-dark">@operaciones.Count registros</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Tipo</th>
+                            <th>Documento</th>
+                            <th>Cliente</th>
+                            <th>Medio Pago</th>
+                            <th class="text-end">Monto</th>
+                            <th>Caja</th>
+                            <th>Turno</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var op in operaciones.OrderByDescending(o => o.Fecha).Take(500))
+                        {
+                            <tr class="@(op.Tipo == "Anulación" ? "table-danger" : "")">
+                                <td>@op.Fecha.ToString("dd/MM HH:mm")</td>
+                                <td>
+                                    <span class="badge @ObtenerBadgeTipo(op.Tipo)">@op.Tipo</span>
+                                </td>
+                                <td><code>@op.Documento</code></td>
+                                <td class="text-truncate" style="max-width: 150px;">@op.Cliente</td>
+                                <td><i class="bi @ObtenerIconoMedio(op.MedioPago) me-1"></i>@op.MedioPago</td>
+                                <td class="text-end fw-semibold @(op.Monto < 0 ? "text-danger" : "")">@op.Monto.ToString("N0")</td>
+                                <td>@op.IdCaja</td>
+                                <td>@op.Turno</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal detalle cierre -->
+@if (cierreSeleccionado != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-lock me-2"></i>Detalle Cierre - @cierreSeleccionado.FechaCierre.ToString("dd/MM/yyyy HH:mm")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => cierreSeleccionado = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4"><strong>Caja:</strong> @cierreSeleccionado.IdCaja</div>
+                        <div class="col-md-4"><strong>Turno:</strong> @cierreSeleccionado.Turno</div>
+                        <div class="col-md-4"><strong>Usuario:</strong> @cierreSeleccionado.UsuarioCierre</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4"><strong>Ventas:</strong> @((cierreSeleccionado.TotalVentasContado + cierreSeleccionado.TotalVentasCredito).ToString("N0")) ₲</div>
+                        <div class="col-md-4"><strong>Cobros:</strong> @cierreSeleccionado.TotalCobrosCredito.ToString("N0") ₲</div>
+                        <div class="col-md-4"><strong>Sistema:</strong> @cierreSeleccionado.TotalEsperado.ToString("N0") ₲</div>
+                    </div>
+                    <hr />
+                    <h6>Entrega por Medio de Pago</h6>
+                    @if (entregasSeleccionadas?.Any() == true)
+                    {
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Medio</th>
+                                    <th class="text-end">Monto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in entregasSeleccionadas)
+                                {
+                                    <tr>
+                                        <td>@e.Medio.ToString()</td>
+                                        <td class="text-end">@e.MontoEntregado.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-secondary">
+                                <tr class="fw-bold">
+                                    <td>TOTAL ENTREGADO</td>
+                                    <td class="text-end">@entregasSeleccionadas.Sum(e => e.MontoEntregado).ToString("N0")</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted">Sin desglose de entregas</p>
+                    }
+                    @if (!string.IsNullOrEmpty(cierreSeleccionado.Observaciones))
+                    {
+                        <hr />
+                        <h6>Observaciones</h6>
+                        <p>@cierreSeleccionado.Observaciones</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => cierreSeleccionado = null">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private DateTime? fDesde;
+    private DateTime? fHasta;
+    private int fIdCaja = 0;
+    private int fTurno = 0;
+    private string? fUsuario;
+
+    private bool cargando = false;
+    private List<Caja> cajas = new();
+    private List<Usuario> usuarios = new();
+    private List<CierreCaja> cierresCaja = new();
+    private List<OperacionCaja> operaciones = new();
+    private List<DesgloseMedioPago> desgloseMedioPago = new();
+    private ResumenTotales resumen = new();
+    
+    private CierreCaja? cierreSeleccionado;
+    private List<EntregaCaja>? entregasSeleccionadas;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        if (!sucId.HasValue)
+        {
+            var ret = System.Net.WebUtility.UrlEncode(Nav.Uri);
+            Nav.NavigateTo($"/seleccionar-sucursal?returnUrl={ret}", forceLoad: true);
+            return;
+        }
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        // Obtener fecha de caja como predeterminada
+        var cajaActual = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+        var fechaCaja = cajaActual?.FechaActualCaja ?? DateTime.Today;
+        fDesde = fechaCaja;
+        fHasta = fechaCaja;
+        
+        cajas = await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).ToListAsync();
+        usuarios = await ctx.Usuarios.AsNoTracking().OrderBy(u => u.UsuarioNombre).ToListAsync();
+
+        await Buscar();
+    }
+
+    private async Task Buscar()
+    {
+        cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var sucId = SucursalProvider.GetSucursalId();
+
+            var fechaDesde = fDesde ?? DateTime.Today.AddDays(-7);
+            var fechaHasta = (fHasta ?? DateTime.Today).AddDays(1);
+
+            // Obtener ventas
+            var ventasQuery = ctx.Ventas.AsNoTracking()
+                .Where(v => v.Fecha >= fechaDesde && v.Fecha < fechaHasta);
+
+            if (sucId.HasValue)
+                ventasQuery = ventasQuery.Where(v => v.IdSucursal == sucId.Value);
+            if (fIdCaja > 0)
+                ventasQuery = ventasQuery.Where(v => v.IdCaja == fIdCaja);
+            if (fTurno > 0)
+                ventasQuery = ventasQuery.Where(v => v.Turno == fTurno);
+
+            var ventas = await ventasQuery
+                .Include(v => v.Cliente)
+                .Include(v => v.TipoPago)
+                .ToListAsync();
+
+            // Obtener cobros de crédito
+            var cobrosQuery = ctx.CobrosCuotas.AsNoTracking()
+                .Where(c => c.FechaCobro >= fechaDesde && c.FechaCobro < fechaHasta);
+
+            if (fIdCaja > 0)
+                cobrosQuery = cobrosQuery.Where(c => c.IdCaja == fIdCaja);
+
+            var cobros = await cobrosQuery
+                .Include(c => c.Cliente)
+                .Include(c => c.Detalles)
+                .Where(c => c.Estado != "ANULADO")
+                .ToListAsync();
+
+            // Obtener cierres de caja
+            var cierresQuery = ctx.CierresCaja.AsNoTracking()
+                .Where(c => c.FechaCierre >= fechaDesde && c.FechaCierre < fechaHasta);
+
+            if (fIdCaja > 0)
+                cierresQuery = cierresQuery.Where(c => c.IdCaja == fIdCaja);
+            if (fTurno > 0)
+                cierresQuery = cierresQuery.Where(c => c.Turno == fTurno);
+            if (!string.IsNullOrEmpty(fUsuario))
+                cierresQuery = cierresQuery.Where(c => c.UsuarioCierre == fUsuario);
+
+            cierresCaja = await cierresQuery.OrderByDescending(c => c.FechaCierre).ToListAsync();
+
+            // Calcular resumen
+            var ventasActivas = ventas.Where(v => v.Estado != "Anulada").ToList();
+            var ventasAnuladas = ventas.Where(v => v.Estado == "Anulada").ToList();
+
+            // Ventas contado = las que NO son crédito
+            var ventasContado = ventasActivas.Where(v => v.TipoPago?.EsCredito != true).ToList();
+            var ventasCredito = ventasActivas.Where(v => v.TipoPago?.EsCredito == true).ToList();
+
+            resumen = new ResumenTotales
+            {
+                VentasContado = ventasContado.Sum(v => v.Total),
+                CantVentasContado = ventasContado.Count,
+                VentasCredito = ventasCredito.Sum(v => v.Total),
+                CantVentasCredito = ventasCredito.Count,
+                CobrosCredito = cobros.Sum(c => c.MontoTotal),
+                CantCobros = cobros.Count,
+                Anulaciones = ventasAnuladas.Sum(v => v.Total),
+                CantAnulaciones = ventasAnuladas.Count
+            };
+
+            // Ventas efectivo = contado con medio pago EFECTIVO
+            resumen.VentasEfectivo = ventasContado.Where(v => v.MedioPago == "EFECTIVO" || v.MedioPago == "Efectivo").Sum(v => v.Total);
+            
+            // Cobros efectivo = cobros con detalles de efectivo
+            resumen.CobrosEfectivo = cobros
+                .SelectMany(c => c.Detalles ?? new List<CobroDetalle>())
+                .Where(d => d.MedioPago == "EFECTIVO" || d.MedioPago == "Efectivo")
+                .Sum(d => d.Monto);
+
+            resumen.TotalIngresos = resumen.VentasContado + resumen.CobrosCredito;
+
+            // Desglose por medio de pago
+            var desglose = new Dictionary<string, decimal>();
+            foreach (var v in ventasContado)
+            {
+                var medio = v.MedioPago ?? "OTROS";
+                if (!desglose.ContainsKey(medio)) desglose[medio] = 0;
+                desglose[medio] += v.Total;
+            }
+            foreach (var c in cobros)
+            {
+                foreach (var d in c.Detalles ?? new List<CobroDetalle>())
+                {
+                    var medio = d.MedioPago ?? "OTROS";
+                    if (!desglose.ContainsKey(medio)) desglose[medio] = 0;
+                    desglose[medio] += d.Monto;
+                }
+            }
+            desgloseMedioPago = desglose.Select(kv => new DesgloseMedioPago
+            {
+                MedioPago = ObtenerNombreMedio(kv.Key),
+                Total = kv.Value
+            }).ToList();
+
+            // Operaciones
+            operaciones = new List<OperacionCaja>();
+            foreach (var v in ventas)
+            {
+                operaciones.Add(new OperacionCaja
+                {
+                    Fecha = v.Fecha,
+                    Tipo = v.Estado == "Anulada" ? "Anulación" : (v.TipoPago?.EsCredito == true ? "Venta Crédito" : "Venta Contado"),
+                    Documento = $"{v.Establecimiento}-{v.PuntoExpedicion}-{v.NumeroFactura}",
+                    Cliente = v.Cliente?.RazonSocial ?? "S/N",
+                    MedioPago = ObtenerNombreMedio(v.MedioPago ?? "EFECTIVO"),
+                    Monto = v.Estado == "Anulada" ? -v.Total : v.Total,
+                    IdCaja = v.IdCaja ?? 0,
+                    Turno = v.Turno ?? 0
+                });
+            }
+            foreach (var c in cobros)
+            {
+                operaciones.Add(new OperacionCaja
+                {
+                    Fecha = c.FechaCobro,
+                    Tipo = "Cobro",
+                    Documento = c.NumeroRecibo ?? $"REC-{c.IdCobro}",
+                    Cliente = c.Cliente?.RazonSocial ?? "S/N",
+                    MedioPago = c.Detalles?.FirstOrDefault()?.MedioPago ?? "VARIOS",
+                    Monto = c.MontoTotal,
+                    IdCaja = c.IdCaja ?? 0,
+                    Turno = 0
+                });
+            }
+        }
+        finally
+        {
+            cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task VerDetalleCierre(CierreCaja cierre)
+    {
+        cierreSeleccionado = cierre;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        entregasSeleccionadas = await ctx.EntregasCaja.AsNoTracking()
+            .Where(e => e.IdCierreCaja == cierre.IdCierreCaja)
+            .ToListAsync();
+    }
+
+    private string ObtenerNombreMedio(string? codigo)
+    {
+        return codigo?.ToUpper() switch
+        {
+            "EFECTIVO" => "Efectivo",
+            "TARJETA" => "Tarjeta",
+            "CHEQUE" => "Cheque",
+            "CHEQUEDIA" => "Cheque del Día",
+            "CHEQUEDIFERIDO" => "Cheque Diferido",
+            "TRANSFERENCIA" => "Transferencia",
+            "QR" => "QR",
+            "BILLETERA" => "Billetera Digital",
+            "VALE" => "Vale",
+            _ => codigo ?? "Otros"
+        };
+    }
+
+    private string ObtenerIconoMedio(string? nombre)
+    {
+        return nombre?.ToLower() switch
+        {
+            "efectivo" => "bi-cash",
+            "tarjeta" => "bi-credit-card",
+            "cheque" or "cheque del día" or "cheque diferido" => "bi-receipt",
+            "transferencia" => "bi-bank",
+            "qr" => "bi-qr-code",
+            "billetera digital" => "bi-phone",
+            _ => "bi-wallet2"
+        };
+    }
+
+    private string ObtenerBadgeTipo(string tipo)
+    {
+        return tipo switch
+        {
+            "Venta Contado" => "bg-success",
+            "Venta Crédito" => "bg-warning text-dark",
+            "Cobro" => "bg-info",
+            "Anulación" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private async Task Imprimir()
+    {
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset=\"utf-8\"/>");
+        head.AppendLine("<title>Resumen de Caja</title>");
+        head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: A4; margin: 10mm; } }");
+        head.AppendLine("body{font-size:11px;color:#111;}");
+        head.AppendLine(".header{border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+        head.AppendLine(".tabla th,.tabla td{padding:.25rem;border-bottom:1px solid #e5e7eb;}");
+        head.AppendLine(".right{text-align:right} .bold{font-weight:bold}");
+        head.AppendLine(".logo{max-width:120px;max-height:70px;object-fit:contain;}");
+        head.AppendLine("</style>");
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+        string empresa = suc?.NombreEmpresa ?? "Empresa";
+        string sucursal = suc?.NombreSucursal ?? "Sucursal";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+        string direccion = suc?.Direccion ?? "";
+        string telefono = suc?.Telefono ?? "";
+        string? logoDataUri = null;
+        if (suc?.Logo != null && suc.Logo.Length > 0)
+            logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+        // Info de caja/turno filtrada
+        string infoCaja = fIdCaja > 0 ? $"Caja: {fIdCaja}" : "Todas las Cajas";
+        string infoTurno = fTurno > 0 ? $"Turno: {fTurno}" : "Todos los Turnos";
+        string infoUsuario = !string.IsNullOrEmpty(fUsuario) ? $"Usuario: {fUsuario}" : "";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class='container-fluid'>");
+        sb.AppendLine("<div class='header d-flex justify-content-between align-items-center'>");
+        sb.AppendLine("<div class='d-flex align-items-center gap-3'>");
+        if (!string.IsNullOrEmpty(logoDataUri))
+            sb.AppendLine($"<img class='logo' src='{logoDataUri}' alt='Logo' />");
+        sb.AppendLine($"<div><h4 class='mb-0'>{empresa}</h4><div class='small'>RUC: {ruc}</div><div class='small'>{sucursal}</div>");
+        if (!string.IsNullOrEmpty(direccion)) sb.AppendLine($"<div class='small'>{direccion}</div>");
+        if (!string.IsNullOrEmpty(telefono)) sb.AppendLine($"<div class='small'>Tel: {telefono}</div>");
+        sb.AppendLine("</div></div>");
+        sb.AppendLine($"<div class='text-end'><h5>Resumen de Caja</h5><div>Desde: {fDesde:dd/MM/yyyy} - Hasta: {fHasta:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div class='small'>{infoCaja} | {infoTurno}</div>");
+        if (!string.IsNullOrEmpty(infoUsuario)) sb.AppendLine($"<div class='small'>{infoUsuario}</div>");
+        sb.AppendLine("</div></div>");
+
+        // Resumen
+        sb.AppendLine("<div class='row mb-3'>");
+        sb.AppendLine($"<div class='col-3'><strong>Ventas Contado:</strong> {resumen.VentasContado:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-3'><strong>Ventas Crédito:</strong> {resumen.VentasCredito:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-3'><strong>Cobros:</strong> {resumen.CobrosCredito:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-3'><strong>Anulaciones:</strong> {resumen.Anulaciones:N0} ₲</div>");
+        sb.AppendLine("</div>");
+
+        sb.AppendLine($"<div class='row mb-3 bg-light p-2'>");
+        sb.AppendLine($"<div class='col-6'><strong>Efectivo en Ventas:</strong> {resumen.VentasEfectivo:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-6'><strong>Efectivo en Cobros:</strong> {resumen.CobrosEfectivo:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-12 mt-2'><h5>TOTAL EFECTIVO ESPERADO: {(resumen.VentasEfectivo + resumen.CobrosEfectivo):N0} ₲</h5></div>");
+        sb.AppendLine("</div>");
+
+        // Desglose medios pago
+        sb.AppendLine("<h6>Desglose por Medio de Pago</h6>");
+        sb.AppendLine("<table class='table table-sm tabla'>");
+        sb.AppendLine("<thead><tr><th>Medio</th><th class='right'>Monto</th><th class='right'>%</th></tr></thead><tbody>");
+        foreach (var d in desgloseMedioPago.OrderByDescending(x => x.Total))
+        {
+            var pct = resumen.TotalIngresos > 0 ? (d.Total / resumen.TotalIngresos * 100) : 0;
+            sb.AppendLine($"<tr><td>{d.MedioPago}</td><td class='right'>{d.Total:N0}</td><td class='right'>{pct:F1}%</td></tr>");
+        }
+        sb.AppendLine("</tbody></table>");
+
+        sb.AppendLine("</div>");
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+
+    private async Task ImprimirTicket()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+        
+        string empresa = suc?.NombreEmpresa ?? "Empresa";
+        string sucursal = suc?.NombreSucursal ?? "Sucursal";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+
+        // Info de filtros
+        string infoCaja = fIdCaja > 0 ? $"Caja: {fIdCaja}" : "Todas";
+        string infoTurno = fTurno > 0 ? $"Turno: {fTurno}" : "Todos";
+
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset='utf-8'/>");
+        head.AppendLine("<title>Resumen de Caja - Ticket</title>");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: 80mm auto; margin: 2mm; } }");
+        head.AppendLine("body{font-family:'Courier New',monospace;font-size:12px;width:76mm;margin:0 auto;color:#000;}");
+        head.AppendLine(".center{text-align:center} .right{text-align:right} .bold{font-weight:bold}");
+        head.AppendLine(".line{border-top:1px dashed #000;margin:5px 0;}");
+        head.AppendLine(".doble-line{border-top:2px solid #000;margin:5px 0;}");
+        head.AppendLine("table{width:100%;border-collapse:collapse;} td{padding:2px 0;}");
+        head.AppendLine(".small{font-size:10px}");
+        head.AppendLine("</style>");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class='center bold'>" + empresa + "</div>");
+        sb.AppendLine("<div class='center small'>RUC: " + ruc + "</div>");
+        sb.AppendLine("<div class='center small'>" + sucursal + "</div>");
+        sb.AppendLine("<div class='doble-line'></div>");
+        sb.AppendLine("<div class='center bold'>RESUMEN DE CAJA</div>");
+        sb.AppendLine("<div class='line'></div>");
+        sb.AppendLine($"<div>Desde: {fDesde:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div>Hasta: {fHasta:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div>{infoCaja} | {infoTurno}</div>");
+        sb.AppendLine("<div class='line'></div>");
+        
+        sb.AppendLine("<div class='bold'>RESUMEN VENTAS</div>");
+        sb.AppendLine("<table>");
+        sb.AppendLine($"<tr><td>Ventas Contado:</td><td class='right'>{resumen.VentasContado:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>  ({resumen.CantVentasContado} ventas)</td><td></td></tr>");
+        sb.AppendLine($"<tr><td>Ventas Crédito:</td><td class='right'>{resumen.VentasCredito:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>  ({resumen.CantVentasCredito} ventas)</td><td></td></tr>");
+        sb.AppendLine($"<tr><td>Cobros Crédito:</td><td class='right'>{resumen.CobrosCredito:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>  ({resumen.CantCobros} cobros)</td><td></td></tr>");
+        sb.AppendLine($"<tr><td>Anulaciones:</td><td class='right'>{resumen.Anulaciones:N0}</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='line'></div>");
+
+        sb.AppendLine("<div class='bold'>EFECTIVO ESPERADO</div>");
+        sb.AppendLine("<table>");
+        sb.AppendLine($"<tr><td>Efectivo Ventas:</td><td class='right'>{resumen.VentasEfectivo:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>Efectivo Cobros:</td><td class='right'>{resumen.CobrosEfectivo:N0}</td></tr>");
+        sb.AppendLine($"<tr class='bold'><td>TOTAL EFECTIVO:</td><td class='right'>{(resumen.VentasEfectivo + resumen.CobrosEfectivo):N0}</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='line'></div>");
+
+        sb.AppendLine("<div class='bold'>DESGLOSE MEDIOS PAGO</div>");
+        sb.AppendLine("<table>");
+        foreach (var d in desgloseMedioPago.OrderByDescending(x => x.Total))
+        {
+            var pct = resumen.TotalIngresos > 0 ? (d.Total / resumen.TotalIngresos * 100) : 0;
+            sb.AppendLine($"<tr><td>{d.MedioPago}:</td><td class='right'>{d.Total:N0}</td></tr>");
+        }
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='doble-line'></div>");
+
+        // Cierres del período
+        if (cierresCaja.Any())
+        {
+            sb.AppendLine("<div class='bold'>CIERRES DEL PERIODO</div>");
+            sb.AppendLine($"<div class='small'>{cierresCaja.Count} cierres</div>");
+            sb.AppendLine("<table>");
+            foreach (var c in cierresCaja.Take(10))
+            {
+                sb.AppendLine($"<tr><td>{c.FechaCaja:dd/MM} T{c.Turno}</td><td class='right'>{c.TotalEntregado:N0}</td></tr>");
+            }
+            if (cierresCaja.Count > 10)
+                sb.AppendLine($"<tr><td colspan='2' class='center small'>... y {cierresCaja.Count - 10} más</td></tr>");
+            sb.AppendLine("</table>");
+            sb.AppendLine("<div class='line'></div>");
+        }
+
+        sb.AppendLine($"<div class='center small'>Impreso: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
+
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+
+    private async Task ExportarCsv()
+    {
+        var sep = ';';
+        var sb = new System.Text.StringBuilder();
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var usuario = auth.User?.Identity?.Name ?? "";
+        sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario}");
+        sb.AppendLine("RESUMEN DE CAJA");
+        sb.AppendLine($"Desde;{fDesde:yyyy-MM-dd};Hasta;{fHasta:yyyy-MM-dd}");
+        sb.AppendLine();
+        sb.AppendLine($"Ventas Contado;{resumen.VentasContado}");
+        sb.AppendLine($"Ventas Crédito;{resumen.VentasCredito}");
+        sb.AppendLine($"Cobros;{resumen.CobrosCredito}");
+        sb.AppendLine($"Anulaciones;{resumen.Anulaciones}");
+        sb.AppendLine($"Efectivo Ventas;{resumen.VentasEfectivo}");
+        sb.AppendLine($"Efectivo Cobros;{resumen.CobrosEfectivo}");
+        sb.AppendLine($"Total Efectivo;{resumen.VentasEfectivo + resumen.CobrosEfectivo}");
+        sb.AppendLine();
+        sb.AppendLine("DESGLOSE POR MEDIO DE PAGO");
+        sb.AppendLine(string.Join(sep, new[] { "Medio", "Monto" }));
+        foreach (var d in desgloseMedioPago)
+            sb.AppendLine($"{d.MedioPago};{d.Total.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        sb.AppendLine();
+        sb.AppendLine("OPERACIONES");
+        sb.AppendLine(string.Join(sep, new[] { "Fecha", "Tipo", "Documento", "Cliente", "MedioPago", "Monto", "Caja", "Turno" }));
+        foreach (var o in operaciones.OrderByDescending(x => x.Fecha))
+            sb.AppendLine(string.Join(sep, new[] {
+                o.Fecha.ToString("yyyy-MM-dd HH:mm"),
+                o.Tipo, o.Documento, o.Cliente, o.MedioPago,
+                o.Monto.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                o.IdCaja.ToString(), o.Turno.ToString()
+            }));
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", b64, $"ResumenCaja_{DateTime.Now:yyyyMMdd_HHmmss}.csv", "text/csv;charset=utf-8");
+    }
+
+    private async Task ExportarXlsx()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("Resumen");
+        int row = 1;
+        ws.Cell(row, 1).Value = "RESUMEN DE CAJA";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Font.FontSize = 14;
+        row++;
+        ws.Cell(row, 1).Value = $"Desde: {fDesde:dd/MM/yyyy} - Hasta: {fHasta:dd/MM/yyyy}";
+        row += 2;
+
+        ws.Cell(row, 1).Value = "Ventas Contado:"; ws.Cell(row, 2).Value = resumen.VentasContado; row++;
+        ws.Cell(row, 1).Value = "Ventas Crédito:"; ws.Cell(row, 2).Value = resumen.VentasCredito; row++;
+        ws.Cell(row, 1).Value = "Cobros:"; ws.Cell(row, 2).Value = resumen.CobrosCredito; row++;
+        ws.Cell(row, 1).Value = "Anulaciones:"; ws.Cell(row, 2).Value = resumen.Anulaciones; row++;
+        ws.Cell(row, 1).Value = "Efectivo Ventas:"; ws.Cell(row, 2).Value = resumen.VentasEfectivo; row++;
+        ws.Cell(row, 1).Value = "Efectivo Cobros:"; ws.Cell(row, 2).Value = resumen.CobrosEfectivo; row++;
+        ws.Cell(row, 1).Value = "TOTAL EFECTIVO:"; ws.Cell(row, 2).Value = resumen.VentasEfectivo + resumen.CobrosEfectivo;
+        ws.Cell(row, 1).Style.Font.Bold = true; ws.Cell(row, 2).Style.Font.Bold = true;
+        row += 2;
+
+        ws.Cell(row, 1).Value = "Medio Pago"; ws.Cell(row, 2).Value = "Monto";
+        ws.Cell(row, 1).Style.Font.Bold = true; ws.Cell(row, 2).Style.Font.Bold = true;
+        row++;
+        foreach (var d in desgloseMedioPago)
+        {
+            ws.Cell(row, 1).Value = d.MedioPago;
+            ws.Cell(row, 2).Value = d.Total;
+            row++;
+        }
+
+        ws.Columns().AdjustToContents();
+
+        // Hoja operaciones
+        var ws2 = wb.AddWorksheet("Operaciones");
+        var headers = new[] { "Fecha", "Tipo", "Documento", "Cliente", "MedioPago", "Monto", "Caja", "Turno" };
+        for (int c = 0; c < headers.Length; c++)
+        {
+            ws2.Cell(1, c + 1).Value = headers[c];
+            ws2.Cell(1, c + 1).Style.Font.Bold = true;
+        }
+        row = 2;
+        foreach (var o in operaciones.OrderByDescending(x => x.Fecha))
+        {
+            ws2.Cell(row, 1).Value = o.Fecha;
+            ws2.Cell(row, 2).Value = o.Tipo;
+            ws2.Cell(row, 3).Value = o.Documento;
+            ws2.Cell(row, 4).Value = o.Cliente;
+            ws2.Cell(row, 5).Value = o.MedioPago;
+            ws2.Cell(row, 6).Value = o.Monto;
+            ws2.Cell(row, 7).Value = o.IdCaja;
+            ws2.Cell(row, 8).Value = o.Turno;
+            row++;
+        }
+        ws2.Columns().AdjustToContents();
+
+        using var ms = new System.IO.MemoryStream();
+        wb.SaveAs(ms);
+        var b64 = Convert.ToBase64String(ms.ToArray());
+        await JS.InvokeVoidAsync("downloadFile", b64, $"ResumenCaja_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private class ResumenTotales
+    {
+        public decimal VentasContado { get; set; }
+        public int CantVentasContado { get; set; }
+        public decimal VentasCredito { get; set; }
+        public int CantVentasCredito { get; set; }
+        public decimal CobrosCredito { get; set; }
+        public int CantCobros { get; set; }
+        public decimal Anulaciones { get; set; }
+        public int CantAnulaciones { get; set; }
+        public decimal VentasEfectivo { get; set; }
+        public decimal CobrosEfectivo { get; set; }
+        public decimal TotalIngresos { get; set; }
+    }
+
+    private class DesgloseMedioPago
+    {
+        public string MedioPago { get; set; } = "";
+        public decimal Total { get; set; }
+    }
+
+    private class OperacionCaja
+    {
+        public DateTime Fecha { get; set; }
+        public string Tipo { get; set; } = "";
+        public string Documento { get; set; } = "";
+        public string Cliente { get; set; } = "";
+        public string MedioPago { get; set; } = "";
+        public decimal Monto { get; set; }
+        public int IdCaja { get; set; }
+        public int Turno { get; set; }
+    }
+}

@@ -1,329 +1,605 @@
 ﻿@page "/clientes/crear"
-@using Microsoft.EntityFrameworkCore
 @using SistemIA.Models
 @using SistemIA.Utils
-@using System.Xml.Linq
-@using System.Xml
-@inject SistemIA.Models.AppDbContext Db
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
-@inject Sifen Sifen
+@inject Sifen SifenService
 
-<h3 class="mb-4">🧾 Crear Nuevo Cliente</h3>
+<PageTitle>Crear Nuevo Cliente</PageTitle>
 
-@if (!string.IsNullOrEmpty(errorMessage))
-{
-    <div class="alert alert-danger">@errorMessage</div>
-}
-@if (!string.IsNullOrEmpty(infoMessage))
-{
-    <div class="alert alert-success">@infoMessage</div>
-}
-<EditForm Model="@cliente" OnValidSubmit="GuardarCliente">
-    <DataAnnotationsValidator />
-    <ValidationSummary />
-    <div class="row g-3">
-        <!-- Columna Izquierda -->
-        <div class="col-md-6">
-            <div class="mb-3">
-                <label class="form-label">Razón Social</label>
-                <InputText class="form-control" @bind-Value="cliente.RazonSocial" />
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-person-plus me-2"></i>Crear Nuevo Cliente</h3>
+        <a href="/clientes/explorar" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Volver
+        </a>
+    </div>
+
+    <EditForm Model="@cliente" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="text-danger mb-3" />
+
+        <div class="row">
+            <!-- Columna Izquierda -->
+            <div class="col-md-6">
+                <!-- Card Identificación -->
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <i class="bi bi-person-badge me-2"></i>Identificación
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Razón Social <span class="text-danger">*</span></label>
+                            <InputText @bind-Value="cliente.RazonSocial" class="form-control" placeholder="Nombre o razón social" />
+                            <ValidationMessage For="@(() => cliente.RazonSocial)" />
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Tipo Documento</label>
+                                <InputSelect @bind-Value="cliente.TipoDocumento" class="form-select">
+                                    @foreach (var tipo in tiposDocumento)
+                                    {
+                                        <option value="@tipo.TipoDocumento">@tipo.Descripcion</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Documento</label>
+                                <div class="input-group">
+                                    <InputText @bind-Value="cliente.RUC" @bind-Value:after="OnRucChanged" class="form-control" placeholder="RUC sin DV" />
+                                    <button type="button" class="btn btn-outline-primary" @onclick="ConsultarRucManual" disabled="@consultandoRuc" title="Consultar datos del RUC en DNIT">
+                                        @if (consultandoRuc)
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-search"></i>
+                                        }
+                                        DNIT
+                                    </button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(mensajeRuc))
+                                {
+                                    <small class="@(esErrorRuc ? "text-danger" : "text-success")">@mensajeRuc</small>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">DV</label>
+                                <InputNumber @bind-Value="cliente.DV" class="form-control" placeholder="DV" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card Ubicación y Contacto -->
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white">
+                        <i class="bi bi-geo-alt me-2"></i>Ubicación y contacto
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Dirección</label>
+                            <InputText @bind-Value="cliente.Direccion" class="form-control" placeholder="Dirección completa" />
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">País</label>
+                                <InputSelect @bind-Value="cliente.CodigoPais" class="form-select">
+                                    <option value="">-- Seleccione --</option>
+                                    @foreach (var pais in paises)
+                                    {
+                                        <option value="@pais.CodigoPais">@pais.Nombre</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Ciudad</label>
+                                <InputSelect @bind-Value="ciudadSeleccionada" class="form-select">
+                                    <option value="@CODIGO_ASUNCION">ASUNCION (DISTRITO)</option>
+                                    @foreach (var ciudad in ciudades.Where(c => c.Numero != CODIGO_ASUNCION))
+                                    {
+                                        <option value="@ciudad.Numero">@ciudad.Nombre</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Teléfono</label>
+                                <InputText @bind-Value="cliente.Telefono" class="form-control" placeholder="Teléfono" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Email</label>
+                                <InputText @bind-Value="cliente.Email" class="form-control" placeholder="email@ejemplo.com" />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Fecha de Nacimiento</label>
+                            <InputDate @bind-Value="cliente.FechaNacimiento" class="form-control" />
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="mb-3">
-                <label class="form-label">Tipo Documento</label>
-                <InputSelect class="form-select" @bind-Value="cliente.TipoDocumento">
-                    <option value="">-- Seleccionar --</option>
-                    @foreach (var tipo in tiposDocumentos)
-                    {
-                        <option value="@tipo.TipoDocumento">@tipo.Descripcion</option>
-                    }
-                </InputSelect>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">RUC</label>
-                <InputText class="form-control"
-                           @bind-Value="cliente.RUC"
-                           onblur="@OnRucChanged" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">DV</label>
-                <InputNumber class="form-control" @bind-Value="cliente.DV" readonly />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Dirección</label>
-                <InputText class="form-control" @bind-Value="cliente.Direccion" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Teléfono</label>
-                <InputText class="form-control" @bind-Value="cliente.Telefono" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Email</label>
-                <InputText class="form-control" @bind-Value="cliente.Email" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Fecha de Nacimiento</label>
-                <InputDate class="form-control" @bind-Value="cliente.FechaNacimiento" />
+
+            <!-- Columna Derecha -->
+            <div class="col-md-6">
+                <!-- Card Condiciones Comerciales -->
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <i class="bi bi-cash-coin me-2"></i>Condiciones comerciales
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <InputCheckbox @bind-Value="cliente.Estado" class="form-check-input" id="chkEstado" />
+                                    <label class="form-check-label" for="chkEstado">Cliente Activo</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <InputCheckbox @bind-Value="cliente.EsExtranjero" class="form-check-input" id="chkExtranjero" />
+                                    <label class="form-check-label" for="chkExtranjero">¿Extranjero?</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Tipo de Contribuyente</label>
+                                <InputSelect @bind-Value="cliente.IdTipoContribuyente" class="form-select">
+                                    @foreach (var tipo in tiposContribuyente)
+                                    {
+                                        <option value="@tipo.IdTipoContribuyente">@tipo.NombreTipo</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Tipo de Operación</label>
+                                <InputSelect @bind-Value="cliente.TipoOperacion" class="form-select">
+                                    @foreach (var tipo in tiposOperacion)
+                                    {
+                                        <option value="@tipo.Codigo">@tipo.Descripcion</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Límite Crédito</label>
+                                <InputNumber @bind-Value="cliente.LimiteCredito" class="form-control" placeholder="0" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Plazo Días Crédito</label>
+                                <InputNumber @bind-Value="cliente.PlazoDiasCredito" class="form-control" placeholder="0" />
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <InputCheckbox @bind-Value="cliente.PermiteCredito" class="form-check-input" id="chkCredito" />
+                                    <label class="form-check-label" for="chkCredito">Permite Crédito</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <InputCheckbox @bind-Value="cliente.PrecioDiferenciado" class="form-check-input" id="chkPrecioDif" />
+                                    <label class="form-check-label" for="chkPrecioDif">Precio Diferenciado</label>
+                                </div>
+                                @if (cliente.PrecioDiferenciado)
+                                {
+                                    <div class="alert alert-info py-1 px-2 mt-1 small mb-0">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        Guarde el cliente y luego ingrese a <strong>Editar</strong> para configurar los precios por producto.
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Botón colapsable para SIFEN -->
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-sm btn-outline-secondary w-100" @onclick="() => mostrarSifen = !mostrarSifen">
+                                <i class="bi @(mostrarSifen ? "bi-chevron-up" : "bi-chevron-down") me-1"></i>
+                                Datos SIFEN avanzados
+                            </button>
+                        </div>
+
+                        @if (mostrarSifen)
+                        {
+                            <div class="mt-3 p-3 border rounded bg-light">
+                                <h6 class="text-muted mb-3"><i class="bi bi-file-earmark-code me-1"></i>Datos SIFEN</h6>
+                                
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Tipo Doc. Identidad SIFEN</label>
+                                        <InputNumber @bind-Value="cliente.TipoDocumentoIdentidadSifen" class="form-control form-control-sm" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Número Doc. Identidad</label>
+                                        <InputText @bind-Value="cliente.NumeroDocumentoIdentidad" class="form-control form-control-sm" />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Código Departamento</label>
+                                        <InputNumber @bind-Value="cliente.CodigoDepartamento" class="form-control form-control-sm" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Descripción Departamento</label>
+                                        <InputText @bind-Value="cliente.DescripcionDepartamento" class="form-control form-control-sm" />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Código Distrito</label>
+                                        <InputNumber @bind-Value="cliente.CodigoDistrito" class="form-control form-control-sm" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Descripción Distrito</label>
+                                        <InputText @bind-Value="cliente.DescripcionDistrito" class="form-control form-control-sm" />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Naturaleza Receptor</label>
+                                        <InputNumber @bind-Value="cliente.NaturalezaReceptor" class="form-control form-control-sm" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Número Casa</label>
+                                        <InputText @bind-Value="cliente.NumeroCasa" class="form-control form-control-sm" />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Comp. Dirección 1</label>
+                                        <InputText @bind-Value="cliente.CompDireccion1" class="form-control form-control-sm" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Comp. Dirección 2</label>
+                                        <InputText @bind-Value="cliente.CompDireccion2" class="form-control form-control-sm" />
+                                    </div>
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label small">Código Establecimiento</label>
+                                    <InputText @bind-Value="cliente.CodigoEstablecimiento" class="form-control form-control-sm" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Columna Derecha -->
-        <div class="col-md-6">
-            <div class="mb-3">
-                <label class="form-label">Contacto</label>
-                <InputText class="form-control" @bind-Value="cliente.Contacto" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Límite Crédito</label>
-                @if (editandoLimiteCredito)
+        <!-- Botones de acción -->
+        <div class="d-flex justify-content-end gap-2 mt-3 mb-5">
+            <a href="/clientes/explorar" class="btn btn-secondary">
+                <i class="bi bi-x-circle me-1"></i> Cancelar
+            </a>
+            <button type="submit" class="btn btn-primary" disabled="@guardando">
+                @if (guardando)
                 {
-                    <InputNumber @bind-Value="cliente.LimiteCredito"
-                                 class="form-control"
-                                 @onblur="OnLimiteCreditoBlur"
-                                 autofocus />
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                    <span>Guardando...</span>
                 }
                 else
                 {
-                    <div class="form-control-plaintext"
-                         style="min-height:38px; cursor:pointer;"
-                         title="Haz clic para editar"
-                         @onclick="ActivarEdicionLimiteCredito">
-                        @(cliente.LimiteCredito.HasValue ? cliente.LimiteCredito.Value.ToString("N2") : "")
-                    </div>
+                    <i class="bi bi-check-circle me-1"></i>
+                    <span>Guardar Cliente</span>
                 }
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Estado</label>
-                <InputSelect class="form-select" @bind-Value="cliente.Estado">
-                    <option value="">-- Seleccionar --</option>
-                    <option value="Activo">Activo</option>
-                    <option value="Inactivo">Inactivo</option>
-                </InputSelect>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Saldo</label>
-                <InputNumber class="form-control" @bind-Value="cliente.Saldo" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Tipo de Contribuyente</label>
-                <InputSelect class="form-select" @bind-Value="cliente.IdTipoContribuyente">
-                    <option value="">-- Seleccionar --</option>
-                    @foreach (var tipo in tiposContribuyentes)
-                    {
-                        <option value="@tipo.IdTipoContribuyente">@tipo.NombreTipo</option>
-                    }
-                </InputSelect>
-                <label>Tipo de Operación</label>
-                <InputSelect @bind-Value="cliente.TipoOperacion" class="form-select">
-                    <option value="">Seleccione...</option>
-                    @foreach (var tipo in tiposOperacion)
-                    {
-                        <option value="@tipo.Codigo">@tipo.Descripcion</option>
-                    }
-                </InputSelect>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Timbrado</label>
-                <InputText class="form-control" @bind-Value="cliente.Timbrado" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Vencimiento Timbrado</label>
-                <InputDate class="form-control" @bind-Value="cliente.VencimientoTimbrado" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Precio Diferenciado</label>
-                <InputCheckbox class="form-check-input" @bind-Value="cliente.PrecioDiferenciado" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Plazo Días Crédito</label>
-                <InputNumber class="form-control" @bind-Value="cliente.PlazoDiasCredito" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">País</label>
-                <InputSelect class="form-select" @bind-Value="cliente.CodigoPais">
-                    <option value="">-- Seleccionar --</option>
-                    @foreach (var pais in paises)
-                    {
-                        <option value="@pais.CodigoPais">@pais.Nombre</option>
-                    }
-                </InputSelect>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Ciudad</label>
-                <InputSelect class="form-select" @bind-Value="cliente.IdCiudad">
-                    <option value="">-- Seleccionar --</option>
-                    @foreach (var ciudad in ciudades)
-                    {
-                        <option value="@ciudad.IdCiudad">@ciudad.Nombre (@ciudad.Departamento)</option>
-                    }
-                </InputSelect>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">¿Extranjero?</label>
-                <InputCheckbox class="form-check-input" @bind-Value="cliente.EsExtranjero" />
-            </div>
+            </button>
         </div>
-    </div>
-
-    <div class="mt-4">
-        <button type="submit" class="btn btn-primary">💾 Guardar</button>
-        <button type="button" class="btn btn-secondary ms-2" @onclick="Cancelar">Cancelar</button>
-    </div>
-</EditForm>
+    </EditForm>
+</div>
 
 @code {
-    private Cliente cliente = new()
-        {
-            RazonSocial = "",
-            RUC = "",
-            Direccion = "",
-            Telefono = "",
-            Email = "",
-            Contacto = "",
-            Estado = "",
-            Timbrado = "",
-            CodigoPais = ""
-        };
+    private const int CODIGO_ASUNCION = 1;
+    
+    private Cliente cliente = new Cliente
+    {
+        Estado = true,
+        FechaAlta = DateTime.Now,
+        CodigoPais = "PRY",
+        TipoDocumento = "11",
+        Saldo = 0,
+        IdCiudad = CODIGO_ASUNCION,
+        IdTipoContribuyente = 1,
+        TipoOperacion = "1",
+        NaturalezaReceptor = 1,
+        DV = 0
+    };
 
-    private List<TiposDocumentosIdentidad> tiposDocumentos = new();
-    private List<TiposContribuyentes> tiposContribuyentes = new();
+    private List<TiposContribuyentes> tiposContribuyente = new();
+    private List<TiposDocumentosIdentidad> tiposDocumento = new();
     private List<Paises> paises = new();
-    private List<Ciudades> ciudades = new();
+    private List<CiudadCatalogo> ciudades = new();
     private List<TipoOperacion> tiposOperacion = new();
-    private string? errorMessage;
-    private string? infoMessage;
-    private bool editandoLimiteCredito => !cliente.LimiteCredito.HasValue || editandoLimiteCreditoInterno;
-    private bool editandoLimiteCreditoInterno = false;
 
-    private void ActivarEdicionLimiteCredito()
-    {
-        editandoLimiteCreditoInterno = true;
-    }
+    private bool guardando = false;
+    private bool mostrarSifen = false;
+    private bool consultandoRuc = false;
+    private string mensajeRuc = "";
+    private bool esErrorRuc = false;
+    private int ciudadSeleccionada = CODIGO_ASUNCION;
 
-    private void OnLimiteCreditoBlur(FocusEventArgs e)
+    private async Task OnRucChanged()
     {
-        editandoLimiteCreditoInterno = false;
+        if (!string.IsNullOrEmpty(cliente.RUC) && cliente.RUC.All(char.IsDigit) && cliente.RUC.Length >= 5 && cliente.RUC.Length <= 8)
+        {
+            cliente.DV = SistemIA.Utils.RucHelper.CalcularDvRuc(cliente.RUC);
+            
+            // Consultar automáticamente a SIFEN
+            await ConsultarRucManual();
+        }
+        else if (!string.IsNullOrEmpty(cliente.RUC))
+        {
+            mensajeRuc = "RUC debe tener entre 5 y 8 dígitos numéricos.";
+            esErrorRuc = true;
+        }
+        StateHasChanged();
     }
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            tiposContribuyentes = await Db.TiposContribuyentes.ToListAsync();
-            tiposDocumentos = await Db.TiposDocumentosIdentidad.ToListAsync();
-            paises = await Db.Paises.ToListAsync();
-            ciudades = await Db.Ciudades.ToListAsync();
-            tiposOperacion = await Db.TiposOperacion.ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = "Error al cargar datos.";
-            Console.WriteLine($"[ERROR] {ex.Message}");
-        }
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        tiposContribuyente = await context.TiposContribuyentes.ToListAsync();
+        tiposDocumento = await context.TiposDocumentosIdentidad.ToListAsync();
+        paises = await context.Paises.ToListAsync();
+        ciudades = await context.CiudadesCatalogo.OrderBy(c => c.Nombre).ToListAsync();
+        tiposOperacion = await context.TiposOperacion.ToListAsync();
     }
 
-    private async Task GuardarCliente()
+    private async Task ConsultarRucManual()
     {
+        if (string.IsNullOrWhiteSpace(cliente.RUC))
+        {
+            mensajeRuc = "Ingrese un RUC para consultar";
+            esErrorRuc = true;
+            return;
+        }
+
+        consultandoRuc = true;
+        mensajeRuc = "";
+        esErrorRuc = false;
+        StateHasChanged();
+
         try
         {
-            Db.Clientes.Add(cliente);
-            await Db.SaveChangesAsync();
-            Navigation.NavigateTo("/clientes");
-        }
-        catch (Exception ex)
-        {
-            errorMessage = "Error al guardar el cliente.";
-            Console.WriteLine($"[ERROR] {ex.Message}");
-        }
-    }
-
-    private async Task OnRucChanged()
-    {
-        if (!string.IsNullOrWhiteSpace(cliente.RUC) && cliente.RUC.All(char.IsDigit))
-        {
-            cliente.DV = RucHelper.CalcularDvRuc(cliente.RUC);
-            string url = "https://sifen-test.set.gov.py/de/ws/consultas/consulta-ruc.wsdl";
-            string tipoConsulta = "1";
-
-            var sucursal = await Db.Sucursal.FirstOrDefaultAsync();
-            if (sucursal != null &&
-                !string.IsNullOrWhiteSpace(sucursal.CertificadoRuta) &&
-                !string.IsNullOrWhiteSpace(sucursal.CertificadoPassword))
+            // Obtener sociedad para credenciales
+            using var context = await DbFactory.CreateDbContextAsync();
+            var sociedad = await context.Sociedades.FirstOrDefaultAsync();
+            
+            if (sociedad == null || string.IsNullOrEmpty(sociedad.PathCertificadoP12))
             {
-                try
+                mensajeRuc = "No hay sociedad o certificado configurado";
+                esErrorRuc = true;
+                return;
+            }
+
+            var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            Console.WriteLine($"[DEBUG CrearCliente] URL: {url}");
+            Console.WriteLine($"[DEBUG CrearCliente] Certificado: {sociedad.PathCertificadoP12}");
+            Console.WriteLine($"[DEBUG CrearCliente] RUC a consultar: {cliente.RUC}");
+            
+            // Usar método Consulta corregido con formato SOAP correcto
+            var xmlRespuesta = await SifenService.Consulta(url, cliente.RUC, "1", sociedad.PathCertificadoP12 ?? "", sociedad.PasswordCertificadoP12 ?? "");
+            
+            Console.WriteLine($"[DEBUG CrearCliente] Respuesta recibida: {xmlRespuesta?.Substring(0, Math.Min(800, xmlRespuesta?.Length ?? 0))}");
+            
+            if (!string.IsNullOrEmpty(xmlRespuesta))
+            {
+                // Verificar si es error de conexión/formato (problema común con conexión inestable)
+                if (xmlRespuesta.Contains("0160") || xmlRespuesta.Contains("XML Mal Formado"))
                 {
-                    var resultado = await Task.Run(() =>
-                        Sifen.consulta(url, cliente.RUC, "1", sucursal.CertificadoRuta, sucursal.CertificadoPassword)
-                    );
-
-                    if (!resultado.StartsWith("Error"))
+                    mensajeRuc = "⚠️ Error de conexión con SIFEN. Intente nuevamente.";
+                    esErrorRuc = true;
+                    return;
+                }
+                
+                var xmlDoc = new System.Xml.XmlDocument();
+                xmlDoc.LoadXml(xmlRespuesta);
+                
+                // Buscar código de respuesta
+                var codResNode = xmlDoc.SelectSingleNode("//*[local-name()='dCodRes']");
+                var msgResNode = xmlDoc.SelectSingleNode("//*[local-name()='dMsgRes']");
+                var codRes = codResNode?.InnerText ?? "";
+                var msgRes = msgResNode?.InnerText ?? "";
+                
+                Console.WriteLine($"[DEBUG CrearCliente] dCodRes: {codRes}, dMsgRes: {msgRes}");
+                
+                // Código 0502 = RUC encontrado
+                if (codRes == "0502")
+                {
+                    // Buscar datos del contribuyente dentro de xContRUC
+                    // Campos reales de SIFEN: dRUCCons, dRazCons, dCodEstCons, dDesEstCons, dRUCFactElec
+                    var xContRUC = xmlDoc.SelectSingleNode("//*[local-name()='xContRUC']");
+                    if (xContRUC != null)
                     {
-                        var datos = ExtraerDatosConsultaRuc(resultado);
-
-                        if (datos.TryGetValue("dRazCons", out var razonSocial) && !string.IsNullOrEmpty(razonSocial))
+                        // dRazCons = Razón Social del contribuyente consultado
+                        var dRazCons = xContRUC.SelectSingleNode(".//*[local-name()='dRazCons']")?.InnerText;
+                        // dDesEstCons = Descripción del estado (ACTIVO, INACTIVO, etc.)
+                        var dDesEstCons = xContRUC.SelectSingleNode(".//*[local-name()='dDesEstCons']")?.InnerText;
+                        // dCodEstCons = Código del estado (ACT, INA, etc.)
+                        var dCodEstCons = xContRUC.SelectSingleNode(".//*[local-name()='dCodEstCons']")?.InnerText;
+                        
+                        Console.WriteLine($"[DEBUG CrearCliente] dRazCons: {dRazCons}");
+                        Console.WriteLine($"[DEBUG CrearCliente] dDesEstCons: {dDesEstCons}");
+                        Console.WriteLine($"[DEBUG CrearCliente] dCodEstCons: {dCodEstCons}");
+                        
+                        // Actualizar cliente con datos de SIFEN
+                        if (!string.IsNullOrEmpty(dRazCons))
                         {
-                            cliente.RazonSocial = razonSocial;
-
-                            infoMessage = $"🎉 RUC {cliente.RUC} encontrado en la DNIT: {cliente.RazonSocial.Trim()} ({datos.GetValueOrDefault("dDesEstCons", "Estado desconocido")})";
-
-                            if (datos.TryGetValue("dDesEstCons", out var estado))
-                                cliente.Estado = estado;
-
-                           
-
-                            StateHasChanged();
+                            cliente.RazonSocial = dRazCons.Trim();
                         }
-                        else
+                        
+                        // Calcular DV (SIFEN no lo devuelve en consulta RUC)
+                        cliente.DV = SistemIA.Utils.RucHelper.CalcularDvRuc(cliente.RUC);
+                        
+                        // Estado del contribuyente
+                        if (!string.IsNullOrEmpty(dDesEstCons))
                         {
-                            infoMessage = null;
-                            infoMessage = $"⚠️ No se encontró información para el RUC en la DNIT {cliente.RUC}.";
-                      
-                            cliente.RazonSocial = "";
+                            cliente.Estado = dDesEstCons.ToUpper().Contains("ACTIVO") || dCodEstCons == "ACT";
                         }
-
+                        
+                        // Determinar tipo de contribuyente por el RUC
+                        // RUC con 8 dígitos suele ser persona jurídica
+                        if (!string.IsNullOrEmpty(cliente.RUC))
+                        {
+                            if (cliente.RUC.Length >= 7)
+                            {
+                                cliente.IdTipoContribuyente = 2; // Persona Jurídica
+                                cliente.NaturalezaReceptor = 2;
+                            }
+                            else
+                            {
+                                cliente.IdTipoContribuyente = 1; // Persona Física
+                                cliente.NaturalezaReceptor = 1;
+                            }
+                        }
+                        
+                        mensajeRuc = $"✓ {dRazCons?.Trim()} - {dDesEstCons}";
+                        esErrorRuc = false;
                     }
                     else
                     {
-                        infoMessage = null;
-                        await JS.InvokeVoidAsync("alert", $"❌ No se encontró información para el RUC en la DNIT: {resultado}");
-                        cliente.RazonSocial = "";
+                        mensajeRuc = "RUC encontrado pero sin datos";
+                        esErrorRuc = true;
                     }
                 }
-                catch (Exception ex)
+                else if (codRes == "0501")
                 {
-                    Console.WriteLine($"[ERROR] Consulta RUC fallida: {ex.Message}");
-                    await JS.InvokeVoidAsync("alert", "Ocurrió un error al consultar el RUC.");
+                    // 0501 = RUC no encontrado
+                    mensajeRuc = $"RUC no encontrado: {msgRes}";
+                    esErrorRuc = true;
+                }
+                else
+                {
+                    mensajeRuc = $"Respuesta SIFEN: [{codRes}] {msgRes}";
+                    esErrorRuc = codRes != "0500"; // 0500 es procesado correctamente
                 }
             }
-        }
-        else
-        {
-            cliente.DV = 0;
-        }
-    }
-    private Dictionary<string, string> ExtraerDatosConsultaRuc(string xml)
-    {
-        var datos = new Dictionary<string, string>();
-
-        try
-        {
-            var doc = XDocument.Parse(xml);
-            XNamespace ns2 = "http://ekuatia.set.gov.py/sifen/xsd";
-
-            datos["dRazCons"] = doc.Descendants(ns2 + "dRazCons").FirstOrDefault()?.Value?.Trim() ?? "";
-            datos["dDesEstCons"] = doc.Descendants(ns2 + "dDesEstCons").FirstOrDefault()?.Value?.Trim() ?? "";
+            else
+            {
+                mensajeRuc = "⚠️ Sin respuesta de SIFEN. Verifique conexión e intente nuevamente.";
+                esErrorRuc = true;
+            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ERROR] Fallo al analizar XML con namespaces: {ex.Message}");
+            Console.WriteLine($"[ERROR CrearCliente] {ex.Message}");
+            mensajeRuc = $"Error al consultar: {ex.Message}";
+            esErrorRuc = true;
         }
-
-        return datos;
+        finally
+        {
+            consultandoRuc = false;
+            StateHasChanged();
+        }
     }
-   
 
-    private void Cancelar()
+    private async Task HandleSubmit()
     {
-        Navigation.NavigateTo("/clientes");
+        guardando = true;
+        StateHasChanged();
+
+        try
+        {
+            // Asignar IdCiudad desde la selección
+            cliente.IdCiudad = ciudadSeleccionada;
+            
+            // Asignar datos de ciudad seleccionada
+            if (ciudadSeleccionada > 0)
+            {
+                var ciudadSel = ciudades.FirstOrDefault(c => c.Numero == ciudadSeleccionada);
+                if (ciudadSel != null)
+                {
+                    cliente.CodigoDepartamento = ciudadSel.Departamento.ToString();
+                    cliente.CodigoDistrito = ciudadSel.Distrito.ToString();
+                }
+            }
+
+            using var context = await DbFactory.CreateDbContextAsync();
+            
+            // Validar que el RUC no esté duplicado
+            if (!string.IsNullOrWhiteSpace(cliente.RUC))
+            {
+                var rucExiste = await context.Clientes.AnyAsync(c => c.RUC == cliente.RUC);
+                if (rucExiste)
+                {
+                    await JS.InvokeVoidAsync("alert", "Ya existe un cliente con ese número de documento (RUC)");
+                    guardando = false;
+                    return;
+                }
+            }
+            
+            // Generar CodigoCliente automáticamente dentro de transacción para evitar duplicados
+            using var transaction = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                var maxCodigo = await context.Clientes
+                    .Where(c => c.CodigoCliente != null)
+                    .Select(c => c.CodigoCliente)
+                    .OrderByDescending(c => c)
+                    .FirstOrDefaultAsync();
+                
+                int siguienteCodigo = 1;
+                if (!string.IsNullOrEmpty(maxCodigo))
+                {
+                    // Extraer número del código (CLI00001 -> 1)
+                    var numStr = new string(maxCodigo.Where(char.IsDigit).ToArray());
+                    if (int.TryParse(numStr, out var ultimoCodigo))
+                    {
+                        siguienteCodigo = ultimoCodigo + 1;
+                    }
+                }
+                cliente.CodigoCliente = $"CLI{siguienteCodigo:D5}";
+                
+                // Asignar NumeroDocumento igual al RUC si está vacío
+                if (string.IsNullOrWhiteSpace(cliente.NumeroDocumento))
+                {
+                    cliente.NumeroDocumento = cliente.RUC;
+                }
+                
+                context.Clientes.Add(cliente);
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+
+            await JS.InvokeVoidAsync("alert", "Cliente creado exitosamente");
+            Navigation.NavigateTo("/clientes/explorar");
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException?.Message ?? ex.Message;
+            Console.WriteLine($"[ERROR CrearCliente] {ex.Message} | Inner: {innerMsg}");
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {innerMsg}");
+        }
+        finally
+        {
+            guardando = false;
+            StateHasChanged();
+        }
     }
 }

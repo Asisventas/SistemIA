@@ -1,0 +1,311 @@
+@page "/proveedores/sifen/validacion"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Utils
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<h3 class="mb-4">✅ Validación de Proveedores SIFEN</h3>
+
+<div class="row mb-3">
+    <div class="col">
+        <a href="/proveedores/sifen" class="btn btn-outline-secondary">← Volver a Proveedores SIFEN</a>
+        <button class="btn btn-primary ms-2" @onclick="ValidarTodos">
+            <i class="bi bi-check-all"></i> Validar Todos
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (!string.IsNullOrEmpty(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
+
+<!-- Estadísticas de Validación -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body text-center">
+                <i class="bi bi-check-circle fa-2x mb-2"></i>
+                <h5 class="card-title">@proveedoresValidos</h5>
+                <p class="card-text">Válidos SIFEN</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white bg-danger">
+            <div class="card-body text-center">
+                <i class="bi bi-x-circle fa-2x mb-2"></i>
+                <h5 class="card-title">@proveedoresInvalidos</h5>
+                <p class="card-text">Con Errores</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body text-center">
+                <i class="bi bi-exclamation-triangle fa-2x mb-2"></i>
+                <h5 class="card-title">@timbradosProblematicos</h5>
+                <p class="card-text">Timbrados Problemáticos</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body text-center">
+                <i class="bi bi-gear fa-2x mb-2"></i>
+                <h5 class="card-title">@proveedoresPrueba</h5>
+                <p class="card-text">En Modo Prueba</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (proveedores == null)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-list-check"></i> Estado de Validación por Proveedor</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-hover table-striped">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Proveedor</th>
+                        <th>RUC-DV</th>
+                        <th>Timbrado</th>
+                        <th>Estado Validación</th>
+                        <th>Errores</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var resultado in resultadosValidacion)
+                    {
+                        <tr class="@(resultado.EsValido ? "" : "table-danger")">
+                            <td>
+                                <strong>@resultado.Proveedor.RazonSocial</strong>
+                                <br><small class="text-muted">@resultado.Proveedor.NombreFantasia</small>
+                            </td>
+                            <td>
+                                <code>@resultado.Proveedor.RUCCompleto</code>
+                                <br><small class="text-muted">@resultado.Proveedor.DescripcionTipoContribuyente</small>
+                            </td>
+                            <td>
+                                <strong>@resultado.Proveedor.Timbrado</strong>
+                                <br><small class="@(resultado.Proveedor.TimbradoVencido ? "text-danger" : resultado.Proveedor.TimbradoProximoVencer ? "text-warning" : "text-success")">
+                                    @resultado.Proveedor.EstadoTimbrado
+                                </small>
+                            </td>
+                            <td>
+                                <span class="badge bg-@(resultado.EsValido ? "success" : "danger")">
+                                    @(resultado.EsValido ? "✅ VÁLIDO" : "❌ INVÁLIDO")
+                                </span>
+                                <br><small class="text-muted">Ambiente: @resultado.Proveedor.Ambiente.ToUpper()</small>
+                            </td>
+                            <td>
+                                @if (resultado.Errores.Any())
+                                {
+                                    <span class="badge bg-danger">@resultado.Errores.Count errores</span>
+                                    <div class="mt-1">
+                                        @foreach (var error in resultado.Errores.Take(2))
+                                        {
+                                            <small class="text-danger d-block">• @error</small>
+                                        }
+                                        @if (resultado.Errores.Count > 2)
+                                        {
+                                            <small class="text-muted">... y @(resultado.Errores.Count - 2) más</small>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-success">Sin errores</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-info me-1" @onclick="@(() => VerDetalles(resultado))" title="Ver detalles">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="@(() => RevalidarProveedor(resultado.Proveedor.IdProveedor))" title="Re-validar">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                @if (!resultado.EsValido)
+                                {
+                                    <button class="btn btn-sm btn-outline-warning" @onclick="@(() => EditarProveedor(resultado.Proveedor.IdProveedor))" title="Editar para corregir">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ProveedorSifenMejorado>? proveedores;
+    private List<ValidacionResultado> resultadosValidacion = new();
+    private string? errorMessage;
+    private string? successMessage;
+
+    // Estadísticas
+    private int proveedoresValidos = 0;
+    private int proveedoresInvalidos = 0;
+    private int timbradosProblematicos = 0;
+    private int proveedoresPrueba = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarProveedoresYValidar();
+    }
+
+    private async Task CargarProveedoresYValidar()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            proveedores = await db.ProveedoresSifen
+                .Include(p => p.TipoContribuyenteCatalogo)
+                .OrderBy(p => p.RazonSocial)
+                .ToListAsync();
+
+            await ValidarProveedores(proveedores);
+            CalcularEstadisticas();
+
+            Console.WriteLine($"[VALIDACIÓN] Validados {proveedores.Count} proveedores");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar proveedores: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex}");
+        }
+    }
+
+    private async Task ValidarProveedores(List<ProveedorSifenMejorado> listaProveedores)
+    {
+        resultadosValidacion.Clear();
+
+        foreach (var proveedor in listaProveedores)
+        {
+            var (esValido, errores) = proveedor.ValidarParaSifen();
+            
+            resultadosValidacion.Add(new ValidacionResultado
+            {
+                Proveedor = proveedor,
+                EsValido = esValido,
+                Errores = errores,
+                FechaValidacion = DateTime.Now
+            });
+        }
+
+        // Simular procesamiento
+        await Task.Delay(100);
+    }
+
+    private void CalcularEstadisticas()
+    {
+        proveedoresValidos = resultadosValidacion.Count(r => r.EsValido);
+        proveedoresInvalidos = resultadosValidacion.Count(r => !r.EsValido);
+        timbradosProblematicos = resultadosValidacion.Count(r => r.Proveedor.TimbradoVencido || r.Proveedor.TimbradoProximoVencer);
+        proveedoresPrueba = resultadosValidacion.Count(r => r.Proveedor.Ambiente == "test");
+    }
+
+    private async Task ValidarTodos()
+    {
+        try
+        {
+            successMessage = "";
+            errorMessage = "";
+
+            if (proveedores != null)
+            {
+                await ValidarProveedores(proveedores);
+                CalcularEstadisticas();
+                
+                successMessage = $"✅ Validación completada: {proveedoresValidos} válidos, {proveedoresInvalidos} con errores";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error durante la validación: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex}");
+        }
+    }
+
+    private async Task RevalidarProveedor(int idProveedor)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var proveedor = await db.ProveedoresSifen
+                .Include(p => p.TipoContribuyenteCatalogo)
+                .FirstOrDefaultAsync(p => p.IdProveedor == idProveedor);
+
+            if (proveedor != null)
+            {
+                var (esValido, errores) = proveedor.ValidarParaSifen();
+                
+                var resultado = resultadosValidacion.FirstOrDefault(r => r.Proveedor.IdProveedor == idProveedor);
+                if (resultado != null)
+                {
+                    resultado.EsValido = esValido;
+                    resultado.Errores = errores;
+                    resultado.FechaValidacion = DateTime.Now;
+                }
+
+                CalcularEstadisticas();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al re-validar proveedor: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex}");
+        }
+    }
+
+    private async Task VerDetalles(ValidacionResultado resultado)
+    {
+        try
+        {
+            var resumen = resultado.Proveedor.GenerarResumenSifen();
+            await JS.InvokeVoidAsync("alert", resumen);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al mostrar detalles: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex}");
+        }
+    }
+
+    private void EditarProveedor(int idProveedor)
+    {
+        // Navegar a la página de edición (cuando esté implementada)
+        // Navigation.NavigateTo($"/proveedores/editar/{idProveedor}");
+        JS.InvokeVoidAsync("alert", "Función de edición próximamente disponible");
+    }
+
+    private class ValidacionResultado
+    {
+        public ProveedorSifenMejorado Proveedor { get; set; } = new();
+        public bool EsValido { get; set; }
+        public List<string> Errores { get; set; } = new();
+        public DateTime FechaValidacion { get; set; }
+    }
+}

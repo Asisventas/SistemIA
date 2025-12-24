@@ -3,7 +3,7 @@
 @using System.IO
 @using SistemIA.Models
 @using Microsoft.EntityFrameworkCore
-@inject AppDbContext Db
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @implements IDisposable
@@ -106,6 +106,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         roles = await Db.Roles.Where(r => r.Estado).OrderBy(r => r.NombreRol).ToListAsync();
     }
 
@@ -200,8 +201,9 @@
 
     private async Task ValidarYGuardarUsuario()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(contrasena)) { errorContrasena = "La contraseña es obligatoria."; return; }
-        if ((usuario.EmbeddingFacial?.Length ?? 0) == 0) { errorContrasena = "Debe proporcionar una foto válida con un rostro."; return; }
+        // La foto/embedding es opcional - solo requerido para registro de asistencia facial
         using var sha256 = System.Security.Cryptography.SHA256.Create();
         usuario.ContrasenaHash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(contrasena));
         usuario.Fecha_Ingreso = DateTime.Now;

@@ -1,0 +1,88 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject PermisosService PermisosService
+@inject NavigationManager Navigation
+
+@if (cargando)
+{
+    <div class="d-flex justify-content-center align-items-center" style="min-height: 400px;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Verificando permisos...</span>
+        </div>
+    </div>
+}
+else if (tieneAcceso)
+{
+    @ChildContent
+}
+else
+{
+    <div class="container mt-5">
+        <div class="alert alert-danger d-flex align-items-center" role="alert">
+            <i class="bi bi-shield-lock fs-1 me-3"></i>
+            <div>
+                <h4 class="alert-heading">Acceso Denegado</h4>
+                <p class="mb-0">No tiene permisos para acceder a esta página.</p>
+                <hr>
+                <p class="mb-0">Módulo requerido: <strong>@Modulo</strong></p>
+                <p class="mb-0">Permiso requerido: <strong>@Permiso</strong></p>
+                <button class="btn btn-outline-danger mt-3" @onclick="Regresar">
+                    <i class="bi bi-arrow-left"></i> Regresar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public string Modulo { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Permiso { get; set; } = string.Empty;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private bool tieneAcceso = false;
+    private bool cargando = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await VerificarAcceso();
+    }
+
+    private async Task VerificarAcceso()
+    {
+        try
+        {
+            cargando = true;
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var idUsuarioClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+                if (idUsuarioClaim != null && int.TryParse(idUsuarioClaim.Value, out int idUsuario))
+                {
+                    tieneAcceso = await PermisosService.TienePermisoAsync(idUsuario, Modulo, Permiso);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al verificar permisos: {ex.Message}");
+            tieneAcceso = false;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void Regresar()
+    {
+        Navigation.NavigateTo("/");
+    }
+}

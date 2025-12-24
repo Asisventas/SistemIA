@@ -1,0 +1,575 @@
+@page "/informes/productos-detallado"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject NavigationManager Nav
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using ClosedXML.Excel
+
+<PageProtection Modulo="/inventario" Permiso="VIEW">
+
+<h3 class="mb-3">Listado de Productos Detallado</h3>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label">Código</label>
+        <input class="form-control" placeholder="Código interno" @bind="fCodigo" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Descripción</label>
+        <input class="form-control" placeholder="Nombre del producto" @bind="fDescripcion" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Código barras</label>
+        <input class="form-control" placeholder="EAN/UPC" @bind="fCodigoBarras" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Marca</label>
+        <select class="form-select" @bind="fIdMarca">
+          <option value="0">Todas</option>
+          @foreach (var m in marcas)
+          {
+            <option value="@m.IdMarca">@m.NombreMarca</option>
+          }
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Clasificación</label>
+        <select class="form-select" @bind="fIdClasificacion">
+          <option value="0">Todas</option>
+          @foreach (var c in clasificaciones)
+          {
+            <option value="@c.IdClasificacion">@c.Nombre</option>
+          }
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Depósito</label>
+        <select class="form-select" @bind="fIdDeposito">
+          <option value="0">Todos (suma)</option>
+          @foreach (var d in depositos)
+          {
+            <option value="@d.IdDeposito">@d.Nombre</option>
+          }
+        </select>
+      </div>
+    </div>
+    <div class="row g-3 mt-1 align-items-end">
+      <div class="col-md-1">
+        <label class="form-label">Tipo IVA</label>
+        <select class="form-select" @bind="fIdTipoIva">
+          <option value="0">Todos</option>
+          @foreach (var iva in tiposIva)
+          {
+            <option value="@iva.IdTipoIva">@iva.DescripcionCompleta</option>
+          }
+        </select>
+      </div>
+    </div>
+    <div class="row g-3 mt-1 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label">Tipo Item</label>
+        <select class="form-select" @bind="fTipoItem">
+          <option value="0">Todos</option>
+          <option value="1">Productos</option>
+          <option value="2">Servicios</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Estado</label>
+        <select class="form-select" @bind="fActivo">
+          <option value="1">Activos</option>
+          <option value="0">Inactivos</option>
+          <option value="-1">Todos</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock mín. desde</label>
+        <input class="form-control" type="number" @bind-value="fStockMinDesde" @bind-value:event="oninput" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock mín. hasta</label>
+        <input class="form-control" type="number" @bind-value="fStockMinHasta" @bind-value:event="oninput" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">
+          <input type="checkbox" @bind="fSoloBajoStock" /> Bajo stock mínimo
+        </label>
+      </div>
+      <div class="col-md-2 d-flex gap-2 justify-content-end">
+        <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
+        <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
+        <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
+        <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:50px;">#</th>
+            <th>Código</th>
+            <th>Descripción</th>
+            <th>Cód. Barras</th>
+            <th>Marca</th>
+            <th>Clasificación</th>
+            <th>Unidad</th>
+            <th>IVA</th>
+            <th>Tipo</th>
+            <th class="text-end">Costo Gs</th>
+            <th class="text-end">Precio Gs</th>
+            <th class="text-end">Precio $</th>
+            <th class="text-end">Stock</th>
+            <th class="text-end">Stock Mín.</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (!filas.Any())
+          {
+            <tr><td colspan="15" class="text-muted text-center py-3">Sin resultados</td></tr>
+          }
+          else
+          {
+            var n = 0;
+            foreach (var r in filas)
+            {
+              <tr class="@(r.Stock < r.StockMinimo && r.StockMinimo > 0 ? "table-warning" : "")">
+                <td>@(++n)</td>
+                <td><span class="badge bg-secondary">@r.CodigoInterno</span></td>
+                <td>
+                  <div class="fw-semibold">@r.Descripcion</div>
+                </td>
+                <td>@(string.IsNullOrEmpty(r.CodigoBarras) ? "-" : r.CodigoBarras)</td>
+                <td>@(string.IsNullOrEmpty(r.Marca) ? "-" : r.Marca)</td>
+                <td>@(string.IsNullOrEmpty(r.Clasificacion) ? "-" : r.Clasificacion)</td>
+                <td>@r.UnidadMedida</td>
+                <td>@r.TipoIva</td>
+                <td>
+                  @if (r.TipoItem == 1)
+                  {
+                    <span class="badge bg-primary">Producto</span>
+                  }
+                  else
+                  {
+                    <span class="badge bg-info">Servicio</span>
+                  }
+                </td>
+                <td class="text-end">@(r.CostoGs.HasValue ? r.CostoGs.Value.ToString("N0") : "-")</td>
+                <td class="text-end">@r.PrecioGs.ToString("N0")</td>
+                <td class="text-end">@(r.PrecioUsd.HasValue ? r.PrecioUsd.Value.ToString("N2") : "-")</td>
+                <td class="text-end @(r.Stock < r.StockMinimo && r.StockMinimo > 0 ? "text-danger fw-bold" : "")">@r.Stock.ToString("N2")</td>
+                <td class="text-end">@r.StockMinimo.ToString("N2")</td>
+                <td>
+                  @if (r.Activo)
+                  {
+                    <span class="badge bg-success">Activo</span>
+                  }
+                  else
+                  {
+                    <span class="badge bg-danger">Inactivo</span>
+                  }
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="9" class="text-end">Totales</th>
+            <th class="text-end">@filas.Sum(x => x.CostoGs ?? 0).ToString("N0")</th>
+            <th class="text-end">@filas.Sum(x => x.PrecioGs).ToString("N0")</th>
+            <th class="text-end">@filas.Sum(x => x.PrecioUsd ?? 0).ToString("N2")</th>
+            <th class="text-end">@filas.Sum(x => x.Stock).ToString("N2")</th>
+            <th></th>
+            <th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+</PageProtection>
+
+@code {
+  // Filtros
+  private string? fCodigo;
+  private string? fDescripcion;
+  private string? fCodigoBarras;
+  private int fIdMarca = 0;
+  private int fIdClasificacion = 0;
+  private int fIdTipoIva = 0;
+  private int fIdDeposito = 0; // 0=todos (suma), >0=depósito específico
+  private int fTipoItem = 0; // 0=todos, 1=producto, 2=servicio
+  private int fActivo = 1; // 1=activos, 0=inactivos, -1=todos
+  private decimal? fStockMinDesde;
+  private decimal? fStockMinHasta;
+  private bool fSoloBajoStock = false;
+
+  // Catálogos
+  private List<SistemIA.Models.Marca> marcas = new();
+  private List<SistemIA.Models.Clasificacion> clasificaciones = new();
+  private List<SistemIA.Models.TiposIva> tiposIva = new();
+  private List<SistemIA.Models.Deposito> depositos = new();
+  private List<Fila> filas = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    // Si no hay sucursal seleccionada, enviar a la selección
+    var sucId = SucursalProvider.GetSucursalId();
+    if (!sucId.HasValue)
+    {
+      var ret = System.Net.WebUtility.UrlEncode(Nav.Uri);
+      Nav.NavigateTo($"/seleccionar-sucursal?returnUrl={ret}", forceLoad: true);
+      return;
+    }
+
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    marcas = await ctx.Marcas.AsNoTracking().OrderBy(m => m.NombreMarca).ToListAsync();
+    clasificaciones = await ctx.Clasificaciones.AsNoTracking().Where(c => c.Activo).OrderBy(c => c.Nombre).ToListAsync();
+    tiposIva = await ctx.TiposIva.AsNoTracking().OrderBy(t => t.IdTipoIva).ToListAsync();
+    
+    // Cargar depósitos de la sucursal
+    depositos = await ctx.Depositos.AsNoTracking()
+      .Where(d => d.Activo && d.IdSucursal == sucId)
+      .OrderBy(d => d.Nombre)
+      .ToListAsync();
+    
+    await Buscar();
+  }
+
+  private async Task Buscar()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    
+    // Obtener stocks por depósito si es necesario
+    Dictionary<int, decimal> stocksPorProducto = new();
+    Dictionary<int, decimal> stockMinPorProducto = new();
+    
+    if (fIdDeposito > 0)
+    {
+      // Depósito específico
+      var stocksDeposito = await ctx.ProductosDepositos.AsNoTracking()
+        .Where(pd => pd.IdDeposito == fIdDeposito)
+        .Select(pd => new { pd.IdProducto, pd.Stock, pd.StockMinimo })
+        .ToListAsync();
+      foreach (var s in stocksDeposito)
+      {
+        stocksPorProducto[s.IdProducto] = s.Stock;
+        stockMinPorProducto[s.IdProducto] = s.StockMinimo;
+      }
+    }
+    else if (fIdDeposito == 0)
+    {
+      // Todos los depósitos (suma)
+      var stocksAgrupados = await ctx.ProductosDepositos.AsNoTracking()
+        .GroupBy(pd => pd.IdProducto)
+        .Select(g => new { IdProducto = g.Key, Stock = g.Sum(x => x.Stock), StockMinimo = g.Sum(x => x.StockMinimo) })
+        .ToListAsync();
+      foreach (var s in stocksAgrupados)
+      {
+        stocksPorProducto[s.IdProducto] = s.Stock;
+        stockMinPorProducto[s.IdProducto] = s.StockMinimo;
+      }
+    }
+    // Si fIdDeposito == -1, usamos el stock principal del producto
+    
+    var q = from p in ctx.Productos.AsNoTracking()
+            join m in ctx.Marcas.AsNoTracking() on p.IdMarca equals m.IdMarca into mJoin
+            from m in mJoin.DefaultIfEmpty()
+            join c in ctx.Clasificaciones.AsNoTracking() on p.IdClasificacion equals c.IdClasificacion into cJoin
+            from c in cJoin.DefaultIfEmpty()
+            join iva in ctx.TiposIva.AsNoTracking() on p.IdTipoIva equals iva.IdTipoIva into ivaJoin
+            from iva in ivaJoin.DefaultIfEmpty()
+            select new {
+              p.IdProducto, p.CodigoInterno, p.Descripcion, p.CodigoBarras,
+              Marca = m != null ? m.NombreMarca : null,
+              Clasificacion = c != null ? c.Nombre : null,
+              p.UndMedida, p.UnidadMedidaCodigo,
+              TipoIva = iva != null ? iva.DescripcionCompleta : "",
+              p.TipoItem, p.CostoUnitarioGs, p.PrecioUnitarioGs, p.PrecioUnitarioUsd,
+              p.Stock, p.StockMinimo, p.Activo, p.IdSucursal, p.IdMarca, p.IdClasificacion, p.IdTipoIva
+            };
+
+    // Filtrar por sucursal seleccionada
+    var sucSel = SucursalProvider.GetSucursalId();
+    if (sucSel.HasValue)
+      q = q.Where(x => x.IdSucursal == sucSel.Value);
+
+    // Aplicar filtros
+    if (!string.IsNullOrWhiteSpace(fCodigo))
+    {
+      var txt = fCodigo!.Trim();
+      q = q.Where(x => (x.CodigoInterno ?? "").Contains(txt));
+    }
+    if (!string.IsNullOrWhiteSpace(fDescripcion))
+    {
+      var txt = fDescripcion!.Trim();
+      q = q.Where(x => (x.Descripcion ?? "").Contains(txt));
+    }
+    if (!string.IsNullOrWhiteSpace(fCodigoBarras))
+    {
+      var txt = fCodigoBarras!.Trim();
+      q = q.Where(x => (x.CodigoBarras ?? "").Contains(txt));
+    }
+    if (fIdMarca != 0)
+      q = q.Where(x => x.IdMarca == fIdMarca);
+    if (fIdClasificacion != 0)
+      q = q.Where(x => x.IdClasificacion == fIdClasificacion);
+    if (fIdTipoIva != 0)
+      q = q.Where(x => x.IdTipoIva == fIdTipoIva);
+    if (fTipoItem != 0)
+      q = q.Where(x => x.TipoItem == fTipoItem);
+    if (fActivo != -1)
+      q = q.Where(x => x.Activo == (fActivo == 1));
+    if (fStockMinDesde.HasValue)
+      q = q.Where(x => x.StockMinimo >= fStockMinDesde.Value);
+    if (fStockMinHasta.HasValue)
+      q = q.Where(x => x.StockMinimo <= fStockMinHasta.Value);
+    // El filtro de bajo stock se aplica después de calcular los stocks por depósito
+
+    var data = await q.OrderBy(x => x.Descripcion).Take(5000).ToListAsync();
+
+    filas = data.Select(x => {
+      // Determinar stock y stock mínimo según filtro de depósito
+      decimal stock, stockMin;
+      // Stock del depósito seleccionado o suma de todos los depósitos
+      stock = stocksPorProducto.GetValueOrDefault(x.IdProducto, 0);
+      stockMin = stockMinPorProducto.GetValueOrDefault(x.IdProducto, 0);
+      
+      return new Fila {
+        IdProducto = x.IdProducto,
+        CodigoInterno = x.CodigoInterno ?? "",
+        Descripcion = x.Descripcion ?? "",
+        CodigoBarras = x.CodigoBarras,
+        Marca = x.Marca,
+        Clasificacion = x.Clasificacion,
+        UnidadMedida = x.UndMedida ?? x.UnidadMedidaCodigo ?? "",
+        TipoIva = x.TipoIva ?? "",
+        TipoItem = x.TipoItem,
+        CostoGs = x.CostoUnitarioGs,
+        PrecioGs = x.PrecioUnitarioGs,
+        PrecioUsd = x.PrecioUnitarioUsd,
+        Stock = stock,
+        StockMinimo = stockMin,
+        Activo = x.Activo
+      };
+    }).ToList();
+    
+    // Si filtramos por bajo stock, aplicar aquí (después de calcular stocks)
+    if (fSoloBajoStock)
+      filas = filas.Where(f => f.Stock < f.StockMinimo && f.StockMinimo > 0).ToList();
+  }
+
+  private async Task Imprimir()
+  {
+    if (!filas.Any()) return;
+    
+    var head = new System.Text.StringBuilder();
+    head.AppendLine("<meta charset=\"utf-8\"/>");
+    head.AppendLine("<title>Listado de Productos</title>");
+    head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+    head.AppendLine("<style>");
+    head.AppendLine("@media print { @page { size: A4 landscape; margin: 10mm 10mm; } }");
+    head.AppendLine("body{font-size:9px;color:#111;}");
+    head.AppendLine(".factura-header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+    head.AppendLine(".factura-header .logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+    head.AppendLine(".factura-header .logo-wrap{width:140px;display:flex;align-items:center;justify-content:center;}");
+    head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
+    head.AppendLine(".factura-header .empresa .small{color:#555;}");
+    head.AppendLine(".tabla th,.tabla td{padding:.2rem .3rem;border-bottom:1px solid #e5e7eb;vertical-align:top;font-size:8px;}");
+    head.AppendLine(".right{text-align:right}");
+    head.AppendLine(".muted{color:#666}");
+    head.AppendLine(".badge{font-size:8px;padding:2px 5px;}");
+    head.AppendLine(".bajo-stock{background-color:#fff3cd !important;}");
+    head.AppendLine("</style>");
+
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+    var sucIdSel = SucursalProvider.GetSucursalId();
+    if (sucIdSel.HasValue)
+    {
+      var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+      if (s2 != null) suc = s2;
+    }
+    string empresa = suc?.NombreEmpresa ?? "Empresa";
+    string sucursal = suc?.NombreSucursal ?? "Sucursal";
+    string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+    string? logoDataUri = null;
+    if (suc?.Logo != null && suc.Logo.Length > 0) logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+    var depositoNombre = fIdDeposito == 0 ? "Todos (suma)" : depositos.FirstOrDefault(d => d.IdDeposito == fIdDeposito)?.Nombre ?? "";
+    var filtros = System.Net.WebUtility.HtmlEncode($"Código: {fCodigo} | Desc: {fDescripcion} | Marca: {(fIdMarca == 0 ? "Todas" : marcas.FirstOrDefault(m => m.IdMarca == fIdMarca)?.NombreMarca)} | Clasif: {(fIdClasificacion == 0 ? "Todas" : clasificaciones.FirstOrDefault(c => c.IdClasificacion == fIdClasificacion)?.Nombre)} | Depósito: {depositoNombre} | Tipo: {(fTipoItem == 0 ? "Todos" : (fTipoItem == 1 ? "Productos" : "Servicios"))} | Estado: {(fActivo == -1 ? "Todos" : (fActivo == 1 ? "Activos" : "Inactivos"))}");
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<div class=\"container-fluid\">");
+    sb.AppendLine("  <div class=\"factura-header\">");
+    sb.AppendLine("    <div class=\"logo-wrap\">");
+    if (!string.IsNullOrEmpty(logoDataUri)) sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+    else sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:10px;color:#999;min-height:40px;min-width:100px;\">LOGO</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"empresa\">");
+    sb.AppendLine($"      <h2>{empresa}</h2>");
+    sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+    sb.AppendLine($"      <div class=\"small\">{sucursal}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"ms-auto text-end\">");
+    sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Listado de Productos</div>");
+    sb.AppendLine($"      <div>Fecha: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
+    sb.AppendLine($"      <div class=\"small muted\">{filtros}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("  </div>");
+
+    // Tabla
+    sb.AppendLine("  <table class=\"table table-sm tabla\">");
+    sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th>Cód. Barras</th><th>Marca</th><th>Clasif.</th><th>Unidad</th><th>IVA</th><th>Tipo</th><th class='right'>Costo Gs</th><th class='right'>Precio Gs</th><th class='right'>Precio $</th><th class='right'>Stock</th><th class='right'>Stock Mín.</th><th>Estado</th></tr></thead>");
+    sb.AppendLine("    <tbody>");
+    int n = 0;
+    foreach (var r in filas)
+    {
+      var rowClass = (r.Stock < r.StockMinimo && r.StockMinimo > 0) ? "bajo-stock" : "";
+      var tipo = r.TipoItem == 1 ? "Prod" : "Serv";
+      var estado = r.Activo ? "Activo" : "Inactivo";
+      sb.AppendLine($"      <tr class='{rowClass}'><td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoBarras ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.UnidadMedida)}</td><td>{System.Net.WebUtility.HtmlEncode(r.TipoIva)}</td><td>{tipo}</td><td class='right'>{(r.CostoGs.HasValue ? r.CostoGs.Value.ToString("N0") : "-")}</td><td class='right'>{r.PrecioGs:N0}</td><td class='right'>{(r.PrecioUsd.HasValue ? r.PrecioUsd.Value.ToString("N2") : "-")}</td><td class='right'>{r.Stock:N2}</td><td class='right'>{r.StockMinimo:N2}</td><td>{estado}</td></tr>");
+    }
+    sb.AppendLine("    </tbody>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='9' class='right'>Totales</th><th class='right'>{filas.Sum(x => x.CostoGs ?? 0):N0}</th><th class='right'>{filas.Sum(x => x.PrecioGs):N0}</th><th class='right'>{filas.Sum(x => x.PrecioUsd ?? 0):N2}</th><th class='right'>{filas.Sum(x => x.Stock):N2}</th><th></th><th></th></tr></tfoot>");
+    sb.AppendLine("  </table>");
+    sb.AppendLine("</div>");
+
+    await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+  }
+
+  private async Task Exportar()
+  {
+    if (!filas.Any()) return;
+    var sep = ';';
+    var sb = new System.Text.StringBuilder();
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+    sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
+    sb.AppendLine(string.Join(sep, new[] { "Nro", "Código", "Descripción", "Cód. Barras", "Marca", "Clasificación", "Unidad", "IVA", "Tipo", "Costo Gs", "Precio Gs", "Precio $", "Stock", "Stock Mín.", "Estado" }));
+    int n = 0;
+    foreach (var r in filas)
+    {
+      string[] cols = new[]
+      {
+        (++n).ToString(),
+        r.CodigoInterno,
+        r.Descripcion,
+        r.CodigoBarras ?? "",
+        r.Marca ?? "",
+        r.Clasificacion ?? "",
+        r.UnidadMedida,
+        r.TipoIva,
+        r.TipoItem == 1 ? "Producto" : "Servicio",
+        (r.CostoGs ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.PrecioGs.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        (r.PrecioUsd ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.Stock.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.StockMinimo.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.Activo ? "Activo" : "Inactivo"
+      };
+      var line = string.Join(sep, cols.Select(v => !string.IsNullOrEmpty(v) && (v.Contains(sep) || v.Contains('"') || v.Contains('\n')) ? $"\"{v.Replace("\"", "\"\"")}\"" : v ?? ""));
+      sb.AppendLine(line);
+    }
+    var utf8bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    var bytes = utf8bom.GetBytes(sb.ToString());
+    var b64 = Convert.ToBase64String(bytes);
+    var file = $"Productos_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "text/csv;charset=utf-8");
+  }
+
+  private async Task ExportarXlsx()
+  {
+    if (!filas.Any()) return;
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+
+    using var wb = new XLWorkbook();
+    var ws = wb.AddWorksheet("Productos");
+    int row = 1;
+    ws.Cell(row, 1).Value = "Generado"; ws.Cell(row, 2).Value = DateTime.Now; ws.Cell(row, 2).Style.DateFormat.Format = "yyyy-MM-dd HH:mm"; row++;
+    ws.Cell(row, 1).Value = "Usuario"; ws.Cell(row, 2).Value = usuario; row++;
+    ws.Cell(row, 1).Value = "Sucursal"; ws.Cell(row, 2).Value = suc; row += 2;
+
+    var headers = new[] { "#", "Código", "Descripción", "Cód. Barras", "Marca", "Clasificación", "Unidad", "IVA", "Tipo", "Costo Gs", "Precio Gs", "Precio $", "Stock", "Stock Mín.", "Estado" };
+    for (int c = 0; c < headers.Length; c++) ws.Cell(row, c + 1).Value = headers[c];
+    ws.Range(row, 1, row, headers.Length).Style.Font.Bold = true; row++;
+
+    int n = 0; decimal totalCostoGs = 0, totalPrecioGs = 0, totalPrecioUsd = 0, totalStock = 0;
+    foreach (var r in filas)
+    {
+      ws.Cell(row, 1).Value = ++n;
+      ws.Cell(row, 2).Value = r.CodigoInterno;
+      ws.Cell(row, 3).Value = r.Descripcion;
+      ws.Cell(row, 4).Value = r.CodigoBarras ?? "";
+      ws.Cell(row, 5).Value = r.Marca ?? "";
+      ws.Cell(row, 6).Value = r.Clasificacion ?? "";
+      ws.Cell(row, 7).Value = r.UnidadMedida;
+      ws.Cell(row, 8).Value = r.TipoIva;
+      ws.Cell(row, 9).Value = r.TipoItem == 1 ? "Producto" : "Servicio";
+      ws.Cell(row, 10).Value = r.CostoGs ?? 0m; ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row, 11).Value = r.PrecioGs; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row, 12).Value = r.PrecioUsd ?? 0m; ws.Cell(row, 12).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row, 13).Value = r.Stock; ws.Cell(row, 13).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row, 14).Value = r.StockMinimo; ws.Cell(row, 14).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row, 15).Value = r.Activo ? "Activo" : "Inactivo";
+      
+      // Resaltar bajo stock
+      if (r.Stock < r.StockMinimo && r.StockMinimo > 0)
+        ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.LightYellow;
+      
+      totalCostoGs += r.CostoGs ?? 0;
+      totalPrecioGs += r.PrecioGs;
+      totalPrecioUsd += r.PrecioUsd ?? 0;
+      totalStock += r.Stock;
+      row++;
+    }
+
+    ws.Cell(row, 9).Value = "Totales"; ws.Cell(row, 9).Style.Font.Bold = true;
+    ws.Cell(row, 10).Value = totalCostoGs; ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 10).Style.Font.Bold = true;
+    ws.Cell(row, 11).Value = totalPrecioGs; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 11).Style.Font.Bold = true;
+    ws.Cell(row, 12).Value = totalPrecioUsd; ws.Cell(row, 12).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 12).Style.Font.Bold = true;
+    ws.Cell(row, 13).Value = totalStock; ws.Cell(row, 13).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 13).Style.Font.Bold = true;
+    
+    ws.Columns().AdjustToContents();
+    using var ms = new System.IO.MemoryStream();
+    wb.SaveAs(ms);
+    var b64 = Convert.ToBase64String(ms.ToArray());
+    var file = $"Productos_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  private class Fila
+  {
+    public int IdProducto { get; set; }
+    public string CodigoInterno { get; set; } = string.Empty;
+    public string Descripcion { get; set; } = string.Empty;
+    public string? CodigoBarras { get; set; }
+    public string? Marca { get; set; }
+    public string? Clasificacion { get; set; }
+    public string UnidadMedida { get; set; } = string.Empty;
+    public string TipoIva { get; set; } = string.Empty;
+    public int TipoItem { get; set; }
+    public decimal? CostoGs { get; set; }
+    public decimal PrecioGs { get; set; }
+    public decimal? PrecioUsd { get; set; }
+    public decimal Stock { get; set; }
+    public decimal StockMinimo { get; set; }
+    public bool Activo { get; set; }
+  }
+}

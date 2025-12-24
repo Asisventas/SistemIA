@@ -1,9 +1,234 @@
 ﻿@page "/"
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject SistemIA.Services.BackupService BackupService
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using System.IO
 
-<PageTitle>Index</PageTitle>
+<div class="container-fluid p-4">
+    <h1 class="mb-4">Panel de Control</h1>
 
-<h1>asispro</h1>
+    <!-- Caja activa -->
+    <div class="row g-3 mb-2">
+        <div class="col-xl-4 col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold">Caja activa</div>
+                        <div class="small text-muted">Caja @CajaIdText · Fecha @FechaCajaText · Turno @TurnoText</div>
+                    </div>
+                    <a class="btn btn-outline-secondary btn-sm" href="/configuracion/cajas" title="Cambiar caja">Cambiar</a>
+                </div>
+            </div>
+        </div>
+    </div>
 
-Bienvendido al Sistema asisapp.
+    <div class="row">
+        <!-- Tarjeta de Registro de Asistencia -->
+        <div class="col-xl-6 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2 attendance-card" @onclick="NavigateToRegistroDirecto" style="cursor: pointer;">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col-8">
+                            <div class="text-lg font-weight-bold text-success text-uppercase mb-1">
+                                Registrar Asistencia
+                            </div>
+                            <div class="text-sm text-gray-600">
+                                Marcar entrada/salida con reconocimiento facial
+                            </div>
+                        </div>
+                        <div class="col-4 text-right">
+                            <i class="bi bi-camera-fill fa-3x text-success-light"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-<SurveyPrompt Title="asisventas.com.py@gmail.com?" />
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Clientes</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@clientCount</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-person-lines-fill fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Usuarios</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@userCount</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-people-fill fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Accesos rápidos de Configuración -->
+    <div class="row g-3 mt-2">
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold">Configuración de Sucursal</div>
+                        <small class="text-muted">Datos fiscales, punto de expedición y timbrado</small>
+                    </div>
+                    <button class="btn btn-outline-primary" @onclick='() => NavigationManager.NavigateTo("/configurar-sucursal")'>
+                        <i class="bi bi-gear-fill me-1"></i> Abrir
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold">Listas de Precios</div>
+                        <small class="text-muted">Gestiona precios y monedas</small>
+                    </div>
+                    <button class="btn btn-outline-primary" @onclick='() => NavigationManager.NavigateTo("/configuracion/listas-precios")'>
+                        <i class="bi bi-currency-exchange me-1"></i> Abrir
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold">Tipos de IVA</div>
+                        <small class="text-muted">Altas y modificaciones</small>
+                    </div>
+                    <button class="btn btn-outline-primary" @onclick='() => NavigationManager.NavigateTo("/configuracion/tipos-iva")'>
+                        <i class="bi bi-percent me-1"></i> Abrir
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold">Backup Completo</div>
+                        <small class="text-muted">Crea respaldo de base de datos y proyecto</small>
+                    </div>
+                    <button class="btn btn-outline-success" @onclick="CrearBackup" disabled="@creandoBackup">
+                        @if (creandoBackup)
+                        {
+                            <i class="bi bi-arrow-clockwise spin me-1"></i><span>Creando...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-archive-fill me-1"></i><span>Crear</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tipos de cambio -->
+    <div class="row mt-4">
+        <div class="col-12 col-lg-6">
+            <TablaTiposCambio />
+        </div>
+    </div>
+</div>
+
+@code {
+    private int clientCount;
+    private int userCount;
+    private bool creandoBackup = false;
+    private string mensaje = "";
+    
+    [Inject]
+    private NavigationManager NavigationManager { get; set; } = default!;
+
+    // Caja
+    private int? CajaIdActiva;
+    private DateTime? FechaCaja;
+    private int? Turno;
+    private string CajaIdText => CajaIdActiva?.ToString() ?? "—";
+    private string FechaCajaText => FechaCaja?.ToString("dd/MM/yyyy") ?? "—";
+    private string TurnoText => Turno?.ToString() ?? "—";
+
+    private void NavigateToRegistroAsistencia()
+    {
+        NavigationManager.NavigateTo("/registro-asistencia");
+    }
+
+    private void NavigateToRegistroDirecto()
+    {
+        NavigationManager.NavigateTo("/registro-directo");
+    }
+
+    private async Task CrearBackup()
+    {
+        creandoBackup = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await BackupService.CrearBackupCompleto();
+            
+            if (result.Success)
+            {
+                var alertMessage = $@"
+🎉 ¡Backup creado exitosamente!
+
+📊 Base de datos: {result.DatabaseName}
+💾 Archivo backup: {Path.GetFileName(result.BackupPath)}
+📦 Archivo proyecto: {Path.GetFileName(result.ZipPath)}
+📂 Ubicación: C:\backup\
+⏰ Timestamp: {result.Timestamp}
+
+Los archivos están listos para ser utilizados.";
+
+                await JS.InvokeVoidAsync("alert", alertMessage);
+                mensaje = $"Backup creado exitosamente en C:\\backup\\ - {result.Timestamp}";
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"❌ Error al crear backup: {result.Error}");
+                mensaje = $"Error al crear backup: {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ Error inesperado: {ex.Message}");
+            mensaje = $"Error inesperado: {ex.Message}";
+        }
+        finally
+        {
+            creandoBackup = false;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        clientCount = await dbContext.Clientes.CountAsync();
+        userCount = await dbContext.Usuarios.CountAsync();
+
+    var caja = await dbContext.Cajas.AsNoTracking().Where(c => c.CajaActual == 1).FirstOrDefaultAsync()
+           ?? await dbContext.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).FirstOrDefaultAsync();
+    CajaIdActiva = caja?.IdCaja;
+    FechaCaja = caja?.FechaActualCaja;
+    Turno = caja?.TurnoActual;
+    }
+}

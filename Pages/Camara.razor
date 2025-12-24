@@ -2,7 +2,7 @@
 @inject IJSRuntime JS
 @using Microsoft.EntityFrameworkCore
 @using SistemIA.Models
-@inject AppDbContext Db
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
 <h3>Cámara Web</h3>
 

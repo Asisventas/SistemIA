@@ -1,0 +1,454 @@
+@page "/configuracion/tipos-iva"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<h3 class="mb-4">💰 Gestión de Tipos de IVA</h3>
+
+<div class="row mb-3">
+    <div class="col">
+        <button class="btn btn-primary" @onclick="MostrarFormularioCrear">
+            <i class="bi bi-plus-circle"></i> Nuevo Tipo de IVA
+        </button>
+        <button class="btn btn-outline-info ms-2" @onclick="CargarTiposIva">
+            <i class="bi bi-arrow-clockwise"></i> Actualizar
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (!string.IsNullOrEmpty(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
+
+<!-- Tabla de Tipos de IVA -->
+@if (tiposIva == null)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p>Cargando tipos de IVA...</p>
+    </div>
+}
+else if (!tiposIva.Any())
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i> No hay tipos de IVA configurados.
+        <br>Haga clic en "Nuevo Tipo de IVA" para agregar el primero.
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul"></i> Tipos de IVA Configurados
+                <span class="badge bg-primary ms-2">@tiposIva.Count</span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Código SIFEN</th>
+                            <th>Descripción</th>
+                            <th class="text-center">Porcentaje</th>
+                            <th class="text-center">Tasa SIFEN</th>
+                            <th class="text-center">Código</th>
+                            <th class="text-center">Estado</th>
+                            <th class="text-center">Predeterminado</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var tipo in tiposIva.OrderByDescending(t => t.Porcentaje))
+                        {
+                            <tr class="@(tipo.Estado ? "" : "table-secondary")">
+                                <td>@tipo.IdTipoIva</td>
+                                <td>
+                                    <span class="badge bg-info">@tipo.CodigoSifen</span>
+                                </td>
+                                <td>
+                                    <strong>@tipo.Descripcion</strong>
+                                    @if (!string.IsNullOrEmpty(tipo.Observaciones))
+                                    {
+                                        <br><small class="text-muted">@tipo.Observaciones</small>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge @GetBadgeClassPorcentaje(tipo.Porcentaje)">
+                                        @tipo.Porcentaje.ToString("0.##")%
+                                    </span>
+                                </td>
+                                <td class="text-center">@tipo.TasaSifen.ToString("0.##")</td>
+                                <td class="text-center">
+                                    <code>@tipo.CodigoAbreviado</code>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge @(tipo.Estado ? "bg-success" : "bg-danger")">
+                                        @(tipo.Estado ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    @if (tipo.EsPredeterminado)
+                                    {
+                                        <i class="bi bi-star-fill text-warning" title="Tipo predeterminado"></i>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" @onclick="() => EditarTipo(tipo)"
+                                                title="Editar">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn @(tipo.Estado ? "btn-outline-warning" : "btn-outline-success")"
+                                                @onclick="() => CambiarEstado(tipo)"
+                                                title="@(tipo.Estado ? "Desactivar" : "Activar")">
+                                            <i class="bi @(tipo.Estado ? "bi-pause" : "bi-play")"></i>
+                                        </button>
+                                        @if (!tipo.EsPredeterminado)
+                                        {
+                                            <button class="btn btn-outline-danger" @onclick="() => EliminarTipo(tipo)"
+                                                    title="Eliminar">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal para Crear/Editar Tipo de IVA -->
+@if (mostrarModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi @(esEdicion ? "bi-pencil" : "bi-plus-circle")"></i>
+                        @(esEdicion ? "Editar" : "Nuevo") Tipo de IVA
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@tipoIvaActual" OnValidSubmit="GuardarTipo">
+                        <DataAnnotationsValidator />
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Código SIFEN: <span class="text-danger">*</span></label>
+                                <InputSelect class="form-select" @bind-Value="tipoIvaActual.CodigoSifen">
+                                    <option value="1">1 - IVA</option>
+                                    <option value="2">2 - ISC (Impuesto Selectivo)</option>
+                                    <option value="3">3 - Renta</option>
+                                    <option value="4">4 - No Tributado</option>
+                                    <option value="5">5 - Exonerado</option>
+                                </InputSelect>
+                                <ValidationMessage For="@(() => tipoIvaActual.CodigoSifen)" />
+                                <div class="form-text">Código según estándares SIFEN Paraguay</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Código Abreviado:</label>
+                                <InputText class="form-control" @bind-Value="tipoIvaActual.CodigoAbreviado" 
+                                          placeholder="Ej: 10%, 5%, EX" maxlength="10" />
+                                <div class="form-text">Código corto para mostrar en interfaces</div>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Descripción: <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="tipoIvaActual.Descripcion" 
+                                          placeholder="Ej: IVA Gravado, IVA Reducido, Exonerado" maxlength="100" />
+                                <ValidationMessage For="@(() => tipoIvaActual.Descripcion)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Porcentaje: <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <InputNumber class="form-control" @bind-Value="tipoIvaActual.Porcentaje" 
+                                               @bind-Value:after="OnPorcentajeChanged"
+                                               step="0.01" min="0" max="100" />
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <ValidationMessage For="@(() => tipoIvaActual.Porcentaje)" />
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Tasa SIFEN: <span class="text-danger">*</span></label>
+                                <InputNumber class="form-control" @bind-Value="tipoIvaActual.TasaSifen" 
+                                           step="0.01" min="0" max="100" />
+                                <ValidationMessage For="@(() => tipoIvaActual.TasaSifen)" />
+                                <div class="form-text">Normalmente igual al porcentaje</div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mt-4">
+                                    <InputCheckbox class="form-check-input" @bind-Value="tipoIvaActual.Estado" id="chkEstado" />
+                                    <label class="form-check-label" for="chkEstado">
+                                        Tipo de IVA activo
+                                    </label>
+                                </div>
+                                @if (!esEdicion)
+                                {
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" @bind-Value="tipoIvaActual.EsPredeterminado" id="chkPredeterminado" />
+                                        <label class="form-check-label" for="chkPredeterminado">
+                                            Tipo predeterminado del sistema
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Observaciones:</label>
+                            <InputTextArea class="form-control" @bind-Value="tipoIvaActual.Observaciones" 
+                                         rows="3" maxlength="255" 
+                                         placeholder="Observaciones adicionales sobre este tipo de IVA..." />
+                        </div>
+
+                        <!-- Vista previa de cálculos -->
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Vista Previa de Cálculos</h6>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Valor base: ₲ 1,000</small><br>
+                                        <strong>IVA: ₲ @((1000 * tipoIvaActual.Porcentaje / 100).ToString("N0"))</strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Total con IVA:</small><br>
+                                        <strong>₲ @((1000 + (1000 * tipoIvaActual.Porcentaje / 100)).ToString("N0"))</strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Descripción completa:</small><br>
+                                        <strong>@tipoIvaActual.DescripcionCompleta</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CerrarModal">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> @(esEdicion ? "Actualizar" : "Crear")
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private List<SistemIA.Models.TiposIva>? tiposIva;
+    private SistemIA.Models.TiposIva tipoIvaActual = new();
+    private bool mostrarModal = false;
+    private bool esEdicion = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarTiposIva();
+    }
+
+    private async Task CargarTiposIva()
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            tiposIva = await dbContext.TiposIva
+                .OrderByDescending(t => t.Porcentaje)
+                .ThenBy(t => t.Descripcion)
+                .ToListAsync();
+            
+            Console.WriteLine($"[TIPOS IVA] Cargados {tiposIva?.Count ?? 0} tipos de IVA");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar tipos de IVA: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private void MostrarFormularioCrear()
+    {
+        tipoIvaActual = new SistemIA.Models.TiposIva
+        {
+            Estado = true,
+            FechaCreacion = DateTime.Now,
+            UsuarioCreacion = "Sistema" // TODO: Obtener usuario actual
+        };
+        esEdicion = false;
+        mostrarModal = true;
+        LimpiarMensajes();
+    }
+
+    private void EditarTipo(SistemIA.Models.TiposIva tipo)
+    {
+        tipoIvaActual = new SistemIA.Models.TiposIva
+        {
+            IdTipoIva = tipo.IdTipoIva,
+            CodigoSifen = tipo.CodigoSifen,
+            Descripcion = tipo.Descripcion,
+            Porcentaje = tipo.Porcentaje,
+            TasaSifen = tipo.TasaSifen,
+            Estado = tipo.Estado,
+            EsPredeterminado = tipo.EsPredeterminado,
+            CodigoAbreviado = tipo.CodigoAbreviado,
+            Observaciones = tipo.Observaciones,
+            FechaCreacion = tipo.FechaCreacion,
+            UsuarioCreacion = tipo.UsuarioCreacion
+        };
+        esEdicion = true;
+        mostrarModal = true;
+        LimpiarMensajes();
+    }
+
+    private async Task GuardarTipo()
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            if (esEdicion)
+            {
+                // Actualizar
+                tipoIvaActual.FechaModificacion = DateTime.Now;
+                tipoIvaActual.UsuarioModificacion = "Sistema"; // TODO: Obtener usuario actual
+                
+                dbContext.TiposIva.Update(tipoIvaActual);
+                await dbContext.SaveChangesAsync();
+                
+                successMessage = $"✅ Tipo de IVA '{tipoIvaActual.Descripcion}' actualizado exitosamente.";
+            }
+            else
+            {
+                // Crear nuevo
+                dbContext.TiposIva.Add(tipoIvaActual);
+                await dbContext.SaveChangesAsync();
+                
+                successMessage = $"✅ Tipo de IVA '{tipoIvaActual.Descripcion}' creado exitosamente.";
+            }
+            
+            await CargarTiposIva();
+            CerrarModal();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al guardar: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task CambiarEstado(SistemIA.Models.TiposIva tipo)
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            tipo.Estado = !tipo.Estado;
+            tipo.FechaModificacion = DateTime.Now;
+            tipo.UsuarioModificacion = "Sistema"; // TODO: Obtener usuario actual
+            
+            dbContext.TiposIva.Update(tipo);
+            await dbContext.SaveChangesAsync();
+            
+            successMessage = $"✅ Tipo de IVA '{tipo.Descripcion}' {(tipo.Estado ? "activado" : "desactivado")} exitosamente.";
+            await CargarTiposIva();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cambiar estado: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task EliminarTipo(SistemIA.Models.TiposIva tipo)
+    {
+        try
+        {
+            var confirmacion = await JS.InvokeAsync<bool>("confirm", 
+                $"¿Está seguro de eliminar el tipo de IVA '{tipo.Descripcion}'?\n\nEsta acción no se puede deshacer.");
+            
+            if (!confirmacion) return;
+            
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            dbContext.TiposIva.Remove(tipo);
+            await dbContext.SaveChangesAsync();
+            
+            successMessage = $"✅ Tipo de IVA '{tipo.Descripcion}' eliminado exitosamente.";
+            await CargarTiposIva();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al eliminar: {ex.Message}";
+            Console.WriteLine($"[ERROR] {ex.Message}");
+        }
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        tipoIvaActual = new();
+        esEdicion = false;
+    }
+
+    private void LimpiarMensajes()
+    {
+        errorMessage = "";
+        successMessage = "";
+    }
+
+    private void OnPorcentajeChanged()
+    {
+        // Sincronizar TasaSifen con Porcentaje automáticamente
+        tipoIvaActual.TasaSifen = tipoIvaActual.Porcentaje;
+        
+        // Generar código abreviado automático si está vacío
+        if (string.IsNullOrEmpty(tipoIvaActual.CodigoAbreviado))
+        {
+            if (tipoIvaActual.Porcentaje == 0)
+                tipoIvaActual.CodigoAbreviado = "EX";
+            else
+                tipoIvaActual.CodigoAbreviado = $"{tipoIvaActual.Porcentaje:0.##}%";
+        }
+    }
+
+    private string GetBadgeClassPorcentaje(decimal porcentaje)
+    {
+        return porcentaje switch
+        {
+            0 => "bg-secondary",
+            <= 5 => "bg-info",
+            <= 10 => "bg-success",
+            _ => "bg-warning"
+        };
+    }
+}

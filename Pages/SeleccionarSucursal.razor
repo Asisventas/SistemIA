@@ -1,0 +1,122 @@
+@page "/seleccionar-sucursal"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize]
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+
+<h3 class="mb-3">Seleccionar Sucursal y Caja</h3>
+
+<div class="card" style="max-width:520px">
+  <div class="card-body">
+    <form action="/auth/set-sucursal" method="post">
+      <input type="hidden" name="returnUrl" value="@returnUrlValue" />
+      <div class="mb-3">
+        <label class="form-label">Sucursal</label>
+        <select class="form-select" name="SucursalId" @bind="SucursalId" @bind:after="OnSucursalChanged">
+          @foreach (var s in sucursales)
+          {
+            <option value="@s.Id">@s.NombreSucursal</option>
+          }
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Caja</label>
+        <select class="form-select" name="CajaId" @bind="CajaId">
+          @if (!cajas.Any())
+          {
+            <option value="0">-- Sin cajas disponibles --</option>
+          }
+          else
+          {
+            @foreach (var c in cajas)
+            {
+              <option value="@c.IdCaja">@c.Nombre</option>
+            }
+          }
+        </select>
+        <small class="text-muted">La caja seleccionada se usará para la numeración de facturas</small>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary" type="submit" disabled="@(CajaId == 0)">Ingresar</button>
+        <button class="btn btn-outline-secondary" type="button" @onclick="Cancelar">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+@code {
+  private List<SucursalDTO> sucursales = new();
+  private List<CajaDTO> cajas = new();
+  public int SucursalId { get; set; }
+  public int CajaId { get; set; }
+  private string returnUrlValue = "/";
+
+  protected override async Task OnInitializedAsync()
+  {
+    // Obtener returnUrl del querystring
+    var uri = new Uri(Nav.Uri);
+    var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+    returnUrlValue = string.IsNullOrWhiteSpace(query.Get("returnUrl")) ? "/" : query.Get("returnUrl")!;
+
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    sucursales = await ctx.Sucursal.AsNoTracking()
+      .OrderBy(s => s.NombreSucursal)
+      .Select(s => new SucursalDTO { Id = s.Id, NombreSucursal = s.NombreSucursal! })
+      .ToListAsync();
+    
+    if (sucursales.Any()) 
+    {
+      SucursalId = sucursales.First().Id;
+      await CargarCajasAsync(ctx);
+    }
+  }
+
+  private async Task OnSucursalChanged()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    await CargarCajasAsync(ctx);
+  }
+
+  private async Task CargarCajasAsync(SistemIA.Models.AppDbContext ctx)
+  {
+    cajas = await ctx.Cajas.AsNoTracking()
+      .Where(c => c.IdSucursal == SucursalId || c.IdSucursal == null)
+      .OrderBy(c => c.Nombre)
+      .Select(c => new CajaDTO 
+      { 
+        IdCaja = c.IdCaja, 
+        Nombre = c.Nombre ?? $"Caja {c.IdCaja}",
+        Nivel1 = c.Nivel1,
+        Nivel2 = c.Nivel2
+      })
+      .ToListAsync();
+    
+    // Seleccionar la primera caja o la marcada como actual
+    var cajaActual = await ctx.Cajas.AsNoTracking()
+      .Where(c => (c.IdSucursal == SucursalId || c.IdSucursal == null) && c.CajaActual == 1)
+      .Select(c => c.IdCaja)
+      .FirstOrDefaultAsync();
+    
+    CajaId = cajaActual > 0 ? cajaActual : (cajas.FirstOrDefault()?.IdCaja ?? 0);
+  }
+
+  private void Cancelar()
+  {
+    Nav.NavigateTo("/", forceLoad: true);
+  }
+
+  private class SucursalDTO
+  {
+    public int Id { get; set; }
+    public string NombreSucursal { get; set; } = string.Empty;
+  }
+
+  private class CajaDTO
+  {
+    public int IdCaja { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public string? Nivel1 { get; set; }
+    public string? Nivel2 { get; set; }
+  }
+}

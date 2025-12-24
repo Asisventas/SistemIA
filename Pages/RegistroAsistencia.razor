@@ -1,13 +1,17 @@
-﻿@page "/asistencia"
+﻿@page "/registro-asistencia"
 @using Microsoft.EntityFrameworkCore
 @using FaceRecognitionDotNet
 @using System.IO
 @using System.Drawing
 @using SistemIA.Models
-@inject AppDbContext Db
+@using SistemIA.Services
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject AsistenciaCalculatorService AsistenciaCalculator
 @implements IDisposable
+
+<PageProtection Modulo="/personal" Permiso="VIEW">
 
 <PageTitle>Registro de Asistencia</PageTitle>
 
@@ -138,26 +142,92 @@ else if (!asistenciasFiltradas.Any())
 }
 else
 {
-    <table class="table table-striped" id="tablaAsistencias">
+    <table class="table table-striped table-hover" id="tablaAsistencias">
         <thead class="table-dark">
             <tr>
                 <th>Usuario</th>
                 <th>Sucursal</th>
                 <th>Fecha/Hora</th>
                 <th>Tipo</th>
+                <th>Estado</th>
+                <th>Tiempo</th>
+                <th>Método</th>
                 <th>Notas</th>
-                <th></th>
+                <th>Acciones</th>
             </tr>
         </thead>
         <tbody>
             @foreach (var asis in asistenciasFiltradas)
             {
-                <tr>
-                    <td>@(asis.Usuario?.Nombres) @(asis.Usuario?.Apellidos)</td>
+                <tr class="@GetRowClassByString(asis.EstadoPuntualidad)">
+                    <td>
+                        <div class="d-flex align-items-center">
+                            @if (!string.IsNullOrEmpty(asis.MetodoRegistro))
+                            {
+                                <i class="fas fa-user-check me-2"></i>
+                            }
+                            <span>@(asis.Usuario?.Nombres) @(asis.Usuario?.Apellidos)</span>
+                        </div>
+                    </td>
                     <td>@(asis.SucursalNavigation?.NombreSucursal)</td>
-                    <td>@asis.FechaHora.ToString("dd/MM/yyyy HH:mm")</td>
-                    <td>@asis.TipoRegistro</td>
-                    <td>@asis.Notas</td>
+                    <td>
+                        <div>
+                            <strong>@asis.FechaHora.ToString("dd/MM/yyyy")</strong><br>
+                            <small class="text-muted">@asis.FechaHora.ToString("HH:mm:ss")</small>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge @GetTipoClass(asis.TipoRegistro)">
+                            @asis.TipoRegistro
+                        </span>
+                    </td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(asis.EstadoPuntualidad))
+                        {
+                            <span class="@GetEstadoClassByString(asis.EstadoPuntualidad)">
+                                @asis.EstadoPuntualidad
+                            </span>
+                            @if (asis.DiferenciaMinutos.HasValue && asis.DiferenciaMinutos.Value != 0)
+                            {
+                                <br><small class="text-warning">
+                                    @GetDiferenciaText(asis)
+                                </small>
+                            }
+                        }
+                    </td>
+                    <td>
+                        @if (asis.HoraProgramada.HasValue)
+                        {
+                            <small class="text-muted">
+                                Prog: @asis.HoraProgramada.Value.ToString("HH:mm")<br>
+                                @if (asis.TiempoTrabajadoMinutos.HasValue)
+                                {
+                                    <span>Trabajado: @FormatMinutos(asis.TiempoTrabajadoMinutos.Value)</span>
+                                }
+                                @if (asis.HorasExtraMinutos.HasValue && asis.HorasExtraMinutos > 0)
+                                {
+                                    <br><span class="text-warning">Extra: @FormatMinutos(asis.HorasExtraMinutos.Value)</span>
+                                }
+                            </small>
+                        }
+                    </td>
+                    <td>
+                        <small>@(asis.MetodoRegistro ?? "Manual")</small>
+                        @if (asis.RequiereJustificacion)
+                        {
+                            <br><span class="badge bg-warning text-dark">Requiere Justif.</span>
+                        }
+                    </td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(asis.Notas))
+                        {
+                            <span>@asis.Notas</span>
+                        }
+                        @if (!string.IsNullOrEmpty(asis.ObservacionesSistema))
+                        {
+                            <br><small class="text-muted">@asis.ObservacionesSistema</small>
+                        }
+                    </td>
                     <td>
                         <button class="btn btn-sm btn-danger" @onclick="() => EliminarAsistencia(asis.Id_Asistencia)">
                             <i class="bi bi-trash"></i>
@@ -170,7 +240,11 @@ else
 }
 
 
+</PageProtection>
+
 @code {
+
+
     private SistemIA.Models.Asistencia nuevaAsistencia = new();
     private List<SistemIA.Models.Asistencia> asistencias = new();
     private List<SistemIA.Models.Asistencia> asistenciasFiltradas = new();
@@ -203,6 +277,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+
+        await using var Db = await DbFactory.CreateDbContextAsync();
         // Se inicializaba todo en cada carga
         var modeloPath = @"C:\asis\SistemIA\face_recognition_models";
         faceRecognition = FaceRecognition.Create(modeloPath);
@@ -219,6 +295,7 @@ else
         knownEmbeddings.Clear();
         knownUserIds.Clear();
 
+        await using var Db = await DbFactory.CreateDbContextAsync();
         // Se consultaban todos los usuarios que tenían un embedding guardado
         var usuariosConEmbedding = await Db.Usuarios
             .Where(u => u.EmbeddingFacial != null && u.EmbeddingFacial.Length > 0)
@@ -271,11 +348,11 @@ else
                 using var ms = new MemoryStream(imageBytes);
                 using var bitmap = new Bitmap(ms);
                 using var img = FaceRecognition.LoadImage(bitmap);
-                var faceLocations = faceRecognition.FaceLocations(img).ToArray();
+                var faceLocations = faceRecognition?.FaceLocations(img).ToArray() ?? Array.Empty<Location>();
 
                 if (faceLocations.Length != 1) { await InvokeAsync(() => reconocimientoStatusMessage = "No se detectó un único rostro."); return; }
 
-                var capturedEncodings = faceRecognition.FaceEncodings(img, faceLocations).ToArray();
+                var capturedEncodings = faceRecognition?.FaceEncodings(img, faceLocations).ToArray() ?? Array.Empty<FaceEncoding>();
                 if (capturedEncodings.Length == 0) { await InvokeAsync(() => reconocimientoStatusMessage = "Error al procesar el rostro."); return; }
 
                 using var capturedEncoding = capturedEncodings[0];
@@ -295,7 +372,7 @@ else
                     if (usuario != null)
                     {
                         await InvokeAsync(() => RegistrarAsistenciaAutomatica(usuario));
-                        await InvokeAsync(() => { reconocimientoStatusMessage = $"¡Marcación Correcta, {usuario.Nombres}!"; reconocimientoExitoso = true; });
+                        await InvokeAsync(() => { reconocimientoStatusMessage = $"¡Marcación Registrada Correctamente, {usuario.Nombres}!"; reconocimientoExitoso = true; });
                     }
                 }
                 else
@@ -316,28 +393,62 @@ else
 
     private async Task RegistrarAsistenciaAutomatica(Usuario usuario)
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         var ultimoRegistro = await Db.Asistencias.Where(a => a.Id_Usuario == usuario.Id_Usu).OrderByDescending(a => a.FechaHora).FirstOrDefaultAsync();
         string tipoRegistro = (ultimoRegistro == null || ultimoRegistro.TipoRegistro == "Salida" || ultimoRegistro.TipoRegistro == "FinBreak") ? "Entrada" : "Salida";
 
+        // Crear registro de asistencia con información básica
         var asistencia = new SistemIA.Models.Asistencia
-            {
-                Id_Usuario = usuario.Id_Usu,
-                FechaHora = DateTime.Now,
-                TipoRegistro = tipoRegistro,
-                Sucursal = sucursalSeleccionadaId,
-                Notas = "Reconocimiento Facial"
-            };
+        {
+            Id_Usuario = usuario.Id_Usu,
+            FechaHora = DateTime.Now,
+            TipoRegistro = tipoRegistro,
+            Sucursal = sucursalSeleccionadaId,
+            Notas = "Reconocimiento Facial",
+            MetodoRegistro = "Facial",
+            EsRegistroAutomatico = true,
+            UbicacionRegistro = "Terminal Principal" // TODO: Obtener ubicación real
+        };
+
+        // *** NUEVO: Calcular automáticamente todos los campos de control de tiempo ***
+        asistencia = await AsistenciaCalculator.CalcularControlTiempo(asistencia);
 
         Db.Asistencias.Add(asistencia);
         await Db.SaveChangesAsync();
 
-        string mensajeDeVoz = tipoRegistro == "Entrada" ? $"Hola, {usuario.Nombres}." : $"Hasta luego, {usuario.Nombres}.";
+        // Generar mensaje personalizado basado en el estado de puntualidad
+        string mensajeDeVoz = GenerarMensajeVoz(usuario, asistencia);
         await JS.InvokeVoidAsync("hablarTexto", mensajeDeVoz);
         await CargarAsistencias();
     }
 
+    private string GenerarMensajeVoz(Usuario usuario, Asistencia asistencia)
+    {
+        if (asistencia.TipoRegistro == "Entrada")
+        {
+            return asistencia.EstadoPuntualidad switch
+            {
+                "Puntual" => $"¡Buenos días, {usuario.Nombres}! Entrada registrada correctamente.",
+                "Tardanza" => $"Hola, {usuario.Nombres}. Se registra tardanza de {asistencia.DiferenciaMinutos} minutos.",
+                "Adelanto" => $"¡Buenos días, {usuario.Nombres}! Entrada temprana registrada.",
+                _ => $"Hola, {usuario.Nombres}. Entrada registrada."
+            };
+        }
+        else
+        {
+            return asistencia.EstadoPuntualidad switch
+            {
+                "Puntual" => $"¡Hasta luego, {usuario.Nombres}! Salida registrada correctamente.",
+                "SalidaTemprana" => $"Hasta luego, {usuario.Nombres}. Se registra salida temprana de {Math.Abs(asistencia.DiferenciaMinutos ?? 0)} minutos.",
+                "TiempoExtra" => $"¡Excelente trabajo, {usuario.Nombres}! Se registra tiempo extra de {asistencia.HorasExtraMinutos} minutos.",
+                _ => $"Hasta luego, {usuario.Nombres}. Salida registrada."
+            };
+        }
+    }
+
     private async Task CargarAsistencias()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         // Esta era la consulta lenta que cargaba todo el historial
         asistencias = await Db.Asistencias
             .Include(a => a.Usuario)
@@ -362,6 +473,7 @@ else
 
     private async Task GuardarAsistencia()
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
         if (nuevaAsistencia.Id_Usuario == 0 || string.IsNullOrWhiteSpace(nuevaAsistencia.TipoRegistro) || nuevaAsistencia.Sucursal == 0)
         {
             await JS.InvokeVoidAsync("alert", "Debe seleccionar un usuario, sucursal y tipo de registro.");
@@ -377,6 +489,8 @@ else
 
     private async Task EliminarAsistencia(int id)
     {
+        await using var Db = await DbFactory.CreateDbContextAsync();
+
         bool confirmed = await JS.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este registro?");
         if (confirmed)
         {
@@ -439,6 +553,125 @@ else
     {
         await JS.InvokeVoidAsync("exportAsistenciasToPdf", "tablaAsistencias");
     }
+    // Métodos helper para la presentación de datos de asistencia basados en strings
+    private string GetRowClassByString(string? estadoPuntualidad)
+    {
+        if (string.IsNullOrEmpty(estadoPuntualidad)) return "";
+        
+        return estadoPuntualidad.ToLower() switch
+        {
+            "puntual" => "table-success",
+            "tardanza" => "table-warning",
+            "adelanto" => "table-info",
+            "ausencia" => "table-danger",
+            "salidatemprana" => "table-warning",
+            "tiempoextra" => "table-primary",
+            "nolaborable" => "table-secondary",
+            _ => ""
+        };
+    }
+
+    private string GetEstadoClassByString(string? estadoPuntualidad)
+    {
+        if (string.IsNullOrEmpty(estadoPuntualidad)) return "badge bg-secondary";
+        
+        return estadoPuntualidad.ToLower() switch
+        {
+            "puntual" => "badge bg-success",
+            "tardanza" => "badge bg-warning text-dark",
+            "adelanto" => "badge bg-info text-dark",
+            "ausencia" => "badge bg-danger",
+            "salidatemprana" => "badge bg-warning text-dark",
+            "tiempoextra" => "badge bg-primary",
+            "nolaborable" => "badge bg-secondary",
+            _ => "badge bg-secondary"
+        };
+    }
+
+    private string GetTipoClass(string tipoRegistro)
+    {
+        return tipoRegistro switch
+        {
+            "Entrada" => "badge bg-primary",
+            "Salida" => "badge bg-dark",
+            _ => "badge bg-secondary"
+        };
+    }
+
+    private string GetDiferenciaText(Models.Asistencia asistencia)
+    {
+        if (asistencia.DiferenciaMinutos == null) return "-";
+        
+        var minutos = asistencia.DiferenciaMinutos.Value;
+        var signo = minutos >= 0 ? "+" : "";
+        
+        if (Math.Abs(minutos) >= 60)
+        {
+            var horas = Math.Abs(minutos) / 60;
+            var minutosRestantes = Math.Abs(minutos) % 60;
+            return $"{signo}{(minutos >= 0 ? horas : -horas)}h {minutosRestantes}m";
+        }
+        else
+        {
+            return $"{signo}{minutos}m";
+        }
+    }
+
+    private string FormatTiempo(TimeSpan? tiempo)
+    {
+        if (tiempo == null) return "-";
+        return tiempo.Value.ToString(@"hh\:mm");
+    }
+
+    private string FormatMinutos(int minutos)
+    {
+        if (minutos >= 60)
+        {
+            var horas = minutos / 60;
+            var minutosRestantes = minutos % 60;
+            return $"{horas}h {minutosRestantes}m";
+        }
+        else
+        {
+            return $"{minutos}m";
+        }
+    }
+
+    private string GetMetodoClassByString(string? metodoRegistro)
+    {
+        if (string.IsNullOrEmpty(metodoRegistro)) return "badge bg-secondary";
+        
+        return metodoRegistro.ToLower() switch
+        {
+            "facial" => "badge bg-success",
+            "manual" => "badge bg-warning text-dark",
+            "huella" => "badge bg-info text-dark",
+            "tarjeta" => "badge bg-primary",
+            "qr" => "badge bg-info",
+            "movil" => "badge bg-success",
+            "web" => "badge bg-primary",
+            "automatico" => "badge bg-secondary",
+            _ => "badge bg-secondary"
+        };
+    }
+
+    private string GetHorasExtraText(Models.Asistencia asistencia)
+    {
+        if (asistencia.HorasExtraMinutos == null || asistencia.HorasExtraMinutos <= 0) return "-";
+        
+        var minutos = asistencia.HorasExtraMinutos.Value;
+        if (minutos >= 60)
+        {
+            var horas = minutos / 60;
+            var minutosRestantes = minutos % 60;
+            return $"{horas}h {minutosRestantes}m";
+        }
+        else
+        {
+            return $"{minutos}m";
+        }
+    }
+
     public void Dispose()
     {
         _ = DetenerCamara();

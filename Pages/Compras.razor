@@ -1,0 +1,2997 @@
+@page "/compras"
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components
+@using Microsoft.EntityFrameworkCore
+@using System.Text
+@inject NavigationManager Nav
+@using Microsoft.AspNetCore.WebUtilities
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject IJSRuntime JS
+@inject IInventarioService Inventario
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject Sifen SifenService
+@using Microsoft.AspNetCore.Components.Authorization
+
+<PageProtection Modulo="/compras" Permiso="VIEW">
+
+<div class="d-flex align-items-center justify-content-between mb-2">
+    <h3 class="m-0">Registro de Compras</h3>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" title="Reimprimir última compra" @onclick="ReimprimirUltimaAsync">
+            <i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Reimprimir</span>
+        </button>
+        <a class="btn btn-outline-primary btn-sm" href="/compras/explorar" title="Explorar compras">
+            <i class="bi bi-journal-text"></i> <span class="d-none d-sm-inline">Explorar</span>
+        </a>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Error))
+{
+    <div class="alert alert-danger">@Error</div>
+}
+@if (!string.IsNullOrEmpty(Ok))
+{
+    <div class="alert alert-success">@Ok</div>
+}
+
+@if (ModoSoloVista)
+{
+    <div class="alert alert-info d-flex align-items-center justify-content-between mb-3">
+        <span><i class="bi bi-eye"></i> <strong>Modo Visualización</strong> - Las compras confirmadas no pueden ser editadas.</span>
+        <a href="/compras" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle"></i> Nueva Compra</a>
+    </div>
+}
+
+<fieldset disabled="@ModoSoloVista">
+<EditForm Model="Compra" OnValidSubmit="GuardarAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="row g-3">
+    <div class="col-md-6">
+        <div class="alert alert-info py-2">
+                <div class="d-flex flex-wrap gap-3 align-items-center">
+            <div><strong>Caja:</strong> @(CajaActiva?.IdCaja.ToString() ?? "—")</div>
+            <div><strong>Fecha Caja:</strong> @(FechaCajaActual?.ToString("dd/MM/yyyy") ?? "—")</div>
+            <div><strong>Turno actual:</strong> @(TurnoActual?.ToString() ?? "—")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-5">
+            <label class="form-label d-flex align-items-center justify-content-between">
+                <span>Proveedor</span>
+                <span class="d-flex gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" title="Refrescar proveedores" @onclick="RefrescarProveedoresAsync">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" title="Nuevo proveedor rápido" @onclick="AbrirModalNuevoProveedor">
+                        <i class="bi bi-plus-circle"></i>
+                    </button>
+                </span>
+            </label>
+            <div class="position-relative">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input class="form-control" placeholder="Buscar por nombre o RUC (sin DV)" @bind="BuscarProveedor" @bind:event="oninput" @onkeydown="OnProveedorKeyDown" @onfocus="OnProveedorFocus" autocomplete="off" />
+                </div>
+                @if (MostrarSugProveedores && ProveedoresFiltrados.Any())
+                {
+                    <div class="list-group position-absolute w-100 z-3" style="max-height: 260px; overflow:auto;">
+            @foreach (var p in ProveedoresFiltrados.Take(12))
+                        {
+                            <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" @onclick="() => SeleccionarProveedor(p)">
+                                <span>@p.RazonSocial</span>
+                <small class="text-muted">@p.RUC@(p.DV > 0 ? ("-" + p.DV.ToString()) : string.Empty)</small>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+        
+    <div class="col-md-2">
+            <label class="form-label">Moneda</label>
+            <InputSelect class="form-select" @bind-Value="Compra.IdMoneda" TValue="int?" @onchange="OnMonedaChangedAsync">
+                <option value="">-- Seleccione --</option>
+                @foreach (var m in Monedas)
+                {
+            <option value="@m.IdMoneda">@GetCurrencyFlag(m.CodigoISO) @m.Nombre (@m.CodigoISO)</option>
+                }
+            </InputSelect>
+        </div>
+        @if (Compra.IdMoneda.HasValue && Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda.Value)?.EsMonedaBase == false)
+        {
+            <div class="col-md-2">
+                <label class="form-label">Tipo de Cambio</label>
+                <div class="input-group">
+                    <span class="input-group-text">@(Monedas.FirstOrDefault(m => m.EsMonedaBase)?.Simbolo ?? "Gs.")</span>
+                    <input type="number" class="form-control" step="0.01" min="0" 
+                           @bind="Compra.CambioDelDia" 
+                           @bind:after="@(() => OnCambioManualChangedAsync())" 
+                           placeholder="6850" />
+                </div>
+                <small class="text-muted">Editable para ajustar precio</small>
+            </div>
+        }
+        <div class="col-md-3">
+            <label class="form-label">Fecha</label>
+            <InputDate TValue="DateTime" class="form-control" @bind-Value="Compra.Fecha" />
+        </div>
+    </div>
+
+    <div class="row g-3 mt-2">
+        <div class="col-md-2">
+            <label class="form-label">Nivel 1</label>
+            <InputText class="form-control" @bind-Value="Compra.Establecimiento" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Nivel 2</label>
+            <InputText class="form-control" @bind-Value="Compra.PuntoExpedicion" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Nro. Factura (7)</label>
+            <InputText class="form-control" @bind-Value="Compra.NumeroFactura" />
+        </div>
+    <div class="col-md-2">
+            <label class="form-label">Timbrado</label>
+            <InputText class="form-control" @bind-Value="Compra.Timbrado" />
+        </div>
+    <div class="col-md-3">
+            <label class="form-label">Venc. timbrado (proveedor)</label>
+            <InputDate TValue="DateTime?" class="form-control" @bind-Value="VencimientoTimbradoProveedorSel" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-flex align-items-center justify-content-between">
+                <span>Tipo Doc.</span>
+                <a href="/configuracion/tipos-documento" class="btn btn-sm btn-outline-secondary" title="Configurar tipos" target="_blank">
+                    <i class="bi bi-gear"></i>
+                </a>
+            </label>
+            <InputSelect class="form-select" @bind-Value="Compra.IdTipoDocumentoOperacion" TValue="int?" @onchange="OnTipoDocumentoChanged">
+                <option value="">-- Seleccione --</option>
+                @foreach (var t in TiposDocumento)
+                {
+                    <option value="@t.IdTipoDocumentoOperacion">@t.Nombre</option>
+                }
+            </InputSelect>
+        </div>
+    <div class="col-md-2">
+            <label class="form-label">Tipo de pago</label>
+            <InputSelect class="form-select" @bind-Value="Compra.IdTipoPago" @bind-Value:after="OnTipoPagoChanged">
+                <option value="">-- Seleccione --</option>
+                @foreach (var t in TiposPago)
+                {
+                    <option value="@t.IdTipoPago">@t.Nombre</option>
+                }
+            </InputSelect>
+        </div>
+        @if (MostrarCamposCredito)
+        {
+            <div class="col-md-1">
+                <label class="form-label">Nº Cuotas</label>
+                <input type="number" class="form-control" @bind="NumeroCuotasCompra" min="1" max="60" placeholder="1" />
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Plazo</label>
+                <input type="number" class="form-control" @bind="Compra.PlazoDias" @bind:after="OnPlazoChanged" min="1" placeholder="30" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Vencimiento</label>
+                <InputDate TValue="DateTime?" class="form-control" @bind-Value="Compra.FechaVencimiento" />
+            </div>
+        }
+        <div class="col-md-2">
+            <label class="form-label">Medio de pago</label>
+            @if (EsTipoPagoContado())
+            {
+                <InputSelect class="form-select" @bind-Value="Compra.MedioPago">
+                    @foreach (var mp in MediosPago)
+                    {
+                        <option value="@mp">@mp</option>
+                    }
+                </InputSelect>
+            }
+            else
+            {
+                <InputText class="form-control" @bind-Value="Compra.MedioPago" readonly />
+            }
+        </div>
+    <div class="col-md-2">
+            <label class="form-label">Estado</label>
+            <InputText class="form-control" @bind-Value="Compra.Estado" />
+        </div>
+    </div>
+
+    <hr />
+    <h5>Detalle</h5>
+
+    <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label d-flex align-items-center justify-content-between">
+                <span>Producto</span>
+                <span class="d-flex gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" title="Refrescar productos" @onclick="RefrescarProductosAsync">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                    <a href="/productos" class="btn btn-sm btn-outline-primary" title="Nuevo producto" target="_blank">
+                        <i class="bi bi-plus-circle"></i>
+                    </a>
+                </span>
+            </label>
+            <div class="position-relative">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input class="form-control" placeholder="Buscar por parte del nombre" @bind="BuscarProducto" @bind:event="oninput" @onkeyup="OnProductoKeyUp" @onfocus="OnProductoFocus" @onblur="OnProductoBlur" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}" />
+                </div>
+                @if (MostrarSugProductos && ProductosFiltrados.Any())
+                {
+                    <div class="list-group position-absolute w-100 z-3" style="max-height: 260px; overflow:auto;">
+                        @foreach (var p in ProductosFiltrados.Take(12))
+                        {
+                            <button type="button"
+                                    class="list-group-item list-group-item-action"
+                                    tabindex="-1"
+                                    @onpointerdown="() => OnProductoSuggestionMouseDownAsync(p)" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+                                    @onmousedown="() => OnProductoSuggestionMouseDownAsync(p)" @onmousedown:preventDefault @onmousedown:stopPropagation
+                                    @onclick="() => OnProductoSuggestionMouseDownAsync(p)" @onclick:preventDefault @onclick:stopPropagation>
+                                @p.Descripcion
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">Cantidad</label>
+            <input type="number" step="any" class="form-control" @bind="CantidadInput" @bind:event="oninput" />
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">Precio</label>
+            <input type="number" step="0.01" class="form-control" @bind="PrecioInput" @bind:event="oninput" />
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">Factor</label>
+            <input type="number" step="any" class="form-control" @bind="FactorMultiplicador" @bind:event="oninput" @bind:after="OnFactorChanged" placeholder="1.30" />
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">% Margen</label>
+            <input type="number" step="any" class="form-control" @bind="PorcentajeMargen" @bind:event="oninput" @bind:after="OnPorcentajeChanged" placeholder="30" />
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">Depósito</label>
+            <select class="form-select" @bind="IdDepositoItemSeleccionado">
+                <option value="">-- Seleccione --</option>
+                @foreach (var d in Depositos)
+                {
+                    <option value="@d.IdDeposito">@d.Nombre</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">
+                <input class="form-check-input me-1" type="checkbox" id="controlarVencItemSwitch" @bind="ControlarVencimientoItem" />
+                Vencimiento
+            </label>
+            @if (ControlarVencimientoItem)
+            {
+                <input type="date" class="form-control" @bind="FechaVencimientoItemSeleccionada" />
+            }
+            else
+            {
+                <input type="date" class="form-control" disabled placeholder="dd/mm/aaaa" />
+            }
+        </div>
+        <div class="col-md-2 d-flex flex-column">
+            <label class="form-label">&nbsp;</label>
+            <button type="button" class="btn btn-primary" @onclick="AgregarDetalleAsync">
+                <i class="bi bi-plus-circle me-1"></i>Agregar
+            </button>
+        </div>
+    </div>
+
+    <div class="row mt-1">
+        <div class="col-md-12">
+            <div class="d-flex gap-2 align-items-center text-muted small">
+                <span>Stock: <strong>@(StockActualSeleccion.HasValue ? StockActualSeleccion.Value.ToString("N2") : "—")</strong></span>
+                <span>|</span>
+                <span>Grav. 10%: <strong>@FormatearPrecio(NuevoDetalle.Grabado10)</strong></span>
+                <span>IVA 10%: <strong>@FormatearPrecio(NuevoDetalle.IVA10)</strong></span>
+                <span>|</span>
+                <span>Grav. 5%: <strong>@FormatearPrecio(NuevoDetalle.Grabado5)</strong></span>
+                <span>IVA 5%: <strong>@FormatearPrecio(NuevoDetalle.IVA5)</strong></span>
+                <span>|</span>
+                <span>Exenta: <strong>@FormatearPrecio(NuevoDetalle.Exenta)</strong></span>
+                <span>|</span>
+                <span>Total línea: <strong class="text-primary">@FormatearPrecio(NuevoDetalle.Importe)</strong></span>
+                @if (FactorMultiplicador.HasValue && FactorMultiplicador.Value > 0 && PrecioVentaCalculado.HasValue)
+                {
+                    <span>|</span>
+                    <span>Precio Venta: <strong class="text-success">@FormatearPrecio(PrecioVentaCalculado.Value)</strong></span>
+                }
+                @{
+                    var prodSel = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+                    var codOri = Monedas.FirstOrDefault(m => m.IdMoneda == (prodSel?.IdMonedaPrecio ?? Compra.IdMoneda))?.CodigoISO ?? string.Empty;
+                    var codDes = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda)?.CodigoISO ?? string.Empty;
+                }
+                @if (NuevoDetalle.CambioDelDia.HasValue)
+                {
+                    <span>|</span>
+                    <span>TC: <strong>@GetCurrencyFlag(codOri)@codOri/@codDes@GetCurrencyFlag(codDes) @NuevoDetalle.CambioDelDia.Value.ToString("N4")</strong></span>
+                }
+            </div>
+        </div>
+    </div>
+
+    <table class="table table-sm mt-3">
+        <thead>
+        <tr>
+            <th>Producto</th>
+            <th>Depósito</th>
+            <th>Vencimiento</th>
+            <th class="text-end">Cantidad</th>
+            <th class="text-end">Pre. Unit. Compra</th>
+            <th class="text-end">Importe Compra</th>
+            <th class="text-end">Factor</th>
+            <th class="text-end">% Margen</th>
+            <th class="text-end">Pre. Unit. Venta</th>
+            <th class="text-end">TC</th>
+            <th>IVA</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var d in Detalles)
+        {
+            var prod = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
+            var deposito = Depositos.FirstOrDefault(dep => dep.IdDeposito == d.IdDepositoItem);
+            <tr @onclick="() => SeleccionarDetalleCompra(prod)" style="cursor: pointer;" class="@(ProductoImagenUrl == prod?.Foto ? "table-active" : "")" title="Clic para ver imagen">
+                <td>@prod?.Descripcion</td>
+                <td>
+                    @if (d.IdDepositoItem.HasValue)
+                    {
+                        var nombreDeposito = deposito?.Nombre ?? "(Otro)";
+                        <span class="badge bg-info">@nombreDeposito</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted small">(Sin depósito)</span>
+                    }
+                </td>
+                <td>
+                    @if (d.FechaVencimientoItem.HasValue)
+                    {
+                        var diasRestantes = (d.FechaVencimientoItem.Value - DateTime.Now).Days;
+                        var claseColor = diasRestantes < 0 ? "text-danger" : diasRestantes <= 30 ? "text-warning" : "text-success";
+                        <span class="@claseColor small">@d.FechaVencimientoItem.Value.ToString("dd/MM/yyyy")</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted small">-</span>
+                    }
+                </td>
+                <td class="text-end">@d.Cantidad</td>
+                <td class="text-end">@FormatearPrecio(d.PrecioUnitario)</td>
+                <td class="text-end">@FormatearPrecio(d.Importe)</td>
+                <td class="text-end">
+                    @if (d.FactorMultiplicador.HasValue && d.FactorMultiplicador.Value > 0)
+                    {
+                        <span class="badge bg-info text-dark">@d.FactorMultiplicador.Value.ToString("N2")</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                </td>
+                <td class="text-end">
+                    @if (d.PorcentajeMargen.HasValue)
+                    {
+                        var colorMargen = d.PorcentajeMargen.Value >= 30m ? "bg-primary" : "bg-danger";
+                        <span class="badge @colorMargen text-white">@d.PorcentajeMargen.Value.ToString("N2")%</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                </td>
+                <td class="text-end">@FormatearPrecio(d.PrecioVentaRef)</td>
+                @{ var codOriTc = Monedas.FirstOrDefault(m => m.IdMoneda == (prod?.IdMonedaPrecio ?? Compra.IdMoneda))?.CodigoISO ?? string.Empty;
+                    var codDesTc = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda)?.CodigoISO ?? string.Empty;
+                    var txTxt = d.CambioDelDia.HasValue ? ($"{GetCurrencyFlag(codOriTc)} {codOriTc}/{codDesTc} {GetCurrencyFlag(codDesTc)} {d.CambioDelDia.Value.ToString("N4")}") : "—"; }
+                <td class="text-end"><span class="text-muted">@txTxt</span></td>
+                <td>@(prod?.TipoIva?.Descripcion ?? prod?.TipoIva?.CodigoAbreviado)</td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => QuitarDetalle(d)">Quitar</button>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+    <div class="row g-3 mt-2">
+        @if (!string.IsNullOrWhiteSpace(ProductoImagenUrl))
+        {
+            <div class="col-md-3">
+                <div class="card mb-3 border-primary">
+                    <div class="card-header bg-primary text-white py-2">
+                        <small><i class="bi bi-image"></i> Imagen del Producto</small>
+                    </div>
+                    <div class="card-body p-2 text-center bg-white">
+                        <img src="@ProductoImagenUrl" alt="Producto" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;" />
+                    </div>
+                </div>
+            </div>
+        }
+        <div class="col-md-3 ms-auto">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <span>Gravado 10%</span>
+                        <strong>@FormatearPrecio(Gravado10)</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Gravado 5%</span>
+                        <strong>@FormatearPrecio(Gravado5)</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>IVA 10%</span>
+                        <strong>@FormatearPrecio(IVATotal10)</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>IVA 5%</span>
+                        <strong>@FormatearPrecio(IVATotal5)</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Exentas</span>
+                        <strong>@FormatearPrecio(Exenta)</strong>
+                    </div>
+                    <hr />
+                    <div class="d-flex justify-content-between">
+                        <span>Total</span>
+                        <strong>@SimboloMonedaActual @FormatearPrecio(Compra.Total)</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!ModoSoloVista)
+    {
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-success" type="submit">Guardar</button>
+            <button class="btn btn-secondary" type="button" @onclick="Limpiar">Limpiar</button>
+        </div>
+    }
+    else
+    {
+        <div class="mt-3 d-flex gap-2">
+            <button type="button" class="btn btn-primary" @onclick="IrANuevaCompra"><i class="bi bi-plus-circle"></i> Nueva Compra</button>
+            <button type="button" class="btn btn-secondary" @onclick="IrAlExplorador"><i class="bi bi-arrow-left"></i> Volver al Explorador</button>
+        </div>
+    }
+
+    <div class="mt-3 text-muted">
+        <span title="Total en letras según moneda seleccionada">@TotalActualEnLetras</span>
+    </div>
+</EditForm>
+</fieldset>
+
+@* Modal para crear nuevo proveedor rápido *@
+@if (_mostrarModalProveedor)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);" @onclick="CerrarModalProveedor">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-building-add"></i> Nuevo Proveedor Rápido</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalProveedor"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_errorProveedor))
+                    {
+                        <div class="alert alert-danger py-2">@_errorProveedor</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_successProveedor))
+                    {
+                        <div class="alert alert-success py-2">@_successProveedor</div>
+                    }
+
+                    <div class="row g-3">
+                        <div class="col-8">
+                            <label class="form-label">RUC <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" @bind="_nuevoProvRuc" @bind:event="oninput" @onblur="CalcularDvProveedor" placeholder="Ej: 80012345" maxlength="10" />
+                                <button type="button" class="btn btn-outline-primary" @onclick="BuscarProveedorEnSifenAsync" disabled="@_buscandoProveedorSifen" title="Buscar en BD local y SIFEN">
+                                    @if (_buscandoProveedorSifen)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-search"></i>
+                                    }
+                                </button>
+                            </div>
+                            <small class="text-muted">Sin guión ni DV</small>
+                            @if (!string.IsNullOrEmpty(_mensajeSifenProveedor))
+                            {
+                                <div class="@(_esSifenProveedorError ? "text-danger" : "text-success") small mt-1">@_mensajeSifenProveedor</div>
+                            }
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label">DV</label>
+                            <input type="text" class="form-control" value="@_nuevoProvDv" readonly />
+                            <small class="text-muted">Calculado</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Razón Social <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_nuevoProvRazonSocial" placeholder="Nombre de la empresa" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Timbrado <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_nuevoProvTimbrado" placeholder="8 dígitos" maxlength="8" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Venc. Timbrado <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" @bind="_nuevoProvVencTimbrado" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalProveedor">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarNuevoProveedorAsync" disabled="@_guardandoProveedor">
+                        @if (_guardandoProveedor)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg"></i> Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string? Error;
+    private string? Ok;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+    private int? _usuarioId;
+    private string? _usuarioNombre;
+
+    private SistemIA.Models.Compra Compra = new() { Fecha = DateTime.Today, TipoDocumento = "FACTURA" };
+    private List<SistemIA.Models.CompraDetalle> Detalles = new();
+    private SistemIA.Models.CompraDetalle NuevoDetalle = new() { Cantidad = 1, PrecioUnitario = 0 };
+
+    private List<SistemIA.Models.Producto> Productos = new();
+    // Item ligero para sugerencias de proveedores (usa tabla legada Proveedores)
+    private class ProvSifenItem { public int IdProveedor { get; set; } public string RazonSocial { get; set; } = string.Empty; public string RUC { get; set; } = string.Empty; public int DV { get; set; } }
+    private List<ProvSifenItem> Proveedores = new();
+    private List<ProvSifenItem> ProveedoresFiltrados = new();
+    private List<SistemIA.Models.Deposito> Depositos = new();
+    // Cajas no se usa en Compras; los campos se editan libremente y Cajas será usada en Ventas
+    private List<SistemIA.Models.Moneda> Monedas = new();
+    private List<SistemIA.Models.TipoPago> TiposPago = new();
+    private List<SistemIA.Models.TipoDocumentoOperacion> TiposDocumento = new();
+    private List<TipoIngresoItem> TiposIngreso = new();
+    private List<SistemIA.Models.Producto> ProductosFiltrados = new();
+    private static readonly string[] MediosPago = new[] { "EFECTIVO", "TARJETA", "CHEQUE", "TRANSFERENCIA", "QR" };
+
+    // Datos de caja activa
+    private SistemIA.Models.Caja? CajaActiva;
+    private string CajaActivaInfo => CajaActiva == null ? "—" : $"Caja #{CajaActiva.IdCaja}";
+    private int? TurnoActual => CajaActiva?.TurnoActual;
+    private DateTime? FechaCajaActual => CajaActiva?.FechaActualCaja;
+
+    private string? _buscarProveedor;
+    private string BuscarProveedor { get => _buscarProveedor ?? string.Empty; set { _buscarProveedor = value; AplicarFiltroProveedores(); } }
+    private string? _buscarProducto;
+    private string BuscarProducto { get => _buscarProducto ?? string.Empty; set { _buscarProducto = value; AplicarFiltroProductos(); } }
+
+    private bool MostrarSugProveedores;
+    private bool MostrarSugProductos;
+    private bool _mouseDownEnSugerenciaProducto;
+    private DateTime? VencimientoTimbradoProveedorSel;
+    private string? ProductoImagenUrl;
+
+    // Variables para modal de nuevo proveedor rápido
+    private bool _mostrarModalProveedor;
+    private bool _guardandoProveedor;
+    private string? _errorProveedor;
+    private string? _successProveedor;
+    private string _nuevoProvRazonSocial = string.Empty;
+    private string _nuevoProvRuc = string.Empty;
+    private int _nuevoProvDv;
+    private string _nuevoProvTimbrado = string.Empty;
+    private DateTime _nuevoProvVencTimbrado = DateTime.Today.AddYears(2);
+    // SIFEN búsqueda de proveedor
+    private bool _buscandoProveedorSifen;
+    private string? _mensajeSifenProveedor;
+    private bool _esSifenProveedorError;
+
+    private decimal Gravado10; private decimal Gravado5; private decimal Exenta; private decimal IVATotal10; private decimal IVATotal5;
+    private decimal CantidadInput { get => NuevoDetalle.Cantidad; set { NuevoDetalle.Cantidad = value; RecalcularNuevoDetalle(); } }
+    private decimal PrecioInput { get => NuevoDetalle.PrecioUnitario; set { NuevoDetalle.PrecioUnitario = value; RecalcularNuevoDetalle(); } }
+
+    // Variables para crédito y cuotas
+    private int NumeroCuotasCompra { get; set; } = 1;
+    private bool MostrarCamposCredito { get; set; } = false;
+    private bool TipoPagoEsCredito => Compra.IdTipoPago.HasValue && TiposPago.FirstOrDefault(t => t.IdTipoPago == Compra.IdTipoPago)?.EsCredito == true;
+
+    // Variables para depósito y vencimiento del item
+    private int? IdDepositoItemSeleccionado;
+    private bool ControlarVencimientoItem = false;
+    private DateTime? FechaVencimientoItemSeleccionada;
+    
+    // Factor multiplicador para calcular precio de venta
+    private decimal? FactorMultiplicador;
+    private decimal? PorcentajeMargen;
+    private decimal? PrecioVentaCalculado;
+    private bool _actualizandoFactorPorcentaje = false;
+    
+    // Diccionario para guardar el factor aplicado a cada producto (para actualizar al guardar)
+    private Dictionary<int, decimal> _factoresPorProducto = new();
+
+    private string FormatoMonedaActual
+    {
+        get
+        {
+            var codigo = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda)?.CodigoISO ?? "PYG";
+            return codigo == "PYG" ? "N0" : "N2";
+        }
+    }
+
+    private string SimboloMonedaActual
+    {
+        get
+        {
+            var mon = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda);
+            return mon?.Simbolo ?? "₲";
+        }
+    }
+
+    // Control de carga por parámetro de consulta
+    private bool _compraDesdeQueryCargada = false;
+    private int? _idCompraParam = null;
+    
+    /// <summary>
+    /// Modo solo vista: cuando se carga una compra existente, los controles se bloquean
+    /// </summary>
+    private bool ModoSoloVista = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Forzar selección de sucursal antes de cargar compras
+        var sucId = SucursalProvider.GetSucursalId();
+        if (!sucId.HasValue)
+        {
+            var ret = System.Net.WebUtility.UrlEncode(Nav.Uri);
+            Nav.NavigateTo($"/seleccionar-sucursal?returnUrl={ret}", true);
+            return;
+        }
+        // Capturar usuario autenticado para auditoría
+        try
+        {
+            var auth = await AuthStateTask;
+            var u = auth.User;
+            if (u?.Identity?.IsAuthenticated == true)
+            {
+                if (int.TryParse(u.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var idu))
+                    _usuarioId = idu;
+                _usuarioNombre = u.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? u.Identity?.Name;
+            }
+        }
+        catch { }
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+
+        // Opcional: asegurar monedas EUR/CLP/UYU/COP/MXN
+    await EnsureMonedasAsync(ctx);
+    await EnsureTiposPagoAsync(ctx);
+    await EnsureTiposDocumentoOperacionAsync(ctx);
+    await EnsureTiposIngresoAsync(ctx);
+    await EnsureColumnaMedioPagoAsync(ctx);
+    await EnsureColumnaTipoIngresoAsync(ctx);
+
+    // Asegurar columna IdMonedaPrecio en Productos (por compatibilidad si aún no se migró)
+    await EnsureColumnaMonedaProductoAsync(ctx);
+    // Asegurar columna CambioDelDia en ComprasDetalles
+    await EnsureColumnaCambioDetalleAsync(ctx);
+
+    Productos = await ctx.Productos.Include(p => p.TipoIva).Include(p => p.DepositoPredeterminado).AsNoTracking().OrderBy(p => p.Descripcion).ToListAsync();
+        // Cargar proveedores desde tabla legada Proveedores (evita conflicto de FK)
+        Proveedores = await ctx.Database
+            .SqlQuery<ProvSifenItem>(
+                $"SELECT IdProveedor, RazonSocial, RUC, DV FROM ProveedoresSifen ORDER BY RazonSocial")
+            .ToListAsync();
+    // Solo Principal y Almacen
+    Depositos = await ctx.Depositos.AsNoTracking()
+        .Where(d => d.Nombre.ToLower().Contains("principal") || 
+                    d.Nombre.ToLower().Contains("almacen"))
+        .OrderBy(d => d.Nombre)
+        .ToListAsync();
+    // Solo mostrar ARS, USD, BRL y PYG
+    var codsMonedas = new[] { "ARS", "USD", "BRL", "PYG" };
+    Monedas = await ctx.Monedas.AsNoTracking()
+        .Where(m => codsMonedas.Contains(m.CodigoISO))
+        .OrderBy(m => m.CodigoISO)
+        .ToListAsync();
+    // Excluir "Remisión Interna" de las opciones de tipo de pago
+    TiposPago = await ctx.TiposPago.AsNoTracking()
+        .Where(t => t.Activo && !t.Nombre.Contains("Interna"))
+        .OrderBy(t => t.Orden).ThenBy(t => t.Nombre)
+        .ToListAsync();
+    TiposDocumento = await ctx.TiposDocumentoOperacion.AsNoTracking().Where(t => t.Activo).OrderBy(t => t.Orden).ThenBy(t => t.Nombre).ToListAsync();
+    await CargarTiposIngresoAsync(ctx);
+
+    // Usar sucursal seleccionada del usuario
+    var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId.Value) 
+          ?? await ctx.Sucursal.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+    if (suc != null) Compra.IdSucursal = suc.Id;
+
+    // Predeterminar depósito: usamos el primero por simplicidad
+        Compra.IdDeposito = Depositos.FirstOrDefault()?.IdDeposito;
+
+    // Predeterminar moneda PYG si existe
+    var pyg = Monedas.FirstOrDefault(m => m.CodigoISO == "PYG");
+    if (pyg != null) Compra.IdMoneda = pyg.IdMoneda;
+
+    // Predeterminar tipo de pago Contado si existe
+    SeleccionarPagoContadoPorDefecto();
+    // Predeterminar medio de pago EFECTIVO si no se ha definido
+    if (string.IsNullOrWhiteSpace(Compra.MedioPago)) Compra.MedioPago = "EFECTIVO";
+
+    // Predeterminar tipo de documento FACTURA si existe
+    var factura = TiposDocumento.FirstOrDefault(t => t.Nombre == "FACTURA");
+    if (factura != null) { Compra.IdTipoDocumentoOperacion = factura.IdTipoDocumentoOperacion; Compra.TipoDocumento = factura.Nombre; }
+
+    // Inicializar listas filtradas
+        ProductosFiltrados = new(Productos);
+        ProveedoresFiltrados = new(Proveedores);
+    MostrarSugProveedores = false;
+    MostrarSugProductos = false;
+
+    // Campos de fiscalización quedan libres en Compras
+
+    // Cargar caja activa (si existe). Por simplicidad tomamos la primera; a futuro, seleccionar por sucursal/usuario.
+    CajaActiva = await ctx.Cajas.AsNoTracking().Where(c => c.CajaActual == 1).FirstOrDefaultAsync()
+                 ?? await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).FirstOrDefaultAsync();
+    if (CajaActiva?.bloquear_fechaCaja == true && CajaActiva.FechaActualCaja.HasValue)
+    {
+        // Si la caja bloquea la fecha, forzar la fecha de la compra a la fecha de caja
+        Compra.Fecha = CajaActiva.FechaActualCaja.Value.Date;
+    }
+
+        // Si la URL trae ?id=..., cargar la compra para edición
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var q = QueryHelpers.ParseQuery(uri.Query);
+            if (q.TryGetValue("id", out var idVal) && int.TryParse(idVal, out var idParam))
+            {
+                _idCompraParam = idParam;
+                await CargarCompraPorIdAsync(idParam);
+                _compraDesdeQueryCargada = true;
+                ModoSoloVista = true; // Compras cargadas son solo lectura
+            }
+        }
+        catch { }
+    }
+
+    private async Task CargarCompraPorIdAsync(int id)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var compDb = await ctx.Compras.AsNoTracking().FirstOrDefaultAsync(c => c.IdCompra == id);
+            if (compDb == null)
+            {
+                Error = $"No se encontró la compra #{id}";
+                return;
+            }
+
+            var detsDb = await ctx.ComprasDetalles.AsNoTracking()
+                .Where(d => d.IdCompra == id)
+                .ToListAsync();
+
+            // Reemplazar cabecera y detalle en UI
+            // Asegurar moneda predeterminada si la compra no tiene moneda asignada
+            var idMonedaCompra = compDb.IdMoneda ?? Monedas.FirstOrDefault(m => m.CodigoISO == "PYG")?.IdMoneda;
+            Compra = new SistemIA.Models.Compra
+            {
+                IdCompra = compDb.IdCompra,
+                Establecimiento = compDb.Establecimiento,
+                PuntoExpedicion = compDb.PuntoExpedicion,
+                NumeroFactura = compDb.NumeroFactura,
+                Timbrado = compDb.Timbrado,
+                IdSucursal = compDb.IdSucursal,
+                IdProveedor = compDb.IdProveedor,
+                IdMoneda = idMonedaCompra,
+                IdDeposito = compDb.IdDeposito,
+                IdTipoPago = compDb.IdTipoPago,
+                IdTipoDocumentoOperacion = compDb.IdTipoDocumentoOperacion,
+                Fecha = compDb.Fecha,
+                FechaVencimiento = compDb.FechaVencimiento,
+                Total = compDb.Total,
+                FormaPago = compDb.FormaPago,
+                Estado = compDb.Estado,
+                TipoDocumento = compDb.TipoDocumento,
+                TipoIngreso = compDb.TipoIngreso ?? "COMPRA",
+                MedioPago = compDb.MedioPago,
+                TotalEnLetras = compDb.TotalEnLetras,
+                SimboloMoneda = compDb.SimboloMoneda,
+                Turno = compDb.Turno,
+                IdCaja = compDb.IdCaja
+            };
+
+            Detalles = detsDb.Select(d => new SistemIA.Models.CompraDetalle
+            {
+                IdCompraDetalle = d.IdCompraDetalle,
+                IdProducto = d.IdProducto,
+                Cantidad = d.Cantidad,
+                PrecioUnitario = d.PrecioUnitario,
+                Importe = d.Importe,
+                IVA10 = d.IVA10,
+                IVA5 = d.IVA5,
+                Exenta = d.Exenta,
+                Grabado10 = d.Grabado10,
+                Grabado5 = d.Grabado5,
+                CambioDelDia = d.CambioDelDia,
+                IdDepositoItem = d.IdDepositoItem,
+                FechaVencimientoItem = d.FechaVencimientoItem,
+                FactorMultiplicador = d.FactorMultiplicador,
+                PorcentajeMargen = d.PorcentajeMargen
+            }).ToList();
+
+            // Mostrar proveedor en el buscador
+            var provInfo = Proveedores.FirstOrDefault(p => p.IdProveedor == Compra.IdProveedor);
+            if (provInfo == null)
+            {
+                var provS = await ctx.ProveedoresSifen.AsNoTracking().FirstOrDefaultAsync(p => p.IdProveedor == Compra.IdProveedor);
+                if (provS != null)
+                {
+                    provInfo = new ProvSifenItem { IdProveedor = provS.IdProveedor, RazonSocial = provS.RazonSocial, RUC = provS.RUC, DV = provS.DV };
+                    Proveedores.Add(provInfo);
+                }
+            }
+            if (provInfo != null)
+            {
+                BuscarProveedor = $"{provInfo.RazonSocial}";
+                MostrarSugProveedores = false;
+                // Cargar vencimiento del timbrado del proveedor para mostrarlo
+                try
+                {
+                    var provSifen = await ctx.ProveedoresSifen.AsNoTracking().FirstOrDefaultAsync(p => p.IdProveedor == provInfo.IdProveedor);
+                    VencimientoTimbradoProveedorSel = provSifen?.VencimientoTimbrado;
+                }
+                catch { }
+            }
+
+            // Recalcular totales en UI
+            RecalcularTotales();
+            RecalcularNuevoDetalle();
+            // Asegurar que el TipoIngreso cargado existe en el catálogo; si no, mapear a COMPRA
+            if (!string.IsNullOrWhiteSpace(Compra.TipoIngreso))
+            {
+                var existe = TiposIngreso.Any(t => string.Equals(t.Codigo, Compra.TipoIngreso, StringComparison.OrdinalIgnoreCase));
+                if (!existe)
+                {
+                    // Mapas comunes legacy → actuales
+                    var val = (Compra.TipoIngreso ?? "").Trim().ToUpperInvariant();
+                    if (val is "COMPRAS" or "FACTURA" or "FACT") Compra.TipoIngreso = "COMPRA";
+                    else if (val.Contains("ENTR")) Compra.TipoIngreso = "ENTRADA";
+                    else if (val.Contains("TRANS")) Compra.TipoIngreso = "TRANSF";
+                    else
+                    {
+                        // Si no se puede mapear, usar COMPRA
+                        Compra.TipoIngreso = "COMPRA";
+                    }
+                }
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Error = $"Error al cargar compra #{id}: {ex.Message}";
+        }
+    }
+
+    private void SeleccionarPagoContadoPorDefecto()
+    {
+        var contado = TiposPago.FirstOrDefault(t => string.Equals(t.Nombre, "Contado", StringComparison.OrdinalIgnoreCase)
+                                                 || string.Equals(t.Nombre, "CONTADO", StringComparison.OrdinalIgnoreCase));
+        if (contado != null)
+        {
+            Compra.IdTipoPago = contado.IdTipoPago;
+            Compra.FormaPago = contado.Nombre;
+        }
+    }
+
+    private static async Task EnsureColumnaMonedaProductoAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        // Crea la columna si falta; no falla si ya existe
+        var sql = @"
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns 
+    WHERE Name = N'IdMonedaPrecio' AND Object_ID = Object_ID(N'Productos')
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [IdMonedaPrecio] INT NULL;
+END
+";
+        try
+        {
+            await ctx.Database.ExecuteSqlRawAsync(sql);
+        }
+        catch
+        {
+            // Ignorar errores si el usuario no tiene permisos ALTER; la página de Productos también lo intenta al cargar
+        }
+    }
+
+    private static async Task EnsureColumnaCambioDetalleAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        var sql = @"
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns 
+    WHERE Name = N'CambioDelDia' AND Object_ID = Object_ID(N'ComprasDetalles')
+)
+BEGIN
+    ALTER TABLE [ComprasDetalles] ADD [CambioDelDia] DECIMAL(18,4) NULL;
+END
+";
+        try { await ctx.Database.ExecuteSqlRawAsync(sql); }
+        catch { }
+    }
+
+    private static async Task EnsureColumnaMedioPagoAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        var sql = @"
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns 
+    WHERE Name = N'MedioPago' AND Object_ID = Object_ID(N'Compras')
+)
+BEGIN
+    ALTER TABLE [Compras] ADD [MedioPago] NVARCHAR(13) NULL;
+END
+IF EXISTS (
+    SELECT 1 FROM sys.columns 
+    WHERE Name = N'MedioPago' AND Object_ID = Object_ID(N'Compras')
+)
+BEGIN
+    UPDATE [Compras] SET [MedioPago] = 'EFECTIVO' WHERE [MedioPago] IS NULL OR LTRIM(RTRIM([MedioPago])) = '';
+END
+";
+        try { await ctx.Database.ExecuteSqlRawAsync(sql); }
+        catch { }
+    }
+
+    private static async Task EnsureColumnaTipoIngresoAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        var sql = @"
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns 
+    WHERE Name = N'TipoIngreso' AND Object_ID = Object_ID(N'Compras')
+)
+BEGIN
+    ALTER TABLE [Compras] ADD [TipoIngreso] NVARCHAR(13) NOT NULL CONSTRAINT DF_Compras_TipoIngreso DEFAULT('COMPRA');
+END
+IF EXISTS (
+    SELECT 1 FROM sys.columns 
+    WHERE Name = N'TipoIngreso' AND Object_ID = Object_ID(N'Compras')
+)
+BEGIN
+    -- Inicializar filas existentes y normalizar
+    UPDATE [Compras] SET [TipoIngreso] = 'COMPRA' WHERE [TipoIngreso] IS NULL OR LTRIM(RTRIM([TipoIngreso])) = '';
+    UPDATE [Compras]
+    SET [TipoIngreso] = 'COMPRA'
+    WHERE UPPER(LTRIM(RTRIM([TipoIngreso]))) IN ('COMPRAS','COMPRA CON FACTURA','FACTURA','FACT');
+END
+";
+        try { await ctx.Database.ExecuteSqlRawAsync(sql); }
+        catch { }
+    }
+
+    // Sin selector de Caja en Compras.
+
+    private static async Task EnsureMonedasAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        // Limitar catálogo base a ARS, USD, BRL y PYG
+        var faltantes = new (string codigo, string nombre, string simbolo)[]
+        {
+            ("ARS", "Peso Argentino", "$"),
+            ("USD", "Dólar Estadounidense", "US$"),
+            ("BRL", "Real Brasileño", "R$"),
+            ("PYG", "Guaraní Paraguayo", "₲")
+        };
+
+        var existentes = await ctx.Monedas.AsNoTracking().Select(m => m.CodigoISO).ToListAsync();
+        var nuevos = faltantes.Where(f => !existentes.Contains(f.codigo))
+            .Select(f => new SistemIA.Models.Moneda
+            {
+                CodigoISO = f.codigo,
+                Nombre = f.nombre,
+                Simbolo = f.simbolo,
+                EsMonedaBase = false,
+                Estado = true,
+                Orden = 0,
+                FechaCreacion = DateTime.Now,
+                UsuarioCreacion = "Sistema"
+            }).ToList();
+        if (nuevos.Count > 0)
+        {
+            await ctx.Monedas.AddRangeAsync(nuevos);
+            await ctx.SaveChangesAsync();
+        }
+    }
+
+    private static async Task EnsureTiposPagoAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        var faltantes = new (string nombre, bool esCredito, int orden)[]
+        {
+            ("Contado", false, 1),
+            ("Crédito", true, 2),
+            ("Remisión", false, 3)
+            // "Remisión Interna" eliminado según requerimiento
+        };
+
+        foreach (var f in faltantes)
+        {
+            // Inserta solo si no existe (a prueba de concurrencia)
+            await ctx.Database.ExecuteSqlRawAsync(
+                "IF NOT EXISTS (SELECT 1 FROM [TiposPago] WHERE [Nombre] = {0}) " +
+                "INSERT INTO [TiposPago] ([Nombre], [EsCredito], [Activo], [Orden]) VALUES ({0}, {1}, 1, {2});",
+                f.nombre, f.esCredito, f.orden);
+        }
+    }
+
+    private static async Task EnsureTiposDocumentoOperacionAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        var faltantes = new (string nombre, int orden)[]
+        {
+            ("FACTURA", 1),
+            ("NOTA DE CRÉDITO", 2),
+            ("NOTA DE DÉBITO", 3),
+            ("REMISIÓN", 4)
+        };
+
+        foreach (var f in faltantes)
+        {
+            await ctx.Database.ExecuteSqlRawAsync(
+                "IF NOT EXISTS (SELECT 1 FROM [TiposDocumentoOperacion] WHERE UPPER([Nombre]) = UPPER({0})) " +
+                "INSERT INTO [TiposDocumentoOperacion] ([Nombre], [Activo], [Orden]) VALUES ({0}, 1, {1});",
+                f.nombre, f.orden);
+        }
+    }
+
+    private class TipoIngresoItem
+    {
+        public int IdTipoIngreso { get; set; }
+        public string Codigo { get; set; } = string.Empty; // se guarda en Compra.TipoIngreso (máx 13)
+        public string Nombre { get; set; } = string.Empty; // etiqueta visible (libre)
+        public bool Activo { get; set; } = true;
+        public int Orden { get; set; } = 0;
+    }
+
+    private static async Task EnsureTiposIngresoAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        // Crear tabla TiposIngreso si no existe y sembrar básicos
+        var crear = @"
+IF OBJECT_ID('TiposIngreso','U') IS NULL
+BEGIN
+    CREATE TABLE TiposIngreso(
+        IdTipoIngreso INT IDENTITY(1,1) PRIMARY KEY,
+        Codigo NVARCHAR(13) NOT NULL UNIQUE,
+        Nombre NVARCHAR(120) NOT NULL,
+        Activo BIT NOT NULL DEFAULT 1,
+        Orden INT NOT NULL DEFAULT 0,
+        FechaCreacion DATETIME2 NULL,
+        UsuarioCreacion NVARCHAR(50) NULL,
+        FechaModificacion DATETIME2 NULL,
+        UsuarioModificacion NVARCHAR(50) NULL
+    );
+END
+";
+        await ctx.Database.ExecuteSqlRawAsync(crear);
+
+        // Semillas: COMPRA, ENTRADA, TRANSF
+        var seeds = new (string codigo, string nombre, int orden)[]
+        {
+            ("COMPRA", "Compra con Factura", 1),
+            ("ENTRADA", "Entrada", 2),
+            ("TRANSF", "Transferencia", 3)
+        };
+        foreach (var s in seeds)
+        {
+            await ctx.Database.ExecuteSqlRawAsync(
+                "IF NOT EXISTS (SELECT 1 FROM TiposIngreso WHERE Codigo = {0}) " +
+                "INSERT INTO TiposIngreso (Codigo, Nombre, Activo, Orden, FechaCreacion, UsuarioCreacion) VALUES ({0}, {1}, 1, {2}, SYSUTCDATETIME(), 'Sistema');",
+                s.codigo, s.nombre, s.orden);
+        }
+    }
+
+    private async Task CargarTiposIngresoAsync(SistemIA.Models.AppDbContext ctx)
+    {
+        // Cargar activos; si Compra.TipoIngreso es vacío, preseleccionar COMPRA
+        TiposIngreso = await ctx.Database
+            .SqlQuery<TipoIngresoItem>(
+                $"SELECT IdTipoIngreso, Codigo, Nombre, Activo, Orden FROM TiposIngreso WHERE Activo = 1 ORDER BY Orden, Nombre")
+            .ToListAsync();
+        if (string.IsNullOrWhiteSpace(Compra.TipoIngreso))
+        {
+            var def = TiposIngreso.FirstOrDefault(t => t.Codigo == "COMPRA") ?? TiposIngreso.FirstOrDefault();
+            if (def != null) Compra.TipoIngreso = def.Codigo;
+        }
+    }
+
+    private async Task AgregarTipoIngresoAsync()
+    {
+        // Solicitar datos mínimos al usuario
+        var nombre = await JS.InvokeAsync<string>("prompt", "Nuevo tipo de movimiento (nombre visible):");
+        if (string.IsNullOrWhiteSpace(nombre)) return;
+        var sugerido = new string(nombre.Trim().ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+        if (sugerido.Length > 10) sugerido = sugerido.Substring(0, 10);
+        var codigo = await JS.InvokeAsync<string>("prompt", $"Código interno (máx 13, sin espacios), sugerido: {sugerido}", sugerido);
+        if (string.IsNullOrWhiteSpace(codigo)) return;
+        codigo = new string(codigo.Trim().ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+        if (codigo.Length > 13) codigo = codigo.Substring(0, 13);
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            await EnsureTiposIngresoAsync(ctx);
+            await ctx.Database.ExecuteSqlRawAsync(
+                "IF NOT EXISTS (SELECT 1 FROM TiposIngreso WHERE Codigo = {0}) " +
+                "INSERT INTO TiposIngreso (Codigo, Nombre, Activo, Orden, FechaCreacion, UsuarioCreacion) VALUES ({0}, {1}, 1, 0, SYSUTCDATETIME(), 'Usuario');",
+                codigo, nombre.Trim());
+            await CargarTiposIngresoAsync(ctx);
+            // Si coincide con el recién agregado, seleccionarlo
+            if (TiposIngreso.Any(t => t.Codigo == codigo)) Compra.TipoIngreso = codigo;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"No se pudo agregar el tipo: {ex.Message}");
+        }
+    }
+
+    private async Task AgregarDetalleAsync()
+    {
+        Error = null; Ok = null;
+        if (NuevoDetalle.IdProducto == 0 || NuevoDetalle.Cantidad <= 0) { Error = "Producto y cantidad requeridos"; return; }
+        var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+        if (prod == null) { Error = "Producto no válido"; return; }
+
+        // Determinar depósito: usuario > predeterminado del producto (si está en la lista) > depósito 1 como predeterminado
+        int? depositoItem = IdDepositoItemSeleccionado;
+        if (!depositoItem.HasValue && prod.IdDepositoPredeterminado.HasValue)
+        {
+            // Solo usar el predeterminado del producto si está en la lista de depósitos permitidos
+            if (Depositos.Any(d => d.IdDeposito == prod.IdDepositoPredeterminado.Value))
+                depositoItem = prod.IdDepositoPredeterminado;
+        }
+        if (!depositoItem.HasValue)
+            depositoItem = Depositos.FirstOrDefault(d => d.IdDeposito == 1)?.IdDeposito ?? Depositos.FirstOrDefault()?.IdDeposito;
+
+        var det = new SistemIA.Models.CompraDetalle
+        {
+            IdProducto = prod.IdProducto,
+            Cantidad = NuevoDetalle.Cantidad,
+            PrecioUnitario = NuevoDetalle.PrecioUnitario,
+            CambioDelDia = NuevoDetalle.CambioDelDia,
+            IdDepositoItem = depositoItem,
+            FechaVencimientoItem = ControlarVencimientoItem ? FechaVencimientoItemSeleccionada : null
+        };
+        // Precio de venta de referencia convertido a moneda de la compra
+    try
+        {
+            var precioVentaBase = prod.PrecioUnitarioGs;
+            var idMonCompra = Compra.IdMoneda;
+            var idMonProd = prod.IdMonedaPrecio;
+            decimal precioVentaConv = precioVentaBase;
+            if (idMonCompra.HasValue && idMonProd.HasValue && idMonCompra.Value != idMonProd.Value)
+            {
+                // Convertimos desde la moneda del producto a la moneda de la compra
+        precioVentaConv = await ConvertirMonedaAsync(precioVentaBase, idMonProd.Value, idMonCompra.Value);
+            }
+            det.PrecioVentaRef = precioVentaConv;
+        }
+        catch { det.PrecioVentaRef = prod.PrecioUnitarioGs; }
+        // Total línea con IVA incluido
+        det.Importe = Math.Round(det.Cantidad * det.PrecioUnitario, 4);
+
+        // IVA incluido: base = total / 1.10 o / 1.05; iva = total - base
+        var porc = prod.TipoIva?.Porcentaje ?? 0m;
+        if (porc == 10)
+        {
+            var base10 = Math.Round(det.Importe / 1.10m, 4);
+            det.Grabado10 = base10;
+            det.IVA10 = Math.Round(det.Importe - base10, 4);
+        }
+        else if (porc == 5)
+        {
+            var base5 = Math.Round(det.Importe / 1.05m, 4);
+            det.Grabado5 = base5;
+            det.IVA5 = Math.Round(det.Importe - base5, 4);
+        }
+        else
+        {
+            det.Exenta = det.Importe;
+        }
+
+        Detalles.Add(det);
+        RecalcularTotales();
+    
+    // Guardar el factor y porcentaje en el detalle para este producto si se especificó
+    if (FactorMultiplicador.HasValue && FactorMultiplicador.Value > 0)
+    {
+        det.FactorMultiplicador = FactorMultiplicador.Value;
+        det.PorcentajeMargen = PorcentajeMargen;
+        _factoresPorProducto[prod.IdProducto] = FactorMultiplicador.Value;
+    }
+    
+    // Resetear el editor de línea
+    NuevoDetalle = new SistemIA.Models.CompraDetalle { Cantidad = 1, PrecioUnitario = 0 };
+    IdDepositoItemSeleccionado = null;
+    ControlarVencimientoItem = false;
+    FechaVencimientoItemSeleccionada = null;
+    FactorMultiplicador = null;
+    PorcentajeMargen = null;
+    PrecioVentaCalculado = null;
+    RecalcularNuevoDetalle();
+    // Limpiar el buscador y cerrar sugerencias al agregar
+    BuscarProducto = string.Empty;
+    MostrarSugProductos = false;
+    }
+
+    private void QuitarDetalle(SistemIA.Models.CompraDetalle det)
+    {
+        Detalles.Remove(det);
+        RecalcularTotales();
+    }
+
+    private void RecalcularTotales()
+    {
+        Gravado10 = Detalles.Sum(d => d.Grabado10);
+        Gravado5 = Detalles.Sum(d => d.Grabado5);
+        Exenta = Detalles.Sum(d => d.Exenta);
+    IVATotal10 = Detalles.Sum(d => d.IVA10);
+    IVATotal5 = Detalles.Sum(d => d.IVA5);
+        Compra.Total = Detalles.Sum(d => d.Importe);
+        StateHasChanged();
+    }
+
+    private void RecalcularNuevoDetalle()
+    {
+        var cant = NuevoDetalle.Cantidad <= 0 ? 0 : NuevoDetalle.Cantidad;
+        var precio = NuevoDetalle.PrecioUnitario;
+        var totalLinea = Math.Round(cant * precio, 4);
+
+        NuevoDetalle.IVA10 = 0; NuevoDetalle.IVA5 = 0; NuevoDetalle.Exenta = 0; NuevoDetalle.Grabado10 = 0; NuevoDetalle.Grabado5 = 0; NuevoDetalle.Importe = 0;
+        var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+        var porc = prod?.TipoIva?.Porcentaje ?? 0m;
+        if (porc == 10)
+        {
+            var base10 = Math.Round(totalLinea / 1.10m, 4);
+            NuevoDetalle.Grabado10 = base10;
+            NuevoDetalle.IVA10 = Math.Round(totalLinea - base10, 4);
+        }
+        else if (porc == 5)
+        {
+            var base5 = Math.Round(totalLinea / 1.05m, 4);
+            NuevoDetalle.Grabado5 = base5;
+            NuevoDetalle.IVA5 = Math.Round(totalLinea - base5, 4);
+        }
+        else
+        {
+            NuevoDetalle.Exenta = totalLinea;
+        }
+        NuevoDetalle.Importe = totalLinea;
+        // Recalcular precio de venta si hay factor
+        RecalcularPrecioVentaPorFactor();
+        StateHasChanged();
+    }
+
+    private void RecalcularPrecioVentaPorFactor()
+    {
+        if (FactorMultiplicador.HasValue && FactorMultiplicador.Value > 0 && NuevoDetalle.PrecioUnitario > 0)
+        {
+            PrecioVentaCalculado = Math.Round(NuevoDetalle.PrecioUnitario * FactorMultiplicador.Value, 0);
+        }
+        else
+        {
+            PrecioVentaCalculado = null;
+        }
+    }
+
+    private void OnFactorChanged()
+    {
+        if (_actualizandoFactorPorcentaje) return;
+        _actualizandoFactorPorcentaje = true;
+        
+        if (FactorMultiplicador.HasValue && FactorMultiplicador.Value > 0)
+        {
+            // Calcular porcentaje equivalente: (factor - 1) * 100
+            PorcentajeMargen = Math.Round((FactorMultiplicador.Value - 1) * 100, 2);
+        }
+        else
+        {
+            PorcentajeMargen = null;
+        }
+        RecalcularPrecioVentaPorFactor();
+        _actualizandoFactorPorcentaje = false;
+    }
+
+    private void OnPorcentajeChanged()
+    {
+        if (_actualizandoFactorPorcentaje) return;
+        _actualizandoFactorPorcentaje = true;
+        
+        if (PorcentajeMargen.HasValue)
+        {
+            // Calcular factor equivalente: 1 + porcentaje/100
+            FactorMultiplicador = Math.Round(1 + PorcentajeMargen.Value / 100, 4);
+        }
+        else
+        {
+            FactorMultiplicador = null;
+        }
+        RecalcularPrecioVentaPorFactor();
+        _actualizandoFactorPorcentaje = false;
+    }
+
+    private async Task OnMonedaChangedAsync(ChangeEventArgs e)
+    {
+        // Cargar tipo de cambio automáticamente del día al cambiar moneda
+        if (Compra.IdMoneda.HasValue)
+        {
+            var mon = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda.Value);
+            if (mon != null && !mon.EsMonedaBase)
+            {
+                // Cargar TC del día (precio COMPRA para compras al proveedor)
+                try
+                {
+                    await using var ctx = await DbFactory.CreateDbContextAsync();
+                    var monedaBase = Monedas.FirstOrDefault(m => m.EsMonedaBase);
+                    if (monedaBase != null)
+                    {
+                        var tc = await ctx.TiposCambio
+                            .Where(t => t.IdMonedaOrigen == mon.IdMoneda
+                                     && t.IdMonedaDestino == monedaBase.IdMoneda
+                                     && t.Estado
+                                     && t.FechaTipoCambio.Date == DateTime.Today)
+                            .OrderByDescending(t => t.FechaCreacion)
+                            .FirstOrDefaultAsync();
+                        
+                        Compra.CambioDelDia = (tc?.TasaCompra ?? tc?.TasaCambio) ?? 1m;
+                    }
+                }
+                catch { Compra.CambioDelDia = 1m; }
+            }
+            else
+            {
+                Compra.CambioDelDia = 1m;
+            }
+        }
+        
+        // Si hay un producto seleccionado y cambia la moneda, reconvertir el precio unitario mostrado
+        var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+        if (prod != null)
+        {
+            // CostoUnitarioGs y PrecioUnitarioGs SIEMPRE están en Guaraníes
+            var precioBaseEnGs = prod.CostoUnitarioGs ?? prod.PrecioUnitarioGs;
+            var idMonedaCompra = Compra.IdMoneda;
+            decimal precio = precioBaseEnGs;
+            
+            // Solo convertir si la compra está en moneda extranjera
+            if (idMonedaCompra.HasValue)
+            {
+                var monCompra = Monedas.FirstOrDefault(m => m.IdMoneda == idMonedaCompra.Value);
+                if (monCompra?.EsMonedaBase == false)
+                {
+                    var cambio = Compra.CambioDelDia ?? 1m;
+                    precio = Math.Round(precioBaseEnGs / cambio, 4);
+                    NuevoDetalle.CambioDelDia = cambio;
+                }
+            }
+            
+            NuevoDetalle.PrecioUnitario = precio;
+            
+            // También reconvertir el precio de venta de referencia
+            try
+            {
+                var precioVentaEnGs = prod.PrecioUnitarioGs;
+                decimal precioVentaConv = precioVentaEnGs;
+                
+                if (idMonedaCompra.HasValue)
+                {
+                    var monCompra = Monedas.FirstOrDefault(m => m.IdMoneda == idMonedaCompra.Value);
+                    if (monCompra?.EsMonedaBase == false)
+                    {
+                        var cambio = Compra.CambioDelDia ?? 1m;
+                        precioVentaConv = Math.Round(precioVentaEnGs / cambio, 4);
+                    }
+                }
+                
+                NuevoDetalle.PrecioVentaRef = precioVentaConv;
+            }
+            catch { NuevoDetalle.PrecioVentaRef = prod.PrecioUnitarioGs; }
+            RecalcularNuevoDetalle();
+        }
+        
+        // Reconvertir los ya agregados
+        foreach (var d in Detalles)
+        {
+            var p = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
+            if (p == null) continue;
+            try
+            {
+                // PrecioUnitarioGs SIEMPRE está en Guaraníes
+                var precioVentaEnGs = p.PrecioUnitarioGs;
+                decimal precioVentaConv = precioVentaEnGs;
+                
+                if (Compra.IdMoneda.HasValue)
+                {
+                    var monCompra = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda.Value);
+                    if (monCompra?.EsMonedaBase == false)
+                    {
+                        var cambio = Compra.CambioDelDia ?? 1m;
+                        precioVentaConv = Math.Round(precioVentaEnGs / cambio, 4);
+                    }
+                }
+                
+                d.PrecioVentaRef = precioVentaConv;
+            }
+            catch { d.PrecioVentaRef = p.PrecioUnitarioGs; }
+        }
+        StateHasChanged();
+    }
+    
+    private async Task OnCambioManualChangedAsync()
+    {
+        // Recalcular precio del producto actual al cambiar TC manual
+        if (NuevoDetalle.IdProducto > 0)
+        {
+            var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            if (prod != null)
+            {
+                // CostoUnitarioGs SIEMPRE está en Guaraníes
+                var precioBaseEnGs = prod.CostoUnitarioGs ?? prod.PrecioUnitarioGs;
+                var idMonedaCompra = Compra.IdMoneda;
+                decimal precio = precioBaseEnGs;
+                
+                // Solo convertir si la compra está en moneda extranjera
+                if (idMonedaCompra.HasValue)
+                {
+                    var monCompra = Monedas.FirstOrDefault(m => m.IdMoneda == idMonedaCompra.Value);
+                    if (monCompra?.EsMonedaBase == false)
+                    {
+                        var cambioCompra = Compra.CambioDelDia ?? 1m;
+                        precio = Math.Round(precioBaseEnGs / cambioCompra, 4);
+                        NuevoDetalle.CambioDelDia = cambioCompra;
+                    }
+                }
+                
+                NuevoDetalle.PrecioUnitario = precio;
+                RecalcularNuevoDetalle();
+            }
+        }
+        StateHasChanged();
+    }
+
+    private async Task GuardarAsync()
+    {
+        Error = null; Ok = null;
+        // Si el usuario escribió texto pero no hizo clic en la sugerencia, intentar resolver automáticamente
+        if (Compra.IdProveedor == 0)
+        {
+            var texto = (BuscarProveedor ?? string.Empty).Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(texto))
+            {
+                var digitos = new string(texto.Where(char.IsDigit).ToArray());
+                var candidatos = Proveedores
+                    .Where(p => p.RazonSocial.ToLowerInvariant().Contains(texto)
+                             || (!string.IsNullOrEmpty(digitos) && p.RUC.Contains(digitos)))
+                    .ToList();
+                if (candidatos.Count == 1)
+                {
+                    Compra.IdProveedor = candidatos[0].IdProveedor;
+                }
+            }
+        }
+        if (Compra.IdProveedor == 0) { Error = "Seleccione un proveedor"; return; }
+        if (!Detalles.Any()) { Error = "Agregue al menos un ítem"; return; }
+
+        // Validar que los datos de factura estén completos
+        var nivel1 = (Compra.Establecimiento ?? string.Empty).Trim();
+        var nivel2 = (Compra.PuntoExpedicion ?? string.Empty).Trim();
+        var nroFact = (Compra.NumeroFactura ?? string.Empty).Trim();
+        var timbrado = (Compra.Timbrado ?? string.Empty).Trim();
+        
+        if (string.IsNullOrEmpty(nivel1) || string.IsNullOrEmpty(nivel2) || 
+            string.IsNullOrEmpty(nroFact) || string.IsNullOrEmpty(timbrado))
+        {
+            Error = "Complete los datos de factura: Nivel 1, Nivel 2, Nro. Factura y Timbrado son obligatorios";
+            return;
+        }
+
+        // Validar que no exista otra compra con la misma combinación de factura
+        await using var ctxValidacion = await DbFactory.CreateDbContextAsync();
+        var existeDuplicado = await ctxValidacion.Compras.AsNoTracking()
+            .AnyAsync(c => c.Establecimiento == nivel1 
+                        && c.PuntoExpedicion == nivel2 
+                        && c.NumeroFactura == nroFact 
+                        && c.Timbrado == timbrado
+                        && c.IdCompra != Compra.IdCompra); // Excluir la compra actual si es edición
+        
+        if (existeDuplicado)
+        {
+            Error = $"Ya existe una compra registrada con la factura {nivel1}-{nivel2}-{nroFact} y timbrado {timbrado}. No se permiten duplicados.";
+            return;
+        }
+
+    // Sin validación de Caja en Compras
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        using var trx = await ctx.Database.BeginTransactionAsync();
+        try
+        {
+            Compra.FechaCreacion = DateTime.Now;
+            // Asignar usuario autenticado a la operación
+            if (_usuarioId.HasValue) Compra.IdUsuario = _usuarioId.Value;
+            Compra.UsuarioCreacion = _usuarioNombre ?? Compra.UsuarioCreacion ?? "Sistema";
+
+            // Asegurar estado y datos operativos para evitar NULLs
+            // Estado: confirmar automáticamente al guardar
+            Compra.Estado = "Confirmado";
+
+            // Forma de pago y condición derivadas del catálogo seleccionado
+            if (Compra.IdTipoPago.HasValue && string.IsNullOrWhiteSpace(Compra.FormaPago))
+            {
+                var sel = TiposPago.FirstOrDefault(t => t.IdTipoPago == Compra.IdTipoPago);
+                if (sel != null) Compra.FormaPago = sel.Nombre;
+            }
+            // Determinar condición en base al tipo de pago seleccionado
+            var tipoPagoSel = Compra.IdTipoPago.HasValue ? TiposPago.FirstOrDefault(t => t.IdTipoPago == Compra.IdTipoPago) : null;
+            if (string.IsNullOrWhiteSpace(Compra.CodigoCondicion))
+            {
+                if (tipoPagoSel != null)
+                {
+                    Compra.CodigoCondicion = tipoPagoSel.EsCredito ? "CREDITO" : "CONTADO";
+                }
+                else
+                {
+                    var fp = (Compra.FormaPago ?? string.Empty).Trim().ToUpperInvariant();
+                    Compra.CodigoCondicion = fp.Contains("CRED") ? "CREDITO" : "CONTADO";
+                }
+            }
+            // Plazos y vencimiento según condición
+            if (Compra.CodigoCondicion == "CONTADO")
+            {
+                Compra.PlazoDias = 0;
+                Compra.FechaVencimiento = Compra.Fecha.Date;
+            }
+            else if (Compra.CodigoCondicion == "CREDITO")
+            {
+                var dias = Compra.PlazoDias ?? 30; // suponer 30 si no se cargó
+                Compra.PlazoDias = dias;
+                Compra.FechaVencimiento = Compra.Fecha.Date.AddDays(dias);
+            }
+
+            // Código de documento: mapear al Id del catálogo si está presente
+            if (!Compra.CodigoDocumento.HasValue && Compra.IdTipoDocumentoOperacion.HasValue)
+            {
+                Compra.CodigoDocumento = Compra.IdTipoDocumentoOperacion.Value;
+            }
+            // Tipo de registro y TipoIngreso siempre COMPRA (las entradas se manejan en otra ventana)
+            Compra.TipoRegistro = "COMPRA";
+            Compra.TipoIngreso = "COMPRA";
+            // Imputaciones por defecto
+            if (!Compra.ImputarIVA.HasValue)
+            {
+                // Imputar IVA si hay algún IVA en los detalles
+                Compra.ImputarIVA = Detalles.Any(d => d.IVA10 > 0 || d.IVA5 > 0);
+            }
+            Compra.ImputarIRP ??= false;
+            Compra.ImputarIRE ??= false;
+            Compra.NoImputar ??= false;
+
+            // Validar que el proveedor exista en tabla Proveedores (legada)
+            var existeProveedor = await ctx.ProveedoresSifen.AsNoTracking().AnyAsync(pp => pp.IdProveedor == Compra.IdProveedor);
+            if (!existeProveedor)
+            {
+                Error = "El proveedor seleccionado no existe en ProveedoresSifen. Revise la selección.";
+                return;
+            }
+            // Capturar datos de caja
+            if (CajaActiva != null)
+            {
+                Compra.IdCaja = CajaActiva.IdCaja;
+                Compra.Turno = CajaActiva.TurnoActual;
+                if (CajaActiva.FechaActualCaja.HasValue && (CajaActiva.bloquear_fechaCaja ?? false))
+                {
+                    Compra.Fecha = CajaActiva.FechaActualCaja.Value.Date;
+                }
+            }
+            // Sincronizar Timbrado/VencimientoTimbrado con el proveedor seleccionado
+            var provSel = await ctx.ProveedoresSifen.FirstOrDefaultAsync(pp => pp.IdProveedor == Compra.IdProveedor);
+            if (provSel != null)
+            {
+                if (string.IsNullOrWhiteSpace(Compra.Timbrado))
+                {
+                    // Si no se cargó en la compra, tomar del proveedor
+                    Compra.Timbrado = provSel.Timbrado;
+                }
+                else if (!string.Equals(Compra.Timbrado, provSel.Timbrado))
+                {
+                    // Si difiere, actualizar proveedor
+                    provSel.Timbrado = Compra.Timbrado;
+                    provSel.FechaModificacion = DateTime.Now;
+                    provSel.UsuarioModificacion = _usuarioNombre ?? provSel.UsuarioModificacion ?? "Sistema";
+                }
+                // Actualizar vencimiento del timbrado del proveedor si fue provisto en la UI
+                if (VencimientoTimbradoProveedorSel.HasValue && provSel.VencimientoTimbrado != VencimientoTimbradoProveedorSel.Value.Date)
+                {
+                    provSel.VencimientoTimbrado = VencimientoTimbradoProveedorSel.Value.Date;
+                    provSel.FechaModificacion = DateTime.Now;
+                    provSel.UsuarioModificacion = _usuarioNombre ?? provSel.UsuarioModificacion ?? "Sistema";
+                }
+            }
+
+            // Datos de moneda para la compra
+            var monedaSel = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda);
+            Compra.SimboloMoneda = monedaSel?.Simbolo ?? "₲";
+            Compra.EsMonedaExtranjera = (monedaSel?.CodigoISO ?? "PYG") != "PYG";
+            Compra.TotalEnLetras = NumeroEnLetras(Compra.Total, monedaSel?.CodigoISO ?? "PYG");
+            
+            // Evitar adjuntar entidades navegadas (EF tracking conflict)
+            Compra.Proveedor = null;
+            Compra.Sucursal = null;
+            Compra.Deposito = null;
+            Compra.Moneda = null;
+            Compra.TipoPago = null;
+            Compra.TipoDocumentoOperacion = null;
+            
+            // Asegurar que IdCompra sea 0 para que EF genere uno nuevo
+            Compra.IdCompra = 0;
+            ctx.Compras.Add(Compra);
+            await ctx.SaveChangesAsync();
+
+            foreach (var d in Detalles)
+            {
+                d.IdCompraDetalle = 0; // Asegurar que EF genere un nuevo ID
+                d.IdCompra = Compra.IdCompra;
+                d.Producto = null; // Evitar tracking conflict
+                d.UsuarioCreacion = _usuarioNombre ?? d.UsuarioCreacion ?? "Sistema";
+                ctx.ComprasDetalles.Add(d);
+            }
+            await ctx.SaveChangesAsync();
+
+            // Ingreso a inventario por depósito (usar depósito específico del item si está definido)
+            foreach (var d in Detalles)
+            {
+                var depositoAUsar = d.IdDepositoItem ?? Compra.IdDeposito!.Value;
+                await Inventario.AjustarStockAsync(d.IdProducto, depositoAUsar, d.Cantidad, 1, $"Compra #{Compra.IdCompra}", _usuarioNombre ?? "Sistema");
+            }
+
+            // Actualizar costo del producto, factor, precio de venta y fecha de vencimiento si aplica
+            foreach (var d in Detalles)
+            {
+                var prod = await ctx.Productos.FirstOrDefaultAsync(x => x.IdProducto == d.IdProducto);
+                if (prod == null) continue;
+                
+                // Actualizar fecha de vencimiento del producto si se especificó en el item
+                if (d.FechaVencimientoItem.HasValue)
+                {
+                    prod.ControlarVencimiento = true;
+                    prod.FechaVencimiento = d.FechaVencimientoItem.Value;
+                }
+                
+                var idMonProd = prod.IdMonedaPrecio ?? Compra.IdMoneda!.Value;
+                var idMonCompra = Compra.IdMoneda!.Value;
+                var costoOrigen = d.PrecioUnitario; // en moneda de la compra
+                decimal costoParaProducto = costoOrigen;
+                if (idMonCompra != idMonProd)
+                {
+                    try { costoParaProducto = await ConvertirMonedaAsync(costoOrigen, idMonCompra, idMonProd); }
+                    catch { costoParaProducto = costoOrigen; }
+                }
+                prod.CostoUnitarioGs = Math.Round(costoParaProducto, 4);
+                
+                // Si se especificó factor multiplicador, actualizar Factor y PrecioUnitarioGs
+                if (_factoresPorProducto.TryGetValue(d.IdProducto, out var factorGuardado) && factorGuardado > 0)
+                {
+                    prod.FactorMultiplicador = factorGuardado;
+                    prod.PrecioUnitarioGs = Math.Round(costoParaProducto * factorGuardado, 0);
+                }
+                
+                prod.FechaModificacion = DateTime.Now;
+                prod.UsuarioModificacion = _usuarioNombre ?? "Sistema";
+            }
+            await ctx.SaveChangesAsync();
+
+            // *** CREAR CUENTA POR PAGAR Y CUOTAS SI ES CRÉDITO ***
+            if (Compra.CodigoCondicion == "CREDITO" && TipoPagoEsCredito)
+            {
+                var numeroCuotasCredito = NumeroCuotasCompra > 0 ? NumeroCuotasCompra : 1;
+                var plazoDias = Compra.PlazoDias ?? 30;
+                
+                var cuentaPorPagar = new SistemIA.Models.CuentaPorPagar
+                {
+                    IdCompra = Compra.IdCompra,
+                    IdProveedor = Compra.IdProveedor,
+                    IdSucursal = Compra.IdSucursal,
+                    IdMoneda = Compra.IdMoneda,
+                    FechaCredito = Compra.Fecha,
+                    FechaVencimiento = Compra.FechaVencimiento ?? Compra.Fecha.AddDays(plazoDias),
+                    MontoTotal = Compra.Total,
+                    SaldoPendiente = Compra.Total,
+                    NumeroCuotas = numeroCuotasCredito,
+                    PlazoDias = plazoDias,
+                    Estado = "Abierta"
+                };
+                ctx.CuentasPorPagar.Add(cuentaPorPagar);
+                await ctx.SaveChangesAsync();
+
+                // Generar cuotas automáticamente
+                // El plazo indica los días entre cada cuota
+                // Cuota 1: fecha de la compra (fecha máquina)
+                // Cuota 2: fecha + plazo días
+                // Cuota 3: fecha + (plazo * 2) días, etc.
+                var montoPorCuota = Math.Round(cuentaPorPagar.MontoTotal / numeroCuotasCredito, 2);
+                var acumulado = 0m;
+                for (int i = 1; i <= numeroCuotasCredito; i++)
+                {
+                    var monto = (i == numeroCuotasCredito) ? (cuentaPorPagar.MontoTotal - acumulado) : montoPorCuota;
+                    // Primera cuota: fecha de la compra, las siguientes cada "plazoDias" días
+                    var fechaVencimiento = (i == 1) 
+                        ? cuentaPorPagar.FechaCredito 
+                        : cuentaPorPagar.FechaCredito.AddDays((i - 1) * plazoDias);
+                    var cuota = new SistemIA.Models.CuentaPorPagarCuota
+                    {
+                        IdCuentaPorPagar = cuentaPorPagar.IdCuentaPorPagar,
+                        NumeroCuota = i,
+                        MontoCuota = monto,
+                        SaldoCuota = monto, // Inicialmente el saldo es igual al monto
+                        FechaVencimiento = fechaVencimiento,
+                        Estado = "Pendiente"
+                    };
+                    ctx.CuentasPorPagarCuotas.Add(cuota);
+                    acumulado += monto;
+                }
+                await ctx.SaveChangesAsync();
+            }
+
+            // Sin incremento automático de numeración de Caja en Compras
+
+            await trx.CommitAsync();
+
+            // Imprimir en formato Factura General con los datos cargados
+            var compraCopia = new SistemIA.Models.Compra
+            {
+                IdCompra = Compra.IdCompra,
+                Establecimiento = Compra.Establecimiento,
+                PuntoExpedicion = Compra.PuntoExpedicion,
+                NumeroFactura = Compra.NumeroFactura,
+                Timbrado = Compra.Timbrado,
+                IdSucursal = Compra.IdSucursal,
+                IdProveedor = Compra.IdProveedor,
+                IdMoneda = Compra.IdMoneda,
+                IdDeposito = Compra.IdDeposito,
+                Fecha = Compra.Fecha,
+                Total = Compra.Total,
+                FormaPago = Compra.FormaPago,
+                MedioPago = Compra.MedioPago,
+                Estado = Compra.Estado,
+                TipoDocumento = Compra.TipoDocumento,
+                TipoIngreso = Compra.TipoIngreso,
+                TotalEnLetras = Compra.TotalEnLetras,
+                SimboloMoneda = Compra.SimboloMoneda,
+                Turno = Compra.Turno,
+                IdCaja = Compra.IdCaja
+            };
+            var detallesCopia = Detalles.Select(d => new SistemIA.Models.CompraDetalle
+            {
+                IdProducto = d.IdProducto,
+                PrecioUnitario = d.PrecioUnitario,
+                Cantidad = d.Cantidad,
+                Importe = d.Importe,
+                IVA10 = d.IVA10,
+                IVA5 = d.IVA5,
+                Exenta = d.Exenta,
+                Grabado10 = d.Grabado10,
+                Grabado5 = d.Grabado5
+            }).ToList();
+
+            Ok = $"Compra #{Compra.IdCompra} guardada";
+
+            // Disparar impresión de factura (no bloquear la UI)
+            _ = ImprimirFacturaAsync(compraCopia, detallesCopia);
+
+            // Limpiar UI para siguiente carga
+            Detalles.Clear();
+            RecalcularTotales();
+
+            // Preparar nueva compra manteniendo la misma caja y numeración estirada
+            var idDepPrev = Compra.IdDeposito;
+            var idSucPrev = Compra.IdSucursal;
+            var idMonPyg = Monedas.FirstOrDefault(m => m.CodigoISO == "PYG")?.IdMoneda;
+            Compra = new SistemIA.Models.Compra { Fecha = DateTime.Today, TipoDocumento = "FACTURA", TipoIngreso = "COMPRA", MedioPago = "EFECTIVO", IdSucursal = idSucPrev, IdDeposito = idDepPrev, IdMoneda = idMonPyg };
+            VencimientoTimbradoProveedorSel = null;
+            SeleccionarPagoContadoPorDefecto();
+            
+            // Predeterminar tipo de documento FACTURA
+            var factura = TiposDocumento.FirstOrDefault(t => t.Nombre == "FACTURA");
+            if (factura != null) 
+            { 
+                Compra.IdTipoDocumentoOperacion = factura.IdTipoDocumentoOperacion; 
+                Compra.TipoDocumento = factura.Nombre; 
+            }
+            
+            // Limpiar datos del producto para evitar imagen residual
+            BuscarProducto = string.Empty;
+            MostrarSugProductos = false;
+            ProductoImagenUrl = null;
+            NuevoDetalle = new SistemIA.Models.CompraDetalle { Cantidad = 1, PrecioUnitario = 0 };
+            
+            // Importante: limpiar el buscador de proveedor y cerrar sugerencias para evitar texto desincronizado
+            BuscarProveedor = string.Empty;
+            MostrarSugProveedores = false;
+            ProveedoresFiltrados = new(Proveedores);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await trx.RollbackAsync();
+            Error = (ex.InnerException?.Message ?? ex.Message);
+        }
+    }
+
+    // Genera e imprime una factura general elegante en A4
+    private async Task ImprimirFacturaAsync(SistemIA.Models.Compra comp, List<SistemIA.Models.CompraDetalle> dets)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            // Datos de Sucursal/Empresa
+            var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == comp.IdSucursal);
+            string empresa = suc?.NombreEmpresa ?? "Empresa";
+            string sucursal = suc?.NombreSucursal ?? "Sucursal";
+            string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+            string direccion = suc?.Direccion ?? "";
+            string telefono = suc?.Telefono ?? "";
+            string correo = suc?.Correo ?? "";
+            string timbrado = comp.Timbrado ?? suc?.Timbrado ?? "";
+            string nroFactura = (!string.IsNullOrWhiteSpace(comp.NumeroFactura) &&
+                                 !string.IsNullOrWhiteSpace(comp.Establecimiento) &&
+                                 !string.IsNullOrWhiteSpace(comp.PuntoExpedicion))
+                                ? $"{comp.Establecimiento}-{comp.PuntoExpedicion}-{comp.NumeroFactura}"
+                                : (comp.NumeroFactura ?? "");
+
+            // Logo a Base64 si existe
+            string? logoDataUri = null;
+            if (suc?.Logo != null && suc.Logo.Length > 0)
+            {
+                var b64 = Convert.ToBase64String(suc.Logo);
+                // Asumimos PNG; si se requiere, detectar por cabecera de bytes
+                logoDataUri = $"data:image/png;base64,{b64}";
+            }
+
+            // Proveedor (usamos la tabla SIFEN mejorada si es posible)
+            // Buscar proveedor principalmente en tabla Proveedores (legada) por Id
+            var provSifen = await ctx.ProveedoresSifen.AsNoTracking().FirstOrDefaultAsync(p => p.IdProveedor == comp.IdProveedor);
+            DateTime? vencTimProv = provSifen?.VencimientoTimbrado;
+            string provNombre = provSifen?.RazonSocial ?? Proveedores.FirstOrDefault(p => p.IdProveedor == comp.IdProveedor)?.RazonSocial ?? "Proveedor";
+            string provRuc = provSifen != null ? $"{provSifen.RUC}-{provSifen.DV}" : (Proveedores.FirstOrDefault(p => p.IdProveedor == comp.IdProveedor) is var pi && pi != null ? $"{pi.RUC}-{pi.DV}" : "");
+
+            // Moneda
+            var mon = Monedas.FirstOrDefault(m => m.IdMoneda == comp.IdMoneda);
+            string codMon = mon?.CodigoISO ?? "PYG";
+            string simb = mon?.Simbolo ?? comp.SimboloMoneda ?? "₲";
+            string formato = codMon == "PYG" ? "N0" : "N2";
+
+            // Totales IVA
+            decimal grab10 = dets.Sum(x => x.Grabado10);
+            decimal grab5 = dets.Sum(x => x.Grabado5);
+            decimal exen = dets.Sum(x => x.Exenta);
+            decimal iva10 = dets.Sum(x => x.IVA10);
+            decimal iva5 = dets.Sum(x => x.IVA5);
+
+            // HEAD con estilos de impresión
+            var head = new StringBuilder();
+            head.AppendLine("<meta charset=\"utf-8\"/>");
+            head.AppendLine("<title>Factura de Compra</title>");
+            head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+            head.AppendLine("<style>");
+            head.AppendLine("@media print { @page { size: A4; margin: 14mm 12mm; } }");
+            head.AppendLine("body{font-size:12px;color:#111;}");
+            head.AppendLine(".factura-header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+            head.AppendLine(".factura-header .logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+            head.AppendLine(".factura-header .logo-wrap{width:140px;display:flex;align-items:center;justify-content:center;}");
+            head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
+            head.AppendLine(".factura-header .empresa .small{color:#555;}");
+            head.AppendLine(".factura-meta{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px;}");
+            head.AppendLine(".table-factura th,.table-factura td{padding:.4rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
+            head.AppendLine(".totales .line{display:flex;justify-content:space-between;}");
+            head.AppendLine(".totales .total{font-size:16px;font-weight:700;}");
+            head.AppendLine(".enletras{background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;margin-top:8px;}");
+            head.AppendLine(".footer{position:fixed;bottom:8mm;left:0;right:0;text-align:center;font-size:10px;color:#666;}");
+            head.AppendLine("</style>");
+
+            // BODY
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class=\"container-fluid\">");
+            sb.AppendLine("  <div class=\"factura-header\">");
+            sb.AppendLine("    <div class=\"logo-wrap\">");
+            if (!string.IsNullOrEmpty(logoDataUri))
+                sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+            else
+                sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:10px;color:#999;min-height:40px;min-width:100px;\">LOGO</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class=\"empresa\">");
+            sb.AppendLine($"      <h2>{empresa}</h2>");
+            sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+            sb.AppendLine($"      <div class=\"small\">{sucursal} · {direccion}</div>");
+            if (!string.IsNullOrWhiteSpace(telefono) || !string.IsNullOrWhiteSpace(correo))
+                sb.AppendLine($"      <div class=\"small\">{telefono} {(string.IsNullOrWhiteSpace(telefono)||string.IsNullOrWhiteSpace(correo) ? "" : "·")} {correo}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class=\"ms-auto text-end\">");
+            sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Factura de Compra</div>");
+            sb.AppendLine($"      <div class=\"text-muted small\">Nº Interno: {comp.IdCompra}</div>");
+            if (!string.IsNullOrEmpty(nroFactura)) sb.AppendLine($"      <div>N°: {nroFactura}</div>");
+            if (!string.IsNullOrEmpty(timbrado))
+            {
+                var venceTxt = vencTimProv.HasValue ? $" (vence: {vencTimProv:dd/MM/yyyy})" : string.Empty;
+                sb.AppendLine($"      <div>Timbrado: {timbrado}{venceTxt}</div>");
+            }
+            sb.AppendLine($"      <div>Fecha: {comp.Fecha:dd/MM/yyyy}</div>");
+            if (comp.IdCaja.HasValue) sb.AppendLine($"      <div>Caja: {comp.IdCaja} · Turno: {(comp.Turno?.ToString() ?? "-")}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            sb.AppendLine("  <div class=\"factura-meta\">");
+            sb.AppendLine("    <div>");
+            sb.AppendLine("      <div class=\"text-muted\">Proveedor</div>");
+            sb.AppendLine($"      <div class=\"fw-semibold\">{provNombre}</div>");
+            if (!string.IsNullOrWhiteSpace(provRuc)) sb.AppendLine($"      <div class=\"small\">RUC: {provRuc}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class=\"text-end\">");
+            sb.AppendLine($"      <div class=\"text-muted\">Moneda</div><div class=\"fw-semibold\">{codMon} ({simb})</div>");
+            sb.AppendLine($"      <div class=\"text-muted\">Forma de pago</div><div>{(comp.FormaPago ?? "-")}</div>");
+            if (!string.IsNullOrWhiteSpace(comp.MedioPago)) sb.AppendLine($"      <div class=\"text-muted\">Medio</div><div>{comp.MedioPago}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            sb.AppendLine("  <table class=\"table table-sm table-factura\">");
+            sb.AppendLine("    <thead><tr><th>Descripción</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
+            sb.AppendLine("    <tbody>");
+            foreach (var d in dets)
+            {
+                var prod = Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto);
+                var desc = prod?.Descripcion ?? $"Producto #{d.IdProducto}";
+                sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+            }
+            sb.AppendLine("    </tbody>");
+            sb.AppendLine("  </table>");
+
+            sb.AppendLine("  <div class=\"row\">");
+            sb.AppendLine("    <div class=\"col-7\">");
+            var totLetras = comp.TotalEnLetras ?? NumeroEnLetras(comp.Total, codMon);
+            sb.AppendLine($"      <div class=\"enletras\"><span class=\"text-muted\">Total en letras:</span> <span class=\"fw-semibold\">{System.Net.WebUtility.HtmlEncode(totLetras)}</span></div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class=\"col-5\">");
+            sb.AppendLine("      <div class=\"card\"><div class=\"card-body p-3 totales\">");
+            sb.AppendLine($"        <div class=\"line\"><span>Exentas</span><strong>{exen.ToString(formato)}</strong></div>");
+            sb.AppendLine($"        <div class=\"line\"><span>Gravadas 5%</span><strong>{grab5.ToString(formato)}</strong></div>");
+            sb.AppendLine($"        <div class=\"line\"><span>Gravadas 10%</span><strong>{grab10.ToString(formato)}</strong></div>");
+            sb.AppendLine($"        <hr class=\"my-2\"/>");
+            sb.AppendLine($"        <div class=\"line\"><span>IVA 5%</span><strong>{iva5.ToString(formato)}</strong></div>");
+            sb.AppendLine($"        <div class=\"line\"><span>IVA 10%</span><strong>{iva10.ToString(formato)}</strong></div>");
+            sb.AppendLine($"        <div class=\"line total\"><span>Total {simb}</span><span>{comp.Total.ToString(formato)}</span></div>");
+            sb.AppendLine("      </div></div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            sb.AppendLine("  <div class=\"footer\">** Gracias por su compra **</div>");
+            sb.AppendLine("</div>");
+
+            await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error al generar impresión de factura: {ex.Message}");
+        }
+    }
+
+    // Reimpresión desde otro componente por Id
+    private async Task ReimprimirPorIdAsync(int idCompra)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var comp = await ctx.Compras.AsNoTracking().FirstOrDefaultAsync(c => c.IdCompra == idCompra);
+            if (comp == null) return;
+            var dets = await ctx.ComprasDetalles.AsNoTracking().Where(d => d.IdCompra == idCompra).ToListAsync();
+            await ImprimirFacturaAsync(comp, dets);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error reimprimiendo compra #{idCompra}: {ex.Message}");
+        }
+    }
+
+    private async Task ReimprimirUltimaAsync()
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var ultima = await ctx.Compras.AsNoTracking()
+                .OrderByDescending(c => c.FechaCreacion)
+                .FirstOrDefaultAsync();
+            if (ultima == null) { return; }
+            var dets = await ctx.ComprasDetalles.AsNoTracking()
+                .Where(d => d.IdCompra == ultima.IdCompra)
+                .ToListAsync();
+            await ImprimirFacturaAsync(ultima, dets);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error reimprimiendo última compra: {ex.Message}");
+        }
+    }
+
+    // Helpers: FX y total en letras
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Si venimos desde el explorador con ?id=..&print=1, dispara reimpresión
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var query = QueryHelpers.ParseQuery(uri.Query);
+            if (query.TryGetValue("id", out var idVal) && query.TryGetValue("print", out var printVal))
+            {
+                if (int.TryParse(idVal, out var idCompra) && printVal == "1")
+                {
+                    await ReimprimirPorIdAsync(idCompra);
+                }
+            }
+        }
+    }
+
+    private async Task<decimal> ConvertirMonedaAsync(decimal monto, int idMonedaOrigen, int idMonedaDestino)
+    {
+        if (idMonedaOrigen == idMonedaDestino) return monto;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var hoy = DateTime.Today;
+        // Obtener códigos de moneda para aplicar preferencia de tasa
+        var monOri = await ctx.Monedas.AsNoTracking().FirstOrDefaultAsync(m => m.IdMoneda == idMonedaOrigen);
+        var monDes = await ctx.Monedas.AsNoTracking().FirstOrDefaultAsync(m => m.IdMoneda == idMonedaDestino);
+
+        var tc = await ctx.TiposCambio.AsNoTracking()
+            .Where(t => t.IdMonedaOrigen == idMonedaOrigen && t.IdMonedaDestino == idMonedaDestino)
+            .OrderByDescending(t => t.FechaTipoCambio)
+            .FirstOrDefaultAsync();
+        if (tc != null && tc.FechaTipoCambio.Date == hoy)
+        {
+            // Preferir la tasa de "venta" cuando el destino es PYG (en BD se guarda en TasaCompra)
+            var tasa = (monDes?.CodigoISO == "PYG") ? (tc.TasaCompra ?? tc.TasaCambio) : tc.TasaCambio;
+            if (tasa != 0)
+                return Math.Round(monto * tasa, 4);
+        }
+        var tcInv = await ctx.TiposCambio.AsNoTracking()
+            .Where(t => t.IdMonedaOrigen == idMonedaDestino && t.IdMonedaDestino == idMonedaOrigen)
+            .OrderByDescending(t => t.FechaTipoCambio)
+            .FirstOrDefaultAsync();
+        if (tcInv != null && tcInv.FechaTipoCambio.Date == hoy)
+        {
+            var tasaInv = (monOri?.CodigoISO == "PYG") ? (tcInv.TasaCompra ?? tcInv.TasaCambio) : tcInv.TasaCambio;
+            if (tasaInv != 0)
+                return Math.Round(monto / tasaInv, 4);
+        }
+        // Fallback con último registro disponible
+        if (tc != null)
+        {
+            var tasa = (monDes?.CodigoISO == "PYG") ? (tc.TasaCompra ?? tc.TasaCambio) : tc.TasaCambio;
+            if (tasa != 0)
+                return Math.Round(monto * tasa, 4);
+        }
+        if (tcInv != null)
+        {
+            var tasaInv = (monOri?.CodigoISO == "PYG") ? (tcInv.TasaCompra ?? tcInv.TasaCambio) : tcInv.TasaCambio;
+            if (tasaInv != 0)
+                return Math.Round(monto / tasaInv, 4);
+        }
+        return monto;
+    }
+
+    private string NumeroEnLetras(decimal total, string codigoMoneda)
+    {
+        var entero = Math.Floor(total);
+        var centavos = (int)Math.Round((total - entero) * 100, 0);
+        var palabras = ToSpanishWords((long)entero);
+        var nombreMoneda = codigoMoneda switch
+        {
+            "USD" => "dólares",
+            "ARS" => "pesos argentinos",
+            "BRL" => "reales",
+            _ => "guaraníes"
+        };
+        return centavos > 0
+            ? $"{palabras} {nombreMoneda} con {centavos:00}/100"
+            : $"{palabras} {nombreMoneda}";
+    }
+
+    private static string ToSpanishWords(long number)
+    {
+        if (number == 0) return "cero";
+        if (number < 0) return "menos " + ToSpanishWords(-number);
+        string[] unidades = { "", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve" };
+        string[] decenas = { "", "diez", "veinte", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa" };
+        string[] centenas = { "", "cien", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos" };
+        string ConvertGroup(long n)
+        {
+            if (n == 0) return "";
+            if (n < 20) return unidades[n];
+            if (n < 100)
+            {
+                var d = n / 10; var u = n % 10;
+                if (n < 30) return n == 20 ? "veinte" : "veinti" + unidades[u];
+                return u == 0 ? decenas[d] : decenas[d] + " y " + unidades[u];
+            }
+            var c = n / 100; var r = n % 100;
+            if (n == 100) return "cien";
+            return centenas[c] + (r == 0 ? "" : " " + ConvertGroup(r));
+        }
+        string ConvertThousands(long n)
+        {
+            if (n < 1000) return ConvertGroup(n);
+            var miles = n / 1000; var resto = n % 1000;
+            var pref = miles == 1 ? "mil" : ConvertGroup(miles) + " mil";
+            var suf = resto == 0 ? "" : " " + ConvertGroup(resto);
+            return pref + suf;
+        }
+        string ConvertMillions(long n)
+        {
+            if (n < 1_000_000) return ConvertThousands(n);
+            var mill = n / 1_000_000; var resto = n % 1_000_000;
+            var pref = mill == 1 ? "un millón" : ConvertThousands(mill) + " millones";
+            var suf = resto == 0 ? "" : " " + ConvertThousands(resto);
+            return pref + suf;
+        }
+        string ConvertBillions(long n)
+        {
+            if (n < 1_000_000_000) return ConvertMillions(n);
+            var bill = n / 1_000_000_000; var resto = n % 1_000_000_000;
+            var pref = bill == 1 ? "mil millones" : ConvertMillions(bill) + " mil millones";
+            var suf = resto == 0 ? "" : " " + ConvertMillions(resto);
+            return pref + suf;
+        }
+        return ConvertBillions(number);
+    }
+
+    private void Limpiar()
+    {
+        var idDepPrev = Compra.IdDeposito;
+        var idSucPrev = Compra.IdSucursal;
+        var idMonPyg = Monedas.FirstOrDefault(m => m.CodigoISO == "PYG")?.IdMoneda;
+        
+        // Crear nueva instancia de Compra (evita conflictos con IdCompra ya asignado)
+        Compra = new SistemIA.Models.Compra 
+        { 
+            Fecha = DateTime.Today, 
+            TipoDocumento = "FACTURA", 
+            TipoIngreso = "COMPRA", 
+            MedioPago = "EFECTIVO", 
+            IdSucursal = idSucPrev, 
+            IdDeposito = idDepPrev, 
+            IdMoneda = idMonPyg 
+        };
+        
+        Detalles.Clear();
+        RecalcularTotales();
+        SeleccionarPagoContadoPorDefecto();
+        
+        // Limpiar datos del proveedor
+        BuscarProveedor = string.Empty;
+        MostrarSugProveedores = false;
+        VencimientoTimbradoProveedorSel = null;
+        
+        // Limpiar datos del producto
+        BuscarProducto = string.Empty;
+        MostrarSugProductos = false;
+        ProductoImagenUrl = null;
+        NuevoDetalle = new SistemIA.Models.CompraDetalle { Cantidad = 1, PrecioUnitario = 0 };
+        
+        // Limpiar factores guardados
+        _factoresPorProducto.Clear();
+        
+        // Predeterminar tipo documento FACTURA
+        var factura = TiposDocumento.FirstOrDefault(t => t.Nombre == "FACTURA");
+        if (factura != null) 
+        { 
+            Compra.IdTipoDocumentoOperacion = factura.IdTipoDocumentoOperacion; 
+            Compra.TipoDocumento = factura.Nombre; 
+        }
+        
+        // Refrescar productos para actualizar stock después de la compra
+        _ = RefrescarProductosAsync();
+        
+        StateHasChanged();
+    }
+    
+    private async Task RefrescarProductosAsync()
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            Productos = await ctx.Productos
+                .Include(p => p.TipoIva)
+                .Include(p => p.MonedaPrecio)
+                .AsNoTracking()
+                .OrderBy(p => p.Descripcion)
+                .ToListAsync();
+            
+            // Cargar stocks por depósito
+            var stocks = await ctx.ProductosDepositos
+                .AsNoTracking()
+                .ToListAsync();
+            
+            foreach (var p in Productos)
+            {
+                p.Stock = stocks.Where(s => s.IdProducto == p.IdProducto).Sum(s => s.Stock);
+            }
+            
+            ProductosFiltrados = new(Productos);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* Ignorar errores de refresco */ }
+    }
+
+    private void IrANuevaCompra()
+    {
+        Nav.NavigateTo("/compras", forceLoad: true);
+    }
+
+    private void IrAlExplorador()
+    {
+        Nav.NavigateTo("/compras/explorar", forceLoad: true);
+    }
+
+    private void OnTipoPagoChanged()
+    {
+        // Reflejar el nombre en FormaPago para compatibilidad
+        var id = Compra.IdTipoPago;
+        var sel = TiposPago.FirstOrDefault(t => t.IdTipoPago == id);
+        Compra.FormaPago = sel?.Nombre;
+        
+        // Actualizar visibilidad de campos de crédito
+        MostrarCamposCredito = TipoPagoEsCredito;
+        
+        // Si es crédito, establecer valores por defecto
+        if (MostrarCamposCredito)
+        {
+            if (!Compra.PlazoDias.HasValue || Compra.PlazoDias <= 0)
+                Compra.PlazoDias = 30;
+            if (NumeroCuotasCompra <= 0)
+                NumeroCuotasCompra = 1;
+            Compra.FechaVencimiento = Compra.Fecha.Date.AddDays(Compra.PlazoDias ?? 30);
+        }
+        
+        // Si es CONTADO, poner EFECTIVO por defecto
+        if (EsTipoPagoContado())
+        {
+            Compra.MedioPago = "EFECTIVO";
+        }
+        else
+        {
+            // Si no es CONTADO, el medio de pago es el mismo que el tipo de pago (CREDITO, REMISION, etc.)
+            Compra.MedioPago = sel?.Nombre?.ToUpperInvariant() ?? string.Empty;
+        }
+        StateHasChanged();
+    }
+
+    private void OnPlazoChanged()
+    {
+        // Recalcular fecha de vencimiento según el plazo
+        if (Compra.PlazoDias.HasValue && Compra.PlazoDias > 0)
+        {
+            Compra.FechaVencimiento = Compra.Fecha.Date.AddDays(Compra.PlazoDias.Value);
+        }
+        StateHasChanged();
+    }
+
+    private bool EsTipoPagoContado()
+    {
+        if (!Compra.IdTipoPago.HasValue) return true; // Si no hay selección, consideramos contado por defecto
+        var sel = TiposPago.FirstOrDefault(t => t.IdTipoPago == Compra.IdTipoPago);
+        if (sel == null) return true;
+        var nombre = (sel.Nombre ?? "").Trim().ToUpperInvariant();
+        return nombre == "CONTADO";
+    }
+
+    private void OnTipoDocumentoChanged(ChangeEventArgs e)
+    {
+        var id = Compra.IdTipoDocumentoOperacion;
+        var sel = TiposDocumento.FirstOrDefault(t => t.IdTipoDocumentoOperacion == id);
+        Compra.TipoDocumento = sel?.Nombre ?? Compra.TipoDocumento;
+    }
+
+    private void AplicarFiltroProveedores()
+    {
+        var texto = (BuscarProveedor ?? string.Empty).Trim().ToLowerInvariant();
+    if (string.IsNullOrWhiteSpace(texto)) { ProveedoresFiltrados = new(Proveedores); MostrarSugProveedores = false; StateHasChanged(); return; }
+
+        // Separar criterio por nombre y por RUC (solo dígitos)
+        var digitos = new string(texto.Where(char.IsDigit).ToArray());
+
+        ProveedoresFiltrados = Proveedores
+            .Where(p => p.RazonSocial.ToLowerInvariant().Contains(texto)
+                     || (!string.IsNullOrEmpty(digitos) && p.RUC.Contains(digitos)))
+            .OrderBy(p => p.RazonSocial)
+            .ToList();
+    MostrarSugProveedores = ProveedoresFiltrados.Any();
+        StateHasChanged();
+    }
+
+    private void AplicarFiltroProductos()
+    {
+        var texto = (BuscarProducto ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(texto)) { ProductosFiltrados = new(Productos); MostrarSugProductos = false; StateHasChanged(); return; }
+
+        ProductosFiltrados = Productos
+            .Where(p => (p.Descripcion ?? string.Empty).ToLowerInvariant().Contains(texto)
+                     || (p.CodigoInterno ?? string.Empty).ToLowerInvariant().Contains(texto))
+            .OrderBy(p => p.Descripcion)
+            .ToList();
+        MostrarSugProductos = ProductosFiltrados.Any();
+        StateHasChanged();
+    }
+
+    private void SeleccionarProveedor(ProvSifenItem p)
+    {
+        Compra.IdProveedor = p.IdProveedor;
+        BuscarProveedor = p.RazonSocial;
+        MostrarSugProveedores = false;
+        _ = CargarDatosProveedorAsync(p.IdProveedor);
+    }
+
+    private async Task CargarDatosProveedorAsync(int idProveedor)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var prov = await ctx.ProveedoresSifen.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.IdProveedor == idProveedor);
+            if (prov != null)
+            {
+                Compra.Timbrado = prov.Timbrado;
+                VencimientoTimbradoProveedorSel = prov.VencimientoTimbrado;
+                StateHasChanged();
+            }
+        }
+        catch { }
+    }
+
+    private async Task SeleccionarProductoAsync(SistemIA.Models.Producto p)
+    {
+        NuevoDetalle.IdProducto = p.IdProducto;
+        // Mostrar el producto seleccionado en el buscador (no limpiar para mantener la lista abierta)
+        BuscarProducto = p.Descripcion ?? string.Empty;
+        
+        // Mostrar imagen del producto seleccionado
+        ProductoImagenUrl = p.Foto;
+        
+        // IMPORTANTE: CostoUnitarioGs y PrecioUnitarioGs SIEMPRE están en Guaraníes por definición del campo
+        // No importa qué moneda tenga asignada el producto en IdMonedaPrecio
+        var precioBaseEnGs = p.CostoUnitarioGs ?? p.PrecioUnitarioGs;
+        
+        var idMonedaCompra = Compra.IdMoneda;
+        decimal precio = precioBaseEnGs;
+        
+        // Solo convertir si la compra está en moneda extranjera (no en Gs)
+        if (idMonedaCompra.HasValue)
+        {
+            var monCompra = Monedas.FirstOrDefault(m => m.IdMoneda == idMonedaCompra.Value);
+            
+            // Si la compra está en moneda extranjera (USD), convertir de Gs → USD
+            if (monCompra?.EsMonedaBase == false)
+            {
+                try {
+                    // Prioridad 1: Usar TC manual si existe
+                    if (Compra.CambioDelDia.HasValue && Compra.CambioDelDia.Value > 0)
+                    {
+                        var tasaManual = Compra.CambioDelDia.Value;
+                        precio = Math.Round(precioBaseEnGs / tasaManual, 4);
+                        NuevoDetalle.CambioDelDia = tasaManual;
+                    }
+                    else
+                    {
+                        // Prioridad 2: Buscar TC del día usando TasaCompra
+                        await using var ctx = await DbFactory.CreateDbContextAsync();
+                        var monedaBase = Monedas.FirstOrDefault(m => m.EsMonedaBase);
+                        
+                        if (monedaBase != null)
+                        {
+                            var tc = await ctx.TiposCambio
+                                .Where(t => t.IdMonedaOrigen == idMonedaCompra.Value 
+                                         && t.IdMonedaDestino == monedaBase.IdMoneda
+                                         && t.Estado
+                                         && t.FechaTipoCambio.Date == DateTime.Today)
+                                .OrderByDescending(t => t.FechaCreacion)
+                                .FirstOrDefaultAsync();
+                            
+                            if (tc != null)
+                            {
+                                var tasaCompra = tc.TasaCompra ?? tc.TasaCambio;
+                                precio = Math.Round(precioBaseEnGs / tasaCompra, 4);
+                                NuevoDetalle.CambioDelDia = tasaCompra;
+                            }
+                            else
+                            {
+                                // Fallback si no hay TC del día
+                                var tasa = await ObtenerTasaAplicadaAsync(monedaBase.IdMoneda, idMonedaCompra.Value);
+                                NuevoDetalle.CambioDelDia = tasa;
+                                precio = Math.Round(precioBaseEnGs / tasa, 4);
+                            }
+                        }
+                    }
+                }
+                catch { precio = precioBaseEnGs; NuevoDetalle.CambioDelDia = null; }
+            }
+        }
+        // Si la compra está en Gs, usar el precio directamente sin conversión
+        NuevoDetalle.PrecioUnitario = precio;
+
+        // Precio de venta de referencia convertido (para margen)
+        // PrecioUnitarioGs también siempre está en Guaraníes
+        try
+        {
+            var precioVentaEnGs = p.PrecioUnitarioGs;
+            decimal precioVentaConv = precioVentaEnGs;
+            
+            if (idMonedaCompra.HasValue)
+            {
+                var monCompra = Monedas.FirstOrDefault(m => m.IdMoneda == idMonedaCompra.Value);
+                
+                // Solo convertir si la compra está en moneda extranjera
+                if (monCompra?.EsMonedaBase == false)
+                {
+                    var cambio = NuevoDetalle.CambioDelDia ?? Compra.CambioDelDia ?? 1m;
+                    precioVentaConv = Math.Round(precioVentaEnGs / cambio, 4);
+                }
+            }
+            
+            NuevoDetalle.PrecioVentaRef = precioVentaConv;
+        }
+        catch { NuevoDetalle.PrecioVentaRef = p.PrecioUnitarioGs; }
+
+        // Calcular IVA incluido según el tipo del producto (0/5/10)
+        var porc = p.TipoIva?.Porcentaje ?? 0m;
+        var cant = NuevoDetalle.Cantidad <= 0 ? 1 : NuevoDetalle.Cantidad;
+        var totalLinea = Math.Round(cant * precio, 4);
+        NuevoDetalle.IVA10 = 0; NuevoDetalle.IVA5 = 0; NuevoDetalle.Exenta = 0; NuevoDetalle.Grabado10 = 0; NuevoDetalle.Grabado5 = 0; NuevoDetalle.Importe = 0;
+        if (porc == 10)
+        {
+            var base10 = Math.Round(totalLinea / 1.10m, 4);
+            NuevoDetalle.Grabado10 = base10;
+            NuevoDetalle.IVA10 = Math.Round(totalLinea - base10, 4);
+        }
+        else if (porc == 5)
+        {
+            var base5 = Math.Round(totalLinea / 1.05m, 4);
+            NuevoDetalle.Grabado5 = base5;
+            NuevoDetalle.IVA5 = Math.Round(totalLinea - base5, 4);
+        }
+        else
+        {
+            NuevoDetalle.Exenta = totalLinea;
+        }
+        NuevoDetalle.Importe = totalLinea;
+
+        // No cerrar la lista aquí; se cerrará solo cuando se haga blur fuera del control
+        await ActualizarStockSeleccionadoAsync();
+    }
+
+    // Método para cambiar la imagen al hacer clic en un ítem del detalle
+    private void SeleccionarDetalleCompra(SistemIA.Models.Producto? prod)
+    {
+        if (prod != null)
+        {
+            ProductoImagenUrl = prod.Foto;
+        }
+    }
+
+    private async Task RefrescarProveedoresAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        Proveedores = await ctx.Database
+            .SqlQuery<ProvSifenItem>(
+                $"SELECT IdProveedor, RazonSocial, RUC, DV FROM ProveedoresSifen ORDER BY RazonSocial")
+            .ToListAsync();
+        AplicarFiltroProveedores();
+    }
+
+    // Indicador de stock del producto seleccionado en el depósito elegido
+    private decimal? StockActualSeleccion;
+    private async Task OnDepositoChanged(ChangeEventArgs e)
+    {
+        await ActualizarStockSeleccionadoAsync();
+    }
+    private async Task ActualizarStockSeleccionadoAsync()
+    {
+        try
+        {
+            if (NuevoDetalle.IdProducto > 0 && Compra.IdDeposito.HasValue)
+            {
+                StockActualSeleccion = await Inventario.ObtenerStockAsync(NuevoDetalle.IdProducto, Compra.IdDeposito.Value);
+            }
+            else
+            {
+                StockActualSeleccion = null;
+            }
+        }
+        catch { StockActualSeleccion = null; }
+        StateHasChanged();
+    }
+
+    private void OnProveedorKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == "Tab")
+        {
+            var texto = (BuscarProveedor ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(texto))
+            {
+                ProveedoresFiltrados = new(Proveedores);
+                MostrarSugProveedores = ProveedoresFiltrados.Any();
+                StateHasChanged();
+                return;
+            }
+            
+            // Buscar por RUC exacto primero
+            var soloDigitos = new string(texto.Where(char.IsDigit).ToArray());
+            if (!string.IsNullOrEmpty(soloDigitos))
+            {
+                var provPorRuc = Proveedores.FirstOrDefault(p => 
+                    !string.IsNullOrEmpty(p.RUC) && p.RUC.Equals(soloDigitos, StringComparison.OrdinalIgnoreCase));
+                
+                if (provPorRuc != null)
+                {
+                    SeleccionarProveedor(provPorRuc);
+                    StateHasChanged();
+                    return;
+                }
+            }
+            
+            // Si no hay coincidencia por RUC exacto, seleccionar el primero de la lista
+            var p = ProveedoresFiltrados.FirstOrDefault();
+            if (p != null)
+            {
+                SeleccionarProveedor(p);
+                StateHasChanged();
+            }
+        }
+        else if (e.Key == "Escape")
+        {
+            MostrarSugProveedores = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnProductoKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            var texto = (BuscarProducto ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(texto))
+            {
+                // Enter con buscador vacío: mostrar todos los productos en sugerencias
+                ProductosFiltrados = new(Productos);
+                MostrarSugProductos = ProductosFiltrados.Any();
+                StateHasChanged();
+                return;
+            }
+            var p = ProductosFiltrados.FirstOrDefault();
+            if (p != null) await SeleccionarProductoAsync(p);
+        }
+        else if (e.Key == "Escape")
+        {
+            MostrarSugProductos = false;
+        }
+    }
+
+    private void OnProveedorFocus(FocusEventArgs _)
+    {
+        MostrarSugProveedores = ProveedoresFiltrados.Any();
+    }
+
+    private void OnProductoFocus(FocusEventArgs _)
+    {
+        // Solo mostrar sugerencias al enfocar si hay texto; de lo contrario, no abrir
+        if (!string.IsNullOrWhiteSpace(BuscarProducto))
+        {
+            MostrarSugProductos = ProductosFiltrados.Any();
+        }
+        else
+        {
+            MostrarSugProductos = false;
+        }
+    }
+
+    private async Task OnProductoBlur(FocusEventArgs _)
+    {
+        // Ocultar sugerencias al perder foco, pero permitir seleccionar con pointerdown/mousedown primero
+        await Task.Delay(120);
+        if (!_mouseDownEnSugerenciaProducto)
+        {
+            MostrarSugProductos = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnProductoSuggestionMouseDownAsync(SistemIA.Models.Producto p)
+    {
+        _mouseDownEnSugerenciaProducto = true;
+        await SeleccionarProductoAsync(p);
+        // Resetear bandera un instante después
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(150);
+            _mouseDownEnSugerenciaProducto = false;
+        });
+    }
+
+    private string TotalActualEnLetras
+    {
+        get
+        {
+            var monedaSel = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda);
+            var codigo = monedaSel?.CodigoISO ?? "PYG";
+            var texto = NumeroEnLetras(Compra.Total, codigo);
+            // Capitalizar la primera letra y mostrar código de moneda
+            if (!string.IsNullOrWhiteSpace(texto))
+            {
+                texto = char.ToUpper(texto[0]) + texto.Substring(1);
+            }
+            return texto;
+        }
+    }
+
+    // Devuelve la tasa directa aplicada origen→destino considerando preferencia de venta si destino es PYG
+    private async Task<decimal> ObtenerTasaAplicadaAsync(int idMonedaOrigen, int idMonedaDestino)
+    {
+        if (idMonedaOrigen == idMonedaDestino) return 1m;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var hoy = DateTime.Today;
+        var monOri = await ctx.Monedas.AsNoTracking().FirstOrDefaultAsync(m => m.IdMoneda == idMonedaOrigen);
+        var monDes = await ctx.Monedas.AsNoTracking().FirstOrDefaultAsync(m => m.IdMoneda == idMonedaDestino);
+
+        var tc = await ctx.TiposCambio.AsNoTracking()
+            .Where(t => t.IdMonedaOrigen == idMonedaOrigen && t.IdMonedaDestino == idMonedaDestino)
+            .OrderByDescending(t => t.FechaTipoCambio)
+            .FirstOrDefaultAsync();
+        if (tc != null && tc.FechaTipoCambio.Date == hoy)
+        {
+            var tasa = (monDes?.CodigoISO == "PYG") ? (tc.TasaCompra ?? tc.TasaCambio) : tc.TasaCambio;
+            if (tasa != 0) return tasa;
+        }
+        var tcInv = await ctx.TiposCambio.AsNoTracking()
+            .Where(t => t.IdMonedaOrigen == idMonedaDestino && t.IdMonedaDestino == idMonedaOrigen)
+            .OrderByDescending(t => t.FechaTipoCambio)
+            .FirstOrDefaultAsync();
+        if (tcInv != null && tcInv.FechaTipoCambio.Date == hoy)
+        {
+            var tasaInv = (monOri?.CodigoISO == "PYG") ? (tcInv.TasaCompra ?? tcInv.TasaCambio) : tcInv.TasaCambio;
+            if (tasaInv != 0) return 1m / tasaInv;
+        }
+        // Fallback últimos
+        if (tc != null)
+        {
+            var tasa = (monDes?.CodigoISO == "PYG") ? (tc.TasaCompra ?? tc.TasaCambio) : tc.TasaCambio;
+            if (tasa != 0) return tasa;
+        }
+        if (tcInv != null)
+        {
+            var tasaInv = (monOri?.CodigoISO == "PYG") ? (tcInv.TasaCompra ?? tcInv.TasaCambio) : tcInv.TasaCambio;
+            if (tasaInv != 0) return 1m / tasaInv;
+        }
+        return 1m;
+    }
+
+    private string GetCurrencyFlag(string? codigoISO)
+    {
+        switch ((codigoISO ?? string.Empty).ToUpperInvariant())
+        {
+            case "USD": return "\U0001F1FA\U0001F1F8"; // 🇺🇸
+            case "ARS": return "\U0001F1E6\U0001F1F7"; // 🇦🇷
+            case "BRL": return "\U0001F1E7\U0001F1F7"; // 🇧🇷
+            case "PYG": return "\U0001F1F5\U0001F1FE"; // 🇵🇾
+            case "EUR": return "\U0001F1EA\U0001F1FA"; // 🇪🇺
+            default: return "\U0001F4B1"; // 💱
+        }
+    }
+    
+    private string FormatearPrecio(decimal valor)
+    {
+        // Si la compra es en moneda extranjera, mostrar decimales
+        if (Compra.IdMoneda.HasValue)
+        {
+            var mon = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda.Value);
+            if (mon?.EsMonedaBase == false)
+            {
+                return valor.ToString("N2"); // 2 decimales para USD, etc.
+            }
+        }
+        return valor.ToString("N0"); // Sin decimales para Guaraníes
+    }
+
+    // ============ Métodos para modal de nuevo proveedor rápido ============
+    private void AbrirModalNuevoProveedor()
+    {
+        _mostrarModalProveedor = true;
+        _errorProveedor = null;
+        _successProveedor = null;
+        _nuevoProvRazonSocial = string.Empty;
+        _nuevoProvRuc = string.Empty;
+        _nuevoProvDv = 0;
+        _nuevoProvTimbrado = string.Empty;
+        _nuevoProvVencTimbrado = DateTime.Today.AddYears(2);
+        _mensajeSifenProveedor = null;
+        _esSifenProveedorError = false;
+    }
+
+    private void CerrarModalProveedor()
+    {
+        _mostrarModalProveedor = false;
+    }
+
+    private void CalcularDvProveedor()
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoProvRuc) && _nuevoProvRuc.All(char.IsDigit))
+        {
+            _nuevoProvDv = SistemIA.Utils.RucHelper.CalcularDvRuc(_nuevoProvRuc);
+        }
+        else
+        {
+            _nuevoProvDv = 0;
+        }
+    }
+
+    private async Task BuscarProveedorEnSifenAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevoProvRuc) || _nuevoProvRuc.Length < 6)
+        {
+            _mensajeSifenProveedor = "Ingrese un RUC válido (mínimo 6 dígitos)";
+            _esSifenProveedorError = true;
+            return;
+        }
+
+        _buscandoProveedorSifen = true;
+        _mensajeSifenProveedor = null;
+        _esSifenProveedorError = false;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Primero buscar en BD local
+            var proveedorLocal = await ctx.ProveedoresSifen.FirstOrDefaultAsync(p => p.RUC == _nuevoProvRuc);
+            if (proveedorLocal != null)
+            {
+                _nuevoProvRazonSocial = proveedorLocal.RazonSocial ?? string.Empty;
+                _nuevoProvDv = proveedorLocal.DV;
+                _nuevoProvTimbrado = proveedorLocal.Timbrado ?? string.Empty;
+                _nuevoProvVencTimbrado = proveedorLocal.VencimientoTimbrado != default ? proveedorLocal.VencimientoTimbrado : DateTime.Today.AddYears(2);
+                _mensajeSifenProveedor = $"✓ Proveedor encontrado en BD local: {proveedorLocal.RazonSocial}";
+                _esSifenProveedorError = false;
+                return;
+            }
+
+            // Calcular DV
+            _nuevoProvDv = SistemIA.Utils.RucHelper.CalcularDvRuc(_nuevoProvRuc);
+
+            // Si no está en BD local, consultar SIFEN
+            var sociedad = await ctx.Sociedades.FirstOrDefaultAsync();
+            if (sociedad == null || string.IsNullOrEmpty(sociedad.PathCertificadoP12))
+            {
+                _mensajeSifenProveedor = "⚠️ No hay certificado SIFEN configurado";
+                _esSifenProveedorError = true;
+                return;
+            }
+
+            var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            var xmlRespuesta = await SifenService.Consulta(url, _nuevoProvRuc, "1", sociedad.PathCertificadoP12 ?? "", sociedad.PasswordCertificadoP12 ?? "");
+
+            if (string.IsNullOrEmpty(xmlRespuesta))
+            {
+                _mensajeSifenProveedor = "⚠️ Sin respuesta de SIFEN. Intente nuevamente.";
+                _esSifenProveedorError = true;
+                return;
+            }
+
+            if (xmlRespuesta.Contains("0160") || xmlRespuesta.Contains("XML Mal Formado"))
+            {
+                _mensajeSifenProveedor = "⚠️ Error de conexión con SIFEN. Intente nuevamente.";
+                _esSifenProveedorError = true;
+                return;
+            }
+
+            var xmlDoc = new System.Xml.XmlDocument();
+            xmlDoc.LoadXml(xmlRespuesta);
+
+            var codRes = xmlDoc.SelectSingleNode("//*[local-name()='dCodRes']")?.InnerText ?? "";
+            var msgRes = xmlDoc.SelectSingleNode("//*[local-name()='dMsgRes']")?.InnerText ?? "";
+
+            if (codRes == "0502")
+            {
+                var xContRUC = xmlDoc.SelectSingleNode("//*[local-name()='xContRUC']");
+                if (xContRUC != null)
+                {
+                    var dRazCons = xContRUC.SelectSingleNode(".//*[local-name()='dRazCons']")?.InnerText;
+                    var dDesEstCons = xContRUC.SelectSingleNode(".//*[local-name()='dDesEstCons']")?.InnerText;
+                    
+                    if (!string.IsNullOrEmpty(dRazCons))
+                    {
+                        _nuevoProvRazonSocial = dRazCons.Trim();
+                    }
+                    
+                    _mensajeSifenProveedor = $"✓ SIFEN: {dRazCons?.Trim()} - {dDesEstCons}";
+                    _esSifenProveedorError = false;
+                }
+            }
+            else if (codRes == "0501")
+            {
+                _mensajeSifenProveedor = "RUC no encontrado en SIFEN. Puede ingresarlo manualmente.";
+                _esSifenProveedorError = true;
+            }
+            else
+            {
+                _mensajeSifenProveedor = $"SIFEN: [{codRes}] {msgRes}";
+                _esSifenProveedorError = codRes != "0500";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR BuscarProveedorEnSifenAsync] {ex.Message}");
+            _mensajeSifenProveedor = "⚠️ Error de conexión. Intente nuevamente.";
+            _esSifenProveedorError = true;
+        }
+        finally
+        {
+            _buscandoProveedorSifen = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GuardarNuevoProveedorAsync()
+    {
+        _errorProveedor = null;
+        _successProveedor = null;
+
+        // Validaciones básicas
+        if (string.IsNullOrWhiteSpace(_nuevoProvRazonSocial))
+        {
+            _errorProveedor = "La Razón Social es obligatoria.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoProvRuc) || !_nuevoProvRuc.All(char.IsDigit) || _nuevoProvRuc.Length < 6)
+        {
+            _errorProveedor = "El RUC debe contener al menos 6 dígitos numéricos.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoProvTimbrado) || _nuevoProvTimbrado.Length != 8 || !_nuevoProvTimbrado.All(char.IsDigit))
+        {
+            _errorProveedor = "El Timbrado debe tener exactamente 8 dígitos numéricos.";
+            return;
+        }
+
+        if (_nuevoProvVencTimbrado < DateTime.Today)
+        {
+            _errorProveedor = "La fecha de vencimiento del timbrado no puede ser anterior a hoy.";
+            return;
+        }
+
+        _guardandoProveedor = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            // Verificar si ya existe el RUC
+            var existe = await ctx.ProveedoresSifen.AnyAsync(p => p.RUC == _nuevoProvRuc);
+            if (existe)
+            {
+                _errorProveedor = "Ya existe un proveedor con este RUC.";
+                _guardandoProveedor = false;
+                return;
+            }
+
+            // Calcular DV si no se ha calculado
+            if (_nuevoProvDv == 0)
+            {
+                _nuevoProvDv = SistemIA.Utils.RucHelper.CalcularDvRuc(_nuevoProvRuc);
+            }
+
+            // Usar transacción para evitar códigos duplicados en concurrencia
+            using var transaction = await ctx.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                // Generar código de proveedor automático
+                var maxCodigo = await ctx.ProveedoresSifen
+                    .Where(p => p.CodigoProveedor != null)
+                    .Select(p => p.CodigoProveedor)
+                    .OrderByDescending(c => c)
+                    .FirstOrDefaultAsync();
+                
+                int siguienteCodigo = 1;
+                if (!string.IsNullOrEmpty(maxCodigo) && int.TryParse(maxCodigo, out var ultimoCodigo))
+                {
+                    siguienteCodigo = ultimoCodigo + 1;
+                }
+
+                // Crear el nuevo proveedor con campos mínimos
+                var nuevoProveedor = new SistemIA.Models.ProveedorSifenMejorado
+                {
+                    CodigoProveedor = siguienteCodigo.ToString().PadLeft(2, '0'),
+                    RazonSocial = _nuevoProvRazonSocial.Trim(),
+                    RUC = _nuevoProvRuc.Trim(),
+                    DV = _nuevoProvDv,
+                    Timbrado = _nuevoProvTimbrado.Trim(),
+                    VencimientoTimbrado = _nuevoProvVencTimbrado,
+                    Estado = true,
+                    FechaCreacion = DateTime.Now,
+                    UsuarioCreacion = _usuarioNombre ?? "Sistema",
+                    Ambiente = "prod", // Por defecto producción
+                    TipoContribuyente = 2, // Persona Jurídica por defecto
+                    TipoRegimen = 1 // Régimen General por defecto
+                };
+
+                ctx.ProveedoresSifen.Add(nuevoProveedor);
+                await ctx.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+            _successProveedor = $"Proveedor '{_nuevoProvRazonSocial}' creado exitosamente.";
+            
+            // Agregar a la lista local y seleccionar
+            var nuevoItem = new ProvSifenItem
+            {
+                IdProveedor = nuevoProveedor.IdProveedor,
+                RazonSocial = nuevoProveedor.RazonSocial,
+                RUC = nuevoProveedor.RUC,
+                DV = nuevoProveedor.DV
+            };
+            Proveedores.Add(nuevoItem);
+            ProveedoresFiltrados = new(Proveedores);
+
+            // Seleccionar automáticamente el nuevo proveedor
+            SeleccionarProveedor(nuevoItem);
+
+            // Cerrar modal después de un momento
+            await Task.Delay(1000);
+            _mostrarModalProveedor = false;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorProveedor = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardandoProveedor = false;
+            StateHasChanged();
+        }
+    }
+}
+
+</PageProtection>
+}

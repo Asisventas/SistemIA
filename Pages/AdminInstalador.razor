@@ -1,0 +1,806 @@
+@page "/admin/instalador"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Controllers
+@using System.Text
+@using System.IO.Compression
+@using Microsoft.Data.SqlClient
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+@inject IWebHostEnvironment Env
+@inject IConfiguration Configuration
+@inject NavigationManager Navigation
+
+<PageTitle>Generador de Instalador - SistemIA</PageTitle>
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-6">
+            <!-- Header -->
+            <div class="text-center mb-5">
+                <div class="mb-4">
+                    <i class="bi bi-box-seam display-1 text-primary"></i>
+                </div>
+                <h2 class="fw-bold">Generador de Instalador</h2>
+                <p class="text-muted">Genere el paquete de instalación de SistemIA</p>
+            </div>
+
+            <!-- Card principal -->
+            <div class="card shadow-lg border-0">
+                <div class="card-body p-4 p-lg-5">
+                    <!-- Versión -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-tag me-2"></i>Versión del Paquete
+                        </label>
+                        <input type="text" class="form-control form-control-lg text-center" 
+                               @bind="_version" disabled="@_generando" />
+                    </div>
+
+                    <!-- Barra de progreso -->
+                    @if (_generando)
+                    {
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted small">@_estadoActual</span>
+                                <span class="fw-bold">@_progreso%</span>
+                            </div>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                                     role="progressbar" 
+                                     style="width: @_progreso%"
+                                     aria-valuenow="@_progreso" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Botones -->
+                    <div class="d-grid gap-2 mb-4">
+                        @if (_generando)
+                        {
+                            <button class="btn btn-danger btn-lg py-3" @onclick="CancelarGeneracion">
+                                <i class="bi bi-x-circle me-2"></i>
+                                <span>Cancelar</span>
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-success btn-lg py-3" @onclick="GenerarPaqueteInstalador">
+                                <i class="bi bi-download me-2"></i>
+                                <span>Generar Instalador</span>
+                            </button>
+                        }
+                    </div>
+
+                    <!-- Info -->
+                    <div class="alert alert-info border-0 small mb-0">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Nota:</strong> La configuración (empresa, servidor SQL, puertos) se ingresará 
+                        al ejecutar el instalador en el equipo destino.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log de operaciones (siempre visible) -->
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" 
+                     @onclick="() => _logExpandido = !_logExpandido" 
+                     style="cursor: pointer;">
+                    <span>
+                        <i class="bi bi-terminal me-2"></i>
+                        Log de Operaciones (@_logs.Count líneas)
+                    </span>
+                    <i class="bi bi-chevron-@(_logExpandido ? "up" : "down")"></i>
+                </div>
+                @if (_logExpandido)
+                {
+                    <div class="card-body p-0">
+                        <div @ref="_logContainer" class="bg-dark text-light p-3" 
+                             style="height: 350px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 0.9rem; line-height: 1.5;">
+                            @if (_logs.Count == 0)
+                            {
+                                <div class="text-muted">Esperando operaciones...</div>
+                            }
+                            else
+                            {
+                                @foreach (var log in _logs)
+                                {
+                                    <div class="@GetLogClass(log.Tipo) py-1 border-bottom border-secondary">
+                                        <span class="text-secondary">[@log.Fecha.ToString("HH:mm:ss")]</span> @log.Mensaje
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* Modal de éxito *@
+@if (_mostrarModalExito)
+{
+    <div class="modal-backdrop fade show" style="z-index: 1040;"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index: 1050;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-body text-center p-5">
+                    <div class="mb-4">
+                        <i class="bi bi-check-circle-fill text-success" style="font-size: 5rem;"></i>
+                    </div>
+                    <h4 class="fw-bold mb-3">¡Instalador Generado!</h4>
+                    <p class="text-muted mb-4">
+                        El paquete de instalación se ha generado correctamente y la descarga debería comenzar automáticamente.
+                    </p>
+                    @if (!string.IsNullOrEmpty(_infoArchivo))
+                    {
+                        <div class="alert alert-light border mb-4">
+                            <i class="bi bi-file-earmark-zip me-2"></i>@_infoArchivo
+                        </div>
+                    }
+                    <div class="d-flex gap-2 justify-content-center">
+                        @if (!string.IsNullOrEmpty(_downloadToken))
+                        {
+                            <a href="/api/download/stream/@_downloadToken" download="@_downloadFileName" 
+                               class="btn btn-primary btn-lg px-4">
+                                <i class="bi bi-download me-2"></i>Descargar
+                            </a>
+                        }
+                        <button class="btn btn-success btn-lg px-4" @onclick="CerrarModalExito">
+                            <i class="bi bi-check-lg me-2"></i>Aceptar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Toast para errores *@
+@if (!string.IsNullOrEmpty(_mensaje) && _esError)
+{
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;">
+        <div class="toast show bg-danger text-white">
+            <div class="toast-body">
+                <i class="bi bi-x-circle me-2"></i>
+                @_mensaje
+                <button type="button" class="btn-close btn-close-white float-end" @onclick="() => _mensaje = null"></button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _version = "1.0.0";
+    private bool _generando = false;
+    private string? _mensaje;
+    private bool _esError;
+    private List<LogEntry> _logs = new();
+    private bool _logExpandido = true;
+    
+    // Progreso
+    private int _progreso = 0;
+    private string _estadoActual = "";
+    
+    // Modal de éxito
+    private bool _mostrarModalExito = false;
+    private string? _infoArchivo;
+    private string? _downloadToken;
+    private string? _downloadFileName;
+    
+    // Cancelación
+    private CancellationTokenSource? _cts;
+    private System.Diagnostics.Process? _procesoActual;
+    
+    // Referencia al contenedor de logs
+    private ElementReference _logContainer;
+    
+    // Lock para sincronizar logs
+    private readonly object _logLock = new();
+    
+    protected override void OnInitialized()
+    {
+        // Obtener versión actual del sistema si existe
+        var versionFile = Path.Combine(Env.ContentRootPath, "version.txt");
+        if (File.Exists(versionFile))
+        {
+            _version = File.ReadAllText(versionFile).Trim();
+        }
+    }
+    
+    private void CerrarModalExito()
+    {
+        _mostrarModalExito = false;
+        _infoArchivo = null;
+        _downloadToken = null;
+        _downloadFileName = null;
+        StateHasChanged();
+    }
+    
+    private async Task ActualizarProgreso(int porcentaje, string estado)
+    {
+        _progreso = porcentaje;
+        _estadoActual = estado;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(10);
+    }
+    
+    private async Task GenerarPaqueteInstalador()
+    {
+        _generando = true;
+        _mostrarModalExito = false;
+        _logs.Clear();
+        _progreso = 0;
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+        await InvokeAsync(StateHasChanged);
+        
+        try
+        {
+            await ActualizarProgreso(5, "Iniciando generación...");
+            AgregarLog("Iniciando generación del paquete de instalación...", "info");
+            
+            ct.ThrowIfCancellationRequested();
+            
+            var installerPath = Path.Combine(Env.ContentRootPath, "Installer");
+            var backupFile = Path.Combine(installerPath, "SistemIA_Base.bak");
+            
+            // Paso 1: Backup de BD (15%)
+            await ActualizarProgreso(10, "Generando backup de base de datos...");
+            AgregarLog("Generando backup de la base de datos...", "info");
+            
+            var backupResult = await GenerarBackupBD(backupFile);
+            if (!backupResult.exito)
+            {
+                AgregarLog($"⚠️ No se pudo generar backup: {backupResult.error}", "warning");
+            }
+            else
+            {
+                AgregarLog($"✅ Backup de BD [{backupResult.dbName}] generado", "success");
+            }
+            
+            // Paso 2: Compilar instalador gráfico (30%)
+            await ActualizarProgreso(20, "Compilando instalador gráfico...");
+            AgregarLog("Compilando instalador gráfico...", "info");
+            var installerAppResult = await CompilarInstaladorGrafico();
+            
+            await ActualizarProgreso(30, "Preparando archivos...");
+            
+            using var memoryStream = new MemoryStream();
+            using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+            {
+                // Paso 3: Agregar instalador (40%)
+                if (installerAppResult.exito && File.Exists(installerAppResult.exePath))
+                {
+                    await ActualizarProgreso(35, "Agregando instalador ejecutable...");
+                    AgregarLog("✅ Agregando SistemIA-Instalador.exe", "success");
+                    var installerEntry = archive.CreateEntry("SistemIA-Instalador.exe");
+                    using var entryStream = installerEntry.Open();
+                    using var fileStream = File.OpenRead(installerAppResult.exePath!);
+                    await fileStream.CopyToAsync(entryStream);
+                }
+                else
+                {
+                    AgregarLog($"⚠️ Instalador gráfico no disponible: {installerAppResult.error}", "warning");
+                    // Agregar batch como respaldo
+                    AgregarLog("Agregando Instalar.bat como respaldo...", "info");
+                    var batEntry = archive.CreateEntry("Instalar.bat");
+                    using var writer = new StreamWriter(batEntry.Open(), Encoding.UTF8);
+                    await writer.WriteAsync(GenerarInstallBat());
+                }
+                
+                // Paso 4: Agregar scripts de instalación (50%)
+                await ActualizarProgreso(45, "Agregando scripts de instalación...");
+                if (Directory.Exists(installerPath))
+                {
+                    var scriptFiles = new[] { "Install-SistemIA.ps1", "CrearBaseDatos.sql", "InicializarDatos.sql", "README.md" };
+                    foreach (var file in scriptFiles)
+                    {
+                        var filePath = Path.Combine(installerPath, file);
+                        if (File.Exists(filePath))
+                        {
+                            AgregarLog($"Agregando {file}...", "info");
+                            var content = await File.ReadAllTextAsync(filePath);
+                            var entry = archive.CreateEntry(file);
+                            using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
+                            await writer.WriteAsync(content);
+                        }
+                    }
+                }
+                
+                await ActualizarProgreso(50, "Agregando backup de base de datos...");
+                
+                // Paso 5: Backup de BD (55%)
+                if (File.Exists(backupFile))
+                {
+                    AgregarLog("Agregando SistemIA_Base.bak...", "info");
+                    var backupEntry = archive.CreateEntry("SistemIA_Base.bak", CompressionLevel.NoCompression);
+                    using var entryStream = backupEntry.Open();
+                    using var fileStream = File.OpenRead(backupFile);
+                    await fileStream.CopyToAsync(entryStream);
+                }
+                
+                // Paso 6: Publicar aplicación (60-90%)
+                await ActualizarProgreso(60, "Publicando aplicación (esto puede tardar)...");
+                AgregarLog("Publicando aplicación...", "info");
+                
+                ct.ThrowIfCancellationRequested();
+                
+                var publishResult = await PublicarAplicacion(ct);
+                if (publishResult.exito)
+                {
+                    await ActualizarProgreso(75, "Agregando binarios al paquete...");
+                    AgregarLog("✅ Aplicación publicada, agregando binarios...", "success");
+                    await AgregarCarpetaPublish(archive, publishResult.publishPath!);
+                    AgregarLog("✅ Binarios agregados correctamente", "success");
+                }
+                else
+                {
+                    AgregarLog($"⚠️ No se pudo publicar: {publishResult.error}", "warning");
+                }
+                
+                await ActualizarProgreso(95, "Finalizando paquete...");
+            }
+            
+            // Guardar archivo ZIP temporalmente
+            await ActualizarProgreso(97, "Guardando paquete...");
+            var fileName = $"SistemIA_Installer_v{_version}.zip";
+            var tempPath = Path.Combine(Path.GetTempPath(), fileName);
+            
+            using (var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
+            {
+                memoryStream.Position = 0;
+                await memoryStream.CopyToAsync(fileStream);
+            }
+            
+            // Registrar descarga y obtener token
+            await ActualizarProgreso(98, "Preparando descarga...");
+            var token = DownloadController.RegisterDownload(tempPath);
+            
+            // Guardar token para botón de descarga manual
+            _downloadToken = token;
+            _downloadFileName = fileName;
+            
+            // Obtener tamaño del archivo para informar
+            var fileInfo = new FileInfo(tempPath);
+            var sizeMB = fileInfo.Length / (1024.0 * 1024.0);
+            AgregarLog($"✅ Paquete generado: {fileName} ({sizeMB:F1} MB)", "success");
+            
+            await ActualizarProgreso(100, "¡Completado!");
+            AgregarLog($"✅ Iniciando descarga...", "success");
+            
+            // Iniciar descarga usando JavaScript - método más confiable
+            var downloadUrl = $"/api/download/stream/{token}";
+            await JS.InvokeVoidAsync("eval", $"(function() {{ var a = document.createElement('a'); a.href = '{downloadUrl}'; a.download = '{fileName}'; document.body.appendChild(a); a.click(); document.body.removeChild(a); }})()");
+            
+            // Mostrar modal de éxito
+            _infoArchivo = $"{fileName} ({sizeMB:F1} MB)";
+            _mostrarModalExito = true;
+            _progreso = 0;
+            _estadoActual = "";
+        }
+        catch (OperationCanceledException)
+        {
+            AgregarLog("⚠️ Operación cancelada", "warning");
+            MostrarMensaje("Generación cancelada", true);
+            _progreso = 0;
+            _estadoActual = "";
+        }
+        catch (Exception ex)
+        {
+            AgregarLog($"❌ Error: {ex.Message}", "error");
+            MostrarMensaje("Error al generar instalador: " + ex.Message, true);
+            // Resetear progreso en caso de error
+            _progreso = 0;
+            _estadoActual = "";
+        }
+        finally
+        {
+            _generando = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task<(bool exito, string? exePath, string? error)> CompilarInstaladorGrafico()
+    {
+        try
+        {
+            // InstallerApp está en c:\asis\InstallerApp (fuera del proyecto SistemIA)
+            var installerAppPath = Path.Combine(Path.GetDirectoryName(Env.ContentRootPath)!, "InstallerApp");
+            var publishPath = Path.Combine(installerAppPath, "publish");
+            var exePath = Path.Combine(publishPath, "SistemIA-Instalador.exe");
+            
+            if (!Directory.Exists(installerAppPath))
+            {
+                return (false, null, "Directorio InstallerApp no encontrado");
+            }
+            
+            // Limpiar publish anterior
+            if (Directory.Exists(publishPath))
+            {
+                Directory.Delete(publishPath, true);
+            }
+            
+            // Compilar el instalador
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = "publish -c Release -o publish",
+                WorkingDirectory = installerAppPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null)
+            {
+                return (false, null, "No se pudo iniciar dotnet publish");
+            }
+            
+            var output = await process.StandardOutput.ReadToEndAsync();
+            var error = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            
+            if (process.ExitCode != 0)
+            {
+                return (false, null, $"dotnet publish falló: {error}");
+            }
+            
+            if (File.Exists(exePath))
+            {
+                AgregarLog("✅ Instalador gráfico compilado correctamente", "success");
+                return (true, exePath, null);
+            }
+            
+            return (false, null, "Ejecutable no generado");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+    
+    private string GenerarInstallBat()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("@echo off");
+        sb.AppendLine("chcp 65001 > nul");
+        sb.AppendLine("title SistemIA - Instalador");
+        sb.AppendLine();
+        sb.AppendLine("echo.");
+        sb.AppendLine("echo ================================================================");
+        sb.AppendLine("echo              SISTEMÍA INSTALLER v" + _version);
+        sb.AppendLine("echo         Sistema de Gestion Empresarial");
+        sb.AppendLine("echo ================================================================");
+        sb.AppendLine("echo.");
+        sb.AppendLine();
+        sb.AppendLine(":: Verificar permisos de administrador");
+        sb.AppendLine("net session >nul 2>&1");
+        sb.AppendLine("if %errorLevel% neq 0 (");
+        sb.AppendLine("    echo [ERROR] Este instalador requiere permisos de administrador.");
+        sb.AppendLine("    echo.");
+        sb.AppendLine("    echo Por favor, haga clic derecho en este archivo y seleccione");
+        sb.AppendLine("    echo \"Ejecutar como administrador\"");
+        sb.AppendLine("    echo.");
+        sb.AppendLine("    pause");
+        sb.AppendLine("    exit /b 1");
+        sb.AppendLine(")");
+        sb.AppendLine();
+        sb.AppendLine(":: Verificar PowerShell");
+        sb.AppendLine("where powershell >nul 2>&1");
+        sb.AppendLine("if %errorLevel% neq 0 (");
+        sb.AppendLine("    echo [ERROR] PowerShell no esta instalado o no esta en el PATH.");
+        sb.AppendLine("    pause");
+        sb.AppendLine("    exit /b 1");
+        sb.AppendLine(")");
+        sb.AppendLine();
+        sb.AppendLine(":: Ejecutar script de instalación");
+        sb.AppendLine("echo Iniciando instalador de SistemIA...");
+        sb.AppendLine("echo.");
+        sb.AppendLine();
+        sb.AppendLine("powershell -ExecutionPolicy Bypass -File \"%~dp0Install-SistemIA.ps1\"");
+        sb.AppendLine();
+        sb.AppendLine("echo.");
+        sb.AppendLine("pause");
+        return sb.ToString();
+    }
+    
+    private void AgregarLog(string mensaje, string tipo)
+    {
+        lock (_logLock)
+        {
+            _logs.Add(new LogEntry { Fecha = DateTime.Now, Mensaje = mensaje, Tipo = tipo });
+        }
+    }
+    
+    private async Task AgregarLogAsync(string mensaje, string tipo)
+    {
+        lock (_logLock)
+        {
+            _logs.Add(new LogEntry { Fecha = DateTime.Now, Mensaje = mensaje, Tipo = tipo });
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    private string GetLogClass(string tipo) => tipo switch
+    {
+        "error" => "text-danger",
+        "success" => "text-success",
+        "warning" => "text-warning",
+        _ => "text-info"
+    };
+    
+    private void MostrarMensaje(string mensaje, bool esError)
+    {
+        _mensaje = mensaje;
+        _esError = esError;
+    }
+    
+    private class LogEntry
+    {
+        public DateTime Fecha { get; set; }
+        public string Mensaje { get; set; } = "";
+        public string Tipo { get; set; } = "info";
+    }
+    
+    private async Task<(bool exito, string? error, string? dbName)> GenerarBackupBD(string backupPath)
+    {
+        try
+        {
+            var connectionString = Configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                return (false, "No se encontró la cadena de conexión", null);
+            }
+            
+            // Extraer nombre de BD de la cadena de conexión actual
+            var builder = new SqlConnectionStringBuilder(connectionString);
+            var dbName = builder.InitialCatalog;
+            
+            if (string.IsNullOrEmpty(dbName))
+            {
+                return (false, "No se pudo determinar el nombre de la BD", null);
+            }
+            
+            // Asegurar que el directorio existe
+            var dir = Path.GetDirectoryName(backupPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+            
+            // Ejecutar backup de la BD actual del sistema
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            
+            var backupQuery = $@"
+                BACKUP DATABASE [{dbName}] 
+                TO DISK = '{backupPath}' 
+                WITH FORMAT, INIT, COMPRESSION, 
+                NAME = 'SistemIA Base Backup - {DateTime.Now:yyyy-MM-dd HH:mm}'";
+            
+            using var cmd = new SqlCommand(backupQuery, connection);
+            cmd.CommandTimeout = 300; // 5 minutos
+            await cmd.ExecuteNonQueryAsync();
+            
+            return (true, null, dbName);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message, null);
+        }
+    }
+    
+    private async Task<(bool exito, string? error, string? publishPath)> PublicarAplicacion(CancellationToken ct)
+    {
+        try
+        {
+            var projectPath = Env.ContentRootPath;
+            var csprojPath = Path.Combine(projectPath, "SistemIA.csproj");
+            
+            if (!File.Exists(csprojPath))
+            {
+                return (false, "No se encontró SistemIA.csproj", null);
+            }
+            
+            var publishPath = Path.Combine(projectPath, "bin", "Release", "net8.0", "publish");
+            
+            AgregarLog($"📂 Destino: {publishPath}", "info");
+            await ActualizarUIAsync();
+            
+            // Ejecutar dotnet publish
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"publish \"{csprojPath}\" -c Release -r win-x64 --self-contained true -o \"{publishPath}\"",
+                WorkingDirectory = projectPath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            
+            AgregarLog("🚀 Iniciando dotnet publish...", "info");
+            await ActualizarUIAsync();
+            
+            _procesoActual = System.Diagnostics.Process.Start(psi);
+            if (_procesoActual == null)
+            {
+                return (false, "No se pudo iniciar el proceso de publicación", null);
+            }
+            
+            // Leer output en tiempo real
+            var outputTask = Task.Run(async () =>
+            {
+                try
+                {
+                    while (!_procesoActual.StandardOutput.EndOfStream && !ct.IsCancellationRequested)
+                    {
+                        var line = await _procesoActual.StandardOutput.ReadLineAsync();
+                        if (!string.IsNullOrWhiteSpace(line))
+                        {
+                            await InvokeAsync(() =>
+                            {
+                                // Filtrar líneas importantes
+                                if (line.Contains("error") || line.Contains("Error"))
+                                    AgregarLog($"❌ {line}", "error");
+                                else if (line.Contains("warning") || line.Contains("Warning"))
+                                    AgregarLog($"⚠️ {line}", "warning");
+                                else if (line.Contains("->") || line.Contains("publish"))
+                                    AgregarLog($"📦 {line}", "info");
+                                StateHasChanged();
+                            });
+                        }
+                    }
+                }
+                catch { }
+            }, ct);
+            
+            // Leer errores en tiempo real
+            var errorTask = Task.Run(async () =>
+            {
+                try
+                {
+                    while (!_procesoActual.StandardError.EndOfStream && !ct.IsCancellationRequested)
+                    {
+                        var line = await _procesoActual.StandardError.ReadLineAsync();
+                        if (!string.IsNullOrWhiteSpace(line))
+                        {
+                            await InvokeAsync(() =>
+                            {
+                                AgregarLog($"❌ {line}", "error");
+                                StateHasChanged();
+                            });
+                        }
+                    }
+                }
+                catch { }
+            }, ct);
+            
+            // Esperar con timeout de 5 minutos
+            var timeoutTask = Task.Delay(TimeSpan.FromMinutes(5), ct);
+            var processTask = _procesoActual.WaitForExitAsync(ct);
+            
+            // Actualizar UI periódicamente mientras espera
+            var uiUpdateTask = Task.Run(async () =>
+            {
+                var dots = 0;
+                while (!processTask.IsCompleted && !ct.IsCancellationRequested)
+                {
+                    await Task.Delay(1000, ct);
+                    dots = (dots + 1) % 4;
+                    var dotsStr = new string('.', dots + 1);
+                    await InvokeAsync(() =>
+                    {
+                        _estadoActual = $"Compilando{dotsStr} (esto puede tardar varios minutos)";
+                        StateHasChanged();
+                    });
+                }
+            }, ct);
+            
+            var completedTask = await Task.WhenAny(processTask, timeoutTask);
+            
+            if (ct.IsCancellationRequested)
+            {
+                MatarProceso();
+                return (false, "Operación cancelada por el usuario", null);
+            }
+            
+            if (completedTask == timeoutTask)
+            {
+                MatarProceso();
+                return (false, "Timeout: la publicación tardó más de 5 minutos", null);
+            }
+            
+            // Esperar a que terminen de leer los outputs
+            await Task.WhenAll(outputTask, errorTask).WaitAsync(TimeSpan.FromSeconds(2));
+            
+            if (_procesoActual.ExitCode != 0)
+            {
+                return (false, $"Error en publicación (código: {_procesoActual.ExitCode})", null);
+            }
+            
+            AgregarLog("✅ dotnet publish completado exitosamente", "success");
+            _procesoActual = null;
+            return (true, null, publishPath);
+        }
+        catch (OperationCanceledException)
+        {
+            MatarProceso();
+            return (false, "Operación cancelada", null);
+        }
+        catch (Exception ex)
+        {
+            MatarProceso();
+            AgregarLog($"❌ Excepción: {ex.Message}", "error");
+            return (false, ex.Message, null);
+        }
+    }
+    
+    private async Task ActualizarUIAsync()
+    {
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(10);
+    }
+    
+    private void MatarProceso()
+    {
+        try
+        {
+            if (_procesoActual != null && !_procesoActual.HasExited)
+            {
+                _procesoActual.Kill(true);
+                _procesoActual.Dispose();
+            }
+        }
+        catch { }
+        _procesoActual = null;
+    }
+    
+    private async Task CancelarGeneracion()
+    {
+        _cts?.Cancel();
+        await Task.Run(() => MatarProceso());
+        AgregarLog("⚠️ Generación cancelada por el usuario", "warning");
+        _generando = false;
+        _progreso = 0;
+        _estadoActual = "";
+        MostrarMensaje("Generación cancelada", true);
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    private async Task AgregarCarpetaPublish(ZipArchive archive, string publishPath)
+    {
+        var files = Directory.GetFiles(publishPath, "*", SearchOption.AllDirectories);
+        var totalFiles = files.Length;
+        var processed = 0;
+        
+        foreach (var file in files)
+        {
+            var relativePath = Path.GetRelativePath(publishPath, file);
+            var entryPath = Path.Combine("publish", relativePath).Replace('\\', '/');
+            
+            // Usar compresión para los archivos de publish
+            var entry = archive.CreateEntry(entryPath, CompressionLevel.Optimal);
+            
+            using var entryStream = entry.Open();
+            using var fileStream = File.OpenRead(file);
+            await fileStream.CopyToAsync(entryStream);
+            
+            processed++;
+            if (processed % 50 == 0)
+            {
+                await ActualizarProgreso(75 + (processed * 15 / totalFiles), $"Agregando binarios... {processed}/{totalFiles}");
+                AgregarLog($"Procesando binarios... {processed}/{totalFiles}", "info");
+            }
+        }
+    }
+}

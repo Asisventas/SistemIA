@@ -1,0 +1,116 @@
+@page "/test-chart"
+@inject IJSRuntime JS
+
+<h3>Test Chart.js Básico</h3>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <button class="btn btn-primary" @onclick="TestChartJS">Test Chart.js</button>
+                <button class="btn btn-info ms-2" @onclick="TestLibraries">Verificar Librerías</button>
+                
+                <div class="mt-3">
+                    <p><strong>Estado:</strong> <span id="status">@status</span></p>
+                </div>
+                
+                <div style="position: relative; height: 400px; width: 100%; margin-top: 20px;">
+                    <canvas id="basicTestChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string status = "Listo para probar";
+
+    private async Task TestLibraries()
+    {
+        try
+        {
+            var result = await JS.InvokeAsync<string>("eval", @"
+                let libs = [];
+                if (typeof Chart !== 'undefined') libs.push('Chart.js: ' + Chart.version);
+                if (typeof _adapters !== 'undefined') libs.push('Adapter disponible');
+                if (typeof moment !== 'undefined') libs.push('Moment.js disponible');
+                return libs.length > 0 ? libs.join(', ') : 'No se encontraron librerías';
+            ");
+            status = $"Librerías: {result}";
+        }
+        catch (Exception ex)
+        {
+            status = $"Error verificando librerías: {ex.Message}";
+        }
+    }
+
+    private async Task TestChartJS()
+    {
+        try
+        {
+            status = "Creando gráfico de prueba...";
+            
+            await JS.InvokeVoidAsync("eval", @"
+                const ctx = document.getElementById('basicTestChart');
+                console.log('Canvas element:', ctx);
+                
+                if (ctx) {
+                    // Destruir gráfico anterior si existe
+                    if (window.basicChart) {
+                        window.basicChart.destroy();
+                    }
+                    
+                    // Datos de prueba simples
+                    const testData = {
+                        labels: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo'],
+                        datasets: [{
+                            label: 'Datos de Prueba',
+                            data: [7200, 7300, 7250, 7400, 7350],
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.3
+                        }]
+                    };
+                    
+                    const config = {
+                        type: 'line',
+                        data: testData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Gráfico de Prueba'
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: false
+                                }
+                            }
+                        }
+                    };
+                    
+                    try {
+                        window.basicChart = new Chart(ctx, config);
+                        console.log('Gráfico creado exitosamente');
+                        document.getElementById('status').textContent = 'Gráfico creado exitosamente';
+                    } catch (error) {
+                        console.error('Error creando gráfico:', error);
+                        document.getElementById('status').textContent = 'Error: ' + error.message;
+                    }
+                } else {
+                    console.error('No se encontró el canvas');
+                    document.getElementById('status').textContent = 'Error: No se encontró el canvas';
+                }
+            ");
+            
+            status = "Comando enviado...";
+        }
+        catch (Exception ex)
+        {
+            status = $"Error: {ex.Message}";
+        }
+    }
+}

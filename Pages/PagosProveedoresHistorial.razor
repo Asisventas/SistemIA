@@ -1,0 +1,496 @@
+@page "/pagos-proveedores/historial"
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+
+<PageProtection Modulo="/pagos" Permiso="VIEW">
+
+<PageTitle>Historial de Pagos a Proveedores</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-clock-history text-warning me-2"></i>
+            Historial de Pagos a Proveedores
+        </h3>
+        <a href="/pagos-proveedores" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-1"></i>Registrar Nuevo Pago
+        </a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-light">
+            <h6 class="mb-0">
+                <i class="bi bi-funnel me-2"></i>
+                Filtros de Búsqueda
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">Número Pago</label>
+                    <input type="number" class="form-control" placeholder="Ej: 1" @bind="filtroIdPago" @bind:after="AplicarFiltros" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Número Recibo</label>
+                    <input type="text" class="form-control" placeholder="Buscar..." @bind="filtroNumeroRecibo" @bind:after="AplicarFiltros" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Proveedor</label>
+                    <input type="text" class="form-control" placeholder="Buscar..." @bind="filtroProveedor" @bind:after="AplicarFiltros" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">Desde</label>
+                    <input type="date" class="form-control" @bind="filtroFechaDesde" @bind:after="AplicarFiltros" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">Hasta</label>
+                    <input type="date" class="form-control" @bind="filtroFechaHasta" @bind:after="AplicarFiltros" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">Estado</label>
+                    <select class="form-select" @bind="filtroEstado" @bind:after="AplicarFiltros">
+                        <option value="">Todos</option>
+                        <option value="Pagado">Pagado</option>
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="Anulado">Anulado</option>
+                    </select>
+                </div>
+                <div class="col-md-10 d-flex align-items-end">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="LimpiarFiltros">
+                        <i class="bi bi-x-circle me-1"></i>Limpiar Filtros
+                    </button>
+                    <span class="ms-3 text-muted">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Mostrando <strong>@pagosFiltrados.Count</strong> de @pagos.Count pagos
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-2">Total Pagado</h6>
+                    <h4 class="mb-0 text-success">@totalPagado.ToString("N0") Gs.</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-2">Total Pendiente</h6>
+                    <h4 class="mb-0 text-warning">@totalPendiente.ToString("N0") Gs.</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-2">Total Anulado</h6>
+                    <h4 class="mb-0 text-danger">@totalAnulado.ToString("N0") Gs.</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-2">Cantidad</h6>
+                    <h4 class="mb-0">@pagosFiltrados.Count</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de pagos -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul me-2"></i>
+                Pagos Registrados
+            </h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 8%">#</th>
+                        <th style="width: 10%">Fecha</th>
+                        <th style="width: 12%">Recibo</th>
+                        <th style="width: 12%">Compra</th>
+                        <th style="width: 20%">Proveedor</th>
+                        <th class="text-end" style="width: 12%">Monto</th>
+                        <th style="width: 12%">Usuario</th>
+                        <th style="width: 8%">Estado</th>
+                        <th class="text-end" style="width: 6%">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (pagosFiltrados.Any())
+                    {
+                        @foreach (var pago in pagosFiltrados)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge bg-secondary">@pago.IdPagoProveedor</span>
+                                </td>
+                                <td>
+                                    <div>@pago.FechaPago.ToString("dd/MM/yyyy")</div>
+                                    <small class="text-muted">@pago.FechaPago.ToString("HH:mm")</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info text-white">@pago.NumeroRecibo</span>
+                                </td>
+                                <td>
+                                    <a href="/compras/@pago.IdCompra" class="text-decoration-none">
+                                        Compra #@pago.IdCompra
+                                    </a>
+                                </td>
+                                <td>
+                                    @if (pago.Proveedor != null)
+                                    {
+                                        <div>@pago.Proveedor.RazonSocial</div>
+                                        <small class="text-muted">RUC: @pago.Proveedor.RUC-@pago.Proveedor.DV</small>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <strong>@pago.MontoTotal.ToString("N0")</strong>
+                                    <div class="text-muted small">@ObtenerSimboloMoneda(pago.IdMoneda)</div>
+                                </td>
+                                <td>
+                                    @if (pago.Usuario != null)
+                                    {
+                                        <div>@pago.Usuario.UsuarioNombre</div>
+                                        <small class="text-muted">@pago.Usuario.Nombres</small>
+                                    }
+                                </td>
+                                <td>
+                                    @if (pago.Estado == "Pagado")
+                                    {
+                                        <span class="badge bg-success">
+                                            <i class="bi bi-check-circle me-1"></i>Pagado
+                                        </span>
+                                    }
+                                    else if (pago.Estado == "Anulado")
+                                    {
+                                        <span class="badge bg-danger">
+                                            <i class="bi bi-x-circle me-1"></i>Anulado
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">@pago.Estado</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" 
+                                                @onclick="() => ImprimirRecibo(pago.IdPagoProveedor)"
+                                                title="Imprimir recibo térmico">
+                                            <i class="bi bi-receipt"></i>
+                                        </button>
+                                        <button class="btn btn-outline-info" 
+                                                @onclick="() => ImprimirComprobanteA4(pago.IdPagoProveedor)"
+                                                title="Imprimir comprobante A4">
+                                            <i class="bi bi-file-earmark-text"></i>
+                                        </button>
+                                        @if (pago.Estado != "Anulado")
+                                        {
+                                            <button class="btn btn-outline-danger" 
+                                                    @onclick="() => Anular(pago.IdPagoProveedor)"
+                                                    title="Anular pago">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center py-5">
+                                <i class="bi bi-inbox display-4 text-muted d-block mb-3"></i>
+                                <p class="text-muted">No hay pagos registrados</p>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+</PageProtection>
+
+@code {
+    private List<PagoProveedor> pagos = new();
+    private List<PagoProveedor> pagosFiltrados = new();
+    private List<Moneda> monedas = new();
+
+    // Filtros
+    private int? filtroIdPago = null;
+    private string filtroNumeroRecibo = "";
+    private string filtroProveedor = "";
+    private DateTime? filtroFechaDesde = null;
+    private DateTime? filtroFechaHasta = null;
+    private string filtroEstado = "";
+
+    // Totales
+    private decimal totalPagado = 0;
+    private decimal totalPendiente = 0;
+    private decimal totalAnulado = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarMonedas();
+        await CargarPagos();
+        AplicarFiltros();
+    }
+
+    private async Task CargarMonedas()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        monedas = await ctx.Monedas.Where(m => m.Estado).ToListAsync();
+    }
+
+    private async Task CargarPagos()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        pagos = await ctx.PagosProveedores
+            .Include(p => p.Proveedor)
+            .Include(p => p.Usuario)
+            .Include(p => p.Moneda)
+            .Include(p => p.Detalles)
+            .OrderByDescending(p => p.FechaPago)
+            .AsNoTracking()
+            .ToListAsync();
+
+        CalcularTotales();
+    }
+
+    private void AplicarFiltros()
+    {
+        var query = pagos.AsEnumerable();
+
+        if (filtroIdPago.HasValue)
+        {
+            query = query.Where(p => p.IdPagoProveedor == filtroIdPago.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filtroNumeroRecibo))
+        {
+            query = query.Where(p => p.NumeroRecibo != null && 
+                p.NumeroRecibo.Contains(filtroNumeroRecibo, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filtroProveedor))
+        {
+            var filtroLower = filtroProveedor.ToLower();
+            query = query.Where(p => p.Proveedor != null && 
+                (p.Proveedor.RazonSocial.ToLower().Contains(filtroLower) ||
+                 (p.Proveedor.NombreFantasia != null && p.Proveedor.NombreFantasia.ToLower().Contains(filtroLower)) ||
+                 p.Proveedor.RUC.Contains(filtroProveedor)));
+        }
+
+        if (filtroFechaDesde.HasValue)
+        {
+            query = query.Where(p => p.FechaPago.Date >= filtroFechaDesde.Value.Date);
+        }
+
+        if (filtroFechaHasta.HasValue)
+        {
+            query = query.Where(p => p.FechaPago.Date <= filtroFechaHasta.Value.Date);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filtroEstado))
+        {
+            query = query.Where(p => p.Estado == filtroEstado);
+        }
+
+        pagosFiltrados = query.ToList();
+    }
+
+    private void LimpiarFiltros()
+    {
+        filtroIdPago = null;
+        filtroNumeroRecibo = "";
+        filtroProveedor = "";
+        filtroFechaDesde = null;
+        filtroFechaHasta = null;
+        filtroEstado = "";
+        AplicarFiltros();
+    }
+
+    private async Task ImprimirComprobanteA4(int idPago)
+    {
+        var url = $"/pagos-proveedores/comprobante-a4/{idPago}";
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    private void CalcularTotales()
+    {
+        totalPagado = pagos.Where(p => p.Estado == "Pagado").Sum(p => p.MontoTotal);
+        totalPendiente = pagos.Where(p => p.Estado == "Pendiente").Sum(p => p.MontoTotal);
+        totalAnulado = pagos.Where(p => p.Estado == "Anulado").Sum(p => p.MontoTotal);
+    }
+
+    private async Task ImprimirRecibo(int idPago)
+    {
+        var url = $"/pagos-proveedores/recibo/{idPago}";
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    private async Task Anular(int idPago)
+    {
+        var confirmado = await JS.InvokeAsync<bool>("confirm", 
+            "⚠️ ¿Está seguro de anular este pago?\n\nEl pago quedará marcado como anulado y el crédito volverá a estar pendiente de pago.");
+
+        if (!confirmado) return;
+
+        // Solicitar contraseña del usuario
+        var password = await JS.InvokeAsync<string>("prompt", "Ingrese su contraseña para confirmar:");
+        if (string.IsNullOrEmpty(password)) return;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var usuario = authState.User;
+            var usuarioNombre = usuario.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
+
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            // Validar contraseña
+            var usuarioDb = await ctx.Usuarios.FirstOrDefaultAsync(u => u.UsuarioNombre == usuarioNombre);
+            if (usuarioDb == null)
+            {
+                await JS.InvokeVoidAsync("alert", "❌ Usuario no encontrado");
+                return;
+            }
+
+            // Validar contraseña con SHA256 (mismo método que login)
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var passwordBytes = System.Text.Encoding.UTF8.GetBytes(password);
+            var passwordHashBytes = sha.ComputeHash(passwordBytes);
+
+            if (!passwordHashBytes.SequenceEqual(usuarioDb.ContrasenaHash))
+            {
+                await JS.InvokeVoidAsync("alert", "❌ Contraseña incorrecta");
+                return;
+            }
+
+            // Anular pago
+            var pago = await ctx.PagosProveedores
+                .Include(p => p.Compra)
+                .Include(p => p.Detalles)
+                .FirstOrDefaultAsync(p => p.IdPagoProveedor == idPago);
+                
+            if (pago == null)
+            {
+                await JS.InvokeVoidAsync("alert", "❌ Pago no encontrado");
+                return;
+            }
+
+            // Iniciar transacción para asegurar atomicidad
+            using var transaction = await ctx.Database.BeginTransactionAsync();
+            try
+            {
+                // Anular el pago
+                pago.Estado = "Anulado";
+                
+                // Revertir el estado de la compra a "Confirmado" para que vuelva a aparecer como pendiente
+                if (pago.Compra != null)
+                {
+                    pago.Compra.Estado = "Confirmado";
+                }
+                
+                // Revertir las cuotas si existen
+                var cuentaPorPagar = await ctx.CuentasPorPagar
+                    .Include(c => c.Cuotas)
+                    .FirstOrDefaultAsync(c => c.IdCompra == pago.IdCompra && c.Estado != "Anulada");
+                
+                if (cuentaPorPagar != null)
+                {
+                    // Revertir el saldo de la cuenta por pagar
+                    cuentaPorPagar.SaldoPendiente = Math.Min(cuentaPorPagar.MontoTotal, cuentaPorPagar.SaldoPendiente + pago.MontoTotal);
+                    cuentaPorPagar.Estado = "Abierta";
+                    
+                    // Revertir el saldo de las cuotas vinculadas
+                    if (pago.Detalles != null && pago.Detalles.Any(d => d.IdCuota.HasValue))
+                    {
+                        foreach (var detalle in pago.Detalles.Where(d => d.IdCuota.HasValue))
+                        {
+                            var cuota = await ctx.CuentasPorPagarCuotas.FindAsync(detalle.IdCuota);
+                            if (cuota != null)
+                            {
+                                // Revertir el saldo de la cuota
+                                cuota.SaldoCuota = Math.Min(cuota.MontoCuota, cuota.SaldoCuota + detalle.Monto);
+                                cuota.Estado = cuota.SaldoCuota > 0 ? "Pendiente" : "Pagada";
+                                cuota.FechaPago = cuota.Estado == "Pendiente" ? null : cuota.FechaPago;
+                            }
+                        }
+                    }
+                    else if (cuentaPorPagar.Cuotas != null && cuentaPorPagar.Cuotas.Any())
+                    {
+                        // Si no hay cuotas específicas en los detalles, distribuir proporcionalmente
+                        var totalRevertir = pago.MontoTotal;
+                        foreach (var cuota in cuentaPorPagar.Cuotas.OrderBy(c => c.NumeroCuota))
+                        {
+                            if (totalRevertir <= 0) break;
+                            
+                            var montoFaltante = cuota.MontoCuota - cuota.SaldoCuota;
+                            if (montoFaltante > 0)
+                            {
+                                var montoRevertir = Math.Min(montoFaltante, totalRevertir);
+                                cuota.SaldoCuota += montoRevertir;
+                                cuota.Estado = cuota.SaldoCuota > 0 ? "Pendiente" : "Pagada";
+                                if (cuota.Estado == "Pendiente")
+                                {
+                                    cuota.FechaPago = null;
+                                }
+                                totalRevertir -= montoRevertir;
+                            }
+                        }
+                    }
+                }
+                
+                await ctx.SaveChangesAsync();
+                await transaction.CommitAsync();
+                
+                await JS.InvokeVoidAsync("alert", "✅ Pago anulado exitosamente.\nEl crédito y las cuotas han vuelto a estar pendientes de pago.");
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+
+            await CargarPagos();
+            AplicarFiltros();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ Error al anular: {ex.Message}");
+        }
+    }
+
+    private string ObtenerSimboloMoneda(int? idMoneda)
+    {
+        if (idMoneda.HasValue && monedas.Any())
+        {
+            var moneda = monedas.FirstOrDefault(m => m.IdMoneda == idMoneda.Value);
+            if (moneda != null)
+                return moneda.Simbolo ?? "Gs.";
+        }
+        return "Gs.";
+    }
+}

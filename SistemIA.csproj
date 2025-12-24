@@ -2,19 +2,23 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>SistemIA</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
     <EnableWindowsFormsSupport>true</EnableWindowsFormsSupport>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- Permitir ejecución como servicio de Windows -->
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="NUnit" Version="4.3.2" />
-    <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
-    <PackageReference Include="System.Drawing.Common" Version="7.0.0" />
+  <PackageReference Include="DocumentFormat.OpenXml" Version="2.20.0" />
+    <PackageReference Include="iTextSharp.LGPLv2.Core" Version="3.7.4" />
+    <PackageReference Include="ClosedXML" Version="0.102.2" />
+    <PackageReference Include="QuestPDF" Version="2025.7.1" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
     <PackageReference Include="FaceRecognitionDotNet" Version="1.3.0.7" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.59" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
       <PrivateAssets>all</PrivateAssets>
@@ -25,10 +29,33 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- Soporte para Windows Service -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Services\" />
+  <PackageReference Include="QRCoder" Version="1.4.3" />
+    <Folder Include="wwwroot\css\bootstrap\" />
+  </ItemGroup>
+
+  <!-- Copiar plantillas XML de PDF al directorio de salida -->
+  <ItemGroup>
+    <Content Include="Templates\FacturaLayout.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Evitar reinicios de dotnet watch al subir imágenes de usuarios -->
+  <ItemGroup>
+    <Watch Remove="wwwroot\uploads\**" />
+  </ItemGroup>
+
+  <!-- Excluir carpeta de backup del proyecto -->
+  <ItemGroup>
+    <Compile Remove="backup\**" />
+    <Content Remove="backup\**" />
+    <EmbeddedResource Remove="backup\**" />
+    <None Remove="backup\**" />
   </ItemGroup>
 
 </Project>

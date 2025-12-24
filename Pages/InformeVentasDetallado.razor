@@ -1,0 +1,510 @@
+@page "/informes/ventas-detallado"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject NavigationManager Nav
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using ClosedXML.Excel
+
+<PageProtection Modulo="/reportes" Permiso="VIEW">
+
+<h3 class="mb-3">Listado de Ventas Detallado</h3>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-1">
+        <label class="form-label">ID</label>
+        <input type="number" class="form-control" placeholder="#" @bind="fIdVenta" min="1" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" class="form-control" @bind="fDesde" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" class="form-control" @bind="fHasta" />
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">Moneda</label>
+        <select class="form-select" @bind="fIdMoneda">
+          <option value="0">Todas</option>
+          @foreach (var m in monedas)
+          {
+            <option value="@m.IdMoneda">@m.CodigoISO</option>
+          }
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Nº factura</label>
+        <input class="form-control" placeholder="001-001-0000001" @bind="fNumero" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cliente</label>
+        <input class="form-control" placeholder="RUC/Razón" @bind="fCliente" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Producto</label>
+        <input class="form-control" placeholder="Código/Nombre" @bind="fProducto" />
+      </div>
+    </div>
+    <div class="row g-3 mt-1 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label">Usuario</label>
+        <input class="form-control" @bind="fUsuario" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Caja desde</label>
+        <input class="form-control" type="number" @bind-value="fCajaDesde" @bind-value:event="oninput" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Caja hasta</label>
+        <input class="form-control" type="number" @bind-value="fCajaHasta" @bind-value:event="oninput" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Turno desde</label>
+        <input class="form-control" type="number" @bind-value="fTurnoDesde" @bind-value:event="oninput" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Turno hasta</label>
+        <input class="form-control" type="number" @bind-value="fTurnoHasta" @bind-value:event="oninput" />
+      </div>
+      <div class="col-md-2 d-flex gap-2 justify-content-end">
+        <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
+        <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
+        <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
+        <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:50px;">ID</th>
+            <th>Fecha</th>
+            <th>Doc.</th>
+            <th>Cliente</th>
+            <th>Producto</th>
+            <th class="text-end">Cant.</th>
+            <th class="text-end">Precio</th>
+            <th>Mon</th>
+            <th class="text-end">Cambio</th>
+            <th class="text-end">Importe</th>
+            <th class="text-end">Importe Gs</th>
+            <th class="text-end">Importe $</th>
+            <th>Usu</th>
+            <th>Caja</th>
+            <th>Turno</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (!filas.Any())
+          {
+            <tr><td colspan="15" class="text-muted text-center py-3">Sin resultados</td></tr>
+          }
+          else
+          {
+            foreach (var r in filas)
+            {
+              <tr>
+                <td>@r.IdVenta</td>
+                <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+                <td>@r.Numero</td>
+                <td>
+                  <div class="fw-semibold">@r.Cliente</div>
+                  <div class="small text-muted">RUC: @r.Ruc</div>
+                </td>
+                <td>
+                  <div class="fw-semibold">@r.Producto</div>
+                  <div class="small text-muted">Cod: @r.Codigo</div>
+                </td>
+                <td class="text-end">@r.Cantidad.ToString("N2")</td>
+                <td class="text-end">@r.Precio.ToString(r.Formato)</td>
+                <td>@r.Moneda</td>
+                <td class="text-end">@((r.Cambio ?? 0).ToString("N2"))</td>
+                <td class="text-end">@r.Importe.ToString(r.Formato)</td>
+                <td class="text-end">@r.ImporteGs.ToString("N0")</td>
+                <td class="text-end">@r.ImporteUsd.ToString("N2")</td>
+                <td>@r.Usuario</td>
+                <td>@(r.IdCaja?.ToString() ?? "-")</td>
+                <td>@(r.Turno?.ToString() ?? "-")</td>
+              </tr>
+            }
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="10" class="text-end">Totales</th>
+            <th class="text-end">@filas.Sum(x=>x.ImporteGs).ToString("N0")</th>
+            <th class="text-end">@filas.Sum(x=>x.ImporteUsd).ToString("N2")</th>
+            <th></th>
+            <th></th>
+            <th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+@code {
+  private int? fIdVenta;
+  private DateTime? fDesde;
+  private DateTime? fHasta;
+  private int fIdMoneda = 0; // 0 = todas
+  private string? fNumero; // 001-001-0000001 o parte
+  private string? fCliente;
+  private string? fProducto;
+  private string? fUsuario;
+  private int? fCajaDesde;
+  private int? fCajaHasta;
+  private int? fTurnoDesde;
+  private int? fTurnoHasta;
+
+  private List<SistemIA.Models.Moneda> monedas = new();
+  private List<Fila> filas = new();
+  private decimal tcUsdHoy = 6300m; // Tipo de cambio USD del día
+
+  protected override async Task OnInitializedAsync()
+  {
+    // Si no hay sucursal seleccionada, enviar a la selección
+    var sucId = SucursalProvider.GetSucursalId();
+    if (!sucId.HasValue)
+    {
+      var ret = System.Net.WebUtility.UrlEncode(Nav.Uri);
+      Nav.NavigateTo($"/seleccionar-sucursal?returnUrl={ret}", forceLoad: true);
+      return;
+    }
+
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    
+    // Obtener fecha de caja como predeterminada
+    var caja = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+    var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
+    fDesde = fechaCaja;
+    fHasta = fechaCaja;
+    
+    monedas = await ctx.Monedas.AsNoTracking().OrderBy(m=>m.CodigoISO).ToListAsync();
+    
+    // Obtener tipo de cambio USD del día
+    var tcHoy = await ctx.TiposCambio.AsNoTracking()
+      .Where(t => t.Estado && t.MonedaOrigen != null && t.MonedaOrigen.CodigoISO == "USD" && t.MonedaDestino != null && t.MonedaDestino.CodigoISO == "PYG")
+      .Where(t => t.FechaTipoCambio.Date == DateTime.Today)
+      .Select(t => t.TasaCambio)
+      .FirstOrDefaultAsync();
+    if (tcHoy > 0) tcUsdHoy = tcHoy;
+    
+    await Buscar();
+  }
+
+  private async Task Buscar()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    
+    var q = from v in ctx.Ventas.AsNoTracking()
+            join d in ctx.VentasDetalles.AsNoTracking() on v.IdVenta equals d.IdVenta
+            join p in ctx.Productos.AsNoTracking() on d.IdProducto equals p.IdProducto
+            join cli in ctx.Clientes.AsNoTracking() on v.IdCliente equals cli.IdCliente into cliJoin
+            from cli in cliJoin.DefaultIfEmpty()
+            join m in ctx.Monedas.AsNoTracking() on v.IdMoneda equals m.IdMoneda into monJoin
+            from m in monJoin.DefaultIfEmpty()
+            select new {
+              v.IdVenta, v.Fecha, v.IdCaja, v.Turno, v.IdSucursal,
+              v.Establecimiento, v.PuntoExpedicion, v.NumeroFactura,
+              Cliente = cli != null ? cli.RazonSocial : "",
+              Ruc = cli != null ? (cli.RUC + "-" + cli.DV) : "",
+              IdMoneda = v.IdMoneda, 
+              Moneda = (m != null ? m.CodigoISO : (v.SimboloMoneda ?? "PYG")),
+              CambioCab = (decimal?)v.CambioDelDia,
+              CambioDet = d.CambioDelDia,
+              d.Cantidad, d.PrecioUnitario, d.Importe,
+              p.Descripcion, p.CodigoInterno,
+              Usuario = (v.Usuario != null ? v.Usuario.UsuarioNombre : (v.Vendedor ?? ""))
+            };
+
+    // Filtrar por sucursal seleccionada
+    var sucSel = SucursalProvider.GetSucursalId();
+    if (sucSel.HasValue)
+      q = q.Where(x => x.IdSucursal == sucSel.Value);
+
+    if (fIdVenta.HasValue) q = q.Where(x => x.IdVenta == fIdVenta.Value);
+    if (fDesde.HasValue) q = q.Where(x => x.Fecha >= fDesde.Value);
+    if (fHasta.HasValue) q = q.Where(x => x.Fecha < fHasta.Value.AddDays(1));
+    if (fIdMoneda != 0) q = q.Where(x => x.IdMoneda == fIdMoneda);
+    if (!string.IsNullOrWhiteSpace(fNumero))
+    {
+      var txt = fNumero!.Trim();
+      // Buscar tanto con formato completo como sin ceros a la izquierda
+      var txtSinCeros = txt.TrimStart('0');
+      q = q.Where(x => ((x.Establecimiento ?? "") + "-" + (x.PuntoExpedicion ?? "") + "-" + (x.NumeroFactura ?? "")).Contains(txt) 
+        || (x.NumeroFactura ?? "").Contains(txt)
+        || (x.NumeroFactura ?? "").TrimStart('0').Contains(txtSinCeros));
+    }
+    if (!string.IsNullOrWhiteSpace(fCliente))
+    {
+      var t = fCliente!.Trim();
+      q = q.Where(x => (x.Cliente ?? "").Contains(t) || (x.Ruc ?? "").Contains(t));
+    }
+    if (!string.IsNullOrWhiteSpace(fProducto))
+    {
+      var t = fProducto!.Trim();
+      q = q.Where(x => (x.Descripcion ?? "").Contains(t) || (x.CodigoInterno ?? "").Contains(t));
+    }
+    if (!string.IsNullOrWhiteSpace(fUsuario))
+    {
+      var t = fUsuario!.Trim();
+      q = q.Where(x => (x.Usuario ?? "").Contains(t));
+    }
+    if (fCajaDesde.HasValue) q = q.Where(x => (x.IdCaja ?? int.MinValue) >= fCajaDesde.Value);
+    if (fCajaHasta.HasValue) q = q.Where(x => (x.IdCaja ?? int.MaxValue) <= fCajaHasta.Value);
+    if (fTurnoDesde.HasValue) q = q.Where(x => (x.Turno ?? int.MinValue) >= fTurnoDesde.Value);
+    if (fTurnoHasta.HasValue) q = q.Where(x => (x.Turno ?? int.MaxValue) <= fTurnoHasta.Value);
+
+    var data = await q.OrderBy(x => x.Fecha).ThenBy(x => x.IdVenta).Take(5000).ToListAsync();
+
+    filas = data.Select(x => {
+      var codMon = x.Moneda ?? "PYG";
+      var formato = codMon == "PYG" ? "N0" : "N2";
+      var numero = ($"{x.Establecimiento ?? ""}-{x.PuntoExpedicion ?? ""}-{x.NumeroFactura ?? ""}").Trim('-');
+      var cambioUsado = (x.CambioDet ?? x.CambioCab) ?? (codMon != "PYG" ? tcUsdHoy : 1m);
+      
+      // Calcular importes en Gs y USD
+      decimal impGs, impUsd;
+      if (codMon == "PYG")
+      {
+        impGs = x.Importe;
+        impUsd = tcUsdHoy > 0 ? Math.Round(x.Importe / tcUsdHoy, 2) : 0;
+      }
+      else
+      {
+        impGs = Math.Round(x.Importe * cambioUsado, 0);
+        impUsd = x.Importe;
+      }
+      
+      // Cambio para mostrar
+      decimal? cambioParaMostrar = null;
+      if (x.CambioDet.HasValue && x.CambioDet.Value > 0) cambioParaMostrar = x.CambioDet;
+      else if (codMon != "PYG" && x.CambioCab.HasValue && x.CambioCab.Value > 0) cambioParaMostrar = x.CambioCab;
+      else if (codMon == "PYG") cambioParaMostrar = 1m;
+      
+      return new Fila{
+        IdVenta = x.IdVenta,
+        Fecha = x.Fecha,
+        Numero = string.IsNullOrWhiteSpace(numero) ? "-" : numero,
+        Cliente = x.Cliente ?? "",
+        Ruc = x.Ruc ?? "",
+        Producto = x.Descripcion ?? "",
+        Codigo = x.CodigoInterno ?? "",
+        Cantidad = x.Cantidad,
+        Precio = x.PrecioUnitario,
+        Moneda = codMon,
+        Formato = formato,
+        Cambio = cambioParaMostrar,
+        Importe = x.Importe,
+        ImporteGs = impGs,
+        ImporteUsd = impUsd,
+        Usuario = x.Usuario ?? "",
+        IdCaja = x.IdCaja,
+        Turno = x.Turno
+      };
+    }).ToList();
+  }
+
+  private async Task Imprimir()
+  {
+    if (!filas.Any()) return;
+    // Head estilo factura
+    var head = new System.Text.StringBuilder();
+    head.AppendLine("<meta charset=\"utf-8\"/>");
+    head.AppendLine("<title>Listado Ventas Detallado</title>");
+    head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+    head.AppendLine("<style>");
+    head.AppendLine("@media print { @page { size: A4 landscape; margin: 10mm 10mm; } }");
+    head.AppendLine("body{font-size:10px;color:#111;}");
+    head.AppendLine(".factura-header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+    head.AppendLine(".factura-header .logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+    head.AppendLine(".factura-header .logo-wrap{width:140px;display:flex;align-items:center;justify-content:center;}");
+    head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
+    head.AppendLine(".factura-header .empresa .small{color:#555;}");
+    head.AppendLine(".tabla th,.tabla td{padding:.25rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
+    head.AppendLine(".right{text-align:right}");
+    head.AppendLine(".muted{color:#666}");
+    head.AppendLine("</style>");
+
+    // Datos empresa/logo
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s=>s.Id).FirstOrDefaultAsync();
+    var sucIdSel = SucursalProvider.GetSucursalId();
+    if (sucIdSel.HasValue)
+    {
+      var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+      if (s2 != null) suc = s2;
+    }
+    string empresa = suc?.NombreEmpresa ?? "Empresa";
+    string sucursal = suc?.NombreSucursal ?? "Sucursal";
+    string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+    string? logoDataUri = null;
+    if (suc?.Logo != null && suc.Logo.Length>0) logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+    var filtros = System.Net.WebUtility.HtmlEncode($"Moneda: {(fIdMoneda==0?"Todas":monedas.FirstOrDefault(m=>m.IdMoneda==fIdMoneda)?.CodigoISO)} | Nº: {fNumero} | Cliente: {fCliente} | Prod: {fProducto} | Usu: {fUsuario} | Caja: {fCajaDesde}-{fCajaHasta} | Turno: {fTurnoDesde}-{fTurnoHasta}");
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<div class=\"container-fluid\">");
+    sb.AppendLine("  <div class=\"factura-header\">");
+    sb.AppendLine("    <div class=\"logo-wrap\">");
+    if (!string.IsNullOrEmpty(logoDataUri)) sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+    else sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:10px;color:#999;min-height:40px;min-width:100px;\">LOGO</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"empresa\">");
+    sb.AppendLine($"      <h2>{empresa}</h2>");
+    sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+    sb.AppendLine($"      <div class=\"small\">{sucursal}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"ms-auto text-end\">");
+    sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Listado Ventas Detallado</div>");
+    sb.AppendLine($"      <div>Desde: {fDesde:dd/MM/yyyy} &nbsp; Hasta: {fHasta:dd/MM/yyyy}</div>");
+    sb.AppendLine($"      <div class=\"small muted\">{filtros}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("  </div>");
+
+    // Tabla
+    sb.AppendLine("  <table class=\"table table-sm tabla\">");
+    sb.AppendLine("    <thead><tr><th>ID</th><th>Fecha</th><th>Doc.</th><th>Cliente</th><th>Producto</th><th class='right'>Cant.</th><th class='right'>Precio</th><th>Mon</th><th class='right'>Cambio</th><th class='right'>Importe</th><th class='right'>Importe Gs</th><th class='right'>Importe $</th><th>Usu</th><th>Caja</th><th>Turno</th></tr></thead>");
+    sb.AppendLine("    <tbody>");
+    foreach (var r in filas)
+    {
+      sb.AppendLine($"      <tr><td>{r.IdVenta}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Cliente)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td class='right'>{r.Cantidad:N2}</td><td class='right'>{r.Precio.ToString(r.Formato)}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Importe.ToString(r.Formato)}</td><td class='right'>{r.ImporteGs:N0}</td><td class='right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
+    }
+    sb.AppendLine("    </tbody>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='10' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.ImporteGs):N0}</th><th class='right'>{filas.Sum(x=>x.ImporteUsd):N2}</th><th></th><th></th><th></th></tr></tfoot>");
+    sb.AppendLine("  </table>");
+    sb.AppendLine("</div>");
+
+    await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+  }
+
+  private async Task Exportar()
+  {
+    if (!filas.Any()) return;
+    var sep = ';';
+    var sb = new System.Text.StringBuilder();
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+    sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
+    sb.AppendLine(string.Join(sep, new[]{"ID","Fecha","Doc.","Cliente","Producto","Cant.","Precio","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"}));
+    foreach (var r in filas)
+    {
+      string[] cols = new[]
+      {
+        r.IdVenta.ToString(),
+        r.Fecha.ToString("yyyy-MM-dd"),
+        r.Numero,
+        r.Cliente,
+        r.Producto,
+        r.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.Precio.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.Moneda,
+        (r.Cambio ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.Importe.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.ImporteGs.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.ImporteUsd.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.Usuario,
+        r.IdCaja?.ToString() ?? "",
+        r.Turno?.ToString() ?? ""
+      };
+      var line = string.Join(sep, cols.Select(v => !string.IsNullOrEmpty(v) && (v.Contains(sep) || v.Contains('"') || v.Contains('\n')) ? $"\"{v.Replace("\"","\"\"")}\"" : v ?? ""));
+      sb.AppendLine(line);
+    }
+    var utf8bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    var bytes = utf8bom.GetBytes(sb.ToString());
+    var b64 = Convert.ToBase64String(bytes);
+    var file = $"VentasDetallado_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "text/csv;charset=utf-8");
+  }
+
+  private async Task ExportarXlsx()
+  {
+    if (!filas.Any()) return;
+    var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    var usuario = auth.User?.Identity?.Name ?? "";
+    var suc = SucursalProvider.GetSucursalNombre() ?? "";
+
+    using var wb = new XLWorkbook();
+    var ws = wb.AddWorksheet("VentasDetallado");
+    int row = 1;
+    ws.Cell(row, 1).Value = "Generado"; ws.Cell(row, 2).Value = DateTime.Now; ws.Cell(row, 2).Style.DateFormat.Format = "yyyy-MM-dd HH:mm"; row++;
+    ws.Cell(row, 1).Value = "Usuario"; ws.Cell(row, 2).Value = usuario; row++;
+    ws.Cell(row, 1).Value = "Sucursal"; ws.Cell(row, 2).Value = suc; row += 2;
+
+    var headers = new[]{"ID","Fecha","Doc.","Cliente","Producto","Cant.","Precio","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"};
+    for (int c=0;c<headers.Length;c++) ws.Cell(row, c+1).Value = headers[c];
+    ws.Range(row,1,row,headers.Length).Style.Font.Bold = true; row++;
+
+    decimal totalGs = 0, totalUsd = 0;
+    foreach (var r in filas)
+    {
+      ws.Cell(row,1).Value = r.IdVenta;
+      ws.Cell(row,2).Value = r.Fecha; ws.Cell(row,2).Style.DateFormat.Format = "yyyy-MM-dd";
+      ws.Cell(row,3).Value = r.Numero;
+      ws.Cell(row,4).Value = r.Cliente;
+      ws.Cell(row,5).Value = r.Producto;
+      ws.Cell(row,6).Value = r.Cantidad; ws.Cell(row,6).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,7).Value = r.Precio; ws.Cell(row,7).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
+      ws.Cell(row,8).Value = r.Moneda;
+      ws.Cell(row,9).Value = r.Cambio ?? 0m; ws.Cell(row,9).Style.NumberFormat.Format = "0.00";
+      ws.Cell(row,10).Value = r.Importe; ws.Cell(row,10).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
+      ws.Cell(row,11).Value = r.ImporteGs; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,12).Value = r.ImporteUsd; ws.Cell(row,12).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,13).Value = r.Usuario;
+      ws.Cell(row,14).Value = r.IdCaja;
+      ws.Cell(row,15).Value = r.Turno;
+      totalGs += r.ImporteGs;
+      totalUsd += r.ImporteUsd;
+      row++;
+    }
+
+    ws.Cell(row,10).Value = "Totales"; ws.Cell(row,10).Style.Font.Bold = true;
+    ws.Cell(row,11).Value = totalGs; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,11).Style.Font.Bold = true;
+    ws.Cell(row,12).Value = totalUsd; ws.Cell(row,12).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,12).Style.Font.Bold = true;
+    ws.Columns().AdjustToContents();
+    using var ms = new System.IO.MemoryStream();
+    wb.SaveAs(ms);
+    var b64 = Convert.ToBase64String(ms.ToArray());
+    var file = $"VentasDetallado_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+    await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  private class Fila
+  {
+    public int IdVenta { get; set; }
+    public DateTime Fecha { get; set; }
+    public string Numero { get; set; } = string.Empty;
+    public string Cliente { get; set; } = string.Empty;
+    public string Ruc { get; set; } = string.Empty;
+    public string Producto { get; set; } = string.Empty;
+    public string Codigo { get; set; } = string.Empty;
+    public decimal Cantidad { get; set; }
+    public decimal Precio { get; set; }
+    public string Moneda { get; set; } = "PYG";
+    public string Formato { get; set; } = "N0";
+    public decimal? Cambio { get; set; }
+    public decimal Importe { get; set; }
+    public decimal ImporteGs { get; set; }
+    public decimal ImporteUsd { get; set; }
+    public string Usuario { get; set; } = string.Empty;
+    public int? IdCaja { get; set; }
+    public int? Turno { get; set; }
+  }
+}
+
+</PageProtection>
+}

@@ -1,0 +1,443 @@
+@page "/inventario/ajustes"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Web
+@attribute [Authorize]
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject SistemIA.Services.IAjusteStockService Ajustes
+@inject SistemIA.Services.IInventarioService Inventario
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+
+<PageProtection Modulo="/inventario" Permiso="VIEW">
+
+<h3 class="mb-3">Ajuste de Stock</h3>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Depósito</label>
+  <select class="form-select" @bind="SelectedDepositoId" disabled="@(depositos is null || !depositos.Any())">
+          <option value="0">-- Seleccione --</option>
+          @if (depositos is not null)
+          {
+            foreach (var d in depositos)
+            {
+              <option value="@d.IdDeposito">@d.Nombre (@d.IdSucursal)</option>
+            }
+          }
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Comentario</label>
+        <input class="form-control" @bind="comentario" maxlength="280" />
+      </div>
+      <div class="col-md-2 text-end">
+        <button class="btn btn-primary w-100" @onclick="Guardar" disabled="@(selectedDepositoId==0 || !lineas.Any() || guardando)">
+          <i class="bi bi-save me-1"></i> @(guardando?"Guardando...":"Guardar")
+        </button>
+      </div>
+    </div>
+  </div>
+  @if (!string.IsNullOrWhiteSpace(errorMsg))
+  {
+    <div class="card-footer">
+      <div class="alert alert-danger py-2 my-0">@errorMsg</div>
+    </div>
+  }
+  @if (!string.IsNullOrWhiteSpace(okMsg))
+  {
+    <div class="card-footer">
+      <div class="alert alert-success py-2 my-0">@okMsg</div>
+    </div>
+  }
+  @if (ajusteGeneradoId.HasValue)
+  {
+    <div class="card-footer d-flex gap-2">
+      <button class="btn btn-outline-secondary" @onclick="Imprimir">
+        <i class="bi bi-printer me-1"></i> Imprimir
+      </button>
+      <button class="btn btn-outline-primary" @onclick="Nuevo">
+        <i class="bi bi-plus-circle me-1"></i> Nuevo ajuste
+      </button>
+    </div>
+  }
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label">Producto</label>
+        <div class="position-relative">
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input class="form-control" placeholder="Buscar por parte del nombre" @bind="BuscarProducto" @bind:event="oninput" @onkeyup="OnProductoKeyUp" @onfocus="OnProductoFocus" @onblur="OnProductoBlur" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}" />
+          </div>
+          @if (MostrarSugProductos && ProductosFiltrados.Any())
+          {
+            <div class="list-group position-absolute w-100 z-3" style="max-height: 260px; overflow:auto;">
+              @foreach (var p in ProductosFiltrados.Take(12))
+              {
+                <button type="button"
+                        class="list-group-item list-group-item-action"
+                        tabindex="-1"
+                        @onpointerdown="() => OnProductoSuggestionMouseDownAsync(p)" @onpointerdown:preventDefault @onpointerdown:stopPropagation
+                        @onmousedown="() => OnProductoSuggestionMouseDownAsync(p)" @onmousedown:preventDefault @onmousedown:stopPropagation
+                        @onclick="() => OnProductoSuggestionMouseDownAsync(p)" @onclick:preventDefault @onclick:stopPropagation>
+                  @p.Descripcion
+                </button>
+              }
+            </div>
+          }
+        </div>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock sistema</label>
+        <input class="form-control" value="@stockSistema.ToString("N2")" disabled />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock ajuste</label>
+        <input class="form-control" type="number" step="0.01" @bind-value="stockAjuste" @bind-value:event="oninput" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Costo (Gs)</label>
+        <input class="form-control" value="@costo.ToString("N0")" disabled />
+      </div>
+      <div class="col-md-1 text-end">
+        <button class="btn btn-success w-100" @onclick="AgregarLinea" disabled="@(selectedProductoId==0 || selectedDepositoId==0)">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <hr />
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th style="width:50px;">#</th>
+            <th>Producto</th>
+            <th class="text-end">Stock sistema</th>
+            <th class="text-end">Stock ajuste</th>
+            <th class="text-end">Diferencia</th>
+            <th class="text-end">Costo</th>
+            <th class="text-end">Precio venta</th>
+            <th class="text-end">Monto</th>
+            <th style="width:60px;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (!lineas.Any())
+          {
+            <tr><td colspan="8" class="text-center text-muted py-3">Sin líneas</td></tr>
+          }
+          else
+          {
+            var idx = 0;
+            foreach (var l in lineas)
+            {
+              <tr>
+                <td>@(++idx)</td>
+                <td>
+                  <div class="fw-semibold">@l.Descripcion</div>
+                  <div class="small text-muted">Cod: @l.CodigoInterno</div>
+                </td>
+                <td class="text-end">@l.StockSistema.ToString("N2")</td>
+                <td class="text-end">
+                  <input class="form-control form-control-sm text-end" style="max-width:120px; display:inline-block;" type="number" step="0.01" value="@l.StockAjuste"
+                         @oninput="(e)=>ActualizarAjuste(l, e.Value?.ToString())" />
+                </td>
+                <td class="text-end @(l.Diferencia<0?"text-danger fw-semibold":"")">@l.Diferencia.ToString("N2")</td>
+                <td class="text-end">@l.CostoUnitarioGs.ToString("N0")</td>
+                <td class="text-end">@l.PrecioVentaGs.ToString("N0")</td>
+                <td class="text-end fw-semibold">@l.Monto.ToString("N0")</td>
+                <td class="text-center">
+                  <button class="btn btn-sm btn-outline-danger" title="Quitar" @onclick="(()=>QuitarLinea(l))"><i class="bi bi-x-lg"></i></button>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="6" class="text-end">Total</th>
+            <th class="text-end">@lineas.Sum(x=>x.Monto).ToString("N0")</th>
+            <th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+</PageProtection>
+
+@code {
+  private List<SistemIA.Models.Deposito>? depositos;
+  private List<SistemIA.Models.Producto>? productos;
+  private List<SistemIA.Models.Producto> ProductosFiltrados = new();
+  private bool MostrarSugProductos;
+  private string? _buscarProducto;
+  private string BuscarProducto { get => _buscarProducto ?? string.Empty; set { _buscarProducto = value; AplicarFiltroProductos(); } }
+  private int selectedDepositoId;
+  private int selectedProductoId;
+  private decimal stockSistema;
+  private decimal stockAjuste;
+  private decimal costo;
+  private string? comentario;
+  private string? errorMsg;
+  private string? okMsg;
+  private bool guardando;
+  private int? ajusteGeneradoId;
+
+  private List<LineaVM> lineas = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    depositos = await ctx.Depositos.AsNoTracking().OrderBy(d=>d.IdSucursal).ThenBy(d=>d.Nombre).ToListAsync();
+    productos = await ctx.Productos.AsNoTracking().Where(p => p.Activo).OrderBy(p=>p.Descripcion).ToListAsync();
+    ProductosFiltrados = new List<SistemIA.Models.Producto>(); // Iniciar vacío
+    selectedDepositoId = depositos?.FirstOrDefault()?.IdDeposito ?? 0;
+  }
+
+  private async Task CargarContextoProducto()
+  {
+    if (selectedProductoId==0 || selectedDepositoId==0) { stockSistema=0; costo=0; return; }
+  var p = productos!.First(x=>x.IdProducto==selectedProductoId);
+  costo = p.CostoUnitarioGs ?? 0m;
+    try { stockSistema = await Inventario.ObtenerStockAsync(selectedProductoId, selectedDepositoId); }
+    catch { stockSistema = 0; }
+  }
+
+  private async Task AgregarLinea()
+  {
+    errorMsg = okMsg = null;
+    if (selectedDepositoId==0) { errorMsg = "Seleccione un depósito"; return; }
+    if (selectedProductoId==0) { errorMsg = "Seleccione un producto"; return; }
+    await CargarContextoProducto();
+    var p = productos!.First(x=>x.IdProducto==selectedProductoId);
+    var existente = lineas.FirstOrDefault(x=>x.IdProducto==p.IdProducto);
+    if (existente is not null)
+    {
+      existente.StockSistema = stockSistema;
+      existente.StockAjuste = stockAjuste;
+      Recalcular(existente);
+    }
+    else
+    {
+      var l = new LineaVM
+      {
+        IdProducto = p.IdProducto,
+        Descripcion = p.Descripcion,
+        CodigoInterno = p.CodigoInterno,
+        StockSistema = stockSistema,
+        StockAjuste = stockAjuste,
+  CostoUnitarioGs = costo,
+  PrecioVentaGs = p.PrecioUnitarioGs
+      };
+      Recalcular(l);
+      lineas.Add(l);
+    }
+    // limpiar editor de línea
+    selectedProductoId = 0; stockSistema = 0; stockAjuste = 0; costo = 0; BuscarProducto = string.Empty; MostrarSugProductos = false;
+  }
+
+  private void AplicarFiltroProductos()
+  {
+    var texto = (BuscarProducto ?? string.Empty).Trim().ToLowerInvariant();
+    MostrarSugProductos = !string.IsNullOrWhiteSpace(texto);
+    if (!MostrarSugProductos) { ProductosFiltrados = new List<SistemIA.Models.Producto>(); return; }
+    ProductosFiltrados = productos!
+      .Where(p => (p.Descripcion ?? string.Empty).ToLower().Contains(texto) || (p.CodigoInterno ?? string.Empty).ToLower().Contains(texto))
+      .Take(50)
+      .ToList();
+  }
+
+  private async Task OnProductoSuggestionMouseDownAsync(SistemIA.Models.Producto p)
+  {
+    SelectedProductoId = p.IdProducto;
+    BuscarProducto = p.Descripcion ?? string.Empty;
+    MostrarSugProductos = false;
+    await CargarContextoProducto();
+  }
+
+  private void OnProductoKeyUp(KeyboardEventArgs e)
+  {
+    if (e.Key == "Escape") { MostrarSugProductos = false; }
+  }
+
+  private void OnProductoFocus(FocusEventArgs _)
+  {
+    if (!string.IsNullOrEmpty(BuscarProducto)) MostrarSugProductos = true;
+  }
+
+  private void OnProductoBlur(FocusEventArgs _)
+  {
+    // intencionalmente vacío; usamos onpointerdown para selección
+  }
+
+  private int SelectedProductoId
+  {
+    get => selectedProductoId;
+    set
+    {
+      if (selectedProductoId != value)
+      {
+        selectedProductoId = value;
+        _ = CargarContextoProducto();
+      }
+    }
+  }
+
+  private int SelectedDepositoId
+  {
+    get => selectedDepositoId;
+    set
+    {
+      if (selectedDepositoId != value)
+      {
+        selectedDepositoId = value;
+        _ = CargarContextoProducto();
+      }
+    }
+  }
+
+  private void QuitarLinea(LineaVM l)
+  {
+    lineas.Remove(l);
+  }
+
+  private void ActualizarAjuste(LineaVM l, string? nuevo)
+  {
+    if (decimal.TryParse(nuevo, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val))
+    {
+      l.StockAjuste = val;
+      Recalcular(l);
+    }
+  }
+
+  private static void Recalcular(LineaVM l)
+  {
+    l.Diferencia = l.StockAjuste - l.StockSistema;
+  l.Monto = Math.Abs(l.Diferencia) * (l.CostoUnitarioGs <= 0 ? 0 : l.CostoUnitarioGs);
+  }
+
+  private async Task Guardar()
+  {
+    try
+    {
+      errorMsg = okMsg = null; guardando = true; ajusteGeneradoId = null;
+      if (selectedDepositoId==0) { errorMsg = "Seleccione un depósito"; return; }
+      if (!lineas.Any()) { errorMsg = "Agregue al menos una línea"; return; }
+      var dep = depositos!.First(d=>d.IdDeposito==selectedDepositoId);
+
+      var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+      var usuario = auth.User?.Identity?.Name ?? auth.User?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Sistema";
+
+      var inputs = lineas.Select(l => new SistemIA.Services.LineaAjusteInput(l.IdProducto, l.StockSistema, l.StockAjuste, l.CostoUnitarioGs)).ToList();
+      var nuevoId = await Ajustes.CrearAjusteAsync(dep.IdSucursal, null, null, usuario, comentario, selectedDepositoId, inputs);
+      ajusteGeneradoId = nuevoId;
+      okMsg = $"Ajuste #{nuevoId} guardado";
+    }
+    catch (Exception ex)
+    {
+  errorMsg = ex.GetBaseException().Message;
+    }
+    finally { guardando = false; }
+  }
+
+  private async Task Imprimir()
+  {
+    if (!ajusteGeneradoId.HasValue) return;
+    var dep = depositos!.First(d=>d.IdDeposito==selectedDepositoId);
+    var fecha = DateTime.Now;
+    var total = lineas.Sum(x=>x.Monto).ToString("N0");
+    // Estilos y cabecera similares a Compras
+    var head = new System.Text.StringBuilder();
+    head.AppendLine("<meta charset=\"utf-8\"/>");
+    head.AppendLine("<title>Ajuste de Stock</title>");
+    head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+    head.AppendLine("<style>");
+    head.AppendLine("@media print { @page { size: A4; margin: 14mm 12mm; } }");
+    head.AppendLine("body{font-size:12px;color:#111;}");
+    head.AppendLine(".factura-header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+    head.AppendLine(".factura-header .logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+    head.AppendLine(".factura-header .logo-wrap{width:140px;display:flex;align-items:center;justify-content:center;}");
+    head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
+    head.AppendLine(".factura-header .empresa .small{color:#555;}");
+    head.AppendLine(".table-ajuste th,.table-ajuste td{padding:.4rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
+    head.AppendLine(".footer{position:fixed;bottom:8mm;left:0;right:0;text-align:center;font-size:10px;color:#666;}");
+    head.AppendLine("</style>");
+
+    // Obtener logo y datos de sucursal para cabecera
+    await using var ctxPrint = await DbFactory.CreateDbContextAsync();
+    var suc = await ctxPrint.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == dep.IdSucursal);
+    string empresa = suc?.NombreEmpresa ?? "Empresa";
+    string sucursal = suc?.NombreSucursal ?? $"Suc. {dep.IdSucursal}";
+    string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+    string? logoDataUri = null;
+    if (suc?.Logo != null && suc.Logo.Length > 0)
+    {
+      var b64 = Convert.ToBase64String(suc.Logo);
+      logoDataUri = $"data:image/png;base64,{b64}";
+    }
+
+    var rows = string.Join("", lineas.Select(l=>$"<tr><td>{Escape(l.CodigoInterno)}</td><td>{Escape(l.Descripcion)}</td><td class='right'>{l.StockSistema:N2}</td><td class='right'>{l.StockAjuste:N2}</td><td class='right'>{l.Diferencia:N2}</td><td class='right'>{l.CostoUnitarioGs:N0}</td><td class='right'>{l.PrecioVentaGs:N0}</td><td class='right'>{l.Monto:N0}</td></tr>"));
+    var comentarioHtml = string.IsNullOrWhiteSpace(comentario) ? string.Empty : $"<div class='muted'>Comentario: {Escape(comentario!)}</div>";
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<div class=\"container-fluid\">");
+    sb.AppendLine("  <div class=\"factura-header\">");
+    sb.AppendLine("    <div class=\"logo-wrap\">");
+    if (!string.IsNullOrEmpty(logoDataUri)) sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+    else sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:10px;color:#999;min-height:40px;min-width:100px;\">LOGO</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"empresa\">");
+    sb.AppendLine($"      <h2>{empresa}</h2>");
+    sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+    sb.AppendLine($"      <div class=\"small\">{sucursal}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"ms-auto text-end\">");
+    sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Ajuste de Stock</div>");
+    sb.AppendLine($"      <div>N°: {ajusteGeneradoId}</div>");
+    sb.AppendLine($"      <div>Fecha: {fecha:dd/MM/yyyy HH:mm}</div>");
+    sb.AppendLine($"      <div>Depósito: {Escape(dep.Nombre)} (suc {dep.IdSucursal})</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("  </div>");
+
+    if (!string.IsNullOrEmpty(comentarioHtml)) sb.AppendLine($"  {comentarioHtml}");
+    sb.AppendLine("  <table class=\"table table-sm table-ajuste\">");
+    sb.AppendLine("    <thead><tr><th>Código</th><th>Descripción</th><th class='right'>Stock sistema</th><th class='right'>Stock ajuste</th><th class='right'>Diferencia</th><th class='right'>Costo</th><th class='right'>Precio</th><th class='right'>Monto</th></tr></thead>");
+    sb.AppendLine($"    <tbody>{rows}</tbody>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='7' class='right'>Total</th><th class='right'>{total}</th></tr></tfoot>");
+    sb.AppendLine("  </table>");
+    sb.AppendLine("  <div class=\"footer\">** Ajuste generado por el sistema **</div>");
+    sb.AppendLine("</div>");
+    await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+  }
+
+  private static string Escape(string? s)
+    => System.Net.WebUtility.HtmlEncode(s ?? string.Empty);
+
+  private void Nuevo()
+  {
+    lineas.Clear();
+    comentario = okMsg = errorMsg = null; ajusteGeneradoId = null; stockAjuste = 0; stockSistema = 0; selectedProductoId = 0;
+  }
+
+  private class LineaVM
+  {
+    public int IdProducto { get; set; }
+    public string Descripcion { get; set; } = string.Empty;
+    public string CodigoInterno { get; set; } = string.Empty;
+    public decimal StockSistema { get; set; }
+    public decimal StockAjuste { get; set; }
+    public decimal Diferencia { get; set; }
+    public decimal CostoUnitarioGs { get; set; }
+  public decimal PrecioVentaGs { get; set; }
+    public decimal Monto { get; set; }
+  }
+}

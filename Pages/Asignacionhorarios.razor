@@ -1,8 +1,10 @@
 ﻿@page "/asignacionhorarios"
 @using Microsoft.EntityFrameworkCore
-@using SistemIA.Models 
-@inject SistemIA.Models.AppDbContext Db
+@using SistemIA.Models
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject IJSRuntime JS
+
+<PageProtection Modulo="/personal" Permiso="VIEW">
 
 <PageTitle>Asignación de Horarios</PageTitle>
 
@@ -86,7 +88,7 @@ else
                     <td>@asignacion.HorarioTrabajo?.NombreHorario</td>
                     <td>@asignacion.HorarioTrabajo?.SucursalNavigation?.NombreSucursal</td>
                     <td>@asignacion.FechaInicio.ToString("dd/MM/yyyy")</td>
-                    <td>@asignacion.FechaFin.ToString("dd/MM/yyyy")</td>
+                    <td>@(asignacion.FechaFin?.ToString("dd/MM/yyyy") ?? "Indefinido")</td>
                     <td>
                         <button class="btn btn-sm btn-danger" @onclick="() => EliminarAsignacion(asignacion.Id_Asignacion)">
                             <i class="bi bi-trash"></i>
@@ -98,6 +100,8 @@ else
     </table>
 }
 
+</PageProtection>
+
 @code {
     private AsignacionHorario nuevaAsignacion = new();
     private List<AsignacionHorario>? asignaciones;
@@ -106,8 +110,9 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        usuarios = await Db.Usuarios.Where(u => u.Estado_Usu).OrderBy(u => u.Nombres).ToListAsync();
-        horarios = await Db.HorariosTrabajo.Where(h => h.EsActivo).OrderBy(h => h.NombreHorario).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        usuarios = await dbContext.Usuarios.Where(u => u.Estado_Usu).OrderBy(u => u.Nombres).ToListAsync();
+        horarios = await dbContext.HorariosTrabajo.Where(h => h.EsActivo).OrderBy(h => h.NombreHorario).ToListAsync();
         await CargarAsignaciones();
         LimpiarFormulario();
     }
@@ -123,11 +128,12 @@ else
 
     private async Task CargarAsignaciones()
     {
-        asignaciones = await Db.AsignacionesHorarios
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        asignaciones = await dbContext.AsignacionesHorarios
             .Include(a => a.Usuario)
             .Include(a => a.HorarioTrabajo)
-                .ThenInclude(h => h.SucursalNavigation)
-            .Where(a => a.FechaFin >= DateTime.Today)
+                .ThenInclude(h => h!.SucursalNavigation)
+            .Where(a => a.FechaFin == null || a.FechaFin >= DateTime.Today)
             .ToListAsync();
     }
 
@@ -139,18 +145,22 @@ else
             return;
         }
 
-        if (nuevaAsignacion.FechaInicio.Date > nuevaAsignacion.FechaFin.Date)
+        if (nuevaAsignacion.FechaFin.HasValue && nuevaAsignacion.FechaInicio.Date > nuevaAsignacion.FechaFin.Value.Date)
         {
             await JS.InvokeVoidAsync("alert", "La fecha de fin no puede ser anterior a la fecha de inicio.");
             return;
         }
 
-        // Validación para evitar solapamiento de fechas
-        var asignacionExistente = await Db.AsignacionesHorarios
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
+        // Separar la lógica para evitar problemas con Entity Framework
+        DateTime fechaFinComparacion = nuevaAsignacion.FechaFin?.Date ?? DateTime.MaxValue.Date;
+        
+        var asignacionExistente = await dbContext.AsignacionesHorarios
             .FirstOrDefaultAsync(a =>
                 a.Id_Usuario == nuevaAsignacion.Id_Usuario &&
-                a.FechaFin.Date >= nuevaAsignacion.FechaInicio.Date &&
-                a.FechaInicio.Date <= nuevaAsignacion.FechaFin.Date);
+                (a.FechaFin == null || a.FechaFin.Value.Date >= nuevaAsignacion.FechaInicio.Date) &&
+                a.FechaInicio.Date <= fechaFinComparacion);
 
         if (asignacionExistente != null)
         {
@@ -158,9 +168,8 @@ else
             return;
         }
 
-
-        Db.AsignacionesHorarios.Add(nuevaAsignacion);
-        await Db.SaveChangesAsync();
+        dbContext.AsignacionesHorarios.Add(nuevaAsignacion);
+        await dbContext.SaveChangesAsync();
 
         await CargarAsignaciones();
         LimpiarFormulario();
@@ -172,11 +181,12 @@ else
         bool confirmed = await JS.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar esta asignación?");
         if (confirmed)
         {
-            var asignacion = await Db.AsignacionesHorarios.FindAsync(id);
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var asignacion = await dbContext.AsignacionesHorarios.FindAsync(id);
             if (asignacion != null)
             {
-                Db.AsignacionesHorarios.Remove(asignacion);
-                await Db.SaveChangesAsync();
+                dbContext.AsignacionesHorarios.Remove(asignacion);
+                await dbContext.SaveChangesAsync();
                 await CargarAsignaciones();
             }
         }
