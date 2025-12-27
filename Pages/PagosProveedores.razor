@@ -117,7 +117,7 @@
 
 @if (compraActual != null)
 {
-    @* Mostrar cuotas si existen *@
+    @* Mostrar cuotas si existen (solo informativo) *@
     @if (tieneCuotas)
     {
         <div class="card mb-3 shadow-sm">
@@ -126,24 +126,18 @@
                     <i class="bi bi-list-ol me-2"></i>
                     Cuotas Pendientes (@cuotasParaPago.Count)
                 </h6>
-                <small class="text-muted">Seleccione las cuotas a pagar</small>
+                <small class="text-info"><i class="bi bi-info-circle me-1"></i>El pago se prorrateará automáticamente</small>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-sm table-hover mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th style="width: 50px;">
-                                    <input type="checkbox" class="form-check-input" 
-                                           @bind="seleccionarTodasCuotas" 
-                                           @bind:after="OnSeleccionarTodas" />
-                                </th>
                                 <th>Cuota</th>
                                 <th>Vencimiento</th>
-                                <th class="text-end">Monto</th>
-                                <th class="text-end">Saldo</th>
+                                <th class="text-end">Monto Original</th>
+                                <th class="text-end">Saldo Pendiente</th>
                                 <th>Estado</th>
-                                <th class="text-end" style="width: 150px;">Monto a Pagar</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -151,11 +145,6 @@
                             {
                                 var esVencida = cuota.FechaVencimiento.Date < DateTime.Today;
                                 <tr class="@(esVencida ? "table-warning" : "")">
-                                    <td>
-                                        <input type="checkbox" class="form-check-input" 
-                                               @bind="cuota.Seleccionada"
-                                               @bind:after="() => OnCuotaSeleccionada(cuota)" />
-                                    </td>
                                     <td>
                                         <span class="badge bg-secondary">Cuota @cuota.NumeroCuota</span>
                                     </td>
@@ -173,24 +162,17 @@
                                             @cuota.Estado
                                         </span>
                                     </td>
-                                    <td>
-                                        <input type="number" step="0.01" 
-                                               class="form-control form-control-sm text-end" 
-                                               @bind="cuota.MontoAPagar"
-                                               @bind:after="RecalcularMontoPago"
-                                               disabled="@(!cuota.Seleccionada)" />
-                                    </td>
                                 </tr>
                             }
                         </tbody>
                         <tfoot class="table-light">
                             <tr>
-                                <td colspan="4"></td>
-                                <td class="text-end fw-bold">Total Cuotas:</td>
-                                <td colspan="2" class="text-end fw-bold text-success">
-                                    @FormatearPrecio(cuotasParaPago.Sum(c => c.MontoAPagar), compraActual.IdMoneda) 
+                                <td colspan="3" class="text-end fw-bold">Total Saldo Pendiente:</td>
+                                <td class="text-end fw-bold text-danger">
+                                    @FormatearPrecio(cuotasParaPago.Sum(c => c.SaldoCuota), compraActual.IdMoneda) 
                                     @(compraActual.IdMoneda.HasValue ? ObtenerSimboloMoneda(compraActual.IdMoneda.Value) : "Gs.")
                                 </td>
+                                <td></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -208,6 +190,13 @@
         </div>
         <div class="card-body">
             <div class="row g-3 mb-3">
+                <!-- Fecha del Pago -->
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">
+                        <i class="bi bi-calendar-event me-1"></i>Fecha del Pago
+                    </label>
+                    <input type="date" class="form-control" @bind="fechaPago" />
+                </div>
                 <!-- Selector de Caja -->
                 <div class="col-md-6">
                     <label class="form-label fw-bold">
@@ -225,6 +214,21 @@
                         <small class="text-warning"><i class="bi bi-exclamation-triangle"></i> Este pago no afectará el resumen de caja</small>
                     }
                 </div>
+                <!-- Selector de Turno -->
+                @if (afectaCaja && CajaActiva?.CantTurnos > 0)
+                {
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-clock-history me-1"></i>Turno
+                        </label>
+                        <select class="form-select" @bind="turnoSeleccionado">
+                            @for (int t = 1; t <= (CajaActiva?.CantTurnos ?? 1); t++)
+                            {
+                                <option value="@t">Turno @t @(t == CajaActiva?.TurnoActual ? "(Actual)" : "")</option>
+                            }
+                        </select>
+                    </div>
+                }
             </div>
             
             <hr />
@@ -365,6 +369,8 @@
     private List<SistemIA.Models.Caja> CajasDisponibles = new();
     private int? cajaSeleccionadaId;
     private bool afectaCaja = true; // Por defecto afecta la caja
+    private DateTime fechaPago = DateTime.Now; // Fecha editable del pago
+    private int? turnoSeleccionado; // Turno editable
 
     // Filtros de búsqueda
     private int? filtroNumeroCompra = null;
@@ -449,6 +455,15 @@
         }
         cajaSeleccionadaId = CajaActiva?.IdCaja;
         
+        // Inicializar fecha con la fecha de caja activa
+        if (CajaActiva?.FechaActualCaja.HasValue == true)
+        {
+            fechaPago = CajaActiva.FechaActualCaja.Value;
+        }
+        
+        // Inicializar turno con el turno actual de la caja
+        turnoSeleccionado = CajaActiva?.TurnoActual ?? 1;
+        
         await CargarMonedasAsync();
         await CargarComprasPendientesAsync();
         await CargarTipoCambioDelDiaAsync();
@@ -476,12 +491,21 @@
             cajaSeleccionadaId = id;
             CajaActiva = CajasDisponibles.FirstOrDefault(c => c.IdCaja == id);
             afectaCaja = true;
+            // Actualizar fecha al cambiar caja
+            if (CajaActiva?.FechaActualCaja.HasValue == true)
+            {
+                fechaPago = CajaActiva.FechaActualCaja.Value;
+            }
+            // Actualizar turno al cambiar caja
+            turnoSeleccionado = CajaActiva?.TurnoActual ?? 1;
         }
         else
         {
             cajaSeleccionadaId = null;
             CajaActiva = null;
             afectaCaja = false;
+            fechaPago = DateTime.Now;
+            turnoSeleccionado = null;
         }
     }
 
@@ -647,7 +671,7 @@
                     MontoCuota = c.MontoCuota,
                     SaldoCuota = c.SaldoCuota,
                     FechaVencimiento = c.FechaVencimiento,
-                    Estado = c.Estado,
+                    Estado = c.Estado == "Abierta" ? "Pendiente" : c.Estado,
                     Seleccionada = false,
                     MontoAPagar = 0
                 })
@@ -824,11 +848,9 @@
                 IdSucursal = _sucursalId ?? 1,
                 IdMoneda = compraActual.IdMoneda ?? 1,
                 IdCaja = afectaCaja ? cajaSeleccionadaId : null, // Solo asignar caja si afecta el resumen
-                Turno = afectaCaja ? CajaActiva?.TurnoActual : null,
+                Turno = afectaCaja ? turnoSeleccionado : null, // Usar turno seleccionado por el usuario
                 IdUsuario = idUsuario,
-                FechaPago = (afectaCaja && CajaActiva?.bloquear_fechaCaja == true && CajaActiva?.FechaActualCaja.HasValue == true) 
-                            ? CajaActiva.FechaActualCaja.Value 
-                            : DateTime.Now,
+                FechaPago = fechaPago, // Usar fecha editada por el usuario
                 MontoTotal = totalPago,
                 CambioDelDia = cambioDelDia.Value,
                 Estado = "Pagado",
@@ -921,49 +943,54 @@
         seleccionarTodasCuotas = false;
     }
 
-    private async Task ActualizarCuotasPagadasAsync(AppDbContext ctx, PagoProveedor pago)
+    private async Task ActualizarCuotasPagadasAsync(AppDbContext _, PagoProveedor pago)
     {
-        var cuotasSeleccionadas = cuotasParaPago.Where(c => c.Seleccionada && c.MontoAPagar > 0).ToList();
+        // Usar un contexto nuevo para evitar conflictos con el servicio de pagos
+        await using var ctx = await DbFactory.CreateDbContextAsync();
         
-        foreach (var cuotaDto in cuotasSeleccionadas)
+        // Obtener todas las cuotas pendientes de la cuenta por pagar, ordenadas por número de cuota
+        var cuotas = await ctx.CuentasPorPagarCuotas
+            .Where(c => c.IdCuentaPorPagar == cuentaPorPagar!.IdCuentaPorPagar && c.Estado != "Pagada" && c.SaldoCuota > 0)
+            .OrderBy(c => c.NumeroCuota)
+            .ToListAsync();
+        
+        // Distribuir el pago automáticamente entre las cuotas (prorrateo)
+        var montoRestante = pago.MontoTotal;
+        foreach (var cuota in cuotas)
         {
-            var cuotaDb = await ctx.CuentasPorPagarCuotas.FindAsync(cuotaDto.IdCuota);
-            if (cuotaDb != null)
+            if (montoRestante <= 0) break;
+            
+            if (montoRestante >= cuota.SaldoCuota)
             {
-                // Reducir el saldo de la cuota
-                cuotaDb.SaldoCuota = Math.Max(0, cuotaDb.SaldoCuota - cuotaDto.MontoAPagar);
-                
-                // Marcar como pagada si el saldo quedó en 0
-                if (cuotaDb.SaldoCuota <= 0)
-                {
-                    cuotaDb.Estado = "Pagada";
-                    cuotaDb.FechaPago = pago.FechaPago;
-                }
-                else
-                {
-                    cuotaDb.Estado = "Parcial";
-                }
+                // El pago cubre toda la cuota
+                montoRestante -= cuota.SaldoCuota;
+                cuota.SaldoCuota = 0;
+                cuota.Estado = "Pagada";
+                cuota.FechaPago = pago.FechaPago;
+            }
+            else
+            {
+                // El pago solo cubre parte de la cuota
+                cuota.SaldoCuota -= montoRestante;
+                cuota.Estado = "Parcial";
+                montoRestante = 0;
             }
         }
         
         // Actualizar saldo de la cuenta por pagar
-        if (cuentaPorPagar != null)
+        var cuenta = await ctx.CuentasPorPagar.FindAsync(cuentaPorPagar!.IdCuentaPorPagar);
+        if (cuenta != null)
         {
-            var cuenta = await ctx.CuentasPorPagar.FindAsync(cuentaPorPagar.IdCuentaPorPagar);
-            if (cuenta != null)
+            cuenta.SaldoPendiente = Math.Max(0, cuenta.SaldoPendiente - pago.MontoTotal);
+            
+            // Verificar si todas las cuotas están pagadas
+            var cuotasPendientes = await ctx.CuentasPorPagarCuotas
+                .Where(c => c.IdCuentaPorPagar == cuenta.IdCuentaPorPagar && c.SaldoCuota > 0)
+                .CountAsync();
+            
+            if (cuotasPendientes == 0)
             {
-                var totalPagado = cuotasSeleccionadas.Sum(c => c.MontoAPagar);
-                cuenta.SaldoPendiente = Math.Max(0, cuenta.SaldoPendiente - totalPagado);
-                
-                // Verificar si todas las cuotas están pagadas
-                var cuotasPendientes = await ctx.CuentasPorPagarCuotas
-                    .Where(c => c.IdCuentaPorPagar == cuenta.IdCuentaPorPagar && c.SaldoCuota > 0)
-                    .CountAsync();
-                
-                if (cuotasPendientes == 0)
-                {
-                    cuenta.Estado = "Pagada";
-                }
+                cuenta.Estado = "Pagada";
             }
         }
         

@@ -316,9 +316,9 @@
                         <i class="bi bi-list-check me-2"></i>
                         @if (!IsCollapsed){<span class="link-text">Listado de Clientes</span>}
                     </NavLink>
-                    <NavLink class="nav-link" href="/informes/cuentas-por-cobrar" title="@(IsCollapsed ? "Pendientes de Cobro" : "")" @onclick="OnAnyNavigate">
+                    <NavLink class="nav-link" href="/informes/cuentas-por-cobrar" title="@(IsCollapsed ? "Listado de Cobro a Clientes" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-cash-stack me-2"></i>
-                        @if (!IsCollapsed){<span class="link-text">Pendientes de Cobro</span>}
+                        @if (!IsCollapsed){<span class="link-text">Listado de Cobro a Clientes</span>}
                     </NavLink>
                     <NavLink class="nav-link" href="/cobros" title="@(IsCollapsed ? "Registro de Cobros" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-receipt me-2"></i>
@@ -336,9 +336,9 @@
                         <i class="bi bi-list-check me-2"></i>
                         @if (!IsCollapsed){<span class="link-text">Listado de Proveedores</span>}
                     </NavLink>
-                    <NavLink class="nav-link" href="/informes/cuentas-por-pagar" title="@(IsCollapsed ? "Pendientes de Pago" : "")" @onclick="OnAnyNavigate">
+                    <NavLink class="nav-link" href="/informes/cuentas-por-pagar" title="@(IsCollapsed ? "Listado de Pago a Proveedores" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-cash-coin me-2"></i>
-                        @if (!IsCollapsed){<span class="link-text">Pendientes de Pago</span>}
+                        @if (!IsCollapsed){<span class="link-text">Listado de Pago a Proveedores</span>}
                     </NavLink>
                     <NavLink class="nav-link" href="/pagos-proveedores/historial" title="@(IsCollapsed ? "Historial de Pagos" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-clock-history me-2"></i>

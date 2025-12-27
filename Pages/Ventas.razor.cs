@@ -1471,28 +1471,25 @@ public partial class Ventas
                         await ctx.SaveChangesAsync();
 
                         // Generar cuotas automáticamente
-                        // El plazo indica los días entre cada cuota
-                        // Cuota 1: fecha de la venta (fecha máquina)
-                        // Cuota 2: fecha + plazo días
-                        // Cuota 3: fecha + (plazo * 2) días, etc.
+                        // La primera cuota vence en la FechaVencimiento ingresada por el usuario
+                        // Las siguientes cuotas se calculan sumando plazoDias desde la primera
                         var plazoDias = cuentaCobrar.PlazoDias;
+                        var fechaPrimerVencimiento = cuentaCobrar.FechaVencimiento ?? cuentaCobrar.FechaCredito.AddDays(plazoDias);
                         
                         var montoPorCuota = Math.Round(cuentaCobrar.MontoTotal / numeroCuotasCredito, 2);
                         var acumulado = 0m;
                         for (int i = 1; i <= numeroCuotasCredito; i++)
                         {
                             var monto = (i == numeroCuotasCredito) ? (cuentaCobrar.MontoTotal - acumulado) : montoPorCuota;
-                            // Primera cuota: fecha de la venta, las siguientes cada "plazoDias" días
-                            var fechaVencimiento = (i == 1) 
-                                ? cuentaCobrar.FechaCredito 
-                                : cuentaCobrar.FechaCredito.AddDays((i - 1) * plazoDias);
+                            // Primera cuota: fecha de vencimiento ingresada, las siguientes cada "plazoDias" días desde la primera
+                            var fechaVencimientoCuota = fechaPrimerVencimiento.AddDays((i - 1) * plazoDias);
                             var cuota = new CuentaPorCobrarCuota
                             {
                                 IdCuentaPorCobrar = cuentaCobrar.IdCuentaPorCobrar,
                                 NumeroCuota = i,
                                 MontoCuota = monto,
                                 SaldoCuota = monto,
-                                FechaVencimiento = fechaVencimiento,
+                                FechaVencimiento = fechaVencimientoCuota,
                                 Estado = "PENDIENTE"
                             };
                             ctx.CuentasPorCobrarCuotas.Add(cuota);

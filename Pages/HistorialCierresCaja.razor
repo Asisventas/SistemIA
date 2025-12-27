@@ -263,7 +263,14 @@ else
     protected override async Task OnInitializedAsync()
     {
         await using var ctx = await DbFactory.CreateDbContextAsync();
-        cajas = await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).ToListAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        
+        // Cargar solo cajas de la sucursal actual
+        var cajasQuery = ctx.Cajas.AsNoTracking();
+        if (sucId.HasValue)
+            cajasQuery = cajasQuery.Where(c => c.IdSucursal == sucId.Value);
+        cajas = await cajasQuery.OrderBy(c => c.IdCaja).ToListAsync();
+        
         await Buscar();
     }
 
@@ -273,9 +280,14 @@ else
         try
         {
             await using var ctx = await DbFactory.CreateDbContextAsync();
+            var sucId = SucursalProvider.GetSucursalId();
             
             var query = ctx.CierresCaja.AsNoTracking()
                 .Where(c => c.FechaCaja >= filtroDesde && c.FechaCaja <= filtroHasta);
+
+            // Filtrar por sucursal actual
+            if (sucId.HasValue)
+                query = query.Where(c => c.IdSucursal == sucId.Value || c.IdSucursal == null);
 
             if (filtroCaja > 0)
                 query = query.Where(c => c.IdCaja == filtroCaja);

@@ -8,10 +8,31 @@
 @inject SistemIA.Services.IInventarioService Inventario
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject SistemIA.Services.ICajaProvider CajaProvider
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
 
 <PageProtection Modulo="/inventario" Permiso="VIEW">
 
 <h3 class="mb-3">Ajuste de Stock</h3>
+
+<!-- Info de Caja -->
+<div class="alert alert-info py-2 mb-3">
+  <div class="d-flex flex-wrap gap-3 align-items-center">
+    <div class="d-flex align-items-center gap-1">
+      <strong>Caja:</strong>
+      <select class="form-select form-select-sm" style="width: auto; min-width: 140px;" 
+              value="@cajaSeleccionadaId" @onchange="OnCajaChanged">
+        <option value="0">-- Sin caja --</option>
+        @foreach (var c in CajasDisponibles)
+        {
+          <option value="@c.IdCaja">@(c.Nombre ?? $"Caja #{c.IdCaja}") @(c.CajaActual == 1 ? "(Activa)" : "")</option>
+        }
+      </select>
+    </div>
+    <div><strong>Fecha:</strong> @FechaAjuste.ToString("dd/MM/yyyy")</div>
+    <div><strong>Turno:</strong> @(CajaActiva?.TurnoActual?.ToString() ?? "—")</div>
+  </div>
+</div>
 
 <div class="card shadow-sm mb-3">
   <div class="card-body">
@@ -193,15 +214,62 @@
   private bool guardando;
   private int? ajusteGeneradoId;
 
+  // Variables de caja
+  private List<SistemIA.Models.Caja> CajasDisponibles = new();
+  private SistemIA.Models.Caja? CajaActiva;
+  private int? cajaSeleccionadaId;
+  private int? _sucursalId;
+  private DateTime FechaAjuste => CajaActiva?.FechaActualCaja?.Date ?? DateTime.Today;
+
   private List<LineaVM> lineas = new();
 
   protected override async Task OnInitializedAsync()
   {
+    _sucursalId = SucursalProvider.GetSucursalId();
     await using var ctx = await DbFactory.CreateDbContextAsync();
     depositos = await ctx.Depositos.AsNoTracking().OrderBy(d=>d.IdSucursal).ThenBy(d=>d.Nombre).ToListAsync();
     productos = await ctx.Productos.AsNoTracking().Where(p => p.Activo).OrderBy(p=>p.Descripcion).ToListAsync();
     ProductosFiltrados = new List<SistemIA.Models.Producto>(); // Iniciar vacío
     selectedDepositoId = depositos?.FirstOrDefault()?.IdDeposito ?? 0;
+    
+    // Cargar cajas disponibles
+    await CargarCajasDisponiblesAsync(ctx);
+  }
+
+  private async Task CargarCajasDisponiblesAsync(SistemIA.Models.AppDbContext ctx)
+  {
+    var query = ctx.Cajas.AsNoTracking().AsQueryable();
+    if (_sucursalId.HasValue)
+    {
+      query = query.Where(c => c.IdSucursal == _sucursalId.Value || c.IdSucursal == null);
+    }
+    CajasDisponibles = await query.OrderBy(c => c.IdCaja).ToListAsync();
+    
+    // Seleccionar caja activa por defecto
+    var cajaId = CajaProvider.GetCajaId();
+    if (cajaId.HasValue)
+    {
+      CajaActiva = CajasDisponibles.FirstOrDefault(c => c.IdCaja == cajaId.Value);
+    }
+    if (CajaActiva == null)
+    {
+      CajaActiva = CajasDisponibles.FirstOrDefault(c => c.CajaActual == 1) ?? CajasDisponibles.FirstOrDefault();
+    }
+    cajaSeleccionadaId = CajaActiva?.IdCaja;
+  }
+
+  private void OnCajaChanged(ChangeEventArgs e)
+  {
+    if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+    {
+      cajaSeleccionadaId = id;
+      CajaActiva = CajasDisponibles.FirstOrDefault(c => c.IdCaja == id);
+    }
+    else
+    {
+      cajaSeleccionadaId = null;
+      CajaActiva = null;
+    }
   }
 
   private async Task CargarContextoProducto()
@@ -339,7 +407,7 @@
       var usuario = auth.User?.Identity?.Name ?? auth.User?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Sistema";
 
       var inputs = lineas.Select(l => new SistemIA.Services.LineaAjusteInput(l.IdProducto, l.StockSistema, l.StockAjuste, l.CostoUnitarioGs)).ToList();
-      var nuevoId = await Ajustes.CrearAjusteAsync(dep.IdSucursal, null, null, usuario, comentario, selectedDepositoId, inputs);
+      var nuevoId = await Ajustes.CrearAjusteAsync(dep.IdSucursal, cajaSeleccionadaId, CajaActiva?.TurnoActual, usuario, comentario, selectedDepositoId, inputs, FechaAjuste);
       ajusteGeneradoId = nuevoId;
       okMsg = $"Ajuste #{nuevoId} guardado";
     }

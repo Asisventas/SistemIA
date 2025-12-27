@@ -17,6 +17,11 @@ namespace SistemIA.Models
 
         public int IdCaja { get; set; }
         public Caja? Caja { get; set; }
+        
+        /// <summary>
+        /// Sucursal donde se realizó el cierre
+        /// </summary>
+        public int? IdSucursal { get; set; }
 
         public DateTime FechaCierre { get; set; } = DateTime.Now;
         

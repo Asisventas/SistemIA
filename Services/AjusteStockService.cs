@@ -6,7 +6,7 @@ namespace SistemIA.Services
     public interface IAjusteStockService
     {
         Task<int> CrearAjusteAsync(int idSucursal, int? idCaja, int? turno, string usuario, string? comentario,
-            int idDeposito, IEnumerable<LineaAjusteInput> lineas);
+            int idDeposito, IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null);
     }
 
     public record LineaAjusteInput(int IdProducto, decimal StockSistema, decimal StockAjuste, decimal PrecioCostoGs);
@@ -25,7 +25,7 @@ namespace SistemIA.Services
         }
 
         public async Task<int> CrearAjusteAsync(int idSucursal, int? idCaja, int? turno, string usuario, string? comentario,
-            int idDeposito, IEnumerable<LineaAjusteInput> lineas)
+            int idDeposito, IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null)
         {
             await using var ctx = await _dbFactory.CreateDbContextAsync();
             using var trx = await ctx.Database.BeginTransactionAsync();
@@ -33,13 +33,14 @@ namespace SistemIA.Services
             // Normalizar y truncar según restricciones de la BD
             var usr = string.IsNullOrWhiteSpace(usuario) ? "Sistema" : (usuario.Length > 50 ? usuario.Substring(0, 50) : usuario);
             var comm = string.IsNullOrWhiteSpace(comentario) ? null : (comentario!.Length > 280 ? comentario.Substring(0, 280) : comentario);
+            var fecha = fechaAjuste ?? DateTime.Now;
 
             var cab = new AjusteStock
             {
                 IdSucursal = idSucursal,
                 IdCaja = idCaja,
                 Turno = turno,
-                FechaAjuste = DateTime.Now,
+                FechaAjuste = fecha,
                 Usuario = usr,
                 Comentario = comm,
                 UsuarioCreacion = usr

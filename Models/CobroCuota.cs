@@ -50,6 +50,10 @@ namespace SistemIA.Models
         public int? IdCaja { get; set; }
         public Caja? Caja { get; set; }
         
+        // Sucursal donde se realizó el cobro
+        public int? IdSucursal { get; set; }
+        public Sucursal? Sucursal { get; set; }
+        
         // Turno de caja al momento del cobro
         public int? Turno { get; set; }
 

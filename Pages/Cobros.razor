@@ -237,6 +237,13 @@
                             <hr />
                             <h6 class="mb-3">Caja y Medios de Pago</h6>
                         </div>
+                        <!-- Fecha del Cobro -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-calendar-event me-1"></i>Fecha del Cobro
+                            </label>
+                            <input type="date" class="form-control" @bind="fechaCobro" />
+                        </div>
                         <!-- Selector de Caja -->
                         <div class="col-md-6">
                             <label class="form-label fw-bold">
@@ -254,7 +261,21 @@
                                 <small class="text-warning"><i class="bi bi-exclamation-triangle"></i> Este cobro no afectará el resumen de caja</small>
                             }
                         </div>
-                        <div class="col-md-6"></div>
+                        <!-- Selector de Turno -->
+                        @if (afectaCaja && CajaActiva?.CantTurnos > 0)
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-clock-history me-1"></i>Turno
+                                </label>
+                                <select class="form-select" @bind="turnoSeleccionado">
+                                    @for (int t = 1; t <= (CajaActiva?.CantTurnos ?? 1); t++)
+                                    {
+                                        <option value="@t">Turno @t @(t == CajaActiva?.TurnoActual ? "(Actual)" : "")</option>
+                                    }
+                                </select>
+                            </div>
+                        }
                         @for (int i = 0; i < detallesCobro.Count; i++)
                         {
                             var detalle = detallesCobro[i];
@@ -410,6 +431,8 @@
     private List<SistemIA.Models.Caja> CajasDisponibles = new();
     private int? cajaSeleccionadaId;
     private bool afectaCaja = true; // Por defecto afecta la caja
+    private DateTime fechaCobro = DateTime.Now; // Fecha editable del cobro
+    private int? turnoSeleccionado; // Turno editable
 
     protected override async Task OnInitializedAsync()
     {
@@ -432,6 +455,15 @@
                       ?? CajasDisponibles.FirstOrDefault();
         }
         cajaSeleccionadaId = CajaActiva?.IdCaja;
+        
+        // Inicializar fecha con la fecha de caja activa
+        if (CajaActiva?.FechaActualCaja.HasValue == true)
+        {
+            fechaCobro = CajaActiva.FechaActualCaja.Value;
+        }
+        
+        // Inicializar turno con el turno actual de la caja
+        turnoSeleccionado = CajaActiva?.TurnoActual ?? 1;
         
         await CargarMonedasAsync();
         await Buscar();
@@ -458,12 +490,21 @@
             cajaSeleccionadaId = id;
             CajaActiva = CajasDisponibles.FirstOrDefault(c => c.IdCaja == id);
             afectaCaja = true;
+            // Actualizar fecha al cambiar caja
+            if (CajaActiva?.FechaActualCaja.HasValue == true)
+            {
+                fechaCobro = CajaActiva.FechaActualCaja.Value;
+            }
+            // Actualizar turno al cambiar caja
+            turnoSeleccionado = CajaActiva?.TurnoActual ?? 1;
         }
         else
         {
             cajaSeleccionadaId = null;
             CajaActiva = null;
             afectaCaja = false;
+            fechaCobro = DateTime.Now;
+            turnoSeleccionado = null;
         }
     }
     
@@ -696,12 +737,7 @@
             var username = auth.User?.Identity?.Name;
             var usuario = await ctx.Usuarios.FirstOrDefaultAsync(u => u.UsuarioNombre == username);
 
-            // Determinar fecha de cobro (usar fecha de caja si está bloqueada y afecta caja)
-            var fechaCobro = (afectaCaja && CajaActiva?.bloquear_fechaCaja == true && CajaActiva?.FechaActualCaja.HasValue == true)
-                            ? CajaActiva.FechaActualCaja.Value
-                            : DateTime.Now;
-
-            // Crear el cobro
+            // Crear el cobro (usar la fecha editada por el usuario)
             var cobro = new CobroCuota
             {
                 IdCuentaPorCobrar = cuentaSeleccionada.IdCuentaPorCobrar,
@@ -712,7 +748,8 @@
                 Observaciones = observacionesCobro,
                 IdUsuario = usuario?.Id_Usu,
                 IdCaja = afectaCaja ? cajaSeleccionadaId : null, // Solo asignar caja si afecta el resumen
-                Turno = afectaCaja ? CajaActiva?.TurnoActual : null,
+                IdSucursal = _sucursalId, // Sucursal donde se realiza el cobro
+                Turno = afectaCaja ? turnoSeleccionado : null, // Usar turno seleccionado por el usuario
                 NumeroRecibo = await GenerarNumeroRecibo(ctx),
                 IdMoneda = cuentaSeleccionada.IdMoneda,
                 CambioDelDia = tipoCambioCobro,
@@ -777,8 +814,15 @@
 
             await ctx.SaveChangesAsync();
 
-            // Abrir recibo de cobro
-            await JS.InvokeVoidAsync("open", $"/cobros/recibo/{cobro.IdCobro}", "_blank");
+            // Preguntar formato de impresión
+            var imprimirA4 = await JS.InvokeAsync<bool>("confirm", 
+                $"✅ Cobro registrado exitosamente.\nRecibo: {cobro.NumeroRecibo}\nMonto cobrado: {FormatearPrecio(totalCobro, cuentaSeleccionada.IdMoneda)}\n\n¿Desea imprimir en formato A4?\n\n• Aceptar = Comprobante A4\n• Cancelar = Recibo térmico");
+            
+            // Imprimir según elección
+            var url = imprimirA4 
+                ? $"/cobros/recibo/a4/{cobro.IdCobro}"
+                : $"/cobros/recibo/{cobro.IdCobro}";
+            await JS.InvokeVoidAsync("open", url, "_blank");
 
             CerrarModalCobro();
             await Buscar();

@@ -636,6 +636,9 @@ namespace SistemIA.Migrations
                     b.Property<int>("IdCaja")
                         .HasColumnType("int");
 
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
                     b.Property<string>("Observaciones")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -978,6 +981,9 @@ namespace SistemIA.Migrations
                     b.Property<int?>("IdMoneda")
                         .HasColumnType("int");
 
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
                     b.Property<int?>("IdUsuario")
                         .HasColumnType("int");
 
@@ -1005,6 +1011,8 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdCliente");
 
                     b.HasIndex("IdCuentaPorCobrar");
+
+                    b.HasIndex("IdSucursal");
 
                     b.HasIndex("IdUsuario");
 
@@ -1442,6 +1450,9 @@ namespace SistemIA.Migrations
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal>("PrecioUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("PrecioVentaRef")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<string>("UsuarioCreacion")
@@ -2688,7 +2699,7 @@ namespace SistemIA.Migrations
                     b.ToTable("ProductosDepositos", (string)null);
                 });
 
-            modelBuilder.Entity("SistemIA.Models.Proveedor", b =>
+            modelBuilder.Entity("SistemIA.Models.ProveedorLegacy", b =>
                 {
                     b.Property<int>("Id_Proveedor")
                         .ValueGeneratedOnAdd()
@@ -4518,6 +4529,11 @@ namespace SistemIA.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SistemIA.Models.Usuario", "Usuario")
                         .WithMany()
                         .HasForeignKey("IdUsuario")
@@ -4534,6 +4550,8 @@ namespace SistemIA.Migrations
                     b.Navigation("CuentaPorCobrar");
 
                     b.Navigation("Moneda");
+
+                    b.Navigation("Sucursal");
 
                     b.Navigation("Usuario");
                 });
@@ -4751,7 +4769,7 @@ namespace SistemIA.Migrations
                         .HasForeignKey("IdMoneda")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("SistemIA.Models.Proveedor", "Proveedor")
+                    b.HasOne("SistemIA.Models.ProveedorSifenMejorado", "Proveedor")
                         .WithMany()
                         .HasForeignKey("IdProveedor")
                         .OnDelete(DeleteBehavior.Restrict)

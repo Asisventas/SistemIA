@@ -20,7 +20,8 @@ namespace SistemIA.Models
 
         public DbSet<Usuario> Usuarios { get; set; }
         public DbSet<Rol> Roles { get; set; }
-        public DbSet<Proveedor> Proveedores { get; set; }
+        [Obsolete("Use ProveedoresSifen en su lugar")]
+        public DbSet<ProveedorLegacy> Proveedores { get; set; }
         public DbSet<ProveedorSifenMejorado> ProveedoresSifen { get; set; }
         public DbSet<Marca> Marcas { get; set; }
         public DbSet<Asistencia> Asistencias { get; set; }
@@ -338,8 +339,9 @@ namespace SistemIA.Models
 
             // ...
 
-            // --- Configuración de Proveedor (tabla existente con columnas limitadas) ---
-            modelBuilder.Entity<Proveedor>(entity =>
+            // --- Configuración de ProveedorLegacy (tabla existente con columnas limitadas) ---
+            // OBSOLETO: Mantenido por compatibilidad con datos históricos
+            modelBuilder.Entity<ProveedorLegacy>(entity =>
             {
                 entity.ToTable("Proveedores");
                 entity.HasKey(p => p.Id_Proveedor);
@@ -1135,6 +1137,11 @@ namespace SistemIA.Models
                 .WithMany()
                 .HasForeignKey(cc => cc.IdUsuario)
                 .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.HasOne(cc => cc.Sucursal)
+                .WithMany()
+                .HasForeignKey(cc => cc.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // CobroDetalle (detalle de medios de pago)
@@ -1177,9 +1184,11 @@ namespace SistemIA.Models
                 .HasForeignKey(cpp => cpp.IdCompra)
                 .OnDelete(DeleteBehavior.Restrict);
             
+            // FK a ProveedorSifenMejorado (tabla ProveedoresSifen)
             entity.HasOne(cpp => cpp.Proveedor)
                 .WithMany()
                 .HasForeignKey(cpp => cpp.IdProveedor)
+                .HasPrincipalKey(p => p.IdProveedor)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(cpp => cpp.Moneda)

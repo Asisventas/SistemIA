@@ -39,7 +39,14 @@
 {
     <div class="alert alert-info d-flex align-items-center justify-content-between mb-3">
         <span><i class="bi bi-eye"></i> <strong>Modo Visualización</strong> - Las compras confirmadas no pueden ser editadas.</span>
-        <a href="/compras" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle"></i> Nueva Compra</a>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RefrescarPaginaAsync" title="Refrescar">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" @onclick="NuevaCompraAsync">
+                <i class="bi bi-plus-circle"></i> Nueva Compra
+            </button>
+        </div>
     </div>
 }
 
@@ -52,7 +59,17 @@
     <div class="col-md-6">
         <div class="alert alert-info py-2">
                 <div class="d-flex flex-wrap gap-3 align-items-center">
-            <div><strong>Caja:</strong> @(CajaActiva?.IdCaja.ToString() ?? "—")</div>
+            <div class="d-flex align-items-center gap-1">
+                <strong>Caja:</strong>
+                <select class="form-select form-select-sm" style="width: auto; min-width: 120px;" 
+                        @bind="Compra.IdCaja" @bind:after="OnCajaChanged">
+                    <option value="">-- Seleccionar --</option>
+                    @foreach (var c in Cajas)
+                    {
+                        <option value="@c.IdCaja">@c.Nombre (#@c.IdCaja)</option>
+                    }
+                </select>
+            </div>
             <div><strong>Fecha Caja:</strong> @(FechaCajaActual?.ToString("dd/MM/yyyy") ?? "—")</div>
             <div><strong>Turno actual:</strong> @(TurnoActual?.ToString() ?? "—")</div>
                 </div>
@@ -144,9 +161,12 @@
         <div class="col-md-3">
             <label class="form-label d-flex align-items-center justify-content-between">
                 <span>Tipo Doc.</span>
-                <a href="/configuracion/tipos-documento" class="btn btn-sm btn-outline-secondary" title="Configurar tipos" target="_blank">
-                    <i class="bi bi-gear"></i>
-                </a>
+                @if (!ModoSoloVista)
+                {
+                    <a href="/configuracion/tipos-documento" class="btn btn-sm btn-outline-secondary" title="Configurar tipos" target="_blank">
+                        <i class="bi bi-gear"></i>
+                    </a>
+                }
             </label>
             <InputSelect class="form-select" @bind-Value="Compra.IdTipoDocumentoOperacion" TValue="int?" @onchange="OnTipoDocumentoChanged">
                 <option value="">-- Seleccione --</option>
@@ -370,9 +390,9 @@
                         <span class="text-muted small">-</span>
                     }
                 </td>
-                <td class="text-end">@d.Cantidad</td>
-                <td class="text-end">@FormatearPrecio(d.PrecioUnitario)</td>
-                <td class="text-end">@FormatearPrecio(d.Importe)</td>
+                <td class="text-end"><strong>@d.Cantidad</strong></td>
+                <td class="text-end text-primary fw-semibold">@FormatearPrecio(d.PrecioUnitario)</td>
+                <td class="text-end text-success fw-bold">@FormatearPrecio(d.Importe)</td>
                 <td class="text-end">
                     @if (d.FactorMultiplicador.HasValue && d.FactorMultiplicador.Value > 0)
                     {
@@ -394,7 +414,7 @@
                         <span class="text-muted">—</span>
                     }
                 </td>
-                <td class="text-end">@FormatearPrecio(d.PrecioVentaRef)</td>
+                <td class="text-end text-info fw-semibold">@FormatearPrecio(d.PrecioVentaRef)</td>
                 @{ var codOriTc = Monedas.FirstOrDefault(m => m.IdMoneda == (prod?.IdMonedaPrecio ?? Compra.IdMoneda))?.CodigoISO ?? string.Empty;
                     var codDesTc = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda)?.CodigoISO ?? string.Empty;
                     var txTxt = d.CambioDelDia.HasValue ? ($"{GetCurrencyFlag(codOriTc)} {codOriTc}/{codDesTc} {GetCurrencyFlag(codDesTc)} {d.CambioDelDia.Value.ToString("N4")}") : "—"; }
@@ -460,13 +480,6 @@
         <div class="mt-3 d-flex gap-2">
             <button class="btn btn-success" type="submit">Guardar</button>
             <button class="btn btn-secondary" type="button" @onclick="Limpiar">Limpiar</button>
-        </div>
-    }
-    else
-    {
-        <div class="mt-3 d-flex gap-2">
-            <button type="button" class="btn btn-primary" @onclick="IrANuevaCompra"><i class="bi bi-plus-circle"></i> Nueva Compra</button>
-            <button type="button" class="btn btn-secondary" @onclick="IrAlExplorador"><i class="bi bi-arrow-left"></i> Volver al Explorador</button>
         </div>
     }
 
@@ -565,13 +578,17 @@
     private List<SistemIA.Models.CompraDetalle> Detalles = new();
     private SistemIA.Models.CompraDetalle NuevoDetalle = new() { Cantidad = 1, PrecioUnitario = 0 };
 
+    // Obtener la fecha de caja o fecha de hoy como fallback
+    private DateTime FechaParaNuevaCompra => CajaActiva?.FechaActualCaja?.Date ?? DateTime.Today;
+
     private List<SistemIA.Models.Producto> Productos = new();
     // Item ligero para sugerencias de proveedores (usa tabla legada Proveedores)
     private class ProvSifenItem { public int IdProveedor { get; set; } public string RazonSocial { get; set; } = string.Empty; public string RUC { get; set; } = string.Empty; public int DV { get; set; } }
     private List<ProvSifenItem> Proveedores = new();
     private List<ProvSifenItem> ProveedoresFiltrados = new();
     private List<SistemIA.Models.Deposito> Depositos = new();
-    // Cajas no se usa en Compras; los campos se editan libremente y Cajas será usada en Ventas
+    // Lista de cajas disponibles para seleccionar
+    private List<SistemIA.Models.Caja> Cajas = new();
     private List<SistemIA.Models.Moneda> Monedas = new();
     private List<SistemIA.Models.TipoPago> TiposPago = new();
     private List<SistemIA.Models.TipoDocumentoOperacion> TiposDocumento = new();
@@ -755,11 +772,18 @@
     // Campos de fiscalización quedan libres en Compras
 
     // Cargar caja activa (si existe). Por simplicidad tomamos la primera; a futuro, seleccionar por sucursal/usuario.
-    CajaActiva = await ctx.Cajas.AsNoTracking().Where(c => c.CajaActual == 1).FirstOrDefaultAsync()
-                 ?? await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).FirstOrDefaultAsync();
-    if (CajaActiva?.bloquear_fechaCaja == true && CajaActiva.FechaActualCaja.HasValue)
+    Cajas = await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).ToListAsync();
+    CajaActiva = Cajas.FirstOrDefault(c => c.CajaActual == 1) ?? Cajas.FirstOrDefault();
+    
+    // Asignar IdCaja a la compra
+    if (CajaActiva != null)
     {
-        // Si la caja bloquea la fecha, forzar la fecha de la compra a la fecha de caja
+        Compra.IdCaja = CajaActiva.IdCaja;
+    }
+    
+    // Siempre usar la fecha de caja como fecha predeterminada para nuevas compras
+    if (CajaActiva?.FechaActualCaja.HasValue == true)
+    {
         Compra.Fecha = CajaActiva.FechaActualCaja.Value.Date;
     }
 
@@ -841,7 +865,10 @@
                 IdDepositoItem = d.IdDepositoItem,
                 FechaVencimientoItem = d.FechaVencimientoItem,
                 FactorMultiplicador = d.FactorMultiplicador,
-                PorcentajeMargen = d.PorcentajeMargen
+                PorcentajeMargen = d.PorcentajeMargen,
+                PrecioVentaRef = d.PrecioVentaRef,
+                // Asociar el producto para mostrar descripción en grilla
+                Producto = Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto)
             }).ToList();
 
             // Mostrar proveedor en el buscador
@@ -866,6 +893,41 @@
                     VencimientoTimbradoProveedorSel = provSifen?.VencimientoTimbrado;
                 }
                 catch { }
+            }
+
+            // Verificar si es crédito y cargar datos de CuentaPorPagar
+            var tipoPagoSel = TiposPago.FirstOrDefault(t => t.IdTipoPago == Compra.IdTipoPago);
+            MostrarCamposCredito = tipoPagoSel?.EsCredito == true;
+            
+            if (MostrarCamposCredito)
+            {
+                // Buscar la cuenta por pagar asociada para obtener número de cuotas, plazo y fecha vencimiento
+                var cuentaPorPagar = await ctx.CuentasPorPagar
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.IdCompra == id);
+                
+                if (cuentaPorPagar != null)
+                {
+                    NumeroCuotasCompra = cuentaPorPagar.NumeroCuotas > 0 ? cuentaPorPagar.NumeroCuotas : 1;
+                    Compra.PlazoDias = cuentaPorPagar.PlazoDias > 0 ? cuentaPorPagar.PlazoDias : Compra.PlazoDias;
+                    // Cargar la fecha de vencimiento guardada en la cuenta por pagar (puede ser diferente a la calculada)
+                    if (cuentaPorPagar.FechaVencimiento != default)
+                    {
+                        Compra.FechaVencimiento = cuentaPorPagar.FechaVencimiento;
+                    }
+                }
+                else
+                {
+                    // Si no hay cuenta pero es crédito, usar valores por defecto
+                    NumeroCuotasCompra = 1;
+                    if (!Compra.PlazoDias.HasValue || Compra.PlazoDias <= 0)
+                        Compra.PlazoDias = 30;
+                }
+            }
+            else
+            {
+                NumeroCuotasCompra = 1;
+                Compra.PlazoDias = null;
             }
 
             // Recalcular totales en UI
@@ -894,6 +956,16 @@
         catch (Exception ex)
         {
             Error = $"Error al cargar compra #{id}: {ex.Message}";
+        }
+    }
+
+    private void OnCajaChanged()
+    {
+        // Actualizar la caja activa y la fecha cuando se cambia el selector
+        CajaActiva = Cajas.FirstOrDefault(c => c.IdCaja == Compra.IdCaja);
+        if (CajaActiva?.FechaActualCaja.HasValue == true)
+        {
+            Compra.Fecha = CajaActiva.FechaActualCaja.Value.Date;
         }
     }
 
@@ -1187,6 +1259,13 @@ END
     try
         {
             var precioVentaBase = prod.PrecioUnitarioGs;
+            
+            // Si el producto no tiene precio de venta pero tiene factor, calcularlo
+            if (precioVentaBase == 0 && prod.FactorMultiplicador.HasValue && prod.FactorMultiplicador.Value > 0)
+            {
+                precioVentaBase = Math.Round(det.PrecioUnitario * prod.FactorMultiplicador.Value, 0);
+            }
+            
             var idMonCompra = Compra.IdMoneda;
             var idMonProd = prod.IdMonedaPrecio;
             decimal precioVentaConv = precioVentaBase;
@@ -1197,7 +1276,7 @@ END
             }
             det.PrecioVentaRef = precioVentaConv;
         }
-        catch { det.PrecioVentaRef = prod.PrecioUnitarioGs; }
+        catch { det.PrecioVentaRef = prod.PrecioUnitarioGs > 0 ? prod.PrecioUnitarioGs : Math.Round(det.PrecioUnitario * (prod.FactorMultiplicador ?? 1.3m), 0); }
         // Total línea con IVA incluido
         det.Importe = Math.Round(det.Cantidad * det.PrecioUnitario, 4);
 
@@ -1229,6 +1308,9 @@ END
         det.FactorMultiplicador = FactorMultiplicador.Value;
         det.PorcentajeMargen = PorcentajeMargen;
         _factoresPorProducto[prod.IdProducto] = FactorMultiplicador.Value;
+        
+        // Actualizar el precio de venta de referencia con el nuevo factor
+        det.PrecioVentaRef = Math.Round(det.PrecioUnitario * FactorMultiplicador.Value, 0);
     }
     
     // Resetear el editor de línea
@@ -1576,7 +1658,11 @@ END
             {
                 var dias = Compra.PlazoDias ?? 30; // suponer 30 si no se cargó
                 Compra.PlazoDias = dias;
-                Compra.FechaVencimiento = Compra.Fecha.Date.AddDays(dias);
+                // Solo calcular FechaVencimiento si el usuario no la ingresó manualmente
+                if (!Compra.FechaVencimiento.HasValue)
+                {
+                    Compra.FechaVencimiento = Compra.Fecha.Date.AddDays(dias);
+                }
             }
 
             // Código de documento: mapear al Id del catálogo si está presente
@@ -1735,26 +1821,23 @@ END
                 await ctx.SaveChangesAsync();
 
                 // Generar cuotas automáticamente
-                // El plazo indica los días entre cada cuota
-                // Cuota 1: fecha de la compra (fecha máquina)
-                // Cuota 2: fecha + plazo días
-                // Cuota 3: fecha + (plazo * 2) días, etc.
+                // La primera cuota vence en la FechaVencimiento ingresada por el usuario
+                // Las siguientes cuotas se calculan sumando plazoDias desde la primera
                 var montoPorCuota = Math.Round(cuentaPorPagar.MontoTotal / numeroCuotasCredito, 2);
                 var acumulado = 0m;
+                var fechaPrimerVencimiento = cuentaPorPagar.FechaVencimiento ?? cuentaPorPagar.FechaCredito.AddDays(plazoDias);
                 for (int i = 1; i <= numeroCuotasCredito; i++)
                 {
                     var monto = (i == numeroCuotasCredito) ? (cuentaPorPagar.MontoTotal - acumulado) : montoPorCuota;
-                    // Primera cuota: fecha de la compra, las siguientes cada "plazoDias" días
-                    var fechaVencimiento = (i == 1) 
-                        ? cuentaPorPagar.FechaCredito 
-                        : cuentaPorPagar.FechaCredito.AddDays((i - 1) * plazoDias);
+                    // Primera cuota: fecha de vencimiento ingresada, las siguientes cada "plazoDias" días desde la primera
+                    var fechaVencimientoCuota = fechaPrimerVencimiento.AddDays((i - 1) * plazoDias);
                     var cuota = new SistemIA.Models.CuentaPorPagarCuota
                     {
                         IdCuentaPorPagar = cuentaPorPagar.IdCuentaPorPagar,
                         NumeroCuota = i,
                         MontoCuota = monto,
                         SaldoCuota = monto, // Inicialmente el saldo es igual al monto
-                        FechaVencimiento = fechaVencimiento,
+                        FechaVencimiento = fechaVencimientoCuota,
                         Estado = "Pendiente"
                     };
                     ctx.CuentasPorPagarCuotas.Add(cuota);
@@ -1816,10 +1899,18 @@ END
             // Preparar nueva compra manteniendo la misma caja y numeración estirada
             var idDepPrev = Compra.IdDeposito;
             var idSucPrev = Compra.IdSucursal;
+            var idCajaPrev = Compra.IdCaja;
             var idMonPyg = Monedas.FirstOrDefault(m => m.CodigoISO == "PYG")?.IdMoneda;
-            Compra = new SistemIA.Models.Compra { Fecha = DateTime.Today, TipoDocumento = "FACTURA", TipoIngreso = "COMPRA", MedioPago = "EFECTIVO", IdSucursal = idSucPrev, IdDeposito = idDepPrev, IdMoneda = idMonPyg };
+            Compra = new SistemIA.Models.Compra { Fecha = FechaParaNuevaCompra, TipoDocumento = "FACTURA", TipoIngreso = "COMPRA", MedioPago = "EFECTIVO", IdSucursal = idSucPrev, IdDeposito = idDepPrev, IdCaja = idCajaPrev, IdMoneda = idMonPyg };
             VencimientoTimbradoProveedorSel = null;
             SeleccionarPagoContadoPorDefecto();
+            
+            // Resetear campos de crédito
+            MostrarCamposCredito = false;
+            NumeroCuotasCompra = 1;
+            
+            // Limpiar factores guardados
+            _factoresPorProducto.Clear();
             
             // Predeterminar tipo de documento FACTURA
             var factura = TiposDocumento.FirstOrDefault(t => t.Nombre == "FACTURA");
@@ -2175,17 +2266,19 @@ END
     {
         var idDepPrev = Compra.IdDeposito;
         var idSucPrev = Compra.IdSucursal;
+        var idCajaPrev = Compra.IdCaja;
         var idMonPyg = Monedas.FirstOrDefault(m => m.CodigoISO == "PYG")?.IdMoneda;
         
         // Crear nueva instancia de Compra (evita conflictos con IdCompra ya asignado)
         Compra = new SistemIA.Models.Compra 
         { 
-            Fecha = DateTime.Today, 
+            Fecha = FechaParaNuevaCompra, 
             TipoDocumento = "FACTURA", 
             TipoIngreso = "COMPRA", 
             MedioPago = "EFECTIVO", 
             IdSucursal = idSucPrev, 
             IdDeposito = idDepPrev, 
+            IdCaja = idCajaPrev,
             IdMoneda = idMonPyg 
         };
         
@@ -2254,6 +2347,26 @@ END
         Nav.NavigateTo("/compras", forceLoad: true);
     }
 
+    private async Task NuevaCompraAsync()
+    {
+        Nav.NavigateTo("/compras", forceLoad: true);
+        await Task.CompletedTask;
+    }
+
+    private async Task RefrescarPaginaAsync()
+    {
+        // Recargar la página actual con el mismo ID de compra si existe
+        if (Compra.IdCompra > 0)
+        {
+            await CargarCompraPorIdAsync(Compra.IdCompra);
+            StateHasChanged();
+        }
+        else
+        {
+            Nav.NavigateTo("/compras", forceLoad: true);
+        }
+    }
+
     private void IrAlExplorador()
     {
         Nav.NavigateTo("/compras/explorar", forceLoad: true);
@@ -2276,7 +2389,11 @@ END
                 Compra.PlazoDias = 30;
             if (NumeroCuotasCompra <= 0)
                 NumeroCuotasCompra = 1;
-            Compra.FechaVencimiento = Compra.Fecha.Date.AddDays(Compra.PlazoDias ?? 30);
+            // Solo calcular FechaVencimiento si no tiene valor (primera vez que selecciona crédito)
+            if (!Compra.FechaVencimiento.HasValue)
+            {
+                Compra.FechaVencimiento = Compra.Fecha.Date.AddDays(Compra.PlazoDias ?? 30);
+            }
         }
         
         // Si es CONTADO, poner EFECTIVO por defecto

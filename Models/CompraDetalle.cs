@@ -22,8 +22,8 @@ namespace SistemIA.Models
         [Column(TypeName = "decimal(18,4)")] public decimal Grabado10 { get; set; }
         [Column(TypeName = "decimal(18,4)")] public decimal Grabado5 { get; set; }
 
-    // Precio de venta de referencia convertido a la moneda de la compra (solo para visualización)
-    [NotMapped]
+    // Precio de venta de referencia al momento de la compra
+    [Column(TypeName = "decimal(18,4)")]
     public decimal PrecioVentaRef { get; set; }
 
     // Factor de cambio usado (cotización aplicada) origen→destino en el momento de la compra

@@ -424,9 +424,12 @@ else
         _totalIva5 = _detalles.Sum(x => x.IVA5);
         _totalExentas = _detalles.Sum(x => x.Exenta);
         
-        // Liquidación IVA (base imponible)
-        _liquidacionIva10 = _detalles.Sum(x => x.Grabado10) / 11m * 10m; // IVA 10% = Base / 11 * 10
-        _liquidacionIva5 = _detalles.Sum(x => x.Grabado5) / 21m * 20m;   // IVA 5% = Base / 21 * 20
+        // Liquidación IVA: Total (con IVA incluido) / divisor
+        // IVA 10%: Total / 11   |   IVA 5%: Total / 21
+        var totalGravado10 = _detalles.Sum(x => x.Grabado10 + x.IVA10); // Total de productos con 10%
+        var totalGravado5 = _detalles.Sum(x => x.Grabado5 + x.IVA5);     // Total de productos con 5%
+        _liquidacionIva10 = Math.Round(totalGravado10 / 11m, 0);
+        _liquidacionIva5 = Math.Round(totalGravado5 / 21m, 0);
     }
 
     private string FormatearImporte(decimal v) => _venta?.EsMonedaExtranjera == true ? v.ToString("N2") : v.ToString("N0");

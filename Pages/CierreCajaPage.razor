@@ -301,11 +301,12 @@ else
         
         var fechaCaja = caja!.FechaActualCaja ?? DateTime.Today;
         var turnoActual = caja.TurnoActual ?? 1;
+        var idCaja = caja.IdCaja;
 
-        // Buscar ventas del día (simplificado - en producción filtrar por turno si se guarda)
+        // Buscar ventas del día para ESTA CAJA y ESTE TURNO específico
         var ventas = await ctx.Ventas
             .AsNoTracking()
-            .Where(v => v.Fecha.Date == fechaCaja.Date)
+            .Where(v => v.Fecha.Date == fechaCaja.Date && v.IdCaja == idCaja && v.Turno == turnoActual)
             .ToListAsync();
 
         // Ventas contado (no anuladas)
@@ -331,10 +332,10 @@ else
         resumen.CantAnulaciones = anuladas.Count;
         resumen.TotalAnulaciones = anuladas.Sum(v => v.Total);
 
-        // Cobros de crédito del día
+        // Cobros de crédito del día para ESTA CAJA y ESTE TURNO
         var cobros = await ctx.CobrosCuotas
             .AsNoTracking()
-            .Where(c => c.FechaCobro.Date == fechaCaja.Date)
+            .Where(c => c.FechaCobro.Date == fechaCaja.Date && c.IdCaja == idCaja && c.Turno == turnoActual)
             .ToListAsync();
         
         resumen.CantCobros = cobros.Count;
@@ -350,7 +351,13 @@ else
 
         var detalles = composiciones.SelectMany(c => c.Detalles ?? Enumerable.Empty<ComposicionCajaDetalle>()).ToList();
         
-        resumen.TotalEfectivo = detalles.Where(d => d.Medio == MedioPago.Efectivo).Sum(d => d.MontoGs);
+        // Calcular vuelto total entregado
+        var vueltoTotal = composiciones.Sum(c => c.Vuelto);
+        
+        // Efectivo recibido menos el vuelto entregado
+        var efectivoRecibido = detalles.Where(d => d.Medio == MedioPago.Efectivo).Sum(d => d.MontoGs);
+        resumen.TotalEfectivo = efectivoRecibido - vueltoTotal;
+        
         resumen.TotalTarjetas = detalles.Where(d => d.Medio == MedioPago.Tarjeta).Sum(d => d.MontoGs);
         resumen.TotalCheques = detalles.Where(d => d.Medio == MedioPago.Cheque || d.Medio == MedioPago.ChequeDia || d.Medio == MedioPago.ChequeDiferido).Sum(d => d.MontoGs);
         resumen.TotalTransferencias = detalles.Where(d => d.Medio == MedioPago.Transferencia).Sum(d => d.MontoGs);
@@ -478,6 +485,23 @@ else
     {
         if (caja == null) return;
 
+        // Verificar que no exista un cierre para este turno/fecha/caja
+        await using var ctxCheck = await DbFactory.CreateDbContextAsync();
+        var cierreExistente = await ctxCheck.CierresCaja.AsNoTracking()
+            .AnyAsync(c => c.IdCaja == caja.IdCaja 
+                        && c.FechaCaja == (caja.FechaActualCaja ?? DateTime.Today)
+                        && c.Turno == (caja.TurnoActual ?? 1));
+        
+        if (cierreExistente)
+        {
+            error = $"Ya existe un cierre para la Caja #{caja.IdCaja}, Fecha {caja.FechaActualCaja:dd/MM/yyyy}, Turno {caja.TurnoActual}. " +
+                    "Recargue la página para ver el estado actualizado.";
+            // Recargar datos para mostrar el estado correcto
+            CajaService.LimpiarCache();
+            await CargarDatos();
+            return;
+        }
+
         // Confirmar cierre
         var confirmMsg = diferenciaTotal != 0 
             ? $"Hay una diferencia de {diferenciaTotal:N0} ₲ en el cierre.\n¿Está seguro de cerrar el turno?"
@@ -492,14 +516,16 @@ else
         {
             await using var ctx = await DbFactory.CreateDbContextAsync();
 
-            // Obtener usuario actual
+            // Obtener usuario actual y sucursal
             var auth = await AuthStateProvider.GetAuthenticationStateAsync();
             var usuario = auth.User?.Identity?.Name ?? "Sistema";
+            var sucursalId = SucursalProvider.GetSucursalId();
 
             // Crear registro de cierre
             var cierre = new Models.CierreCaja
             {
                 IdCaja = caja.IdCaja,
+                IdSucursal = sucursalId,
                 FechaCierre = DateTime.Now,
                 FechaCaja = caja.FechaActualCaja ?? DateTime.Today,
                 Turno = caja.TurnoActual ?? 1,
@@ -524,11 +550,19 @@ else
             ctx.CierresCaja.Add(cierre);
             await ctx.SaveChangesAsync();
 
-            // Guardar entregas
+            // Guardar entregas (crear copias nuevas para evitar conflictos con el tracker)
             foreach (var entrega in entregas)
             {
-                entrega.IdCierreCaja = cierre.IdCierreCaja;
-                ctx.EntregasCaja.Add(entrega);
+                var nuevaEntrega = new Models.EntregaCaja
+                {
+                    IdCierreCaja = cierre.IdCierreCaja,
+                    Medio = entrega.Medio,
+                    MontoEsperado = entrega.MontoEsperado,
+                    MontoEntregado = entrega.MontoEntregado,
+                    Diferencia = entrega.Diferencia,
+                    Observaciones = entrega.Observaciones
+                };
+                ctx.EntregasCaja.Add(nuevaEntrega);
             }
             await ctx.SaveChangesAsync();
 
@@ -561,8 +595,26 @@ else
             // Imprimir reporte de cierre automáticamente
             await ImprimirCierreA4(cierre, entregas.ToList());
             
-            // Recargar datos para mostrar el nuevo estado
+            // Limpiar cache y recargar datos para el nuevo turno
+            CajaService.LimpiarCache();
+            
+            // Limpiar datos actuales
+            resumen = new ResumenTurno();
+            entregas.Clear();
+            observacionesCierre = null;
+            diferenciaTotal = 0;
+            
+            // Recargar datos para mostrar el nuevo turno/fecha
             await CargarDatos();
+            
+            // Actualizar mensaje con info del nuevo turno
+            if (caja != null)
+            {
+                mensaje = $"Turno cerrado correctamente. Cierre #{cierre.IdCierreCaja}. " +
+                          $"Nuevo turno: {caja.TurnoActual} - Fecha: {caja.FechaActualCaja:dd/MM/yyyy}";
+            }
+            
+            StateHasChanged();
         }
         catch (Exception ex)
         {

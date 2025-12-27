@@ -42,7 +42,7 @@ namespace SistemIA.Models
         public Compra? Compra { get; set; }
 
         [ForeignKey(nameof(IdProveedor))]
-        public Proveedor? Proveedor { get; set; }
+        public ProveedorSifenMejorado? Proveedor { get; set; }
 
         [ForeignKey(nameof(IdMoneda))]
         public Moneda? Moneda { get; set; }

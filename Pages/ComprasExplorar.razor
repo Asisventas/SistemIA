@@ -198,7 +198,7 @@ END";
     if (!string.IsNullOrWhiteSpace(filtroEstado))
       q = q.Where(x => x.Estado == filtroEstado);
 
-    compras = await q.OrderByDescending(x => x.Fecha).Take(200).ToListAsync();
+    compras = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdCompra).Take(200).ToListAsync();
   }
 
   private void Editar(int id) => Nav.NavigateTo($"/compras?id={id}"); // Abre en modo visualización

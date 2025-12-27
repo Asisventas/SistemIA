@@ -242,10 +242,10 @@
             <td class="text-end">
               <div class="d-flex flex-wrap gap-1 justify-content-end">
                 <div class="btn-group btn-group-sm" role="group">
-                  <a class="btn btn-outline-secondary" title="Ver Preview" href="@GetPreviewUrl(v.IdVenta)" target="_blank"><i class="bi bi-eye"></i></a>
-                  <a class="btn btn-outline-primary" title="Imprimir Láser (A4)" href="/ventas/imprimir/@v.IdVenta" target="_blank"><i class="bi bi-printer"></i></a>
-                  <button class="btn btn-info" title="Vista Previa Ticket" @onclick="() => AbrirVistaPrevia(v.IdVenta)"><i class="bi bi-receipt"></i></button>
-                  <a class="btn btn-outline-secondary" title="Editar venta" href="/ventas?id=@v.IdVenta"><i class="bi bi-pencil"></i></a>
+                  <a class="btn btn-outline-secondary" title="Ver venta" href="/ventas?id=@v.IdVenta"><i class="bi bi-eye"></i></a>
+                  <a class="btn btn-outline-primary" title="Imprimir A4" href="/ventas/imprimir/@v.IdVenta" target="_blank"><i class="bi bi-printer"></i></a>
+                  <button class="btn btn-outline-info" title="Vista Previa Ticket" @onclick="() => AbrirVistaPrevia(v.IdVenta)"><i class="bi bi-receipt"></i></button>
+                  <button class="btn btn-info" title="Imprimir Ticket" @onclick="() => ImprimirTicket(v.IdVenta)"><i class="bi bi-printer-fill"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group">
                   @if (!string.IsNullOrWhiteSpace(v.CDC))
@@ -553,7 +553,7 @@
 @* Modal de Vista Previa Ticket *@
 @if (_mostrarVistaPrevia && _idVentaVistaPrevia > 0)
 {
-    <TicketVistaPrevia IdVenta="_idVentaVistaPrevia" OnCerrar="CerrarVistaPrevia" />
+    <TicketVistaPrevia IdVenta="_idVentaVistaPrevia" ImprimirAutomatico="_imprimirAutomatico" OnCerrar="CerrarVistaPrevia" />
 }
 
 </PageProtection>
@@ -570,6 +570,7 @@
   // Variables para modal de vista previa ticket
   private bool _mostrarVistaPrevia = false;
   private int _idVentaVistaPrevia = 0;
+  private bool _imprimirAutomatico = false;
   
   // Variables para modal de composición de caja
   private int _composicionIdVenta = 0;
@@ -717,6 +718,15 @@
   private void AbrirVistaPrevia(int idVenta)
   {
     _idVentaVistaPrevia = idVenta;
+    _imprimirAutomatico = false;
+    _mostrarVistaPrevia = true;
+    StateHasChanged();
+  }
+
+  private void ImprimirTicket(int idVenta)
+  {
+    _idVentaVistaPrevia = idVenta;
+    _imprimirAutomatico = true;
     _mostrarVistaPrevia = true;
     StateHasChanged();
   }
@@ -725,6 +735,7 @@
   {
     _mostrarVistaPrevia = false;
     _idVentaVistaPrevia = 0;
+    _imprimirAutomatico = false;
     StateHasChanged();
   }
 

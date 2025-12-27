@@ -2,6 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Authorization
 @using SistemIA.Models
+@using SistemIA.Models.Enums
 @attribute [Authorize]
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject Microsoft.JSInterop.IJSRuntime JS
@@ -115,7 +116,7 @@ else
         </div>
     </div>
 
-    <!-- Total Efectivo en Caja -->
+    <!-- Total Efectivo en Caja con Vuelto -->
     <div class="row g-3 mb-4">
         <div class="col-md-6">
             <div class="card border-primary h-100">
@@ -126,16 +127,20 @@ else
                     <table class="table table-sm mb-0">
                         <tbody>
                             <tr>
-                                <td>Ventas Contado (Efectivo)</td>
-                                <td class="text-end fw-bold text-success">+ @resumen.VentasEfectivo.ToString("N0") ₲</td>
+                                <td>Efectivo Recibido (Ventas)</td>
+                                <td class="text-end fw-bold text-success">+ @resumen.EfectivoRecibidoVentas.ToString("N0") ₲</td>
+                            </tr>
+                            <tr class="text-danger">
+                                <td>Vuelto Entregado</td>
+                                <td class="text-end fw-bold">- @resumen.VueltoEntregado.ToString("N0") ₲</td>
                             </tr>
                             <tr>
-                                <td>Cobros de Crédito (Efectivo)</td>
+                                <td>Efectivo Cobros Crédito</td>
                                 <td class="text-end fw-bold text-success">+ @resumen.CobrosEfectivo.ToString("N0") ₲</td>
                             </tr>
                             <tr class="table-primary">
-                                <td class="fw-bold">TOTAL EFECTIVO ESPERADO</td>
-                                <td class="text-end fw-bold fs-4">@((resumen.VentasEfectivo + resumen.CobrosEfectivo).ToString("N0")) ₲</td>
+                                <td class="fw-bold">EFECTIVO NETO EN CAJA</td>
+                                <td class="text-end fw-bold fs-4">@resumen.EfectivoNetoCaja.ToString("N0") ₲</td>
                             </tr>
                         </tbody>
                     </table>
@@ -161,6 +166,188 @@ else
                             </div>
                         </div>
                     }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detalle de Tarjetas, Cheques y Transferencias -->
+    @if (detallesTarjetas.Any() || detallesCheques.Any() || detallesTransferencias.Any())
+    {
+        <div class="row g-3 mb-4">
+            @if (detallesTarjetas.Any())
+            {
+                <div class="col-md-4">
+                    <div class="card border-info h-100">
+                        <div class="card-header bg-info text-white d-flex justify-content-between">
+                            <span><i class="bi bi-credit-card me-2"></i>Tarjetas</span>
+                            <span class="badge bg-light text-dark">@detallesTarjetas.Sum(t => t.MontoGs).ToString("N0") ₲</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Marca</th>
+                                        <th>Últimos 4</th>
+                                        <th class="text-end">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var t in detallesTarjetas.Take(10))
+                                    {
+                                        <tr>
+                                            <td><span class="badge @(t.TipoTarjeta == TipoTarjeta.Credito ? "bg-warning text-dark" : "bg-success")">@(t.TipoTarjeta == TipoTarjeta.Credito ? "Créd" : "Déb")</span></td>
+                                            <td>@(t.MarcaTarjeta ?? "-")</td>
+                                            <td><code>@(t.Ultimos4 ?? "****")</code></td>
+                                            <td class="text-end">@t.MontoGs.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-secondary">
+                                    <tr class="fw-bold">
+                                        <td colspan="3">TOTAL TARJETAS (@detallesTarjetas.Count)</td>
+                                        <td class="text-end">@detallesTarjetas.Sum(t => t.MontoGs).ToString("N0")</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+            @if (detallesCheques.Any())
+            {
+                <div class="col-md-4">
+                    <div class="card border-warning h-100">
+                        <div class="card-header bg-warning text-dark d-flex justify-content-between">
+                            <span><i class="bi bi-receipt me-2"></i>Cheques</span>
+                            <span class="badge bg-dark">@detallesCheques.Sum(c => c.MontoGs).ToString("N0") ₲</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Banco</th>
+                                        <th>Número</th>
+                                        <th>Cobro</th>
+                                        <th class="text-end">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var c in detallesCheques.Take(10))
+                                    {
+                                        <tr class="@(c.Medio == MedioPago.ChequeDiferido ? "table-warning" : "")">
+                                            <td>@(c.BancoCheque ?? "-")</td>
+                                            <td><code>@(c.NumeroCheque ?? "-")</code></td>
+                                            <td>@(c.FechaCobroCheque?.ToString("dd/MM") ?? "Hoy")</td>
+                                            <td class="text-end">@c.MontoGs.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-secondary">
+                                    <tr class="fw-bold">
+                                        <td colspan="3">TOTAL CHEQUES (@detallesCheques.Count)</td>
+                                        <td class="text-end">@detallesCheques.Sum(c => c.MontoGs).ToString("N0")</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+            @if (detallesTransferencias.Any())
+            {
+                <div class="col-md-4">
+                    <div class="card border-success h-100">
+                        <div class="card-header bg-success text-white d-flex justify-content-between">
+                            <span><i class="bi bi-bank me-2"></i>Transferencias</span>
+                            <span class="badge bg-light text-dark">@detallesTransferencias.Sum(t => t.MontoGs).ToString("N0") ₲</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Banco</th>
+                                        <th>Comprobante</th>
+                                        <th class="text-end">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var t in detallesTransferencias.Take(10))
+                                    {
+                                        <tr>
+                                            <td>@(t.BancoTransferencia ?? "-")</td>
+                                            <td><code>@(t.NumeroComprobante ?? "-")</code></td>
+                                            <td class="text-end">@t.MontoGs.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-secondary">
+                                    <tr class="fw-bold">
+                                        <td colspan="2">TOTAL TRANSF. (@detallesTransferencias.Count)</td>
+                                        <td class="text-end">@detallesTransferencias.Sum(t => t.MontoGs).ToString("N0")</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Resumen Consolidado de Movimientos -->
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>Resumen Consolidado de Movimientos</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-success"><i class="bi bi-plus-circle me-1"></i>INGRESOS</h6>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td>Ventas Contado</td>
+                                <td class="text-end text-success fw-bold">+ @resumen.VentasContado.ToString("N0") ₲</td>
+                            </tr>
+                            <tr>
+                                <td>Cobros de Crédito</td>
+                                <td class="text-end text-success fw-bold">+ @resumen.CobrosCredito.ToString("N0") ₲</td>
+                            </tr>
+                            <tr class="table-success">
+                                <td class="fw-bold">TOTAL INGRESOS</td>
+                                <td class="text-end fw-bold">@((resumen.VentasContado + resumen.CobrosCredito).ToString("N0")) ₲</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="text-primary"><i class="bi bi-pie-chart me-1"></i>DISTRIBUCIÓN POR MEDIO</h6>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td><i class="bi bi-cash me-1"></i>Efectivo (neto)</td>
+                                <td class="text-end fw-bold">@resumen.EfectivoNetoCaja.ToString("N0") ₲</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-credit-card me-1"></i>Tarjetas</td>
+                                <td class="text-end fw-bold">@resumen.TotalTarjetas.ToString("N0") ₲</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-receipt me-1"></i>Cheques</td>
+                                <td class="text-end fw-bold">@resumen.TotalCheques.ToString("N0") ₲</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-bank me-1"></i>Transferencias</td>
+                                <td class="text-end fw-bold">@resumen.TotalTransferencias.ToString("N0") ₲</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-qr-code me-1"></i>QR / Otros</td>
+                                <td class="text-end fw-bold">@((resumen.TotalQR + resumen.TotalOtros).ToString("N0")) ₲</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -359,6 +546,11 @@ else
     private List<DesgloseMedioPago> desgloseMedioPago = new();
     private ResumenTotales resumen = new();
     
+    // Detalles por tipo de medio de pago
+    private List<ComposicionCajaDetalle> detallesTarjetas = new();
+    private List<ComposicionCajaDetalle> detallesCheques = new();
+    private List<ComposicionCajaDetalle> detallesTransferencias = new();
+    
     private CierreCaja? cierreSeleccionado;
     private List<EntregaCaja>? entregasSeleccionadas;
 
@@ -448,6 +640,54 @@ else
             // Ventas contado = las que NO son crédito
             var ventasContado = ventasActivas.Where(v => v.TipoPago?.EsCredito != true).ToList();
             var ventasCredito = ventasActivas.Where(v => v.TipoPago?.EsCredito == true).ToList();
+            
+            // Obtener ComposicionCaja con detalles para las ventas contado
+            var idsVentasContado = ventasContado.Select(v => v.IdVenta).ToList();
+            var composiciones = await ctx.ComposicionesCaja.AsNoTracking()
+                .Where(c => idsVentasContado.Contains(c.IdVenta))
+                .Include(c => c.Detalles)
+                .ToListAsync();
+            
+            // Aplanar todos los detalles de composición
+            var todosDetallesComp = composiciones
+                .SelectMany(c => c.Detalles ?? new List<ComposicionCajaDetalle>())
+                .ToList();
+            
+            // Calcular vuelto total
+            var vueltoTotal = composiciones.Sum(c => c.Vuelto);
+            
+            // Calcular totales por medio de pago desde ComposicionCajaDetalle
+            var efectivoRecibidoVentas = todosDetallesComp.Where(d => d.Medio == MedioPago.Efectivo).Sum(d => d.MontoGs);
+            var totalTarjetas = todosDetallesComp.Where(d => d.Medio == MedioPago.Tarjeta).Sum(d => d.MontoGs);
+            var totalChequesDia = todosDetallesComp.Where(d => d.Medio == MedioPago.ChequeDia).Sum(d => d.MontoGs);
+            var totalChequesDiferidos = todosDetallesComp.Where(d => d.Medio == MedioPago.ChequeDiferido).Sum(d => d.MontoGs);
+            var totalTransferencias = todosDetallesComp.Where(d => d.Medio == MedioPago.Transferencia).Sum(d => d.MontoGs);
+            var totalQR = todosDetallesComp.Where(d => d.Medio == MedioPago.QR).Sum(d => d.MontoGs);
+            var totalBilletera = todosDetallesComp.Where(d => d.Medio == MedioPago.Billetera).Sum(d => d.MontoGs);
+            var totalVales = todosDetallesComp.Where(d => d.Medio == MedioPago.Vale).Sum(d => d.MontoGs);
+            
+            // Filtrar detalles para mostrar en tablas
+            detallesTarjetas = todosDetallesComp.Where(d => d.Medio == MedioPago.Tarjeta).ToList();
+            detallesCheques = todosDetallesComp.Where(d => d.Medio == MedioPago.ChequeDia || d.Medio == MedioPago.ChequeDiferido).ToList();
+            detallesTransferencias = todosDetallesComp.Where(d => d.Medio == MedioPago.Transferencia).ToList();
+            
+            // Cobros efectivo = cobros con detalles de efectivo
+            var cobrosEfectivo = cobros
+                .SelectMany(c => c.Detalles ?? new List<CobroDetalle>())
+                .Where(d => d.MedioPago == "EFECTIVO" || d.MedioPago == "Efectivo")
+                .Sum(d => d.Monto);
+            
+            // Cobros con tarjeta
+            var cobrosTarjetas = cobros
+                .SelectMany(c => c.Detalles ?? new List<CobroDetalle>())
+                .Where(d => d.MedioPago == "TARJETA" || d.MedioPago == "Tarjeta")
+                .Sum(d => d.Monto);
+            
+            // Cobros con transferencia
+            var cobrosTransferencias = cobros
+                .SelectMany(c => c.Detalles ?? new List<CobroDetalle>())
+                .Where(d => d.MedioPago == "TRANSFERENCIA" || d.MedioPago == "Transferencia")
+                .Sum(d => d.Monto);
 
             resumen = new ResumenTotales
             {
@@ -458,40 +698,66 @@ else
                 CobrosCredito = cobros.Sum(c => c.MontoTotal),
                 CantCobros = cobros.Count,
                 Anulaciones = ventasAnuladas.Sum(v => v.Total),
-                CantAnulaciones = ventasAnuladas.Count
+                CantAnulaciones = ventasAnuladas.Count,
+                
+                // Efectivo desde ComposicionCajaDetalle
+                EfectivoRecibidoVentas = efectivoRecibidoVentas,
+                VueltoEntregado = vueltoTotal,
+                EfectivoNetoCaja = efectivoRecibidoVentas - vueltoTotal + cobrosEfectivo,
+                VentasEfectivo = efectivoRecibidoVentas - vueltoTotal, // Neto de efectivo en ventas
+                CobrosEfectivo = cobrosEfectivo,
+                
+                // Totales por medio de pago
+                TotalTarjetas = totalTarjetas + cobrosTarjetas,
+                TotalCheques = totalChequesDia,
+                TotalChequesDiferidos = totalChequesDiferidos,
+                TotalTransferencias = totalTransferencias + cobrosTransferencias,
+                TotalQR = totalQR,
+                TotalBilletera = totalBilletera,
+                TotalOtros = totalVales,
+                
+                CantTarjetas = detallesTarjetas.Count,
+                CantCheques = detallesCheques.Count,
+                CantTransferencias = detallesTransferencias.Count
             };
-
-            // Ventas efectivo = contado con medio pago EFECTIVO
-            resumen.VentasEfectivo = ventasContado.Where(v => v.MedioPago == "EFECTIVO" || v.MedioPago == "Efectivo").Sum(v => v.Total);
-            
-            // Cobros efectivo = cobros con detalles de efectivo
-            resumen.CobrosEfectivo = cobros
-                .SelectMany(c => c.Detalles ?? new List<CobroDetalle>())
-                .Where(d => d.MedioPago == "EFECTIVO" || d.MedioPago == "Efectivo")
-                .Sum(d => d.Monto);
 
             resumen.TotalIngresos = resumen.VentasContado + resumen.CobrosCredito;
 
-            // Desglose por medio de pago
+            // Desglose por medio de pago (ahora usando ComposicionCajaDetalle)
             var desglose = new Dictionary<string, decimal>();
-            foreach (var v in ventasContado)
-            {
-                var medio = v.MedioPago ?? "OTROS";
-                if (!desglose.ContainsKey(medio)) desglose[medio] = 0;
-                desglose[medio] += v.Total;
-            }
+            
+            // Agregar desglose desde ComposicionCajaDetalle
+            if (efectivoRecibidoVentas - vueltoTotal > 0)
+                desglose["Efectivo"] = efectivoRecibidoVentas - vueltoTotal;
+            if (totalTarjetas > 0)
+                desglose["Tarjeta"] = totalTarjetas;
+            if (totalChequesDia > 0)
+                desglose["Cheque del Día"] = totalChequesDia;
+            if (totalChequesDiferidos > 0)
+                desglose["Cheque Diferido"] = totalChequesDiferidos;
+            if (totalTransferencias > 0)
+                desglose["Transferencia"] = totalTransferencias;
+            if (totalQR > 0)
+                desglose["QR"] = totalQR;
+            if (totalBilletera > 0)
+                desglose["Billetera"] = totalBilletera;
+            if (totalVales > 0)
+                desglose["Vale"] = totalVales;
+            
+            // Agregar cobros al desglose
             foreach (var c in cobros)
             {
                 foreach (var d in c.Detalles ?? new List<CobroDetalle>())
                 {
-                    var medio = d.MedioPago ?? "OTROS";
+                    var medio = ObtenerNombreMedio(d.MedioPago ?? "OTROS");
                     if (!desglose.ContainsKey(medio)) desglose[medio] = 0;
                     desglose[medio] += d.Monto;
                 }
             }
+            
             desgloseMedioPago = desglose.Select(kv => new DesgloseMedioPago
             {
-                MedioPago = ObtenerNombreMedio(kv.Key),
+                MedioPago = kv.Key,
                 Total = kv.Value
             }).ToList();
 
@@ -641,9 +907,18 @@ else
         sb.AppendLine("</div>");
 
         sb.AppendLine($"<div class='row mb-3 bg-light p-2'>");
-        sb.AppendLine($"<div class='col-6'><strong>Efectivo en Ventas:</strong> {resumen.VentasEfectivo:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-6'><strong>Efectivo en Cobros:</strong> {resumen.CobrosEfectivo:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-12 mt-2'><h5>TOTAL EFECTIVO ESPERADO: {(resumen.VentasEfectivo + resumen.CobrosEfectivo):N0} ₲</h5></div>");
+        sb.AppendLine($"<div class='col-4'><strong>Efectivo Recibido:</strong> +{resumen.EfectivoRecibidoVentas:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-4 text-danger'><strong>Vuelto Entregado:</strong> -{resumen.VueltoEntregado:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-4'><strong>Efectivo Cobros:</strong> +{resumen.CobrosEfectivo:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-12 mt-2'><h5>EFECTIVO NETO ESPERADO: {resumen.EfectivoNetoCaja:N0} ₲</h5></div>");
+        sb.AppendLine("</div>");
+        
+        // Otros medios de pago
+        sb.AppendLine($"<div class='row mb-3'>");
+        sb.AppendLine($"<div class='col-3'><strong>Tarjetas:</strong> {resumen.TotalTarjetas:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-3'><strong>Cheques:</strong> {(resumen.TotalCheques + resumen.TotalChequesDiferidos):N0} ₲</div>");
+        sb.AppendLine($"<div class='col-3'><strong>Transferencias:</strong> {resumen.TotalTransferencias:N0} ₲</div>");
+        sb.AppendLine($"<div class='col-3'><strong>QR/Otros:</strong> {(resumen.TotalQR + resumen.TotalOtros):N0} ₲</div>");
         sb.AppendLine("</div>");
 
         // Desglose medios pago
@@ -714,9 +989,27 @@ else
 
         sb.AppendLine("<div class='bold'>EFECTIVO ESPERADO</div>");
         sb.AppendLine("<table>");
-        sb.AppendLine($"<tr><td>Efectivo Ventas:</td><td class='right'>{resumen.VentasEfectivo:N0}</td></tr>");
-        sb.AppendLine($"<tr><td>Efectivo Cobros:</td><td class='right'>{resumen.CobrosEfectivo:N0}</td></tr>");
-        sb.AppendLine($"<tr class='bold'><td>TOTAL EFECTIVO:</td><td class='right'>{(resumen.VentasEfectivo + resumen.CobrosEfectivo):N0}</td></tr>");
+        sb.AppendLine($"<tr><td>Efectivo Recibido:</td><td class='right'>+{resumen.EfectivoRecibidoVentas:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>(-) Vuelto Entregado:</td><td class='right'>-{resumen.VueltoEntregado:N0}</td></tr>");
+        sb.AppendLine($"<tr><td>Efectivo Cobros:</td><td class='right'>+{resumen.CobrosEfectivo:N0}</td></tr>");
+        sb.AppendLine($"<tr class='bold'><td>EFECTIVO NETO:</td><td class='right'>{resumen.EfectivoNetoCaja:N0}</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("<div class='line'></div>");
+        
+        sb.AppendLine("<div class='bold'>OTROS MEDIOS DE PAGO</div>");
+        sb.AppendLine("<table>");
+        if (resumen.TotalTarjetas > 0)
+            sb.AppendLine($"<tr><td>Tarjetas:</td><td class='right'>{resumen.TotalTarjetas:N0}</td></tr>");
+        if (resumen.TotalCheques > 0)
+            sb.AppendLine($"<tr><td>Cheques Día:</td><td class='right'>{resumen.TotalCheques:N0}</td></tr>");
+        if (resumen.TotalChequesDiferidos > 0)
+            sb.AppendLine($"<tr><td>Cheques Diferidos:</td><td class='right'>{resumen.TotalChequesDiferidos:N0}</td></tr>");
+        if (resumen.TotalTransferencias > 0)
+            sb.AppendLine($"<tr><td>Transferencias:</td><td class='right'>{resumen.TotalTransferencias:N0}</td></tr>");
+        if (resumen.TotalQR > 0)
+            sb.AppendLine($"<tr><td>QR:</td><td class='right'>{resumen.TotalQR:N0}</td></tr>");
+        if (resumen.TotalOtros > 0)
+            sb.AppendLine($"<tr><td>Otros:</td><td class='right'>{resumen.TotalOtros:N0}</td></tr>");
         sb.AppendLine("</table>");
         sb.AppendLine("<div class='line'></div>");
 
@@ -765,9 +1058,21 @@ else
         sb.AppendLine($"Ventas Crédito;{resumen.VentasCredito}");
         sb.AppendLine($"Cobros;{resumen.CobrosCredito}");
         sb.AppendLine($"Anulaciones;{resumen.Anulaciones}");
-        sb.AppendLine($"Efectivo Ventas;{resumen.VentasEfectivo}");
-        sb.AppendLine($"Efectivo Cobros;{resumen.CobrosEfectivo}");
-        sb.AppendLine($"Total Efectivo;{resumen.VentasEfectivo + resumen.CobrosEfectivo}");
+        sb.AppendLine();
+        sb.AppendLine("EFECTIVO EN CAJA");
+        sb.AppendLine($"Efectivo Recibido (Ventas);{resumen.EfectivoRecibidoVentas}");
+        sb.AppendLine($"Vuelto Entregado;{resumen.VueltoEntregado}");
+        sb.AppendLine($"Efectivo Cobros Crédito;{resumen.CobrosEfectivo}");
+        sb.AppendLine($"Efectivo Neto en Caja;{resumen.EfectivoNetoCaja}");
+        sb.AppendLine();
+        sb.AppendLine("OTROS MEDIOS DE PAGO");
+        sb.AppendLine($"Tarjetas;{resumen.TotalTarjetas}");
+        sb.AppendLine($"Cheques del Día;{resumen.TotalCheques}");
+        sb.AppendLine($"Cheques Diferidos;{resumen.TotalChequesDiferidos}");
+        sb.AppendLine($"Transferencias;{resumen.TotalTransferencias}");
+        sb.AppendLine($"QR;{resumen.TotalQR}");
+        sb.AppendLine($"Billetera;{resumen.TotalBilletera}");
+        sb.AppendLine($"Otros;{resumen.TotalOtros}");
         sb.AppendLine();
         sb.AppendLine("DESGLOSE POR MEDIO DE PAGO");
         sb.AppendLine(string.Join(sep, new[] { "Medio", "Monto" }));
@@ -805,11 +1110,25 @@ else
         ws.Cell(row, 1).Value = "Ventas Crédito:"; ws.Cell(row, 2).Value = resumen.VentasCredito; row++;
         ws.Cell(row, 1).Value = "Cobros:"; ws.Cell(row, 2).Value = resumen.CobrosCredito; row++;
         ws.Cell(row, 1).Value = "Anulaciones:"; ws.Cell(row, 2).Value = resumen.Anulaciones; row++;
-        ws.Cell(row, 1).Value = "Efectivo Ventas:"; ws.Cell(row, 2).Value = resumen.VentasEfectivo; row++;
-        ws.Cell(row, 1).Value = "Efectivo Cobros:"; ws.Cell(row, 2).Value = resumen.CobrosEfectivo; row++;
-        ws.Cell(row, 1).Value = "TOTAL EFECTIVO:"; ws.Cell(row, 2).Value = resumen.VentasEfectivo + resumen.CobrosEfectivo;
+        row++;
+        
+        ws.Cell(row, 1).Value = "EFECTIVO EN CAJA"; ws.Cell(row, 1).Style.Font.Bold = true; row++;
+        ws.Cell(row, 1).Value = "Efectivo Recibido (Ventas):"; ws.Cell(row, 2).Value = resumen.EfectivoRecibidoVentas; row++;
+        ws.Cell(row, 1).Value = "(-) Vuelto Entregado:"; ws.Cell(row, 2).Value = resumen.VueltoEntregado; row++;
+        ws.Cell(row, 1).Value = "Efectivo Cobros Crédito:"; ws.Cell(row, 2).Value = resumen.CobrosEfectivo; row++;
+        ws.Cell(row, 1).Value = "EFECTIVO NETO EN CAJA:"; ws.Cell(row, 2).Value = resumen.EfectivoNetoCaja;
         ws.Cell(row, 1).Style.Font.Bold = true; ws.Cell(row, 2).Style.Font.Bold = true;
         row += 2;
+        
+        ws.Cell(row, 1).Value = "OTROS MEDIOS DE PAGO"; ws.Cell(row, 1).Style.Font.Bold = true; row++;
+        ws.Cell(row, 1).Value = "Tarjetas:"; ws.Cell(row, 2).Value = resumen.TotalTarjetas; row++;
+        ws.Cell(row, 1).Value = "Cheques del Día:"; ws.Cell(row, 2).Value = resumen.TotalCheques; row++;
+        ws.Cell(row, 1).Value = "Cheques Diferidos:"; ws.Cell(row, 2).Value = resumen.TotalChequesDiferidos; row++;
+        ws.Cell(row, 1).Value = "Transferencias:"; ws.Cell(row, 2).Value = resumen.TotalTransferencias; row++;
+        ws.Cell(row, 1).Value = "QR:"; ws.Cell(row, 2).Value = resumen.TotalQR; row++;
+        ws.Cell(row, 1).Value = "Billetera:"; ws.Cell(row, 2).Value = resumen.TotalBilletera; row++;
+        ws.Cell(row, 1).Value = "Otros:"; ws.Cell(row, 2).Value = resumen.TotalOtros; row++;
+        row++;
 
         ws.Cell(row, 1).Value = "Medio Pago"; ws.Cell(row, 2).Value = "Monto";
         ws.Cell(row, 1).Style.Font.Bold = true; ws.Cell(row, 2).Style.Font.Bold = true;
@@ -866,6 +1185,24 @@ else
         public decimal VentasEfectivo { get; set; }
         public decimal CobrosEfectivo { get; set; }
         public decimal TotalIngresos { get; set; }
+        
+        // Nuevos campos para desglose detallado desde ComposicionCaja
+        public decimal EfectivoRecibidoVentas { get; set; }   // Total efectivo recibido en ventas
+        public decimal VueltoEntregado { get; set; }           // Total de vuelto entregado
+        public decimal EfectivoNetoCaja { get; set; }          // Efectivo neto = Recibido - Vuelto
+        
+        // Totales por medio de pago
+        public decimal TotalTarjetas { get; set; }
+        public decimal TotalCheques { get; set; }
+        public decimal TotalChequesDiferidos { get; set; }
+        public decimal TotalTransferencias { get; set; }
+        public decimal TotalQR { get; set; }
+        public decimal TotalBilletera { get; set; }
+        public decimal TotalOtros { get; set; }
+        
+        public int CantTarjetas { get; set; }
+        public int CantCheques { get; set; }
+        public int CantTransferencias { get; set; }
     }
 
     private class DesgloseMedioPago
