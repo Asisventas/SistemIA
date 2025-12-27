@@ -1,0 +1,330 @@
+@page "/notas-credito/explorar"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using SistemIA.Models
+@using SistemIA.Data
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject ISucursalProvider SucursalProvider
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/notas-credito" Permiso="VER_NOTAS_CREDITO">
+<PageTitle>Explorar Notas de Crédito</PageTitle>
+
+<div class="container-fluid">
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-file-earmark-minus me-2"></i>Notas de Crédito de Venta</h5>
+            <button class="btn btn-light btn-sm" @onclick="NuevaNotaCredito">
+                <i class="bi bi-plus-lg"></i> Nueva NC
+            </button>
+        </div>
+        
+        <div class="card-body">
+            @* Filtros *@
+            <div class="row g-2 mb-3">
+                <div class="col-md-2">
+                    <label class="form-label small">Desde</label>
+                    <input type="date" class="form-control form-control-sm" @bind="_filtroDesde" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Hasta</label>
+                    <input type="date" class="form-control form-control-sm" @bind="_filtroHasta" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Estado</label>
+                    <select class="form-select form-select-sm" @bind="_filtroEstado">
+                        <option value="">Todos</option>
+                        <option value="Borrador">Borrador</option>
+                        <option value="Confirmada">Confirmada</option>
+                        <option value="Anulada">Anulada</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Cliente/Número</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="Buscar..." @bind="_filtroBusqueda" @bind:event="oninput" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end gap-2">
+                    <button class="btn btn-primary btn-sm" @onclick="CargarDatos">
+                        <i class="bi bi-search"></i> Buscar
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="LimpiarFiltros">
+                        <i class="bi bi-x-lg"></i> Limpiar
+                    </button>
+                </div>
+            </div>
+            
+            @if (_loading)
+            {
+                <div class="text-center p-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Cargando...</p>
+                </div>
+            }
+            else if (!_notas.Any())
+            {
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>No se encontraron notas de crédito con los filtros seleccionados.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:100px;">Número</th>
+                                <th style="width:100px;">Fecha</th>
+                                <th>Cliente</th>
+                                <th style="width:120px;">RUC</th>
+                                <th style="width:130px;">Motivo</th>
+                                <th style="width:100px;">Factura Ref.</th>
+                                <th style="width:110px;" class="text-end">Total</th>
+                                <th style="width:90px;" class="text-center">Estado</th>
+                                <th style="width:140px;" class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var nc in _notas)
+                            {
+                                <tr class="@(nc.Estado == "Anulada" ? "table-secondary text-decoration-line-through" : "")">
+                                    <td>@nc.Establecimiento-@nc.PuntoExpedicion-@nc.NumeroNota.ToString("D7")</td>
+                                    <td>@nc.Fecha.ToString("dd/MM/yyyy")</td>
+                                    <td>@(nc.Cliente?.RazonSocial ?? nc.NombreCliente ?? "S/N")</td>
+                                    <td>@(nc.Cliente?.RUC ?? "")</td>
+                                    <td><small>@nc.Motivo</small></td>
+                                    <td>
+                                        @if (nc.VentaAsociada != null)
+                                        {
+                                            <small>@nc.VentaAsociada.Establecimiento-@nc.VentaAsociada.PuntoExpedicion-@nc.VentaAsociada.NumeroFactura</small>
+                                        }
+                                    </td>
+                                    <td class="text-end">@(nc.SimboloMoneda ?? "Gs.") @nc.Total.ToString("N0")</td>
+                                    <td class="text-center">
+                                        <span class="badge @GetBadgeClass(nc.Estado)">@nc.Estado</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="Editar" @onclick="() => Editar(nc.IdNotaCredito)" disabled="@(nc.Estado != "Borrador")">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info" title="Imprimir A4" @onclick="() => ImprimirA4(nc.IdNotaCredito)">
+                                                <i class="bi bi-printer"></i>
+                                            </button>
+                                            <button class="btn btn-outline-secondary" title="Ticket" @onclick="() => ImprimirTicket(nc)">
+                                                <i class="bi bi-receipt"></i>
+                                            </button>
+                                            @if (nc.Estado == "Borrador")
+                                            {
+                                                <button class="btn btn-outline-success" title="Confirmar" @onclick="() => Confirmar(nc)">
+                                                    <i class="bi bi-check-lg"></i>
+                                                </button>
+                                            }
+                                            @if (nc.Estado == "Confirmada")
+                                            {
+                                                <button class="btn btn-outline-danger" title="Anular" @onclick="() => Anular(nc)">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                
+                @* Totales *@
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <small class="text-muted">Mostrando @_notas.Count notas de crédito</small>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <strong>Total: Gs. @_notas.Where(n => n.Estado != "Anulada").Sum(n => n.Total).ToString("N0")</strong>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* Modal Ticket *@
+@if (_mostrarTicket && _ncSeleccionada != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Ticket NC</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarTicket"></button>
+                </div>
+                <div class="modal-body">
+                    <NotaCreditoTicketVistaPrevia NotaCredito="_ncSeleccionada" Empresa="_empresa" MostrarBotonImprimir="true" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary btn-sm" @onclick="CerrarTicket">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private List<NotaCreditoVenta> _notas = new();
+    private bool _loading = true;
+    private Sociedad? _empresa;
+    
+    // Filtros
+    private DateTime _filtroDesde = DateTime.Today.AddDays(-30);
+    private DateTime _filtroHasta = DateTime.Today;
+    private string _filtroEstado = "";
+    private string _filtroBusqueda = "";
+    
+    // Modal ticket
+    private bool _mostrarTicket;
+    private NotaCreditoVenta? _ncSeleccionada;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        if (!sucId.HasValue)
+        {
+            Nav.NavigateTo("/sucursales");
+            return;
+        }
+        
+        _empresa = await Db.Sociedades.FirstOrDefaultAsync();
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _loading = true;
+        var sucId = SucursalProvider.GetSucursalId();
+        
+        var query = Db.NotasCreditoVentas
+            .Include(n => n.Cliente)
+            .Include(n => n.VentaAsociada)
+            .Include(n => n.Detalles)
+            .Where(n => n.IdSucursal == sucId)
+            .Where(n => n.Fecha.Date >= _filtroDesde.Date && n.Fecha.Date <= _filtroHasta.Date);
+        
+        if (!string.IsNullOrEmpty(_filtroEstado))
+            query = query.Where(n => n.Estado == _filtroEstado);
+        
+        if (!string.IsNullOrEmpty(_filtroBusqueda))
+        {
+            var busq = _filtroBusqueda.ToLower();
+            query = query.Where(n => 
+                (n.Cliente != null && n.Cliente.RazonSocial.ToLower().Contains(busq)) ||
+                (n.NombreCliente != null && n.NombreCliente.ToLower().Contains(busq)) ||
+                n.NumeroNota.ToString().Contains(busq));
+        }
+        
+        _notas = await query.OrderByDescending(n => n.Fecha).ThenByDescending(n => n.NumeroNota).ToListAsync();
+        _loading = false;
+    }
+
+    private void LimpiarFiltros()
+    {
+        _filtroDesde = DateTime.Today.AddDays(-30);
+        _filtroHasta = DateTime.Today;
+        _filtroEstado = "";
+        _filtroBusqueda = "";
+    }
+
+    private void NuevaNotaCredito()
+    {
+        Nav.NavigateTo("/notas-credito");
+    }
+
+    private void Editar(int id)
+    {
+        Nav.NavigateTo($"/notas-credito/{id}");
+    }
+
+    private void ImprimirA4(int id)
+    {
+        Nav.NavigateTo($"/notas-credito/imprimir/{id}");
+    }
+
+    private async Task ImprimirTicket(NotaCreditoVenta nc)
+    {
+        // Cargar detalles si no están
+        if (nc.Detalles == null || !nc.Detalles.Any())
+        {
+            nc = await Db.NotasCreditoVentas
+                .Include(n => n.Cliente)
+                .Include(n => n.VentaAsociada)
+                .Include(n => n.Detalles!)
+                    .ThenInclude(d => d.Producto)
+                .FirstOrDefaultAsync(n => n.IdNotaCredito == nc.IdNotaCredito) ?? nc;
+        }
+        _ncSeleccionada = nc;
+        _mostrarTicket = true;
+    }
+
+    private void CerrarTicket()
+    {
+        _mostrarTicket = false;
+        _ncSeleccionada = null;
+    }
+
+    private async Task Confirmar(NotaCreditoVenta nc)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Confirmar la NC #{nc.NumeroNota}? Una vez confirmada, no podrá editarse."))
+            return;
+        
+        nc.Estado = "Confirmada";
+        nc.ModificadoPor = "Sistema";
+        nc.FechaModificacion = DateTime.Now;
+        
+        // Actualizar saldo de factura si aplica
+        if (nc.IdVentaAsociada.HasValue)
+        {
+            var venta = await Db.Ventas.FindAsync(nc.IdVentaAsociada.Value);
+            if (venta != null && venta.CreditoSaldo.HasValue)
+            {
+                venta.CreditoSaldo = Math.Max(0, venta.CreditoSaldo.Value - nc.Total);
+            }
+        }
+        
+        await Db.SaveChangesAsync();
+        await CargarDatos();
+    }
+
+    private async Task Anular(NotaCreditoVenta nc)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Anular la NC #{nc.NumeroNota}? Esta acción no se puede deshacer."))
+            return;
+        
+        nc.Estado = "Anulada";
+        nc.ModificadoPor = "Sistema";
+        nc.FechaModificacion = DateTime.Now;
+        
+        // Revertir saldo de factura si aplica
+        if (nc.IdVentaAsociada.HasValue)
+        {
+            var venta = await Db.Ventas.FindAsync(nc.IdVentaAsociada.Value);
+            if (venta != null && venta.CreditoSaldo.HasValue)
+            {
+                venta.CreditoSaldo += nc.Total;
+            }
+        }
+        
+        await Db.SaveChangesAsync();
+        await CargarDatos();
+    }
+
+    private string GetBadgeClass(string estado) => estado switch
+    {
+        "Borrador" => "bg-warning text-dark",
+        "Confirmada" => "bg-success",
+        "Anulada" => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

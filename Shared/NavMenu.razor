@@ -111,6 +111,15 @@
                         @if (!IsCollapsed){<span class="link-text">Explorador de Ventas</span>}
                     </NavLink>
                     <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    <NavLink class="nav-link" href="/notas-credito" title="@(IsCollapsed ? "Nota de Crédito" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-file-earmark-minus text-danger me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Nota de Crédito</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/notas-credito/explorar" title="@(IsCollapsed ? "Explorar NC" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-journal-minus me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Explorar NC</span>}
+                    </NavLink>
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
                     <NavLink class="nav-link" href="/caja/cierre" title="@(IsCollapsed ? "Cierre de Caja" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-cash-stack me-2"></i>
                         @if (!IsCollapsed){<span class="link-text">Cierre de Caja</span>}

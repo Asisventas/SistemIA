@@ -2163,6 +2163,217 @@ namespace SistemIA.Migrations
                     b.ToTable("MovimientosInventario", (string)null);
                 });
 
+            modelBuilder.Entity("SistemIA.Models.NotaCreditoVenta", b =>
+                {
+                    b.Property<int>("IdNotaCredito")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdNotaCredito"));
+
+                    b.Property<string>("CDC")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<decimal?>("CambioDelDia")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("CodigoSeguridad")
+                        .HasMaxLength(9)
+                        .HasColumnType("nvarchar(9)");
+
+                    b.Property<bool?>("EsMonedaExtranjera")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Establecimiento")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("EstadoSifen")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaContable")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEnvioSifen")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IdLote")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("IdMoneda")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuario")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdVentaAsociada")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MensajeSifen")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Motivo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("NumeroNota")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PuntoExpedicion")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<int?>("Serie")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SimboloMoneda")
+                        .HasMaxLength(4)
+                        .HasColumnType("nvarchar(4)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Timbrado")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<string>("TipoDocumentoAsociado")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("TotalEnLetras")
+                        .HasMaxLength(280)
+                        .HasColumnType("nvarchar(280)");
+
+                    b.Property<decimal>("TotalExenta")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalIVA10")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalIVA5")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("Turno")
+                        .HasColumnType("int");
+
+                    b.Property<string>("XmlCDE")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("IdNotaCredito");
+
+                    b.HasIndex("IdCaja");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdMoneda");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.HasIndex("IdVentaAsociada");
+
+                    b.HasIndex(new[] { "IdSucursal", "NumeroNota" }, "IX_NotaCreditoVentas_Numeracion")
+                        .IsUnique();
+
+                    b.ToTable("NotasCreditoVentas", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.NotaCreditoVentaDetalle", b =>
+                {
+                    b.Property<int>("IdNotaCreditoDetalle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdNotaCreditoDetalle"));
+
+                    b.Property<decimal?>("CambioDelDia")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("Descuento")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("Exenta")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("Grabado10")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("Grabado5")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("IVA10")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("IVA5")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("IdDeposito")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdNotaCredito")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdProducto")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdTipoIva")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Importe")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Lote")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal>("PorcentajeDescuento")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("PrecioUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("IdNotaCreditoDetalle");
+
+                    b.HasIndex("IdDeposito");
+
+                    b.HasIndex("IdNotaCredito");
+
+                    b.HasIndex("IdProducto");
+
+                    b.ToTable("NotasCreditoVentasDetalles", (string)null);
+                });
+
             modelBuilder.Entity("SistemIA.Models.PagoProveedor", b =>
                 {
                     b.Property<int>("IdPagoProveedor")
@@ -4900,6 +5111,79 @@ namespace SistemIA.Migrations
                     b.Navigation("Producto");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.NotaCreditoVenta", b =>
+                {
+                    b.HasOne("SistemIA.Models.Caja", "Caja")
+                        .WithMany()
+                        .HasForeignKey("IdCaja")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Moneda", "Moneda")
+                        .WithMany()
+                        .HasForeignKey("IdMoneda")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Venta", "VentaAsociada")
+                        .WithMany()
+                        .HasForeignKey("IdVentaAsociada")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Caja");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Moneda");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("Usuario");
+
+                    b.Navigation("VentaAsociada");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.NotaCreditoVentaDetalle", b =>
+                {
+                    b.HasOne("SistemIA.Models.Deposito", "Deposito")
+                        .WithMany()
+                        .HasForeignKey("IdDeposito")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.NotaCreditoVenta", "NotaCredito")
+                        .WithMany("Detalles")
+                        .HasForeignKey("IdNotaCredito")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Producto", "Producto")
+                        .WithMany()
+                        .HasForeignKey("IdProducto")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Deposito");
+
+                    b.Navigation("NotaCredito");
+
+                    b.Navigation("Producto");
+                });
+
             modelBuilder.Entity("SistemIA.Models.PagoProveedor", b =>
                 {
                     b.HasOne("SistemIA.Models.Caja", "Caja")
@@ -5546,6 +5830,11 @@ namespace SistemIA.Migrations
                     b.Navigation("ModulosHijos");
 
                     b.Navigation("PermisosRol");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.NotaCreditoVenta", b =>
+                {
+                    b.Navigation("Detalles");
                 });
 
             modelBuilder.Entity("SistemIA.Models.PagoProveedor", b =>

@@ -1,0 +1,336 @@
+@page "/notas-credito/imprimir/{Id:int}"
+@using SistemIA.Models
+@using SistemIA.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Imprimir Nota de Crédito</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p>Cargando...</p>
+    </div>
+}
+else if (_nc == null)
+{
+    <div class="alert alert-warning">
+        Nota de crédito no encontrada.
+    </div>
+}
+else
+{
+    <div class="d-print-none mb-3">
+        <button class="btn btn-primary" @onclick="Imprimir">
+            <i class="bi bi-printer"></i> Imprimir
+        </button>
+        <button class="btn btn-secondary" @onclick="Volver">
+            <i class="bi bi-arrow-left"></i> Volver
+        </button>
+    </div>
+    
+    <div class="print-area" id="print-nc-a4">
+        <style>
+            .print-area {
+                width: 210mm;
+                min-height: 297mm;
+                padding: 15mm;
+                margin: 0 auto;
+                background: #fff;
+                font-family: Arial, sans-serif;
+                font-size: 11pt;
+            }
+            .nc-header {
+                display: flex;
+                justify-content: space-between;
+                border-bottom: 2px solid #000;
+                padding-bottom: 10px;
+                margin-bottom: 15px;
+            }
+            .nc-header-left {
+                flex: 1;
+            }
+            .nc-header-right {
+                text-align: right;
+                min-width: 200px;
+            }
+            .nc-titulo {
+                font-size: 18pt;
+                font-weight: bold;
+                text-align: center;
+                margin: 10px 0;
+                background: #f0f0f0;
+                padding: 8px;
+                border: 1px solid #000;
+            }
+            .nc-info-box {
+                border: 1px solid #ccc;
+                padding: 10px;
+                margin-bottom: 15px;
+            }
+            .nc-info-row {
+                display: flex;
+                margin-bottom: 5px;
+            }
+            .nc-info-label {
+                font-weight: bold;
+                min-width: 120px;
+            }
+            .nc-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 15px 0;
+            }
+            .nc-table th, .nc-table td {
+                border: 1px solid #000;
+                padding: 6px 8px;
+                text-align: left;
+            }
+            .nc-table th {
+                background: #e0e0e0;
+                font-weight: bold;
+            }
+            .nc-table .text-right {
+                text-align: right;
+            }
+            .nc-totales {
+                display: flex;
+                justify-content: flex-end;
+                margin-top: 15px;
+            }
+            .nc-totales-box {
+                min-width: 300px;
+                border: 1px solid #000;
+            }
+            .nc-totales-row {
+                display: flex;
+                justify-content: space-between;
+                padding: 5px 10px;
+                border-bottom: 1px solid #ccc;
+            }
+            .nc-totales-row:last-child {
+                border-bottom: none;
+                font-weight: bold;
+                font-size: 14pt;
+                background: #f0f0f0;
+            }
+            .nc-iva-box {
+                border: 1px solid #000;
+                padding: 10px;
+                margin-top: 15px;
+            }
+            .nc-iva-row {
+                display: flex;
+                justify-content: space-around;
+            }
+            .nc-footer {
+                margin-top: 20px;
+                font-size: 9pt;
+                text-align: center;
+                border-top: 1px solid #ccc;
+                padding-top: 10px;
+            }
+            @@media print {
+                body * { visibility: hidden !important; }
+                .print-area, .print-area * { visibility: visible !important; }
+                .print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 10mm; }
+                .d-print-none { display: none !important; }
+            }
+        </style>
+        
+        <div class="nc-header">
+            <div class="nc-header-left">
+                <strong style="font-size:14pt;">@_empresa?.Nombre</strong><br/>
+                RUC: @_empresa?.RUC-@(_empresa?.DV ?? 0)<br/>
+                @_empresa?.Direccion<br/>
+                Tel: @(_empresa?.Telefono ?? "")
+            </div>
+            <div class="nc-header-right">
+                Timbrado: <strong>@_nc.Timbrado</strong><br/>
+                Vigencia: @(_nc.Caja?.VigenciaDelNC?.ToString("dd/MM/yyyy") ?? "") al @(_nc.Caja?.VigenciaAlNC?.ToString("dd/MM/yyyy") ?? "")
+            </div>
+        </div>
+        
+        <div class="nc-titulo">
+            NOTA DE CRÉDITO<br/>
+            <span style="font-size:14pt;">
+                @_nc.Establecimiento-@_nc.PuntoExpedicion-@_nc.NumeroNota.ToString("D7")
+            </span>
+        </div>
+        
+        <div style="display:flex; gap:15px;">
+            <div class="nc-info-box" style="flex:1;">
+                <div class="nc-info-row">
+                    <span class="nc-info-label">Fecha:</span>
+                    <span>@_nc.Fecha.ToString("dd/MM/yyyy")</span>
+                </div>
+                <div class="nc-info-row">
+                    <span class="nc-info-label">Cliente:</span>
+                    <span>@(_nc.Cliente?.RazonSocial ?? _nc.NombreCliente ?? "CONSUMIDOR FINAL")</span>
+                </div>
+                <div class="nc-info-row">
+                    <span class="nc-info-label">RUC/CI:</span>
+                    <span>@(_nc.Cliente?.RUC ?? "S/D")-@(_nc.Cliente?.DV ?? 0)</span>
+                </div>
+                <div class="nc-info-row">
+                    <span class="nc-info-label">Dirección:</span>
+                    <span>@(_nc.Cliente?.Direccion ?? "")</span>
+                </div>
+            </div>
+            
+            <div class="nc-info-box" style="flex:1;">
+                <div class="nc-info-row">
+                    <span class="nc-info-label">Motivo:</span>
+                    <span>@_nc.Motivo</span>
+                </div>
+                @if (_nc.VentaAsociada != null)
+                {
+                    <div class="nc-info-row">
+                        <span class="nc-info-label">Doc. Asociado:</span>
+                        <span>@_nc.TipoDocumentoAsociado</span>
+                    </div>
+                    <div class="nc-info-row">
+                        <span class="nc-info-label">Factura Ref.:</span>
+                        <span>@_nc.VentaAsociada.Establecimiento-@_nc.VentaAsociada.PuntoExpedicion-@_nc.VentaAsociada.NumeroFactura</span>
+                    </div>
+                    <div class="nc-info-row">
+                        <span class="nc-info-label">Timbrado Ref.:</span>
+                        <span>@_nc.VentaAsociada.Timbrado</span>
+                    </div>
+                }
+                <div class="nc-info-row">
+                    <span class="nc-info-label">Condición:</span>
+                    <span>Contado</span>
+                </div>
+            </div>
+        </div>
+        
+        <table class="nc-table">
+            <thead>
+                <tr>
+                    <th style="width:60px;">Código</th>
+                    <th>Descripción</th>
+                    <th style="width:80px;" class="text-right">Cantidad</th>
+                    <th style="width:100px;" class="text-right">P. Unitario</th>
+                    <th style="width:80px;" class="text-right">% Desc.</th>
+                    <th style="width:100px;" class="text-right">Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_nc.Detalles != null)
+                {
+                    @foreach (var det in _nc.Detalles)
+                    {
+                        <tr>
+                            <td>@(det.CodigoProducto ?? det.Producto?.CodigoInterno ?? "")</td>
+                            <td>@(det.NombreProducto ?? det.Producto?.Descripcion ?? "")</td>
+                            <td class="text-right">@det.Cantidad.ToString("N2")</td>
+                            <td class="text-right">@det.PrecioUnitario.ToString("N0")</td>
+                            <td class="text-right">@det.PorcentajeDescuento.ToString("N2")%</td>
+                            <td class="text-right">@det.Importe.ToString("N0")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        
+        <div class="nc-totales">
+            <div class="nc-totales-box">
+                <div class="nc-totales-row">
+                    <span>Subtotal:</span>
+                    <span>@(_nc.SimboloMoneda ?? "Gs.") @_nc.Subtotal.ToString("N0")</span>
+                </div>
+                @if (_nc.TotalDescuento > 0)
+                {
+                    <div class="nc-totales-row">
+                        <span>Descuento:</span>
+                        <span>@(_nc.SimboloMoneda ?? "Gs.") @_nc.TotalDescuento.ToString("N0")</span>
+                    </div>
+                }
+                <div class="nc-totales-row">
+                    <span>TOTAL:</span>
+                    <span>@(_nc.SimboloMoneda ?? "Gs.") @_nc.Total.ToString("N0")</span>
+                </div>
+            </div>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(_nc.TotalEnLetras))
+        {
+            <div style="margin-top:10px; font-style:italic;">
+                Son: @_nc.TotalEnLetras
+            </div>
+        }
+        
+        <div class="nc-iva-box">
+            <strong>Liquidación del IVA:</strong>
+            <div class="nc-iva-row" style="margin-top:8px;">
+                <div>
+                    <strong>Gravado 10%:</strong> @(_nc.Detalles?.Sum(d => d.Grabado10) ?? 0).ToString("N0")<br/>
+                    <strong>IVA 10%:</strong> @_nc.TotalIVA10.ToString("N0")
+                </div>
+                <div>
+                    <strong>Gravado 5%:</strong> @(_nc.Detalles?.Sum(d => d.Grabado5) ?? 0).ToString("N0")<br/>
+                    <strong>IVA 5%:</strong> @_nc.TotalIVA5.ToString("N0")
+                </div>
+                <div>
+                    <strong>Exenta:</strong> @_nc.TotalExenta.ToString("N0")
+                </div>
+                <div>
+                    <strong>Total IVA:</strong> @((_nc.TotalIVA10 + _nc.TotalIVA5).ToString("N0"))
+                </div>
+            </div>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(_nc.Observaciones))
+        {
+            <div style="margin-top:15px; padding:8px; border:1px solid #ccc;">
+                <strong>Observaciones:</strong> @_nc.Observaciones
+            </div>
+        }
+        
+        <div class="nc-footer">
+            @if (!string.IsNullOrEmpty(_nc.CDC))
+            {
+                <div style="margin-bottom:5px;">CDC: @_nc.CDC</div>
+            }
+            <div>Documento generado por SistemIA - @DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")</div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private NotaCreditoVenta? _nc;
+    private Sociedad? _empresa;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _nc = await Db.NotasCreditoVentas
+            .Include(n => n.Cliente)
+            .Include(n => n.Sucursal)
+            .Include(n => n.Caja)
+            .Include(n => n.Moneda)
+            .Include(n => n.VentaAsociada)
+            .Include(n => n.Detalles!)
+                .ThenInclude(d => d.Producto)
+            .FirstOrDefaultAsync(n => n.IdNotaCredito == Id);
+        
+        _empresa = await Db.Sociedades.FirstOrDefaultAsync();
+        _loading = false;
+    }
+
+    private async Task Imprimir()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/notas-credito/explorar");
+    }
+}

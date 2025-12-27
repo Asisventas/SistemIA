@@ -1,0 +1,926 @@
+@page "/notas-credito"
+@page "/notas-credito/{Id:int}"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using SistemIA.Models
+@using SistemIA.Data
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject ISucursalProvider SucursalProvider
+@inject ICajaProvider CajaProvider
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/notas-credito" Permiso="CREAR_NOTAS_CREDITO">
+<PageTitle>@(_esEdicion ? "Editar" : "Nueva") Nota de Crédito</PageTitle>
+
+<div class="container-fluid">
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-file-earmark-minus me-2"></i>
+                @(_esEdicion ? "Editar" : "Nueva") Nota de Crédito
+            </h5>
+            <button class="btn btn-light btn-sm" @onclick="Volver">
+                <i class="bi bi-arrow-left"></i> Volver
+            </button>
+        </div>
+        
+        <div class="card-body">
+            @if (_loading)
+            {
+                <div class="text-center p-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else
+            {
+                @* Encabezado - Información principal *@
+                <div class="row g-3 mb-4">
+                    <div class="col-md-2">
+                        <label class="form-label">Caja</label>
+                        <select class="form-select form-select-sm" @bind="_nc.IdCaja">
+                            @foreach (var caja in _cajas)
+                            {
+                                <option value="@caja.IdCaja">@caja.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Turno</label>
+                        <select class="form-select form-select-sm" @bind="_nc.Turno">
+                            <option value="1">Turno 1</option>
+                            <option value="2">Turno 2</option>
+                            <option value="3">Turno 3</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Fecha</label>
+                        <input type="date" class="form-control form-control-sm" @bind="_nc.Fecha" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Número NC</label>
+                        <input type="text" class="form-control form-control-sm" readonly 
+                               value="@(_cajaSeleccionada?.Nivel1NC ?? "001")-@(_cajaSeleccionada?.Nivel2NC ?? "001")-@(_nc.NumeroNota.ToString("D7"))" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Timbrado</label>
+                        <input type="text" class="form-control form-control-sm" readonly value="@(_cajaSeleccionada?.TimbradoNC)" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Estado</label>
+                        <span class="badge @GetBadgeClass(_nc.Estado) d-block py-2">@_nc.Estado</span>
+                    </div>
+                </div>
+                
+                @* Motivo y Documento Asociado *@
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Motivo <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" @bind="_nc.Motivo">
+                            @foreach (var motivo in MotivosNotaCredito.Todos)
+                            {
+                                <option value="@motivo">@motivo</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Tipo Doc. Asociado</label>
+                        <select class="form-select form-select-sm" @bind="_nc.TipoDocumentoAsociado">
+                            <option value="Electrónico">Electrónico</option>
+                            <option value="Impreso">Impreso</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Factura Asociada</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" readonly 
+                                   value="@(_ventaSeleccionada != null ? $"{_ventaSeleccionada.Establecimiento}-{_ventaSeleccionada.PuntoExpedicion}-{_ventaSeleccionada.NumeroFactura}" : "(Ninguna)")" />
+                            <button class="btn btn-outline-primary" type="button" @onclick="AbrirBuscarFactura">
+                                <i class="bi bi-search"></i>
+                            </button>
+                            @if (_ventaSeleccionada != null)
+                            {
+                                <button class="btn btn-outline-danger" type="button" @onclick="QuitarFactura">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Saldo Factura</label>
+                        <input type="text" class="form-control form-control-sm" readonly 
+                               value="@(_ventaSeleccionada?.CreditoSaldo?.ToString("N0") ?? "N/A")" />
+                    </div>
+                </div>
+                
+                @* Cliente *@
+                <div class="row g-3 mb-4 p-3 bg-light rounded">
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold">Cliente</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" readonly 
+                                   value="@(_clienteSeleccionado?.RazonSocial ?? _nc.NombreCliente ?? "CONSUMIDOR FINAL")" />
+                            <button class="btn btn-outline-primary" type="button" @onclick="AbrirBuscarCliente">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">RUC/CI</label>
+                        <input type="text" class="form-control form-control-sm" readonly 
+                               value="@(_clienteSeleccionado?.RUC ?? "")" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Dirección</label>
+                        <input type="text" class="form-control form-control-sm" readonly 
+                               value="@(_clienteSeleccionado?.Direccion ?? "")" />
+                    </div>
+                </div>
+                
+                @* Moneda *@
+                <div class="row g-3 mb-4">
+                    <div class="col-md-2">
+                        <label class="form-label">Moneda</label>
+                        <select class="form-select form-select-sm" @bind="_nc.IdMoneda" @bind:after="OnMonedaChanged">
+                            @foreach (var mon in _monedas)
+                            {
+                                <option value="@mon.IdMoneda">@mon.Nombre (@mon.Simbolo)</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_nc.EsMonedaExtranjera)
+                    {
+                        <div class="col-md-2">
+                            <label class="form-label">Cambio del día</label>
+                            <input type="number" class="form-control form-control-sm" step="0.01" @bind="_nc.CambioDelDia" />
+                        </div>
+                    }
+                </div>
+                
+                @* Detalles de productos *@
+                <div class="card mb-4">
+                    <div class="card-header bg-secondary text-white py-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-list-ul me-2"></i>Detalle de Productos</span>
+                            <button class="btn btn-light btn-sm" @onclick="AbrirBuscarProducto">
+                                <i class="bi bi-plus-lg"></i> Agregar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:80px;">Código</th>
+                                        <th>Descripción</th>
+                                        <th style="width:90px;" class="text-end">Cantidad</th>
+                                        <th style="width:110px;" class="text-end">P. Unitario</th>
+                                        <th style="width:80px;" class="text-end">% Desc.</th>
+                                        <th style="width:70px;" class="text-center">IVA</th>
+                                        <th style="width:110px;" class="text-end">Subtotal</th>
+                                        <th style="width:50px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var det in _detalles)
+                                    {
+                                        <tr>
+                                            <td>@det.CodigoProducto</td>
+                                            <td>@det.NombreProducto</td>
+                                            <td>
+                                                <input type="number" class="form-control form-control-sm text-end" 
+                                                       step="0.01" min="0.01" @bind="det.Cantidad" @bind:after="RecalcularLinea" />
+                                            </td>
+                                            <td>
+                                                <input type="number" class="form-control form-control-sm text-end" 
+                                                       step="1" min="0" @bind="det.PrecioUnitario" @bind:after="RecalcularLinea" />
+                                            </td>
+                                            <td>
+                                                <input type="number" class="form-control form-control-sm text-end" 
+                                                       step="0.5" min="0" max="100" @bind="det.PorcentajeDescuento" @bind:after="RecalcularLinea" />
+                                            </td>
+                                            <td class="text-center">@det.TasaIVA%</td>
+                                            <td class="text-end">@det.Importe.ToString("N0")</td>
+                                            <td>
+                                                <button class="btn btn-outline-danger btn-sm" @onclick="() => QuitarDetalle(det)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                    @if (!_detalles.Any())
+                                    {
+                                        <tr>
+                                            <td colspan="8" class="text-center text-muted py-3">
+                                                No hay productos. Haga clic en "Agregar" para comenzar.
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                @* Totales *@
+                <div class="row">
+                    <div class="col-md-5">
+                        <label class="form-label">Observaciones</label>
+                        <textarea class="form-control" rows="3" @bind="_nc.Observaciones"></textarea>
+                    </div>
+                    <div class="col-md-4 offset-md-3">
+                        <table class="table table-sm">
+                            <tr>
+                                <td>Subtotal:</td>
+                                <td class="text-end">@_nc.Subtotal.ToString("N0")</td>
+                            </tr>
+                            <tr>
+                                <td>Descuento:</td>
+                                <td class="text-end">@_nc.TotalDescuento.ToString("N0")</td>
+                            </tr>
+                            <tr class="table-primary">
+                                <td><strong>TOTAL @(_monedaSeleccionada?.Simbolo ?? "Gs."):</strong></td>
+                                <td class="text-end"><strong>@_nc.Total.ToString("N0")</strong></td>
+                            </tr>
+                        </table>
+                        
+                        <div class="bg-light p-2 rounded small">
+                            <div class="row">
+                                <div class="col-4">
+                                    <span>IVA 10%:</span><br/>
+                                    <strong>@_nc.TotalIVA10.ToString("N0")</strong>
+                                </div>
+                                <div class="col-4">
+                                    <span>IVA 5%:</span><br/>
+                                    <strong>@_nc.TotalIVA5.ToString("N0")</strong>
+                                </div>
+                                <div class="col-4">
+                                    <span>Exenta:</span><br/>
+                                    <strong>@_nc.TotalExenta.ToString("N0")</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                @* Botones de acción *@
+                <div class="d-flex justify-content-between mt-4 pt-3 border-top">
+                    <div>
+                        <button class="btn btn-secondary" @onclick="Volver">
+                            <i class="bi bi-x-lg"></i> Cancelar
+                        </button>
+                    </div>
+                    <div class="d-flex gap-2">
+                        @if (_nc.Estado == "Borrador")
+                        {
+                            <button class="btn btn-primary" @onclick="Guardar" disabled="@_guardando">
+                                @if (_guardando)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                <i class="bi bi-save"></i> Guardar Borrador
+                            </button>
+                            <button class="btn btn-success" @onclick="GuardarYConfirmar" disabled="@_guardando">
+                                <i class="bi bi-check-lg"></i> Guardar y Confirmar
+                            </button>
+                        }
+                        @if (_esEdicion && _nc.Estado != "Borrador")
+                        {
+                            <button class="btn btn-info" @onclick="() => ImprimirA4()">
+                                <i class="bi bi-printer"></i> Imprimir A4
+                            </button>
+                            <button class="btn btn-secondary" @onclick="() => _mostrarTicket = true">
+                                <i class="bi bi-receipt"></i> Ticket
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* Modal buscar factura *@
+@if (_mostrarBuscarFactura)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Buscar Factura</h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarBuscarFactura = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Buscar por número o cliente..." 
+                               @bind="_busquedaFactura" @bind:event="oninput" />
+                        <button class="btn btn-primary" @onclick="BuscarFacturas">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                    
+                    @if (_facturasEncontradas.Any())
+                    {
+                        <div class="table-responsive" style="max-height:300px;">
+                            <table class="table table-hover table-sm">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Número</th>
+                                        <th>Fecha</th>
+                                        <th>Cliente</th>
+                                        <th class="text-end">Total</th>
+                                        <th class="text-end">Saldo</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var v in _facturasEncontradas)
+                                    {
+                                        <tr>
+                                            <td>@v.Establecimiento-@v.PuntoExpedicion-@v.NumeroFactura</td>
+                                            <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
+                                            <td>@(v.Cliente?.RazonSocial ?? "S/N")</td>
+                                            <td class="text-end">@v.Total.ToString("N0")</td>
+                                            <td class="text-end">@(v.CreditoSaldo?.ToString("N0") ?? "N/A")</td>
+                                            <td>
+                                                <button class="btn btn-success btn-sm" @onclick="() => SeleccionarFactura(v)">
+                                                    <i class="bi bi-check"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center">Ingrese un término de búsqueda y presione buscar.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal buscar cliente *@
+@if (_mostrarBuscarCliente)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Buscar Cliente</h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarBuscarCliente = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Buscar por nombre o RUC..." 
+                               @bind="_busquedaCliente" @bind:event="oninput" />
+                        <button class="btn btn-primary" @onclick="BuscarClientes">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                    
+                    @if (_clientesEncontrados.Any())
+                    {
+                        <div class="table-responsive" style="max-height:300px;">
+                            <table class="table table-hover table-sm">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Razón Social</th>
+                                        <th>RUC</th>
+                                        <th>Teléfono</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var c in _clientesEncontrados)
+                                    {
+                                        <tr>
+                                            <td>@c.RazonSocial</td>
+                                            <td>@c.RUC</td>
+                                            <td>@c.Telefono</td>
+                                            <td>
+                                                <button class="btn btn-success btn-sm" @onclick="() => SeleccionarCliente(c)">
+                                                    <i class="bi bi-check"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center">Ingrese un término de búsqueda y presione buscar.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal buscar producto *@
+@if (_mostrarBuscarProducto)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Agregar Producto</h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarBuscarProducto = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Buscar por código o descripción..." 
+                               @bind="_busquedaProducto" @bind:event="oninput" />
+                        <button class="btn btn-primary" @onclick="BuscarProductos">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                    
+                    @if (_productosEncontrados.Any())
+                    {
+                        <div class="table-responsive" style="max-height:300px;">
+                            <table class="table table-hover table-sm">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Descripción</th>
+                                        <th class="text-end">Precio</th>
+                                        <th>IVA</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in _productosEncontrados)
+                                    {
+                                        <tr>
+                                            <td>@p.CodigoInterno</td>
+                                            <td>@p.Descripcion</td>
+                                            <td class="text-end">@p.PrecioUnitarioGs.ToString("N0")</td>
+                                            <td>@(p.TipoIva?.Porcentaje ?? 10)%</td>
+                                            <td>
+                                                <button class="btn btn-success btn-sm" @onclick="() => AgregarProducto(p)">
+                                                    <i class="bi bi-plus"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center">Ingrese un término de búsqueda y presione buscar.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal ticket preview *@
+@if (_mostrarTicket && _nc.IdNotaCredito > 0)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Ticket NC</h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarTicket = false"></button>
+                </div>
+                <div class="modal-body">
+                    <NotaCreditoTicketVistaPrevia NotaCredito="_ncConDetalles" Empresa="_empresa" MostrarBotonImprimir="true" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => _mostrarTicket = false">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private NotaCreditoVenta _nc = new();
+    private NotaCreditoVenta? _ncConDetalles;
+    private List<NotaCreditoVentaDetalle> _detalles = new();
+    private bool _esEdicion;
+    private bool _loading = true;
+    private bool _guardando;
+    
+    // Selecciones
+    private Caja? _cajaSeleccionada;
+    private Venta? _ventaSeleccionada;
+    private Cliente? _clienteSeleccionado;
+    private Moneda? _monedaSeleccionada;
+    private Sociedad? _empresa;
+    
+    // Listas
+    private List<Caja> _cajas = new();
+    private List<Moneda> _monedas = new();
+    
+    // Modales de búsqueda
+    private bool _mostrarBuscarFactura;
+    private bool _mostrarBuscarCliente;
+    private bool _mostrarBuscarProducto;
+    private bool _mostrarTicket;
+    
+    private string _busquedaFactura = "";
+    private string _busquedaCliente = "";
+    private string _busquedaProducto = "";
+    
+    private List<Venta> _facturasEncontradas = new();
+    private List<Cliente> _clientesEncontrados = new();
+    private List<Producto> _productosEncontrados = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        if (!sucId.HasValue)
+        {
+            Nav.NavigateTo("/sucursales");
+            return;
+        }
+        
+        // Cargar listas
+        _cajas = await Db.Cajas.Where(c => c.IdSucursal == sucId).ToListAsync();
+        _monedas = await Db.Monedas.Where(m => m.Estado).OrderBy(m => m.Orden).ToListAsync();
+        _empresa = await Db.Sociedades.FirstOrDefaultAsync();
+        
+        if (Id.HasValue && Id > 0)
+        {
+            // Edición
+            _esEdicion = true;
+            var nc = await Db.NotasCreditoVentas
+                .Include(n => n.Cliente)
+                .Include(n => n.Caja)
+                .Include(n => n.VentaAsociada)
+                .Include(n => n.Moneda)
+                .Include(n => n.Detalles!)
+                    .ThenInclude(d => d.Producto)
+                .FirstOrDefaultAsync(n => n.IdNotaCredito == Id.Value);
+            
+            if (nc == null)
+            {
+                Nav.NavigateTo("/notas-credito/explorar");
+                return;
+            }
+            
+            _nc = nc;
+            _detalles = nc.Detalles?.ToList() ?? new();
+            _clienteSeleccionado = nc.Cliente;
+            _ventaSeleccionada = nc.VentaAsociada;
+            _cajaSeleccionada = nc.Caja;
+            _monedaSeleccionada = nc.Moneda;
+            _ncConDetalles = nc;
+        }
+        else
+        {
+            // Nueva NC
+            var cajaId = CajaProvider.GetCajaId();
+            _cajaSeleccionada = _cajas.FirstOrDefault(c => c.IdCaja == cajaId) ?? _cajas.FirstOrDefault();
+            
+            _nc = new NotaCreditoVenta
+            {
+                IdSucursal = sucId.Value,
+                IdCaja = _cajaSeleccionada?.IdCaja ?? 0,
+                Fecha = DateTime.Now,
+                Turno = "1",
+                Motivo = MotivosNotaCredito.Devolucion,
+                TipoDocumentoAsociado = "Electrónico",
+                Estado = "Borrador",
+                IdMoneda = _monedas.FirstOrDefault(m => m.EsMonedaBase)?.IdMoneda ?? 1,
+                CambioDelDia = 1,
+                EsMonedaExtranjera = false,
+                NumeroNota = await ObtenerSiguienteNumero(sucId.Value)
+            };
+            
+            _monedaSeleccionada = _monedas.FirstOrDefault(m => m.IdMoneda == _nc.IdMoneda);
+            if (_cajaSeleccionada != null)
+            {
+                _nc.Establecimiento = _cajaSeleccionada.Nivel1NC;
+                _nc.PuntoExpedicion = _cajaSeleccionada.Nivel2NC;
+                _nc.Timbrado = _cajaSeleccionada.TimbradoNC;
+                _nc.Serie = _cajaSeleccionada.SerieNC;
+            }
+        }
+        
+        _loading = false;
+    }
+
+    private async Task<int> ObtenerSiguienteNumero(int sucId)
+    {
+        var ultimo = await Db.NotasCreditoVentas
+            .Where(n => n.IdSucursal == sucId)
+            .OrderByDescending(n => n.NumeroNota)
+            .Select(n => n.NumeroNota)
+            .FirstOrDefaultAsync();
+        
+        return ultimo + 1;
+    }
+
+    private void OnMonedaChanged()
+    {
+        _monedaSeleccionada = _monedas.FirstOrDefault(m => m.IdMoneda == _nc.IdMoneda);
+        _nc.SimboloMoneda = _monedaSeleccionada?.Simbolo;
+        _nc.EsMonedaExtranjera = _monedaSeleccionada != null && !_monedaSeleccionada.EsMonedaBase;
+        if (!_nc.EsMonedaExtranjera)
+            _nc.CambioDelDia = 1;
+    }
+
+    // Búsqueda de facturas
+    private void AbrirBuscarFactura()
+    {
+        _busquedaFactura = "";
+        _facturasEncontradas.Clear();
+        _mostrarBuscarFactura = true;
+    }
+
+    private async Task BuscarFacturas()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        var busq = _busquedaFactura.ToLower();
+        
+        _facturasEncontradas = await Db.Ventas
+            .Include(v => v.Cliente)
+            .Where(v => v.IdSucursal == sucId && v.Estado == "Confirmado")
+            .Where(v => (v.Cliente != null && v.Cliente.RazonSocial.ToLower().Contains(busq)) ||
+                       (v.NumeroFactura != null && v.NumeroFactura.Contains(busq)))
+            .OrderByDescending(v => v.Fecha)
+            .Take(50)
+            .ToListAsync();
+    }
+
+    private void SeleccionarFactura(Venta v)
+    {
+        _ventaSeleccionada = v;
+        _nc.IdVentaAsociada = v.IdVenta;
+        
+        // Auto-seleccionar cliente
+        if (v.Cliente != null)
+        {
+            _clienteSeleccionado = v.Cliente;
+            _nc.IdCliente = v.IdCliente;
+            _nc.NombreCliente = v.Cliente.RazonSocial;
+        }
+        
+        _mostrarBuscarFactura = false;
+    }
+
+    private void QuitarFactura()
+    {
+        _ventaSeleccionada = null;
+        _nc.IdVentaAsociada = null;
+    }
+
+    // Búsqueda de clientes
+    private void AbrirBuscarCliente()
+    {
+        _busquedaCliente = "";
+        _clientesEncontrados.Clear();
+        _mostrarBuscarCliente = true;
+    }
+
+    private async Task BuscarClientes()
+    {
+        var busq = _busquedaCliente.ToLower();
+        
+        _clientesEncontrados = await Db.Clientes
+            .Where(c => c.Estado)
+            .Where(c => c.RazonSocial.ToLower().Contains(busq) || c.RUC.Contains(busq))
+            .OrderBy(c => c.RazonSocial)
+            .Take(50)
+            .ToListAsync();
+    }
+
+    private void SeleccionarCliente(Cliente c)
+    {
+        _clienteSeleccionado = c;
+        _nc.IdCliente = c.IdCliente;
+        _nc.NombreCliente = c.RazonSocial;
+        _mostrarBuscarCliente = false;
+    }
+
+    // Búsqueda de productos
+    private void AbrirBuscarProducto()
+    {
+        _busquedaProducto = "";
+        _productosEncontrados.Clear();
+        _mostrarBuscarProducto = true;
+    }
+
+    private async Task BuscarProductos()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        var busq = _busquedaProducto.ToLower();
+        
+        _productosEncontrados = await Db.Productos
+            .Include(p => p.TipoIva)
+            .Where(p => p.IdSucursal == sucId && p.Activo)
+            .Where(p => p.CodigoInterno.ToLower().Contains(busq) || p.Descripcion.ToLower().Contains(busq))
+            .OrderBy(p => p.Descripcion)
+            .Take(50)
+            .ToListAsync();
+    }
+
+    private void AgregarProducto(Producto p)
+    {
+        var tasa = p.TipoIva?.Porcentaje ?? 10;
+        
+        var det = new NotaCreditoVentaDetalle
+        {
+            IdProducto = p.IdProducto,
+            Producto = p,
+            CodigoProducto = p.CodigoInterno,
+            NombreProducto = p.Descripcion,
+            Cantidad = 1,
+            PrecioUnitario = p.PrecioUnitarioGs,
+            PorcentajeDescuento = 0,
+            MontoDescuento = 0,
+            TasaIVA = (int)tasa,
+            IdTipoIva = p.IdTipoIva,
+            CambioDelDia = _nc.CambioDelDia
+        };
+        
+        CalcularLinea(det);
+        _detalles.Add(det);
+        RecalcularTotales();
+        
+        _mostrarBuscarProducto = false;
+    }
+
+    private void QuitarDetalle(NotaCreditoVentaDetalle det)
+    {
+        _detalles.Remove(det);
+        RecalcularTotales();
+    }
+
+    private void RecalcularLinea()
+    {
+        foreach (var det in _detalles)
+            CalcularLinea(det);
+        RecalcularTotales();
+    }
+
+    private void CalcularLinea(NotaCreditoVentaDetalle det)
+    {
+        var subtotal = det.Cantidad * det.PrecioUnitario;
+        det.MontoDescuento = subtotal * det.PorcentajeDescuento / 100;
+        det.Importe = subtotal - det.MontoDescuento;
+        
+        // Calcular IVA
+        if (det.TasaIVA == 10)
+        {
+            det.IVA10 = det.Importe / 11;
+            det.Grabado10 = det.Importe - det.IVA10;
+            det.IVA5 = 0;
+            det.Grabado5 = 0;
+            det.Exenta = 0;
+        }
+        else if (det.TasaIVA == 5)
+        {
+            det.IVA5 = det.Importe / 21;
+            det.Grabado5 = det.Importe - det.IVA5;
+            det.IVA10 = 0;
+            det.Grabado10 = 0;
+            det.Exenta = 0;
+        }
+        else
+        {
+            det.Exenta = det.Importe;
+            det.IVA10 = 0;
+            det.IVA5 = 0;
+            det.Grabado10 = 0;
+            det.Grabado5 = 0;
+        }
+    }
+
+    private void RecalcularTotales()
+    {
+        _nc.Subtotal = _detalles.Sum(d => d.Cantidad * d.PrecioUnitario);
+        _nc.TotalDescuento = _detalles.Sum(d => d.MontoDescuento);
+        _nc.Total = _detalles.Sum(d => d.Importe);
+        _nc.TotalIVA10 = _detalles.Sum(d => d.IVA10);
+        _nc.TotalIVA5 = _detalles.Sum(d => d.IVA5);
+        _nc.TotalExenta = _detalles.Sum(d => d.Exenta);
+    }
+
+    private async Task Guardar()
+    {
+        if (!ValidarDatos()) return;
+        
+        _guardando = true;
+        
+        try
+        {
+            _nc.Detalles = _detalles;
+            _nc.FechaModificacion = DateTime.Now;
+            _nc.ModificadoPor = "Sistema";
+            
+            if (_esEdicion)
+            {
+                // Actualizar detalles existentes
+                var detExistentes = await Db.Set<NotaCreditoVentaDetalle>()
+                    .Where(d => d.IdNotaCredito == _nc.IdNotaCredito)
+                    .ToListAsync();
+                Db.RemoveRange(detExistentes);
+                
+                foreach (var det in _detalles)
+                {
+                    det.IdNotaCredito = _nc.IdNotaCredito;
+                    det.IdNotaCreditoDetalle = 0;
+                }
+                
+                Db.Update(_nc);
+            }
+            else
+            {
+                _nc.FechaCreacion = DateTime.Now;
+                _nc.CreadoPor = "Sistema";
+                Db.NotasCreditoVentas.Add(_nc);
+            }
+            
+            await Db.SaveChangesAsync();
+            
+            await JS.InvokeVoidAsync("alert", "Nota de crédito guardada correctamente.");
+            Nav.NavigateTo($"/notas-credito/{_nc.IdNotaCredito}");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}");
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task GuardarYConfirmar()
+    {
+        if (!ValidarDatos()) return;
+        
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Confirmar la nota de crédito? Una vez confirmada no podrá editarse."))
+            return;
+        
+        _nc.Estado = "Confirmada";
+        await Guardar();
+        
+        // Actualizar saldo de factura
+        if (_nc.IdVentaAsociada.HasValue)
+        {
+            var venta = await Db.Ventas.FindAsync(_nc.IdVentaAsociada.Value);
+            if (venta != null && venta.CreditoSaldo.HasValue)
+            {
+                venta.CreditoSaldo = Math.Max(0, venta.CreditoSaldo.Value - _nc.Total);
+                await Db.SaveChangesAsync();
+            }
+        }
+    }
+
+    private bool ValidarDatos()
+    {
+        if (!_detalles.Any())
+        {
+            JS.InvokeVoidAsync("alert", "Debe agregar al menos un producto.");
+            return false;
+        }
+        
+        if (_nc.IdCaja == 0)
+        {
+            JS.InvokeVoidAsync("alert", "Debe seleccionar una caja.");
+            return false;
+        }
+        
+        return true;
+    }
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/notas-credito/explorar");
+    }
+
+    private void ImprimirA4()
+    {
+        if (_nc.IdNotaCredito > 0)
+            Nav.NavigateTo($"/notas-credito/imprimir/{_nc.IdNotaCredito}");
+    }
+
+    private string GetBadgeClass(string estado) => estado switch
+    {
+        "Borrador" => "bg-warning text-dark",
+        "Confirmada" => "bg-success",
+        "Anulada" => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

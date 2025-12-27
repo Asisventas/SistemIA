@@ -1,0 +1,261 @@
+@* Componente para vista previa de ticket de Nota de Crédito (80mm) *@
+@using SistemIA.Models
+@inject IJSRuntime JS
+
+<style>
+    .ticket-nc-preview {
+        font-family: 'Courier New', Courier, monospace;
+        width: 280px;
+        max-width: 100%;
+        padding: 8px;
+        background: #fff;
+        font-size: 11px;
+        line-height: 1.4;
+        color: #000;
+    }
+    .ticket-nc-preview .header-empresa {
+        text-align: center;
+        font-weight: bold;
+        margin-bottom: 4px;
+    }
+    .ticket-nc-preview .header-info {
+        text-align: center;
+        font-size: 10px;
+        margin-bottom: 6px;
+    }
+    .ticket-nc-preview .separator {
+        border-top: 1px dashed #000;
+        margin: 4px 0;
+    }
+    .ticket-nc-preview .titulo-nc {
+        text-align: center;
+        font-weight: bold;
+        font-size: 12px;
+        margin: 4px 0;
+    }
+    .ticket-nc-preview .info-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+    }
+    .ticket-nc-preview .detalle-header {
+        font-weight: bold;
+        border-bottom: 1px solid #000;
+        margin-top: 6px;
+        padding-bottom: 2px;
+        font-size: 10px;
+    }
+    .ticket-nc-preview .detalle-item {
+        font-size: 10px;
+        padding: 2px 0;
+        border-bottom: 1px dotted #ccc;
+    }
+    .ticket-nc-preview .totales {
+        margin-top: 6px;
+        font-size: 11px;
+    }
+    .ticket-nc-preview .total-final {
+        font-weight: bold;
+        font-size: 13px;
+        margin-top: 4px;
+    }
+    .ticket-nc-preview .footer {
+        text-align: center;
+        font-size: 9px;
+        margin-top: 8px;
+        color: #666;
+    }
+    @@media print {
+        body * { visibility: hidden !important; }
+        .print-ticket-nc, .print-ticket-nc * { visibility: visible !important; }
+        .print-ticket-nc { position: absolute; left: 0; top: 0; }
+    }
+</style>
+
+<div class="ticket-nc-preview print-ticket-nc" id="ticket-nc-@(NotaCredito?.IdNotaCredito ?? 0)">
+    @if (NotaCredito != null && Empresa != null)
+    {
+        <div class="header-empresa">@Empresa.Nombre</div>
+        <div class="header-info">
+            RUC: @Empresa.RUC-@(Empresa.DV ?? 0)<br/>
+            @Empresa.Direccion<br/>
+            @(Empresa.Telefono ?? "")
+        </div>
+        
+        <div class="separator"></div>
+        <div class="titulo-nc">NOTA DE CRÉDITO</div>
+        <div class="separator"></div>
+        
+        <div class="info-row">
+            <span>N°:</span>
+            <span>@NotaCredito.Establecimiento-@NotaCredito.PuntoExpedicion-@NotaCredito.NumeroNota.ToString("D7")</span>
+        </div>
+        <div class="info-row">
+            <span>Timbrado:</span>
+            <span>@NotaCredito.Timbrado</span>
+        </div>
+        <div class="info-row">
+            <span>Fecha:</span>
+            <span>@NotaCredito.Fecha.ToString("dd/MM/yyyy HH:mm")</span>
+        </div>
+        
+        <div class="separator"></div>
+        
+        <div class="info-row">
+            <span>Cliente:</span>
+            <span>@(NotaCredito.Cliente?.RazonSocial ?? NotaCredito.NombreCliente ?? "CONSUMIDOR FINAL")</span>
+        </div>
+        <div class="info-row">
+            <span>RUC/CI:</span>
+            <span>@(NotaCredito.Cliente?.RUC ?? "S/D")</span>
+        </div>
+        
+        <div class="separator"></div>
+        
+        <div class="info-row">
+            <span>Motivo:</span>
+            <span>@NotaCredito.Motivo</span>
+        </div>
+        @if (NotaCredito.VentaAsociada != null)
+        {
+            <div class="info-row">
+                <span>Factura Ref.:</span>
+                <span>@NotaCredito.VentaAsociada.Establecimiento-@NotaCredito.VentaAsociada.PuntoExpedicion-@NotaCredito.VentaAsociada.NumeroFactura</span>
+            </div>
+        }
+        
+        <div class="detalle-header">
+            <span style="width:35%;display:inline-block;">Producto</span>
+            <span style="width:15%;display:inline-block;text-align:right;">Cant</span>
+            <span style="width:20%;display:inline-block;text-align:right;">P.Unit</span>
+            <span style="width:25%;display:inline-block;text-align:right;">Subtotal</span>
+        </div>
+        
+        @if (NotaCredito.Detalles != null)
+        {
+            @foreach (var det in NotaCredito.Detalles)
+            {
+                <div class="detalle-item">
+                    <div style="font-size:9px;">@(det.NombreProducto ?? det.Producto?.Descripcion ?? "Producto")</div>
+                    <div>
+                        <span style="width:15%;display:inline-block;text-align:right;">@det.Cantidad.ToString("N2")</span>
+                        <span style="width:25%;display:inline-block;text-align:right;">@det.PrecioUnitario.ToString("N0")</span>
+                        <span style="width:30%;display:inline-block;text-align:right;">@det.Importe.ToString("N0")</span>
+                    </div>
+                </div>
+            }
+        }
+        
+        <div class="separator"></div>
+        
+        <div class="totales">
+            <div class="info-row">
+                <span>Subtotal:</span>
+                <span>@NotaCredito.Subtotal.ToString("N0")</span>
+            </div>
+            @if (NotaCredito.TotalDescuento > 0)
+            {
+                <div class="info-row">
+                    <span>Descuento:</span>
+                    <span>@NotaCredito.TotalDescuento.ToString("N0")</span>
+                </div>
+            }
+            <div class="total-final info-row">
+                <span>TOTAL @(NotaCredito.SimboloMoneda ?? "Gs."):</span>
+                <span>@NotaCredito.Total.ToString("N0")</span>
+            </div>
+        </div>
+        
+        <div class="separator"></div>
+        
+        <div class="totales" style="font-size:9px;">
+            <div class="info-row">
+                <span>IVA 10%:</span>
+                <span>@NotaCredito.TotalIVA10.ToString("N0")</span>
+            </div>
+            <div class="info-row">
+                <span>IVA 5%:</span>
+                <span>@NotaCredito.TotalIVA5.ToString("N0")</span>
+            </div>
+            <div class="info-row">
+                <span>Exenta:</span>
+                <span>@NotaCredito.TotalExenta.ToString("N0")</span>
+            </div>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(NotaCredito.TotalEnLetras))
+        {
+            <div class="separator"></div>
+            <div style="font-size:9px;text-align:center;">
+                @NotaCredito.TotalEnLetras
+            </div>
+        }
+        
+        @if (!string.IsNullOrEmpty(NotaCredito.Observaciones))
+        {
+            <div class="separator"></div>
+            <div style="font-size:9px;">
+                Obs: @NotaCredito.Observaciones
+            </div>
+        }
+        
+        <div class="footer">
+            @if (!string.IsNullOrEmpty(NotaCredito.CDC))
+            {
+                <div>CDC: @NotaCredito.CDC</div>
+            }
+            <div>Generado por SistemIA</div>
+            <div>@DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")</div>
+        </div>
+    }
+    else
+    {
+        <p class="text-center text-muted">No hay datos para mostrar</p>
+    }
+</div>
+
+@if (MostrarBotonImprimir)
+{
+    <div class="text-center mt-3 d-print-none">
+        <button class="btn btn-primary" @onclick="ImprimirTicket">
+            <i class="bi bi-printer"></i> Imprimir Ticket
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter] public NotaCreditoVenta? NotaCredito { get; set; }
+    [Parameter] public Sociedad? Empresa { get; set; }
+    [Parameter] public bool MostrarBotonImprimir { get; set; } = true;
+
+    private async Task ImprimirTicket()
+    {
+        if (NotaCredito == null) return;
+        
+        var ticketId = $"ticket-nc-{NotaCredito.IdNotaCredito}";
+        await JS.InvokeVoidAsync("eval", $@"
+            (function() {{
+                var content = document.getElementById('{ticketId}');
+                if (!content) return;
+                var printWindow = window.open('', '_blank', 'width=320,height=600');
+                printWindow.document.write('<html><head><title>Nota de Crédito</title>');
+                printWindow.document.write('<style>');
+                printWindow.document.write('body {{ font-family: Courier New, monospace; font-size: 11px; margin: 0; padding: 8px; }}');
+                printWindow.document.write('.ticket-nc-preview {{ width: 280px; }}');
+                printWindow.document.write('.header-empresa {{ text-align: center; font-weight: bold; }}');
+                printWindow.document.write('.header-info {{ text-align: center; font-size: 10px; }}');
+                printWindow.document.write('.separator {{ border-top: 1px dashed #000; margin: 4px 0; }}');
+                printWindow.document.write('.titulo-nc {{ text-align: center; font-weight: bold; font-size: 12px; }}');
+                printWindow.document.write('.info-row {{ display: flex; justify-content: space-between; font-size: 10px; }}');
+                printWindow.document.write('.total-final {{ font-weight: bold; font-size: 13px; }}');
+                printWindow.document.write('.footer {{ text-align: center; font-size: 9px; margin-top: 8px; }}');
+                printWindow.document.write('</style></head><body>');
+                printWindow.document.write(content.innerHTML);
+                printWindow.document.write('</body></html>');
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(function() {{ printWindow.print(); printWindow.close(); }}, 250);
+            }})();
+        ");
+    }
+}

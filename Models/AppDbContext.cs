@@ -96,6 +96,10 @@ namespace SistemIA.Models
         public DbSet<CierreCaja> CierresCaja { get; set; }
         public DbSet<EntregaCaja> EntregasCaja { get; set; }
 
+        // Notas de Crédito Ventas
+        public DbSet<NotaCreditoVenta> NotasCreditoVentas { get; set; }
+        public DbSet<NotaCreditoVentaDetalle> NotasCreditoVentasDetalles { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -1326,6 +1330,86 @@ namespace SistemIA.Models
             entity.HasOne(e => e.Moneda)
                 .WithMany()
                 .HasForeignKey(e => e.IdMoneda)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configuración NotaCreditoVenta
+        modelBuilder.Entity<NotaCreditoVenta>(entity =>
+        {
+            entity.ToTable("NotasCreditoVentas");
+            entity.HasKey(nc => nc.IdNotaCredito);
+            entity.Property(nc => nc.Subtotal).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.TotalIVA10).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.TotalIVA5).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.TotalExenta).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.Total).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.CambioDelDia).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.Motivo).HasMaxLength(50);
+            entity.Property(nc => nc.Observaciones).HasMaxLength(500);
+            entity.Property(nc => nc.Estado).HasMaxLength(20);
+
+            entity.HasOne(nc => nc.Sucursal)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Caja)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdCaja)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Cliente)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdCliente)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.VentaAsociada)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdVentaAsociada)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Moneda)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdMoneda)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Usuario)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdUsuario)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configuración NotaCreditoVentaDetalle
+        modelBuilder.Entity<NotaCreditoVentaDetalle>(entity =>
+        {
+            entity.ToTable("NotasCreditoVentasDetalles");
+            entity.HasKey(d => d.IdNotaCreditoDetalle);
+            entity.Property(d => d.Cantidad).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.PrecioUnitario).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.PorcentajeDescuento).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Descuento).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Importe).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.IVA10).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.IVA5).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Exenta).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Grabado10).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Grabado5).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.CambioDelDia).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Lote).HasMaxLength(50);
+
+            entity.HasOne(d => d.NotaCredito)
+                .WithMany(nc => nc.Detalles)
+                .HasForeignKey(d => d.IdNotaCredito)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.Producto)
+                .WithMany()
+                .HasForeignKey(d => d.IdProducto)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Deposito)
+                .WithMany()
+                .HasForeignKey(d => d.IdDeposito)
                 .OnDelete(DeleteBehavior.Restrict);
         });
         }
