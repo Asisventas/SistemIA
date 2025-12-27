@@ -426,6 +426,38 @@ namespace SistemIA.Data
                 }
             }
 
+            // Agregar submódulos de Notas de Crédito (bajo Ventas) si no existen
+            if (ventas != null)
+            {
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/notas-credito"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Nota de Crédito",
+                        Descripcion = "Emisión de notas de crédito sobre ventas",
+                        Icono = "bi-file-earmark-minus",
+                        Orden = 4,
+                        IdModuloPadre = ventas.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/notas-credito"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/notas-credito/explorar"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Explorar Notas de Crédito",
+                        Descripcion = "Consulta de notas de crédito emitidas",
+                        Icono = "bi-clock-history",
+                        Orden = 5,
+                        IdModuloPadre = ventas.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/notas-credito/explorar"
+                    });
+                }
+            }
+
             // Agregar submódulos de Caja (bajo Ventas) si no existen
             if (ventas != null)
             {
