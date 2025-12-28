@@ -23,7 +23,23 @@
 
 <div class="alert alert-info border-0 d-flex flex-wrap gap-4 align-items-center mb-3">
   <div><strong>Sucursal:</strong> @SucursalNombreUI</div>
-  <div><strong>Caja:</strong> @CajaNombreUI</div>
+  <div class="d-flex align-items-center gap-1">
+    <strong>Caja:</strong>
+    @if (PuedeCambiarCaja && !ModoSoloVista && CajasDisponibles.Any())
+    {
+      <select class="form-select form-select-sm" style="width: auto; min-width: 140px;" 
+              @bind="CajaSeleccionadaId" @bind:after="OnCajaSeleccionadaChanged">
+        @foreach (var c in CajasDisponibles)
+        {
+          <option value="@c.IdCaja">@(string.IsNullOrWhiteSpace(c.Nombre) ? $"Caja #{c.IdCaja}" : c.Nombre)</option>
+        }
+      </select>
+    }
+    else
+    {
+      <span>@CajaNombreUI</span>
+    }
+  </div>
   <div><strong>Fecha Caja:</strong> @FechaCajaUI</div>
   <div><strong>Turno:</strong> @TurnoUI</div>
   <div>
@@ -625,6 +641,40 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" @onclick="CancelarSeleccionStockCero">
                         <i class="bi bi-x-lg"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal de advertencia de producto vencido *@
+@if (_mostrarAdvertenciaVencido && _productoVencidoPendiente != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2"></i>Producto Vencido</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarAdvertenciaVencido"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-3">
+                        <i class="bi bi-calendar-x text-danger" style="font-size: 3rem;"></i>
+                    </div>
+                    <p class="text-center">
+                        El producto <strong>@_productoVencidoPendiente.Descripcion</strong> está <span class="text-danger fw-bold">VENCIDO</span>.
+                    </p>
+                    <p class="text-center text-muted">
+                        <i class="bi bi-calendar3 me-1"></i>Fecha de vencimiento: <strong class="text-danger">@_productoVencidoPendiente.FechaVencimiento?.ToString("dd/MM/yyyy")</strong>
+                    </p>
+                    <div class="alert alert-danger mb-0">
+                        <i class="bi bi-ban me-2"></i>No está permitido vender productos vencidos.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarAdvertenciaVencido">
+                        <i class="bi bi-x-lg me-1"></i> Cerrar
                     </button>
                 </div>
             </div>

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SistemIA.Models;
 
@@ -11,9 +12,11 @@ using SistemIA.Models;
 namespace SistemIA.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251227020637_Agregar_NotasCredito_Columnas_Faltantes")]
+    partial class Agregar_NotasCredito_Columnas_Faltantes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -82,6 +85,9 @@ namespace SistemIA.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdAjusteStockDetalle"));
 
+                    b.Property<int?>("AjusteStockIdAjusteStock")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("Diferencia")
                         .HasColumnType("decimal(18,2)");
 
@@ -98,9 +104,6 @@ namespace SistemIA.Migrations
                         .HasColumnType("int");
 
                     b.Property<int?>("IdCaja")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IdDeposito")
                         .HasColumnType("int");
 
                     b.Property<int>("IdProducto")
@@ -137,9 +140,9 @@ namespace SistemIA.Migrations
 
                     b.HasKey("IdAjusteStockDetalle");
 
-                    b.HasIndex("IdAjusteStock");
+                    b.HasIndex("AjusteStockIdAjusteStock");
 
-                    b.HasIndex("IdDeposito");
+                    b.HasIndex("IdAjusteStock");
 
                     b.HasIndex("IdProducto");
 
@@ -2134,56 +2137,20 @@ namespace SistemIA.Migrations
                     b.Property<decimal>("Cantidad")
                         .HasColumnType("decimal(18,4)");
 
-                    b.Property<decimal?>("CantidadAnterior")
-                        .HasColumnType("decimal(18,4)");
-
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("FechaCaja")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("IdCaja")
-                        .HasColumnType("int");
 
                     b.Property<int>("IdDeposito")
                         .HasColumnType("int");
 
-                    b.Property<int?>("IdMoneda")
-                        .HasColumnType("int");
-
                     b.Property<int>("IdProducto")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("IdSucursal")
                         .HasColumnType("int");
 
                     b.Property<string>("Motivo")
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<decimal?>("PrecioCosto")
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<decimal?>("PrecioCostoGs")
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<decimal?>("PrecioVenta")
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<decimal?>("PrecioVentaGs")
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<decimal?>("SaldoPosterior")
-                        .HasColumnType("decimal(18,4)");
-
                     b.Property<int>("Tipo")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("TipoCambio")
-                        .HasColumnType("decimal(18,6)");
-
-                    b.Property<int?>("Turno")
                         .HasColumnType("int");
 
                     b.Property<string>("Usuario")
@@ -2192,15 +2159,9 @@ namespace SistemIA.Migrations
 
                     b.HasKey("IdMovimiento");
 
-                    b.HasIndex("IdCaja");
-
                     b.HasIndex("IdDeposito");
 
-                    b.HasIndex("IdMoneda");
-
                     b.HasIndex("IdProducto");
-
-                    b.HasIndex("IdSucursal");
 
                     b.ToTable("MovimientosInventario", (string)null);
                 });
@@ -2212,9 +2173,6 @@ namespace SistemIA.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdNotaCredito"));
-
-                    b.Property<int>("AfectaStock")
-                        .HasColumnType("int");
 
                     b.Property<string>("CDC")
                         .HasMaxLength(64)
@@ -4631,16 +4589,14 @@ namespace SistemIA.Migrations
 
             modelBuilder.Entity("SistemIA.Models.AjusteStockDetalle", b =>
                 {
-                    b.HasOne("SistemIA.Models.AjusteStock", "Ajuste")
+                    b.HasOne("SistemIA.Models.AjusteStock", null)
                         .WithMany("Detalles")
+                        .HasForeignKey("AjusteStockIdAjusteStock");
+
+                    b.HasOne("SistemIA.Models.AjusteStock", "Ajuste")
+                        .WithMany()
                         .HasForeignKey("IdAjusteStock")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("SistemIA.Models.Deposito", "Deposito")
-                        .WithMany()
-                        .HasForeignKey("IdDeposito")
-                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("SistemIA.Models.Producto", "Producto")
@@ -4650,8 +4606,6 @@ namespace SistemIA.Migrations
                         .IsRequired();
 
                     b.Navigation("Ajuste");
-
-                    b.Navigation("Deposito");
 
                     b.Navigation("Producto");
                 });
@@ -5179,19 +5133,11 @@ namespace SistemIA.Migrations
 
             modelBuilder.Entity("SistemIA.Models.MovimientoInventario", b =>
                 {
-                    b.HasOne("SistemIA.Models.Caja", "Caja")
-                        .WithMany()
-                        .HasForeignKey("IdCaja");
-
                     b.HasOne("SistemIA.Models.Deposito", "Deposito")
                         .WithMany()
                         .HasForeignKey("IdDeposito")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("SistemIA.Models.Moneda", "Moneda")
-                        .WithMany()
-                        .HasForeignKey("IdMoneda");
 
                     b.HasOne("SistemIA.Models.Producto", "Producto")
                         .WithMany()
@@ -5199,19 +5145,9 @@ namespace SistemIA.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
-                        .WithMany()
-                        .HasForeignKey("IdSucursal");
-
-                    b.Navigation("Caja");
-
                     b.Navigation("Deposito");
 
-                    b.Navigation("Moneda");
-
                     b.Navigation("Producto");
-
-                    b.Navigation("Sucursal");
                 });
 
             modelBuilder.Entity("SistemIA.Models.NotaCreditoVenta", b =>

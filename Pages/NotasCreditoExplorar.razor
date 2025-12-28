@@ -5,10 +5,13 @@
 @using SistemIA.Data
 @using SistemIA.Services
 @using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject ISucursalProvider SucursalProvider
 @inject IJSRuntime JS
+@inject IInventarioService Inventario
+@inject ICajaService CajaService
 
 <PageProtection Modulo="/notas-credito" Permiso="VIEW">
 <PageTitle>Explorar Notas de Crédito</PageTitle>
@@ -302,21 +305,65 @@
         if (!await JS.InvokeAsync<bool>("confirm", $"¿Anular la NC #{nc.NumeroNota}? Esta acción no se puede deshacer."))
             return;
         
-        nc.Estado = "Anulada";
-        nc.ModificadoPor = "Sistema";
-        nc.FechaModificacion = DateTime.Now;
+        using var db = await DbFactory.CreateDbContextAsync();
         
-        // Revertir saldo de factura si aplica
-        if (nc.IdVentaAsociada.HasValue)
+        // Recargar NC con detalles para reversión de stock
+        var ncDb = await db.NotasCreditoVentas
+            .Include(n => n.Detalles!)
+                .ThenInclude(d => d.Producto)
+            .FirstOrDefaultAsync(n => n.IdNotaCredito == nc.IdNotaCredito);
+        
+        if (ncDb == null) return;
+        
+        ncDb.Estado = "Anulada";
+        ncDb.ModificadoPor = "Sistema";
+        ncDb.FechaModificacion = DateTime.Now;
+        
+        // Revertir stock si la NC afectaba stock
+        if (ncDb.AfectaStock != 0 && ncDb.Detalles != null && ncDb.Detalles.Any())
         {
-            var venta = await Db.Ventas.FindAsync(nc.IdVentaAsociada.Value);
-            if (venta != null && venta.CreditoSaldo.HasValue)
+            var caja = await CajaService.ObtenerCajaActualAsync();
+            var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
+            var turno = caja?.TurnoActual ?? 1;
+            var idCaja = caja?.IdCaja;
+            
+            foreach (var det in ncDb.Detalles)
             {
-                venta.CreditoSaldo += nc.Total;
+                if (det.IdProducto > 0)
+                {
+                    var depositoId = det.Producto?.IdDepositoPredeterminado ?? 1;
+                    
+                    // Revertir: Si NC sumó (1=entrada), ahora restamos (2=salida) y viceversa
+                    var tipoMov = ncDb.AfectaStock == 1 ? 2 : 1;
+                    var motivo = $"Anulación NC #{ncDb.NumeroNota}";
+                    
+                    await Inventario.AjustarStockAsync(
+                        det.IdProducto,
+                        depositoId,
+                        det.Cantidad,
+                        tipoMov,
+                        motivo,
+                        "Sistema",
+                        ncDb.IdSucursal,
+                        idCaja,
+                        fechaCaja,
+                        turno
+                    );
+                }
             }
         }
         
-        await Db.SaveChangesAsync();
+        // Revertir saldo de factura si aplica
+        if (ncDb.IdVentaAsociada.HasValue)
+        {
+            var venta = await db.Ventas.FindAsync(ncDb.IdVentaAsociada.Value);
+            if (venta != null && venta.CreditoSaldo.HasValue)
+            {
+                venta.CreditoSaldo += ncDb.Total;
+            }
+        }
+        
+        await db.SaveChangesAsync();
         await CargarDatos();
     }
 

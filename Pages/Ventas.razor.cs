@@ -34,6 +34,13 @@ public partial class Ventas
     
     // Permiso para editar precio (solo roles con permiso EDIT pueden modificar)
     protected bool PuedeEditarPrecio { get; set; } = false;
+    
+    // Permiso para cambiar caja (solo roles con permiso EDIT pueden cambiar la caja)
+    protected bool PuedeCambiarCaja { get; set; } = false;
+    
+    // Lista de cajas disponibles para selección
+    protected List<Caja> CajasDisponibles { get; set; } = new();
+    protected int? CajaSeleccionadaId { get; set; }
 
     // Cabecera en edición
     protected Venta Cab { get; set; } = new() { Fecha = DateTime.Today, TipoDocumento = "FACTURA" };
@@ -113,6 +120,18 @@ public partial class Ventas
     // UI: Confirmación de stock cero
     private bool _mostrarConfirmStockCero;
     private Producto? _productoStockCeroPendiente;
+
+    // UI: Advertencia de producto vencido
+    private bool _mostrarAdvertenciaVencido;
+    private Producto? _productoVencidoPendiente;
+    
+    // Control de escaneo de código de barras
+    private DateTime _ultimoInputTime = DateTime.MinValue;
+    private string _bufferCodigoBarras = string.Empty;
+    private const int TIEMPO_MAXIMO_ENTRE_CHARS_MS = 50; // Los lectores de código escriben muy rápido
+    
+    // Usuario actual para registrar en movimientos de inventario
+    private string _usuarioActual = "Sistema";
 
     // UI: Modal para receta médica (productos controlados)
     private bool _mostrarModalReceta;
@@ -390,14 +409,25 @@ public partial class Ventas
             var user = authState.User;
             if (user?.Identity?.IsAuthenticated == true)
             {
+                // Guardar nombre de usuario para movimientos de inventario
+                _usuarioActual = user.Identity.Name ?? "Sistema";
+                
                 var idClaim = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
                 if (idClaim != null && int.TryParse(idClaim.Value, out int idUsu))
                 {
                     PuedeEditarPrecio = await PermisosService.TienePermisoAsync(idUsu, "/ventas", "EDIT");
+                    // El permiso de cambiar caja es el mismo que editar precios (EDIT)
+                    PuedeCambiarCaja = PuedeEditarPrecio;
                 }
             }
         }
-        catch { PuedeEditarPrecio = false; }
+        catch { PuedeEditarPrecio = false; PuedeCambiarCaja = false; }
+        
+        // Cargar cajas disponibles de la sucursal
+        CajasDisponibles = await ctx.Cajas.AsNoTracking()
+            .Where(c => c.IdSucursal == suc.Value || c.IdSucursal == null)
+            .OrderBy(c => c.IdCaja)
+            .ToListAsync();
         
         // Cargar configuración de la caja actual para determinar el tipo de facturación
         var cajaConfig = await ctx.Cajas.AsNoTracking()
@@ -511,6 +541,7 @@ public partial class Ventas
             TimbradoUI = esRemision ? (caja.TimbradoR ?? caja.Timbrado) : caja.Timbrado;
             TurnoUI = caja.TurnoActual;
             CajaIdUI = caja.IdCaja;
+            CajaSeleccionadaId = caja.IdCaja; // Inicializar el selector
             CajaNombreUI = caja.Nombre ?? $"Caja {caja.IdCaja}";
             FechaCajaUI = (caja.FechaActualCaja ?? DateTime.Today).ToString("dd/MM/yyyy");
             Cab.Fecha = caja.FechaActualCaja ?? DateTime.Today;
@@ -548,10 +579,39 @@ public partial class Ventas
         }
     }
 
+    private async Task OnCajaSeleccionadaChanged()
+    {
+        if (!CajaSeleccionadaId.HasValue) return;
+        
+        var caja = CajasDisponibles.FirstOrDefault(c => c.IdCaja == CajaSeleccionadaId.Value);
+        if (caja == null) return;
+        
+        // Actualizar UI
+        CajaIdUI = caja.IdCaja;
+        CajaNombreUI = caja.Nombre ?? $"Caja {caja.IdCaja}";
+        FechaCajaUI = (caja.FechaActualCaja ?? DateTime.Today).ToString("dd/MM/yyyy");
+        TurnoUI = caja.TurnoActual;
+        Cab.Fecha = caja.FechaActualCaja ?? DateTime.Today;
+        
+        // Actualizar numeración según el tipo de documento
+        var esRemision = EsRemisionNombre(Cab.TipoDocumento);
+        var est = esRemision ? (caja.Nivel1R ?? caja.Nivel1 ?? "001") : (caja.Nivel1 ?? "001");
+        var pto = esRemision ? (caja.Nivel2R ?? caja.Nivel2 ?? "001") : (caja.Nivel2 ?? "001");
+        var nro = esRemision ? (caja.FacturaInicialR ?? "0000001") : (caja.FacturaInicial ?? "0000001");
+        var nroFmt = int.TryParse(nro, out var nroInt) ? nroInt.ToString("D7") : nro;
+        NumeroFacturaUI = $"{est}-{pto}-{nroFmt}";
+        EstablecimientoUI = est;
+        PuntoExpedicionUI = pto;
+        NumeroSecuencialUI = nroFmt;
+        TimbradoUI = esRemision ? (caja.TimbradoR ?? caja.Timbrado) : caja.Timbrado;
+        
+        StateHasChanged();
+    }
+
     private async Task<bool> AsignarNumeracionVentaAsync(AppDbContext ctx)
     {
-        // Obtener la caja seleccionada por el usuario desde los claims
-        var cajaIdSeleccionada = CajaProvider.GetCajaId();
+        // Obtener la caja seleccionada por el usuario desde el selector o los claims
+        var cajaIdSeleccionada = CajaSeleccionadaId ?? CajaProvider.GetCajaId();
         
         Caja? caja = null;
         
@@ -860,6 +920,20 @@ public partial class Ventas
             {
                 ProductosFiltrados = new(Productos); MostrarSugProductos = ProductosFiltrados.Any(); StateHasChanged(); return;
             }
+            
+            // Buscar coincidencia exacta por código de barras primero
+            var productoExacto = Productos.FirstOrDefault(p => 
+                !string.IsNullOrEmpty(p.CodigoBarras) && 
+                p.CodigoBarras.Equals(texto, StringComparison.OrdinalIgnoreCase));
+            
+            if (productoExacto != null)
+            {
+                // Es un código de barras escaneado - agregar directamente
+                await AgregarProductoEscaneadoAsync(productoExacto);
+                return;
+            }
+            
+            // Si no es código de barras exacto, usar el primer resultado filtrado
             var p = ProductosFiltrados.FirstOrDefault();
             if (p != null) await SeleccionarProductoAsync(p);
         }
@@ -867,6 +941,154 @@ public partial class Ventas
         {
             MostrarSugProductos = false;
         }
+    }
+    
+    /// <summary>
+    /// Agrega un producto escaneado por código de barras directamente al detalle con cantidad 1
+    /// </summary>
+    private async Task AgregarProductoEscaneadoAsync(Producto p)
+    {
+        // Verificar si el producto está vencido
+        if (p.ControlarVencimiento && p.FechaVencimiento.HasValue && p.FechaVencimiento.Value.Date < DateTime.Today)
+        {
+            _productoVencidoPendiente = p;
+            _mostrarAdvertenciaVencido = true;
+            BuscarProducto = string.Empty;
+            MostrarSugProductos = false;
+            StateHasChanged();
+            return;
+        }
+        
+        // Verificar stock (solo para productos físicos, no servicios)
+        bool esServicio = _tiposServicioIds.Contains(p.TipoItem);
+        if (p.Stock <= 0 && !esServicio)
+        {
+            _productoStockCeroPendiente = p;
+            _mostrarConfirmStockCero = true;
+            BuscarProducto = string.Empty;
+            MostrarSugProductos = false;
+            StateHasChanged();
+            return;
+        }
+        
+        // Verificar si es producto controlado con receta
+        if (p.ControladoReceta)
+        {
+            var yaRegistrado = _recetasPendientes.Any(r => r.IdProducto == p.IdProducto);
+            if (!yaRegistrado)
+            {
+                _productoRecetaPendiente = p;
+                _recetaNumeroRegistro = string.Empty;
+                _recetaFecha = DateTime.Today;
+                _recetaNombreMedico = string.Empty;
+                _recetaNombrePaciente = string.Empty;
+                _recetaError = null;
+                _mostrarModalReceta = true;
+                // Guardar el producto para agregarlo después de completar la receta
+                NuevoDetalle.IdProducto = p.IdProducto;
+                NuevoDetalle.Cantidad = 1;
+                NuevoDetalle.PrecioUnitario = await CalcularPrecioRespetandoClientePrecioAsync(p.IdProducto, Cab.IdCliente);
+                RecalcularNuevoDetalle();
+                BuscarProducto = string.Empty;
+                MostrarSugProductos = false;
+                StateHasChanged();
+                return;
+            }
+        }
+        
+        // Agregar directamente al detalle con cantidad 1
+        await AgregarProductoAlDetalleDirectoAsync(p);
+    }
+    
+    /// <summary>
+    /// Agrega un producto directamente al detalle de venta con cantidad 1
+    /// </summary>
+    private async Task AgregarProductoAlDetalleDirectoAsync(Producto p)
+    {
+        // Verificar si el producto ya está en la lista - si existe, sumar cantidad
+        var detalleExistente = Detalles.FirstOrDefault(d => d.IdProducto == p.IdProducto);
+        if (detalleExistente != null)
+        {
+            // Sumar 1 a la cantidad existente y recalcular
+            detalleExistente.Cantidad += 1;
+            var ivaPorc = p.TipoIva?.Porcentaje ?? 0m;
+            var importe = Math.Round(detalleExistente.Cantidad * detalleExistente.PrecioUnitario, 4);
+            detalleExistente.Importe = importe;
+            detalleExistente.IVA10 = 0; detalleExistente.IVA5 = 0; detalleExistente.Exenta = 0;
+            detalleExistente.Grabado10 = 0; detalleExistente.Grabado5 = 0;
+            if (ivaPorc >= 9.9m && ivaPorc <= 10.1m)
+            {
+                var grab = Math.Round(importe / 1.1m, 4);
+                detalleExistente.Grabado10 = grab;
+                detalleExistente.IVA10 = Math.Round(importe - grab, 4);
+            }
+            else if (ivaPorc >= 4.9m && ivaPorc <= 5.1m)
+            {
+                var grab = Math.Round(importe / 1.05m, 4);
+                detalleExistente.Grabado5 = grab;
+                detalleExistente.IVA5 = Math.Round(importe - grab, 4);
+            }
+            else
+            {
+                detalleExistente.Exenta = importe;
+            }
+            RecalcularTotales();
+        }
+        else
+        {
+            // Crear nuevo detalle
+            var precio = await CalcularPrecioRespetandoClientePrecioAsync(p.IdProducto, Cab.IdCliente);
+            var ivaPorc = p.TipoIva?.Porcentaje ?? 0m;
+            var importe = Math.Round(1m * precio, 4);
+            decimal iva10 = 0, iva5 = 0, exenta = 0, grab10 = 0, grab5 = 0;
+            
+            if (ivaPorc >= 9.9m && ivaPorc <= 10.1m)
+            {
+                grab10 = Math.Round(importe / 1.1m, 4);
+                iva10 = Math.Round(importe - grab10, 4);
+            }
+            else if (ivaPorc >= 4.9m && ivaPorc <= 5.1m)
+            {
+                grab5 = Math.Round(importe / 1.05m, 4);
+                iva5 = Math.Round(importe - grab5, 4);
+            }
+            else
+            {
+                exenta = importe;
+            }
+            
+            var det = new VentaDetalle
+            {
+                IdProducto = p.IdProducto,
+                IdTipoIva = p.IdTipoIva,
+                Cantidad = 1,
+                PrecioUnitario = precio,
+                Importe = importe,
+                IVA10 = iva10,
+                IVA5 = iva5,
+                Exenta = exenta,
+                Grabado10 = grab10,
+                Grabado5 = grab5,
+                CambioDelDia = Cab.CambioDelDia
+            };
+            Detalles.Add(det);
+            RecalcularTotales();
+        }
+        
+        // Limpiar buscador
+        BuscarProducto = string.Empty;
+        MostrarSugProductos = false;
+        NuevoDetalle = new VentaDetalle { Cantidad = 1, PrecioUnitario = 0 };
+        StateHasChanged();
+    }
+    
+    /// <summary>
+    /// Cierra el modal de advertencia de producto vencido
+    /// </summary>
+    private void CerrarAdvertenciaVencido()
+    {
+        _mostrarAdvertenciaVencido = false;
+        _productoVencidoPendiente = null;
     }
 
     protected void OnProductoFocus(FocusEventArgs _)
@@ -884,6 +1106,16 @@ public partial class Ventas
     protected async Task OnProductoSuggestionMouseDownAsync(Producto p)
     {
         _mouseDownEnSugerenciaProducto = true;
+        
+        // Verificar si el producto está vencido
+        if (p.ControlarVencimiento && p.FechaVencimiento.HasValue && p.FechaVencimiento.Value.Date < DateTime.Today)
+        {
+            _productoVencidoPendiente = p;
+            _mostrarAdvertenciaVencido = true;
+            StateHasChanged();
+            _ = Task.Run(async () => { await Task.Delay(150); _mouseDownEnSugerenciaProducto = false; });
+            return;
+        }
         
         // Verificar stock cero SOLO si NO es un servicio
         bool esServicio = _tiposServicioIds.Contains(p.TipoItem);
@@ -1598,7 +1830,8 @@ public partial class Ventas
                 {
                     foreach (var d in detallesFisicos)
                     {
-                        await Inventario.AjustarStockAsync(d.IdProducto, depositoPrincipal.IdDeposito, d.Cantidad, 2, $"Venta #{Cab.IdVenta}", "Sistema");
+                        await Inventario.AjustarStockAsync(d.IdProducto, depositoPrincipal.IdDeposito, d.Cantidad, 2, $"Venta #{Cab.IdVenta}", _usuarioActual,
+                            Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
                     }
                 }
                 else
@@ -1614,7 +1847,8 @@ public partial class Ventas
                     {
                         foreach (var d in detallesFisicos)
                         {
-                            await Inventario.AjustarStockAsync(d.IdProducto, cualquierDeposito.IdDeposito, d.Cantidad, 2, $"Venta #{Cab.IdVenta}", "Sistema");
+                            await Inventario.AjustarStockAsync(d.IdProducto, cualquierDeposito.IdDeposito, d.Cantidad, 2, $"Venta #{Cab.IdVenta}", _usuarioActual,
+                                Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
                         }
                     }
                 }

@@ -56,6 +56,7 @@ namespace SistemIA.Models
         public DateTime? FechaVencimiento { get; set; }
         [Column(TypeName = "decimal(18,4)")] public decimal Total { get; set; }
     [Column(TypeName = "decimal(18,4)")] public decimal? CreditoSaldo { get; set; }
+    [NotMapped] public decimal? CreditoUsado { get; set; } // Campo calculado para mostrar saldo disponible
         [MaxLength(280)] public string? TotalEnLetras { get; set; }
 
         // Varios

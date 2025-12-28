@@ -10,6 +10,7 @@ namespace SistemIA.Models
 
         public int IdAjusteStock { get; set; }
         public int IdProducto { get; set; }
+        public int IdDeposito { get; set; }  // Depósito por línea
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal StockAjuste { get; set; }
@@ -40,7 +41,13 @@ namespace SistemIA.Models
         [StringLength(50)] public string? UsuarioModificacion { get; set; }
 
         // Navegación
+        [ForeignKey("IdAjusteStock")]
         public AjusteStock? Ajuste { get; set; }
+        
+        [ForeignKey("IdProducto")]
         public Producto? Producto { get; set; }
+        
+        [ForeignKey("IdDeposito")]
+        public Deposito? Deposito { get; set; }
     }
 }

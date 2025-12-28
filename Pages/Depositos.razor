@@ -3,90 +3,317 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject SistemIA.Services.IInventarioService Inventario
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
 
-<PageProtection Modulo="/inventario" Permiso="VIEW">
+<PageProtection Modulo="/inventario/depositos" Permiso="VIEW">
 
-<h3>Depósitos</h3>
-
-<div class="card mb-3">
-  <div class="card-body">
-    <div class="row g-2">
-      <div class="col-md-4">
-        <input class="form-control" @bind="nuevoNombre" placeholder="Nombre del depósito" />
-      </div>
-      <div class="col-md-3">
-        <input class="form-control" @bind="nuevaDescripcion" placeholder="Descripción (opcional)" />
-      </div>
-      <div class="col-md-3">
-        <input class="form-control" type="number" @bind="idSucursal" placeholder="Id Sucursal" />
-      </div>
-      <div class="col-md-2">
-        <button class="btn btn-primary w-100" @onclick="Crear">Crear</button>
-      </div>
-    </div>
-  </div>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi bi-box-seam me-2"></i>Depósitos</h3>
+    @if (puedeCrear)
+    {
+        <button class="btn btn-success" @onclick="NuevoDeposito">
+            <i class="bi bi-plus-lg me-1"></i>Nuevo Depósito
+        </button>
+    }
 </div>
 
-<table class="table table-striped">
-  <thead>
-    <tr>
-      <th>Id</th>
-      <th>Nombre</th>
-      <th>Descripción</th>
-      <th>Sucursal</th>
-      <th>Estado</th>
-    </tr>
-  </thead>
-  <tbody>
-    @if(depositos is null)
-    {
-        <tr><td colspan="5">Cargando...</td></tr>
-    }
-    else if(!depositos.Any())
-    {
-        <tr><td colspan="5">Sin depósitos</td></tr>
-    }
-    else
-    {
-        @foreach(var d in depositos)
-        {
-            <tr>
-              <td>@d.IdDeposito</td>
-              <td>@d.Nombre</td>
-              <td>@d.Descripcion</td>
-              <td>@d.IdSucursal</td>
-              <td>@(d.Activo?"Activo":"Inactivo")</td>
-            </tr>
-        }
-    }
-  </tbody>
-</table>
+@if (!string.IsNullOrEmpty(mensaje))
+{
+    <div class="alert @(esError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+        @mensaje
+        <button type="button" class="btn-close" @onclick="() => mensaje = null"></button>
+    </div>
+}
+
+<div class="card shadow-sm">
+    <div class="card-header bg-light">
+        <i class="bi bi-list-ul me-2"></i>Lista de Depósitos
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 60px">Id</th>
+                    <th>Nombre</th>
+                    <th>Descripción</th>
+                    <th style="width: 100px">Sucursal</th>
+                    <th style="width: 100px">Estado</th>
+                    <th style="width: 120px" class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (depositos is null)
+                {
+                    <tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm"></div> Cargando...</td></tr>
+                }
+                else if (!depositos.Any())
+                {
+                    <tr><td colspan="6" class="text-center py-4 text-muted">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        No hay depósitos registrados
+                    </td></tr>
+                }
+                else
+                {
+                    @foreach (var d in depositos)
+                    {
+                        <tr>
+                            <td><span class="badge bg-secondary">@d.IdDeposito</span></td>
+                            <td class="fw-semibold">@d.Nombre</td>
+                            <td class="text-muted">@(d.Descripcion ?? "-")</td>
+                            <td>@d.IdSucursal</td>
+                            <td>
+                                @if (d.Activo)
+                                {
+                                    <span class="badge bg-success">Activo</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">Inactivo</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm">
+                                    @if (puedeEditar)
+                                    {
+                                        <button class="btn btn-outline-primary" title="Editar" @onclick="() => Editar(d)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        @if (d.IdDeposito != 1)
+                                        {
+                                            <button class="btn @(d.Activo ? "btn-outline-danger" : "btn-outline-success")" 
+                                                    title="@(d.Activo ? "Desactivar" : "Activar")" 
+                                                    @onclick="() => CambiarEstado(d)">
+                                                <i class="bi @(d.Activo ? "bi-x-circle" : "bi-check-circle")"></i>
+                                            </button>
+                                        }
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal para crear/editar -->
+@if (mostrarModal)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi @(editando ? "bi-pencil" : "bi-plus-lg") me-2"></i>
+                        @(editando ? "Editar Depósito" : "Nuevo Depósito")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="nuevoNombre" placeholder="Ej: Depósito Principal" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <input class="form-control" @bind="nuevaDescripcion" placeholder="Descripción opcional" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Sucursal</label>
+                        <select class="form-select" @bind="idSucursal">
+                            @foreach (var s in sucursales)
+                            {
+                                <option value="@s.Id">@s.NombreSucursal</option>
+                            }
+                        </select>
+                    </div>
+                    @if (editando && depositoEditandoId != 1)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Estado</label>
+                            <select class="form-select" @bind="estadoSeleccionado">
+                                <option value="true">Activo</option>
+                                <option value="false">Inactivo</option>
+                            </select>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                        @if (guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>
+                        @(editando ? "Guardar Cambios" : "Crear Depósito")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 </PageProtection>
 
-@code{
-  private List<Deposito>? depositos;
-  private string nuevoNombre = string.Empty;
-  private string? nuevaDescripcion;
-  private int idSucursal = 1;
+@code {
+    private List<Deposito>? depositos;
+    private List<Sucursal> sucursales = new();
+    
+    // Formulario
+    private string nuevoNombre = string.Empty;
+    private string? nuevaDescripcion;
+    private int idSucursal = 1;
+    private bool depositoActivo = true;
+    private string estadoSeleccionado = "true";  // Para el select de estado
+    
+    // Modal
+    private bool mostrarModal = false;
+    private bool editando = false;
+    private int? depositoEditandoId = null;
+    private bool guardando = false;
+    
+    // Mensajes
+    private string? mensaje;
+    private bool esError = false;
+    
+    // Permisos
+    private bool puedeCrear = true;  // Si puede ver la página, puede crear/editar (página administrativa)
+    private bool puedeEditar = true;
 
-  protected override async Task OnInitializedAsync()
-  {
-    await Cargar();
-  }
+    protected override async Task OnInitializedAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        sucursales = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.Id).ToListAsync();
+        
+        // Usar sucursal actual como predeterminada
+        var sucActual = SucursalProvider.GetSucursalId();
+        if (sucActual.HasValue)
+            idSucursal = sucActual.Value;
+        else if (sucursales.Any())
+            idSucursal = sucursales.First().Id;
+            
+        await Cargar();
+    }
 
-  private async Task Cargar()
-  {
-    await using var ctx = await DbFactory.CreateDbContextAsync();
-    depositos = await ctx.Depositos.AsNoTracking().OrderBy(d=>d.IdSucursal).ThenBy(d=>d.Nombre).ToListAsync();
-  }
+    private async Task Cargar()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        depositos = await ctx.Depositos.AsNoTracking()
+            .OrderBy(d => d.IdSucursal)
+            .ThenBy(d => d.Nombre)
+            .ToListAsync();
+    }
 
-  private async Task Crear()
-  {
-    if(string.IsNullOrWhiteSpace(nuevoNombre)) return;
-    await Inventario.CrearDepositoAsync(nuevoNombre, idSucursal, nuevaDescripcion);
-    nuevoNombre = string.Empty; nuevaDescripcion = null;
-    await Cargar();
-    StateHasChanged();
-  }
+    private void NuevoDeposito()
+    {
+        editando = false;
+        depositoEditandoId = null;
+        nuevoNombre = string.Empty;
+        nuevaDescripcion = null;
+        depositoActivo = true;
+        
+        var sucActual = SucursalProvider.GetSucursalId();
+        idSucursal = sucActual ?? (sucursales.FirstOrDefault()?.Id ?? 1);
+        
+        mostrarModal = true;
+    }
+
+    private void Editar(Deposito d)
+    {
+        editando = true;
+        depositoEditandoId = d.IdDeposito;
+        nuevoNombre = d.Nombre;
+        nuevaDescripcion = d.Descripcion;
+        idSucursal = d.IdSucursal;
+        depositoActivo = d.Activo;
+        estadoSeleccionado = d.Activo ? "true" : "false";
+        mostrarModal = true;
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        editando = false;
+        depositoEditandoId = null;
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoNombre))
+        {
+            mensaje = "El nombre del depósito es obligatorio";
+            esError = true;
+            return;
+        }
+
+        guardando = true;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            if (editando && depositoEditandoId.HasValue)
+            {
+                // Editar existente
+                var deposito = await ctx.Depositos.FirstOrDefaultAsync(d => d.IdDeposito == depositoEditandoId.Value);
+                if (deposito != null)
+                {
+                    deposito.Nombre = nuevoNombre.Trim();
+                    deposito.Descripcion = nuevaDescripcion?.Trim();
+                    deposito.IdSucursal = idSucursal;
+                    // Solo cambiar estado si no es el depósito 1 (predeterminado)
+                    if (depositoEditandoId != 1)
+                    {
+                        deposito.Activo = estadoSeleccionado == "true";
+                    }
+                    await ctx.SaveChangesAsync();
+                    mensaje = $"Depósito '{nuevoNombre}' actualizado correctamente";
+                    esError = false;
+                }
+            }
+            else
+            {
+                // Crear nuevo
+                await Inventario.CrearDepositoAsync(nuevoNombre.Trim(), idSucursal, nuevaDescripcion?.Trim());
+                mensaje = $"Depósito '{nuevoNombre}' creado correctamente";
+                esError = false;
+            }
+
+            CerrarModal();
+            await Cargar();
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error: {ex.Message}";
+            esError = true;
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+    private async Task CambiarEstado(Deposito d)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var deposito = await ctx.Depositos.FirstOrDefaultAsync(x => x.IdDeposito == d.IdDeposito);
+            if (deposito != null)
+            {
+                deposito.Activo = !deposito.Activo;
+                await ctx.SaveChangesAsync();
+                mensaje = $"Depósito '{d.Nombre}' {(deposito.Activo ? "activado" : "desactivado")}";
+                esError = false;
+                await Cargar();
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error: {ex.Message}";
+            esError = true;
+        }
+    }
 }

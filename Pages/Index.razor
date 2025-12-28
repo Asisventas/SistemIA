@@ -8,16 +8,15 @@
 <div class="container-fluid p-4">
     <h1 class="mb-4">Panel de Control</h1>
 
-    <!-- Caja activa -->
+    <!-- Sucursal y Caja activa -->
     <div class="row g-3 mb-2">
-        <div class="col-xl-4 col-md-6">
+        <div class="col-xl-6 col-md-8">
             <div class="card shadow-sm">
-                <div class="card-body d-flex align-items-center justify-content-between">
+                <div class="card-body d-flex align-items-center">
                     <div>
-                        <div class="fw-bold">Caja activa</div>
-                        <div class="small text-muted">Caja @CajaIdText · Fecha @FechaCajaText · Turno @TurnoText</div>
+                        <div class="fw-bold">@SucursalNombre</div>
+                        <div class="small text-muted">Sucursal N° @SucursalNumero · Caja @CajaIdText · Fecha @FechaCajaText · Turno @TurnoText</div>
                     </div>
-                    <a class="btn btn-outline-secondary btn-sm" href="/configuracion/cajas" title="Cambiar caja">Cambiar</a>
                 </div>
             </div>
         </div>
@@ -158,7 +157,9 @@
     [Inject]
     private NavigationManager NavigationManager { get; set; } = default!;
 
-    // Caja
+    // Sucursal y Caja
+    private string? SucursalNombre;
+    private int? SucursalNumero;
     private int? CajaIdActiva;
     private DateTime? FechaCaja;
     private int? Turno;
@@ -225,10 +226,18 @@ Los archivos están listos para ser utilizados.";
         clientCount = await dbContext.Clientes.CountAsync();
         userCount = await dbContext.Usuarios.CountAsync();
 
-    var caja = await dbContext.Cajas.AsNoTracking().Where(c => c.CajaActual == 1).FirstOrDefaultAsync()
-           ?? await dbContext.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).FirstOrDefaultAsync();
+    var caja = await dbContext.Cajas.AsNoTracking()
+        .Include(c => c.Sucursal)
+        .Where(c => c.CajaActual == 1)
+        .FirstOrDefaultAsync()
+           ?? await dbContext.Cajas.AsNoTracking()
+               .Include(c => c.Sucursal)
+               .OrderBy(c => c.IdCaja)
+               .FirstOrDefaultAsync();
     CajaIdActiva = caja?.IdCaja;
     FechaCaja = caja?.FechaActualCaja;
     Turno = caja?.TurnoActual;
+    SucursalNombre = caja?.Sucursal?.NombreEmpresa ?? caja?.Sucursal?.Nombre ?? "Sin sucursal";
+    SucursalNumero = caja?.Sucursal?.IdSucursal;
     }
 }

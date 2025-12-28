@@ -10,6 +10,8 @@
 @inject IInventarioService Inventario
 @inject SistemIA.Services.ISucursalProvider SucursalProvider
 @inject Sifen SifenService
+@inject PermisosService PermisosService
+@inject SistemIA.Services.ICajaService CajaService
 @using Microsoft.AspNetCore.Components.Authorization
 
 <PageProtection Modulo="/compras" Permiso="VIEW">
@@ -61,14 +63,21 @@
                 <div class="d-flex flex-wrap gap-3 align-items-center">
             <div class="d-flex align-items-center gap-1">
                 <strong>Caja:</strong>
-                <select class="form-select form-select-sm" style="width: auto; min-width: 120px;" 
-                        @bind="Compra.IdCaja" @bind:after="OnCajaChanged">
-                    <option value="">-- Seleccionar --</option>
-                    @foreach (var c in Cajas)
-                    {
-                        <option value="@c.IdCaja">@c.Nombre (#@c.IdCaja)</option>
-                    }
-                </select>
+                @if (PuedeCambiarCaja && !ModoSoloVista && Cajas.Any())
+                {
+                    <select class="form-select form-select-sm" style="width: auto; min-width: 120px;" 
+                            @bind="Compra.IdCaja" @bind:after="OnCajaChanged">
+                        <option value="">-- Seleccionar --</option>
+                        @foreach (var c in Cajas)
+                        {
+                            <option value="@c.IdCaja">@(string.IsNullOrWhiteSpace(c.Nombre) ? $"Caja #{c.IdCaja}" : $"{c.Nombre} (#{c.IdCaja})")</option>
+                        }
+                    </select>
+                }
+                else
+                {
+                    <span>@(CajaActiva != null ? (string.IsNullOrWhiteSpace(CajaActiva.Nombre) ? $"Caja #{CajaActiva.IdCaja}" : CajaActiva.Nombre) : "—")</span>
+                }
             </div>
             <div><strong>Fecha Caja:</strong> @(FechaCajaActual?.ToString("dd/MM/yyyy") ?? "—")</div>
             <div><strong>Turno actual:</strong> @(TurnoActual?.ToString() ?? "—")</div>
@@ -272,11 +281,15 @@
         </div>
         <div class="col-md-1">
             <label class="form-label">Factor</label>
-            <input type="number" step="any" class="form-control" @bind="FactorMultiplicador" @bind:event="oninput" @bind:after="OnFactorChanged" placeholder="1.30" />
+            <input type="number" step="any" class="form-control" 
+                   value="@(FactorMultiplicador?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                   @onchange="OnFactorInputChanged" placeholder="1.30" />
         </div>
         <div class="col-md-1">
             <label class="form-label">% Margen</label>
-            <input type="number" step="any" class="form-control" @bind="PorcentajeMargen" @bind:event="oninput" @bind:after="OnPorcentajeChanged" placeholder="30" />
+            <input type="number" step="any" class="form-control" 
+                   value="@(PorcentajeMargen?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                   @onchange="OnPorcentajeInputChanged" placeholder="30" />
         </div>
         <div class="col-md-1">
             <label class="form-label">Depósito</label>
@@ -677,6 +690,11 @@
     /// Modo solo vista: cuando se carga una compra existente, los controles se bloquean
     /// </summary>
     private bool ModoSoloVista = false;
+    
+    /// <summary>
+    /// Permiso para cambiar caja (solo roles con permiso EDIT pueden cambiar la caja)
+    /// </summary>
+    private bool PuedeCambiarCaja = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -701,6 +719,13 @@
             }
         }
         catch { }
+        
+        // Verificar permiso EDIT para cambiar caja
+        if (_usuarioId.HasValue)
+        {
+            PuedeCambiarCaja = await PermisosService.TienePermisoAsync(_usuarioId.Value, "/compras", "EDIT");
+        }
+        
         await using var ctx = await DbFactory.CreateDbContextAsync();
 
         // Opcional: asegurar monedas EUR/CLP/UYU/COP/MXN
@@ -771,8 +796,10 @@
 
     // Campos de fiscalización quedan libres en Compras
 
-    // Cargar caja activa (si existe). Por simplicidad tomamos la primera; a futuro, seleccionar por sucursal/usuario.
-    Cajas = await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).ToListAsync();
+    // Cargar cajas de la sucursal actual (sucId ya está definida)
+    Cajas = await ctx.Cajas.AsNoTracking()
+        .Where(c => c.IdSucursal == sucId || c.IdSucursal == null)
+        .OrderBy(c => c.IdCaja).ToListAsync();
     CajaActiva = Cajas.FirstOrDefault(c => c.CajaActual == 1) ?? Cajas.FirstOrDefault();
     
     // Asignar IdCaja a la compra
@@ -1387,6 +1414,34 @@ END
         }
     }
 
+    private void OnFactorInputChanged(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString();
+        if (decimal.TryParse(valor, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var factor))
+        {
+            FactorMultiplicador = factor;
+        }
+        else
+        {
+            FactorMultiplicador = null;
+        }
+        OnFactorChanged();
+    }
+
+    private void OnPorcentajeInputChanged(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString();
+        if (decimal.TryParse(valor, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var porcentaje))
+        {
+            PorcentajeMargen = porcentaje;
+        }
+        else
+        {
+            PorcentajeMargen = null;
+        }
+        OnPorcentajeChanged();
+    }
+
     private void OnFactorChanged()
     {
         if (_actualizandoFactorPorcentaje) return;
@@ -1755,10 +1810,17 @@ END
             await ctx.SaveChangesAsync();
 
             // Ingreso a inventario por depósito (usar depósito específico del item si está definido)
+            // Obtener datos de caja actual para trazabilidad
+            var cajaActual = await CajaService.ObtenerCajaActualAsync();
+            var fechaCajaActual = cajaActual?.FechaActualCaja ?? DateTime.Today;
+            var turnoActual = cajaActual?.TurnoActual ?? 1;
+            var idCajaActual = cajaActual?.IdCaja;
+            
             foreach (var d in Detalles)
             {
                 var depositoAUsar = d.IdDepositoItem ?? Compra.IdDeposito!.Value;
-                await Inventario.AjustarStockAsync(d.IdProducto, depositoAUsar, d.Cantidad, 1, $"Compra #{Compra.IdCompra}", _usuarioNombre ?? "Sistema");
+                await Inventario.AjustarStockAsync(d.IdProducto, depositoAUsar, d.Cantidad, 1, $"Compra #{Compra.IdCompra}", _usuarioNombre ?? "Sistema",
+                    Compra.IdSucursal, idCajaActual, fechaCajaActual, turnoActual);
             }
 
             // Actualizar costo del producto, factor, precio de venta y fecha de vencimiento si aplica

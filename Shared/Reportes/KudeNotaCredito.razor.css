@@ -1,0 +1,196 @@
+.kude { 
+  font-family: Arial, Helvetica, sans-serif; 
+  color: #111; 
+  -webkit-font-smoothing: antialiased; 
+  -moz-osx-font-smoothing: grayscale; 
+  font-size: clamp(12px, 1.5vw, 14px);
+}
+.kude .doc-a4 {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto 8px auto;
+  padding: 15px;
+  background: #fff;
+  color: #111;
+  border: 1px solid var(--bs-border-color, #ced4da);
+  box-shadow: none;
+  position: relative;
+  box-sizing: border-box;
+}
+
+@media screen and (min-width: 1200px) {
+  .kude .doc-a4 {
+    max-width: 900px;
+    padding: 20px;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .kude .doc-a4 {
+    max-width: 100%;
+    margin: 0 auto 8px auto;
+    padding: 12px;
+  }
+}
+
+.kude .encabezado {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  border-bottom: 2px solid var(--bs-primary, #4a6ea8);
+  padding-bottom: 6px;
+  align-items: start;
+}
+
+@media screen and (max-width: 768px) {
+  .kude .encabezado {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .kude .emisor-right {
+    text-align: left !important;
+  }
+}
+
+.kude .logo-y-empresa { display:flex; gap: 10px; align-items: flex-start; }
+.kude .logo { height: 38px; object-fit: contain; image-rendering: crisp-edges; }
+.kude .empresa .nombre { font-weight:bold; font-size: 1.1rem; }
+.kude .empresa .dir, .kude .empresa .tel, .kude .empresa .mail { font-size: .85rem; line-height: 1.2; }
+.kude .emisor-right { text-align:right; font-size:.9rem; }
+.kude .emisor-right .titulo-doc { font-weight:bold; margin-top: 6px; color: #c00; }
+.kude .emisor-right .numero { font-size: 1.2rem; font-weight:bold; }
+
+.kude .banda { 
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px; 
+  border-bottom: 1px solid var(--bs-border-color, #ced4da); 
+  padding: 6px 0; 
+  font-size: clamp(0.75rem, 1.2vw, 0.9rem);
+}
+.kude .banda .col-izq, .kude .banda .col-der { width: 100%; }
+
+@media screen and (max-width: 768px) {
+  .kude .banda {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+.kude .banda b { font-weight:600; }
+
+.kude .doc-asociado {
+  padding: 6px 10px;
+  margin: 6px 0;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  font-size: .85rem;
+}
+
+.kude .items { margin-top: 6px; }
+.kude .tabla { 
+  width: 100%; 
+  border-collapse: collapse; 
+  font-size: clamp(0.7rem, 1.1vw, 0.85rem); 
+  background: #fff; 
+  table-layout: auto;
+}
+.kude .tabla th, .kude .tabla td { 
+  border: 1px solid var(--bs-border-color, #9aa0a6); 
+  padding: clamp(2px, 0.5vw, 4px); 
+  word-wrap: break-word; 
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kude .tabla th { 
+  background: var(--bs-tertiary-bg, #f8f9fa); 
+  color: var(--bs-emphasis-color, #212529); 
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.kude .t-right { text-align:right; }
+.kude .t-center { text-align:center; }
+
+.kude .resumen { margin-top: 6px; display:grid; grid-template-columns: 1fr; gap: 6px; }
+.kude .subtotales, .kude .total-operacion { display:flex; justify-content:space-between; border-bottom:1px solid var(--bs-border-color, #ced4da); padding-bottom:4px; }
+.kude .total-operacion { font-weight: bold; font-size: 1.1rem; }
+.kude .en-letras { font-style: italic; font-size: .9rem; color: var(--bs-secondary-color, #6c757d); }
+.kude .liquidacion-iva { margin-top: 4px; max-width: 60mm; }
+.kude .liquidacion-iva .fila { display:flex; justify-content:space-between; }
+.kude .liquidacion-iva .total-iva { border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; font-weight: bold; }
+
+.kude .observaciones {
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  background: #fafafa;
+  font-size: .9rem;
+}
+
+.kude .validacion {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  background: #fafafa;
+}
+.kude .validacion .qr img {
+  width: 100px;
+  height: 100px;
+}
+.kude .validacion .qr-placeholder {
+  width: 100px;
+  height: 100px;
+  border: 1px dashed #999;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-size: .75rem;
+  color: #666;
+  text-align: center;
+}
+.kude .validacion .qr-icon { font-size: 1.5rem; }
+.kude .validacion .cdc-y-textos { font-size: .8rem; }
+.kude .validacion .link { color: #0066cc; margin-bottom: 4px; }
+.kude .validacion .cdc { font-family: monospace; font-size: .9rem; margin: 4px 0; word-break: break-all; }
+.kude .validacion .nota { font-weight: bold; color: #c00; margin-top: 6px; }
+.kude .validacion .interes { margin-top: 4px; font-size: .75rem; color: #555; }
+
+.kude .leyenda-final { margin-top: 10px; font-size: .8rem; color: var(--bs-secondary-color, #6c757d); text-align: center; border-top: 1px solid #ddd; padding-top: 8px; }
+
+@media print {
+  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+  html, body { width: 210mm; height: auto; margin:0; padding:0; background:#fff !important; color:#000 !important; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  .kude .doc-a4 { 
+    width: 210mm !important; 
+    max-width: none !important;
+    padding: 10mm !important; 
+    border: 1px solid #000 !important; 
+    margin: 0 auto !important; 
+    box-shadow: none !important; 
+  }
+  
+  .kude { font-size: 12px !important; }
+  .kude .tabla { font-size: 10px !important; }
+  .kude .banda { font-size: 11px !important; }
+  
+  .kude .tabla th, .kude .tabla td { display: table-cell !important; }
+  
+  .kude .encabezado { display: flex !important; justify-content: space-between !important; }
+  .kude .banda { display: flex !important; justify-content: space-between !important; }
+
+  .kude, .kude * { filter:none !important; text-shadow:none !important; box-shadow:none !important; }
+
+  .encabezado, .banda, .items, .resumen, .leyenda-final { page-break-inside: avoid; break-inside: avoid; }
+
+  .kude .tabla th, .kude .tabla td { border:1px solid #000 !important; }
+  .kude .tabla th { background:#f0f0f0 !important; color:#000 !important; }
+  
+  .kude .emisor-right .titulo-doc { color: #c00 !important; }
+}

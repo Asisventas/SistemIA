@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SistemIA.Models;
 
@@ -11,9 +12,11 @@ using SistemIA.Models;
 namespace SistemIA.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251228150142_Agregar_Valorizacion_MovimientosInventario")]
+    partial class Agregar_Valorizacion_MovimientosInventario
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2212,9 +2215,6 @@ namespace SistemIA.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdNotaCredito"));
-
-                    b.Property<int>("AfectaStock")
-                        .HasColumnType("int");
 
                     b.Property<string>("CDC")
                         .HasMaxLength(64)

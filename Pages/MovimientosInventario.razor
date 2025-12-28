@@ -1,11 +1,19 @@
 @page "/inventario/movimientos"
 @using SistemIA.Models
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject SistemIA.Services.IInventarioService Inventario
+@inject SistemIA.Services.ICajaProvider CajaProvider
+@inject SistemIA.Services.ICajaService CajaService
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject NavigationManager Nav
 
-<h3 class="mb-1">Movimientos de Inventario</h3>
-<p class="text-muted mb-3">Use esta sección para registrar entradas y salidas de productos por depósito. Seleccione el producto y el depósito, indique el tipo de movimiento y la cantidad.</p>
+<PageProtection Modulo="/inventario" Permiso="VIEW">
+
+<h3 class="mb-1">Registrar Movimiento de Inventario</h3>
+<p class="text-muted mb-3">Use esta sección para registrar entradas y salidas de productos por depósito.</p>
 
 @if (!string.IsNullOrEmpty(errorMsg))
 {
@@ -17,7 +25,12 @@
 }
 
 <div class="card mb-3">
-  <div class="card-header">Registrar movimiento</div>
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Registrar movimiento</span>
+    <a href="/informes/movimientos-productos" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-clipboard-data me-1"></i>Ver Informe Detallado
+    </a>
+  </div>
   <div class="card-body">
     <div class="row g-3 align-items-end">
       <div class="col-md-4">
@@ -77,17 +90,24 @@
     </div>
   </div>
   <div class="card-footer small text-muted">Consejo: una Entrada suma stock; una Salida descuenta stock en el depósito seleccionado.</div>
-  </div>
+</div>
 
-<h5 class="mt-4">Últimos movimientos</h5>
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+  <h5 class="mb-0">Últimos 20 movimientos</h5>
+  <a href="/informes/movimientos-productos" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-right me-1"></i>Ver todos los movimientos
+  </a>
+</div>
+
 <table class="table table-sm table-striped">
   <thead>
     <tr>
       <th>Fecha</th>
       <th>Producto</th>
       <th>Depósito</th>
-      <th>Tipo</th>
+      <th class="text-center">Tipo</th>
       <th class="text-end">Cantidad</th>
+      <th class="text-end">Saldo</th>
       <th>Usuario</th>
       <th>Motivo</th>
     </tr>
@@ -95,29 +115,39 @@
   <tbody>
     @if(movs is null)
     {
-        <tr><td colspan="7">Cargando...</td></tr>
+        <tr><td colspan="8">Cargando...</td></tr>
     }
     else if(!movs.Any())
     {
-        <tr><td colspan="7">Sin movimientos</td></tr>
+        <tr><td colspan="8">Sin movimientos</td></tr>
     }
     else
     {
         @foreach(var m in movs)
         {
+            var esEntrada = m.Tipo == 1;
             <tr>
               <td>@m.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
-              <td>@(m.Producto is null ? m.IdProducto.ToString() : m.Producto.Descripcion)</td>
-              <td>@(m.Deposito is null ? m.IdDeposito.ToString() : m.Deposito.Nombre)</td>
-              <td>@(m.Tipo==1?"Entrada":"Salida")</td>
-              <td class="text-end">@m.Cantidad</td>
+              <td>@(m.Producto?.Descripcion ?? m.IdProducto.ToString())</td>
+              <td>@(m.Deposito?.Nombre ?? m.IdDeposito.ToString())</td>
+              <td class="text-center">
+                <span class="badge @(esEntrada ? "bg-success" : "bg-danger")">
+                  @(esEntrada ? "Entrada" : "Salida")
+                </span>
+              </td>
+              <td class="text-end @(esEntrada ? "text-success" : "text-danger")">
+                @(esEntrada ? "+" : "-")@m.Cantidad.ToString("N4")
+              </td>
+              <td class="text-end fw-semibold">@(m.SaldoPosterior?.ToString("N4") ?? "—")</td>
               <td>@m.Usuario</td>
               <td>@m.Motivo</td>
             </tr>
         }
     }
   </tbody>
-  </table>
+</table>
+
+</PageProtection>
 
 @code{
   private List<MovimientoInventario>? movs;
@@ -125,6 +155,9 @@
   private List<Deposito>? depositos;
   private int selectedProductoId;
   private int selectedDepositoId;
+  private int? _sucursalId;
+  private Caja? _cajaActiva;
+
   private int SelectedProductoId
   {
     get => selectedProductoId;
@@ -133,22 +166,21 @@
       if (selectedProductoId != value)
       {
         selectedProductoId = value;
-        // Si el producto tiene depósito predeterminado, lo seleccionamos automáticamente
         try
         {
           var prod = productos?.FirstOrDefault(p => p.IdProducto == selectedProductoId);
           var depId = prod?.IdDepositoPredeterminado;
           if (depId.HasValue && depId.Value > 0 && (depositos?.Any(d => d.IdDeposito == depId.Value) ?? false))
           {
-            // Asignamos al setter para que dispare la actualización del stock
             SelectedDepositoId = depId.Value;
           }
         }
-        catch { /* no-op */ }
+        catch { }
         _ = InvokeAsync(async () => await ActualizarStockActual());
       }
     }
   }
+  
   private int SelectedDepositoId
   {
     get => selectedDepositoId;
@@ -161,6 +193,7 @@
       }
     }
   }
+  
   private int tipo = 1;
   private decimal cantidad = 1;
   private string? motivo;
@@ -170,18 +203,39 @@
 
   protected override async Task OnInitializedAsync()
   {
+    _sucursalId = SucursalProvider.GetSucursalId();
     await CargarCombos();
     await CargarMovimientos();
+    await CargarCajaActiva();
+  }
+
+  private async Task CargarCajaActiva()
+  {
+    // Primero intentar obtener del CajaProvider (claim del usuario)
+    var cajaId = CajaProvider.GetCajaId();
+    if (cajaId.HasValue)
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      _cajaActiva = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.IdCaja == cajaId.Value);
+    }
+    
+    // Si no hay caja en el provider, usar CajaService como respaldo
+    if (_cajaActiva == null)
+    {
+      _cajaActiva = await CajaService.ObtenerCajaActualAsync();
+    }
   }
 
   private async Task CargarCombos()
   {
     await using var ctx = await DbFactory.CreateDbContextAsync();
     productos = await ctx.Productos.AsNoTracking()
+      .Where(p => p.Activo)
       .OrderBy(p=>p.Descripcion)
-      .Take(200)
+      .Take(500)
       .ToListAsync();
     depositos = await ctx.Depositos.AsNoTracking()
+      .Where(d => d.Activo)
       .OrderBy(d=>d.IdSucursal).ThenBy(d=>d.Nombre)
       .ToListAsync();
   }
@@ -193,40 +247,66 @@
       .Include(m=>m.Producto)
       .Include(m=>m.Deposito)
       .OrderByDescending(m=>m.Fecha)
-      .Take(200)
+      .Take(20)
       .ToListAsync();
   }
 
   private async Task ActualizarStockActual()
   {
-    if(selectedProductoId>0 && selectedDepositoId>0)
+    if (selectedProductoId == 0 || selectedDepositoId == 0)
+    {
+      stockActual = null;
+      return;
+    }
+    try
     {
       stockActual = await Inventario.ObtenerStockAsync(selectedProductoId, selectedDepositoId);
     }
-    else
-    {
-      stockActual = null;
-    }
+    catch { stockActual = null; }
     StateHasChanged();
   }
-
-  // Los cambios de selección se manejan en los setters de SelectedProductoId y SelectedDepositoId
 
   private async Task Registrar()
   {
     errorMsg = okMsg = null;
     if (selectedProductoId == 0) { errorMsg = "Seleccione un producto"; return; }
     if (selectedDepositoId == 0) { errorMsg = "Seleccione un depósito"; return; }
-    if (cantidad <= 0) { errorMsg = "La cantidad debe ser mayor a 0"; return; }
+    if (cantidad <= 0) { errorMsg = "La cantidad debe ser mayor a cero"; return; }
 
     try
     {
-      await Inventario.AjustarStockAsync(selectedProductoId, selectedDepositoId, cantidad, tipo, motivo, "Sistema");
-      okMsg = "Movimiento registrado";
-      await ActualizarStockActual();
+      // Obtener datos de contexto
+      var dep = depositos?.FirstOrDefault(d => d.IdDeposito == selectedDepositoId);
+      var sucursalId = _sucursalId ?? dep?.IdSucursal;
+      var fechaCaja = _cajaActiva?.FechaActualCaja?.Date;
+      var turno = _cajaActiva?.TurnoActual;
+      var idCaja = _cajaActiva?.IdCaja;
+
+      await Inventario.AjustarStockAsync(
+        selectedProductoId, 
+        selectedDepositoId, 
+        cantidad, 
+        tipo, 
+        motivo, 
+        "admin",
+        sucursalId,
+        idCaja,
+        fechaCaja,
+        turno);
+
+      okMsg = tipo == 1 
+        ? $"Entrada de {cantidad:N4} registrada correctamente" 
+        : $"Salida de {cantidad:N4} registrada correctamente";
+      
+      // Recargar datos
       await CargarMovimientos();
+      await ActualizarStockActual();
+      
+      // Limpiar campos
+      cantidad = 1;
+      motivo = null;
     }
-    catch(Exception ex)
+    catch (Exception ex)
     {
       errorMsg = ex.Message;
     }

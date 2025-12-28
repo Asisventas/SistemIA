@@ -76,7 +76,7 @@
 }
 else
 {
-    <!-- Resumen General -->
+    <!-- Resumen General INGRESOS -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card bg-success text-white h-100">
@@ -115,6 +115,49 @@ else
             </div>
         </div>
     </div>
+    
+    <!-- Resumen General EGRESOS (Compras y Pagos) -->
+    @if (resumen.ComprasContado > 0 || resumen.PagosProveedores > 0)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card bg-danger bg-opacity-75 text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1"><i class="bi bi-cart-dash me-1"></i>Compras Contado</h6>
+                        <h3 class="mb-0">@resumen.ComprasContado.ToString("N0") ₲</h3>
+                        <small>@resumen.CantComprasContado compras</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1"><i class="bi bi-cart-plus me-1"></i>Compras Crédito</h6>
+                        <h3 class="mb-0">@resumen.ComprasCredito.ToString("N0") ₲</h3>
+                        <small>@resumen.CantComprasCredito compras</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-danger text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1"><i class="bi bi-cash-coin me-1"></i>Pagos a Proveedores</h6>
+                        <h3 class="mb-0">@resumen.PagosProveedores.ToString("N0") ₲</h3>
+                        <small>@resumen.CantPagosProveedores pagos</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-danger text-danger h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1"><i class="bi bi-arrow-down-circle me-1"></i>Total Egresos</h6>
+                        <h3 class="mb-0">@resumen.TotalEgresos.ToString("N0") ₲</h3>
+                        <small>salidas de caja</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 
     <!-- Total Efectivo en Caja con Vuelto -->
     <div class="row g-3 mb-4">
@@ -138,6 +181,20 @@ else
                                 <td>Efectivo Cobros Crédito</td>
                                 <td class="text-end fw-bold text-success">+ @resumen.CobrosEfectivo.ToString("N0") ₲</td>
                             </tr>
+                            @if (resumen.EfectivoEgresosCompras > 0)
+                            {
+                                <tr class="text-danger">
+                                    <td>Efectivo Compras Contado</td>
+                                    <td class="text-end fw-bold">- @resumen.EfectivoEgresosCompras.ToString("N0") ₲</td>
+                                </tr>
+                            }
+                            @if (resumen.EfectivoEgresosPagos > 0)
+                            {
+                                <tr class="text-danger">
+                                    <td>Efectivo Pagos Proveedores</td>
+                                    <td class="text-end fw-bold">- @resumen.EfectivoEgresosPagos.ToString("N0") ₲</td>
+                                </tr>
+                            }
                             <tr class="table-primary">
                                 <td class="fw-bold">EFECTIVO NETO EN CAJA</td>
                                 <td class="text-end fw-bold fs-4">@resumen.EfectivoNetoCaja.ToString("N0") ₲</td>
@@ -303,7 +360,7 @@ else
         </div>
         <div class="card-body">
             <div class="row">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <h6 class="text-success"><i class="bi bi-plus-circle me-1"></i>INGRESOS</h6>
                     <table class="table table-sm">
                         <tbody>
@@ -322,7 +379,26 @@ else
                         </tbody>
                     </table>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
+                    <h6 class="text-danger"><i class="bi bi-dash-circle me-1"></i>EGRESOS</h6>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td>Compras Contado</td>
+                                <td class="text-end text-danger fw-bold">- @resumen.ComprasContado.ToString("N0") ₲</td>
+                            </tr>
+                            <tr>
+                                <td>Pagos a Proveedores</td>
+                                <td class="text-end text-danger fw-bold">- @resumen.PagosProveedores.ToString("N0") ₲</td>
+                            </tr>
+                            <tr class="table-danger">
+                                <td class="fw-bold">TOTAL EGRESOS</td>
+                                <td class="text-end fw-bold">@resumen.TotalEgresos.ToString("N0") ₲</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-4">
                     <h6 class="text-primary"><i class="bi bi-pie-chart me-1"></i>DISTRIBUCIÓN POR MEDIO</h6>
                     <table class="table table-sm">
                         <tbody>
@@ -572,6 +648,9 @@ else
         fDesde = fechaCaja;
         fHasta = fechaCaja;
         
+        // Usar el turno actual como predeterminado
+        fTurno = cajaActual?.TurnoActual ?? 0;
+        
         cajas = await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).ToListAsync();
         usuarios = await ctx.Usuarios.AsNoTracking().OrderBy(u => u.UsuarioNombre).ToListAsync();
 
@@ -613,6 +692,8 @@ else
 
             if (fIdCaja > 0)
                 cobrosQuery = cobrosQuery.Where(c => c.IdCaja == fIdCaja);
+            if (fTurno > 0)
+                cobrosQuery = cobrosQuery.Where(c => c.Turno == fTurno);
 
             var cobros = await cobrosQuery
                 .Include(c => c.Cliente)
@@ -632,6 +713,41 @@ else
                 cierresQuery = cierresQuery.Where(c => c.UsuarioCierre == fUsuario);
 
             cierresCaja = await cierresQuery.OrderByDescending(c => c.FechaCierre).ToListAsync();
+
+            // Obtener compras que afectan caja (contado o con pago en caja)
+            var comprasQuery = ctx.Compras.AsNoTracking()
+                .Where(c => c.Fecha >= fechaDesde && c.Fecha < fechaHasta && c.Estado != "Anulado");
+            
+            if (sucId.HasValue)
+                comprasQuery = comprasQuery.Where(c => c.IdSucursal == sucId.Value);
+            if (fIdCaja > 0)
+                comprasQuery = comprasQuery.Where(c => c.IdCaja == fIdCaja);
+            if (fTurno > 0)
+                comprasQuery = comprasQuery.Where(c => c.Turno == fTurno);
+            
+            var compras = await comprasQuery
+                .Include(c => c.Proveedor)
+                .Include(c => c.TipoPago)
+                .ToListAsync();
+            
+            // Compras contado = las que NO son crédito y afectan caja
+            var comprasContado = compras.Where(c => c.TipoPago?.EsCredito != true && c.IdCaja.HasValue).ToList();
+            var comprasCredito = compras.Where(c => c.TipoPago?.EsCredito == true).ToList();
+            
+            // Obtener pagos a proveedores que afectan caja
+            var pagosProvQuery = ctx.PagosProveedores.AsNoTracking()
+                .Where(p => p.FechaPago >= fechaDesde && p.FechaPago < fechaHasta && p.Estado == "Pagado");
+            
+            if (fIdCaja > 0)
+                pagosProvQuery = pagosProvQuery.Where(p => p.IdCaja == fIdCaja);
+            if (fTurno > 0)
+                pagosProvQuery = pagosProvQuery.Where(p => p.Turno == fTurno);
+            
+            var pagosProveedores = await pagosProvQuery
+                .Include(p => p.Proveedor)
+                .Include(p => p.Detalles)
+                .Where(p => p.IdCaja.HasValue) // Solo los que afectan caja
+                .ToListAsync();
 
             // Calcular resumen
             var ventasActivas = ventas.Where(v => v.Estado != "Anulada").ToList();
@@ -689,6 +805,17 @@ else
                 .Where(d => d.MedioPago == "TRANSFERENCIA" || d.MedioPago == "Transferencia")
                 .Sum(d => d.Monto);
 
+            // Calcular egresos de compras contado (efectivo)
+            var efectivoEgresosCompras = comprasContado.Sum(c => c.Total);
+            
+            // Calcular egresos de pagos a proveedores
+            var efectivoEgresosPagos = pagosProveedores
+                .SelectMany(p => p.Detalles ?? new List<PagoProveedorDetalle>())
+                .Where(d => d.MedioPago == "EFECTIVO" || d.MedioPago == "Efectivo")
+                .Sum(d => d.Monto);
+            
+            var totalPagosProveedores = pagosProveedores.Sum(p => p.MontoTotal);
+
             resumen = new ResumenTotales
             {
                 VentasContado = ventasContado.Sum(v => v.Total),
@@ -700,10 +827,22 @@ else
                 Anulaciones = ventasAnuladas.Sum(v => v.Total),
                 CantAnulaciones = ventasAnuladas.Count,
                 
+                // Compras y Pagos (EGRESOS)
+                ComprasContado = comprasContado.Sum(c => c.Total),
+                CantComprasContado = comprasContado.Count,
+                ComprasCredito = comprasCredito.Sum(c => c.Total),
+                CantComprasCredito = comprasCredito.Count,
+                PagosProveedores = totalPagosProveedores,
+                CantPagosProveedores = pagosProveedores.Count,
+                EfectivoEgresosCompras = efectivoEgresosCompras,
+                EfectivoEgresosPagos = efectivoEgresosPagos,
+                TotalEgresos = efectivoEgresosCompras + totalPagosProveedores,
+                
                 // Efectivo desde ComposicionCajaDetalle
                 EfectivoRecibidoVentas = efectivoRecibidoVentas,
                 VueltoEntregado = vueltoTotal,
-                EfectivoNetoCaja = efectivoRecibidoVentas - vueltoTotal + cobrosEfectivo,
+                // Efectivo neto = Ingresos - Vuelto - Egresos
+                EfectivoNetoCaja = efectivoRecibidoVentas - vueltoTotal + cobrosEfectivo - efectivoEgresosCompras - efectivoEgresosPagos,
                 VentasEfectivo = efectivoRecibidoVentas - vueltoTotal, // Neto de efectivo en ventas
                 CobrosEfectivo = cobrosEfectivo,
                 
@@ -791,6 +930,38 @@ else
                     Turno = 0
                 });
             }
+            
+            // Agregar compras contado (egresos)
+            foreach (var comp in comprasContado)
+            {
+                operaciones.Add(new OperacionCaja
+                {
+                    Fecha = comp.Fecha,
+                    Tipo = "Compra Contado",
+                    Documento = comp.NumeroFactura ?? $"COMP-{comp.IdCompra}",
+                    Cliente = comp.Proveedor?.RazonSocial ?? "Proveedor",
+                    MedioPago = "EFECTIVO",
+                    Monto = -comp.Total, // Negativo porque es egreso
+                    IdCaja = comp.IdCaja ?? 0,
+                    Turno = comp.Turno ?? 0
+                });
+            }
+            
+            // Agregar pagos a proveedores (egresos)
+            foreach (var pago in pagosProveedores)
+            {
+                operaciones.Add(new OperacionCaja
+                {
+                    Fecha = pago.FechaPago,
+                    Tipo = "Pago Proveedor",
+                    Documento = pago.NumeroRecibo ?? $"OP-{pago.IdPagoProveedor}",
+                    Cliente = pago.Proveedor?.RazonSocial ?? "Proveedor",
+                    MedioPago = pago.Detalles?.FirstOrDefault()?.MedioPago ?? "EFECTIVO",
+                    Monto = -pago.MontoTotal, // Negativo porque es egreso
+                    IdCaja = pago.IdCaja ?? 0,
+                    Turno = pago.Turno ?? 0
+                });
+            }
         }
         finally
         {
@@ -847,6 +1018,8 @@ else
             "Venta Crédito" => "bg-warning text-dark",
             "Cobro" => "bg-info",
             "Anulación" => "bg-danger",
+            "Compra Contado" => "bg-danger bg-opacity-75",
+            "Pago Proveedor" => "bg-secondary",
             _ => "bg-secondary"
         };
     }
@@ -1186,10 +1359,21 @@ else
         public decimal CobrosEfectivo { get; set; }
         public decimal TotalIngresos { get; set; }
         
+        // Compras y Pagos a Proveedores (EGRESOS)
+        public decimal ComprasContado { get; set; }
+        public int CantComprasContado { get; set; }
+        public decimal ComprasCredito { get; set; }
+        public int CantComprasCredito { get; set; }
+        public decimal PagosProveedores { get; set; }
+        public int CantPagosProveedores { get; set; }
+        public decimal TotalEgresos { get; set; }
+        public decimal EfectivoEgresosCompras { get; set; }
+        public decimal EfectivoEgresosPagos { get; set; }
+        
         // Nuevos campos para desglose detallado desde ComposicionCaja
         public decimal EfectivoRecibidoVentas { get; set; }   // Total efectivo recibido en ventas
         public decimal VueltoEntregado { get; set; }           // Total de vuelto entregado
-        public decimal EfectivoNetoCaja { get; set; }          // Efectivo neto = Recibido - Vuelto
+        public decimal EfectivoNetoCaja { get; set; }          // Efectivo neto = Recibido - Vuelto - Egresos
         
         // Totales por medio de pago
         public decimal TotalTarjetas { get; set; }

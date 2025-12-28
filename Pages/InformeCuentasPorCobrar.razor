@@ -202,8 +202,8 @@
       var caja = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.IdCaja == cajaId.Value);
       if (caja?.FechaActualCaja != null)
       {
-        filtroHasta = caja.FechaActualCaja.Value.Date.AddMonths(3);
-        filtroDesde = caja.FechaActualCaja.Value.Date.AddMonths(-3);
+        filtroDesde = caja.FechaActualCaja.Value.Date;
+        filtroHasta = caja.FechaActualCaja.Value.Date;
       }
     }
     await Buscar();

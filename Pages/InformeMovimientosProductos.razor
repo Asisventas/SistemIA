@@ -1,0 +1,637 @@
+@page "/informes/movimientos-productos"
+@using SistemIA.Models
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.ICajaService CajaService
+@inject AuthenticationStateProvider AuthProvider
+
+<PageProtection Modulo="/informes/movimientos-productos" Permiso="VIEW">
+
+<h3 class="mb-1"><i class="bi bi-clipboard-data me-2"></i>Informe de Movimientos de Productos</h3>
+<p class="text-muted mb-3">Consulte la trazabilidad completa de entradas y salidas de productos por depósito.</p>
+
+@if (!string.IsNullOrEmpty(errorMsg))
+{
+    <div class="alert alert-danger py-2">@errorMsg</div>
+}
+
+<!-- Filtros -->
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-funnel me-1"></i>Filtros</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="LimpiarFiltros">
+            <i class="bi bi-x-lg me-1"></i>Limpiar
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">Fecha desde</label>
+                <input type="date" class="form-control" @bind="filtroFechaDesde" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Fecha hasta</label>
+                <input type="date" class="form-control" @bind="filtroFechaHasta" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Sucursal</label>
+                <select class="form-select" @bind="filtroIdSucursal">
+                    <option value="0">-- Todas --</option>
+                    @foreach (var s in sucursales)
+                    {
+                        <option value="@s.Id">@s.NombreSucursal</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Depósito</label>
+                <select class="form-select" @bind="filtroIdDeposito">
+                    <option value="0">-- Todos --</option>
+                    @foreach (var d in depositos)
+                    {
+                        <option value="@d.IdDeposito">@d.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tipo</label>
+                <select class="form-select" @bind="filtroTipo">
+                    <option value="0">-- Todos --</option>
+                    <option value="1">Entrada</option>
+                    <option value="2">Salida</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Usuario</label>
+                <input class="form-control" @bind="filtroUsuario" placeholder="Filtrar..." />
+            </div>
+        </div>
+        <div class="row g-3 align-items-end mt-1">
+            <div class="col-md-4">
+                <label class="form-label">Producto</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input class="form-control" @bind="filtroProducto" @bind:event="oninput" placeholder="Nombre o código..." />
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Motivo</label>
+                <input class="form-control" @bind="filtroMotivo" placeholder="Contenga..." />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Turno</label>
+                <select class="form-select" @bind="filtroTurno">
+                    <option value="0">-- Todos --</option>
+                    <option value="1">Turno 1 @(turnoActual == 1 ? "(Actual)" : "")</option>
+                    <option value="2">Turno 2 @(turnoActual == 2 ? "(Actual)" : "")</option>
+                    <option value="3">Turno 3 @(turnoActual == 3 ? "(Actual)" : "")</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Caja</label>
+                <select class="form-select" @bind="filtroIdCaja">
+                    <option value="0">-- Todas --</option>
+                    @foreach (var c in cajas)
+                    {
+                        <option value="@c.IdCaja">Caja @c.IdCaja @(c.IdCaja == idCajaActual ? "(Actual)" : "")</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 text-end">
+                <button class="btn btn-primary w-100" @onclick="Buscar" disabled="@buscando">
+                    <i class="bi bi-search me-1"></i>@(buscando ? "Buscando..." : "Buscar")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resumen y acciones -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <div>
+        <span class="text-muted">@totalRegistros movimientos encontrados</span>
+        @if (totalRegistros > 0)
+        {
+            <span class="ms-2 text-muted small">(página @paginaActual de @totalPaginas)</span>
+        }
+        @if (movimientos?.Any() == true)
+        {
+            var entradas = movimientos.Where(m => m.Tipo == 1);
+            var salidas = movimientos.Where(m => m.Tipo == 2);
+            <span class="ms-3">
+                <span class="badge bg-success me-1">Entradas: @entradas.Sum(m => m.Cantidad).ToString("N2")</span>
+                <span class="badge bg-danger">Salidas: @salidas.Sum(m => m.Cantidad).ToString("N2")</span>
+            </span>
+            <span class="ms-3">
+                <span class="badge bg-info text-dark me-1" title="Costo en Guaraníes">
+                    Costo Gs: @((entradas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0) - salidas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0)).ToString("N0"))
+                </span>
+                <span class="badge bg-warning text-dark" title="Venta en Guaraníes">
+                    Venta Gs: @((entradas.Sum(m => m.PrecioVentaGs * m.Cantidad ?? 0) - salidas.Sum(m => m.PrecioVentaGs * m.Cantidad ?? 0)).ToString("N0"))
+                </span>
+            </span>
+            @if (tipoCambioUsdHoy > 0)
+            {
+                <span class="ms-3 badge bg-secondary" title="Tipo de cambio USD del día">
+                    USD: @tipoCambioUsdHoy.ToString("N0") Gs
+                </span>
+            }
+        }
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" @onclick="Imprimir" disabled="@(movimientos is null || !movimientos.Any())">
+            <i class="bi bi-printer me-1"></i>Imprimir
+        </button>
+        <button class="btn btn-outline-success" @onclick="ExportarExcel" disabled="@(movimientos is null || !movimientos.Any())">
+            <i class="bi bi-file-earmark-excel me-1"></i>Excel
+        </button>
+    </div>
+</div>
+
+<!-- Paginación superior -->
+@if (totalPaginas > 1)
+{
+    <nav class="mb-2">
+        <ul class="pagination pagination-sm mb-0 justify-content-center">
+            <li class="page-item @(paginaActual <= 1 ? "disabled" : "")">
+                <button class="page-link" @onclick="() => CambiarPagina(1)" disabled="@(paginaActual <= 1)">
+                    <i class="bi bi-chevron-double-left"></i>
+                </button>
+            </li>
+            <li class="page-item @(paginaActual <= 1 ? "disabled" : "")">
+                <button class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" disabled="@(paginaActual <= 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+            </li>
+            @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(totalPaginas, paginaActual + 2); i++)
+            {
+                var p = i;
+                <li class="page-item @(p == paginaActual ? "active" : "")">
+                    <button class="page-link" @onclick="() => CambiarPagina(p)">@p</button>
+                </li>
+            }
+            <li class="page-item @(paginaActual >= totalPaginas ? "disabled" : "")">
+                <button class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" disabled="@(paginaActual >= totalPaginas)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </li>
+            <li class="page-item @(paginaActual >= totalPaginas ? "disabled" : "")">
+                <button class="page-link" @onclick="() => CambiarPagina(totalPaginas)" disabled="@(paginaActual >= totalPaginas)">
+                    <i class="bi bi-chevron-double-right"></i>
+                </button>
+            </li>
+            <li class="page-item disabled ms-2">
+                <span class="page-link">@registrosPorPagina por pág.</span>
+            </li>
+        </ul>
+    </nav>
+}
+
+<!-- Tabla de resultados -->
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 65vh; overflow-y: auto;">
+            <table class="table table-sm table-striped table-hover mb-0">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th style="min-width:140px;">Fecha Equipo</th>
+                        <th style="min-width:100px;">Fecha Caja</th>
+                        <th>Turno</th>
+                        <th>Sucursal</th>
+                        <th style="min-width:200px;">Producto</th>
+                        <th>Depósito</th>
+                        <th class="text-center">Tipo</th>
+                        <th class="text-end">Anterior</th>
+                        <th class="text-end">Cantidad</th>
+                        <th class="text-end">Saldo</th>
+                        <th class="text-end">Costo</th>
+                        <th class="text-end">Venta</th>
+                        <th class="text-center">Mon.</th>
+                        <th class="text-end">Cambio</th>
+                        <th class="text-end">Costo Gs</th>
+                        <th class="text-end">Venta Gs</th>
+                        <th style="min-width:150px;">Motivo</th>
+                        <th>Usuario</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (movimientos is null)
+                    {
+                        <tr><td colspan="18" class="text-center py-4 text-muted">Aplique filtros y presione Buscar</td></tr>
+                    }
+                    else if (!movimientos.Any())
+                    {
+                        <tr><td colspan="18" class="text-center py-4 text-muted">No se encontraron movimientos</td></tr>
+                    }
+                    else
+                    {
+                        foreach (var m in movimientos)
+                        {
+                            var esEntrada = m.Tipo == 1;
+                            <tr>
+                                <td>@m.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@(m.FechaCaja?.ToString("dd/MM/yyyy") ?? "—")</td>
+                                <td>@(m.Turno?.ToString() ?? "—")</td>
+                                <td>@(m.Sucursal?.NombreSucursal ?? (m.IdSucursal?.ToString() ?? "—"))</td>
+                                <td>
+                                    <div class="fw-semibold">@(m.Producto?.Descripcion ?? $"#{m.IdProducto}")</div>
+                                    <div class="small text-muted">@(m.Producto?.CodigoInterno ?? "")</div>
+                                </td>
+                                <td>@(m.Deposito?.Nombre ?? $"#{m.IdDeposito}")</td>
+                                <td class="text-center">
+                                    <span class="badge @(esEntrada ? "bg-success" : "bg-danger")">
+                                        @(esEntrada ? "Entrada" : "Salida")
+                                    </span>
+                                </td>
+                                <td class="text-end">@(m.CantidadAnterior?.ToString("N4") ?? "—")</td>
+                                <td class="text-end fw-semibold @(esEntrada ? "text-success" : "text-danger")">
+                                    @(esEntrada ? "+" : "-")@m.Cantidad.ToString("N4")
+                                </td>
+                                <td class="text-end fw-bold">@(m.SaldoPosterior?.ToString("N4") ?? "—")</td>
+                                <td class="text-end">@(m.PrecioCosto?.ToString("N2") ?? "—")</td>
+                                <td class="text-end">@(m.PrecioVenta?.ToString("N2") ?? "—")</td>
+                                <td class="text-center">
+                                    <span class="badge bg-secondary">@(m.Moneda?.CodigoISO ?? (m.IdMoneda == 1 ? "PYG" : "—"))</span>
+                                </td>
+                                <td class="text-end">@(m.TipoCambio != 1 ? m.TipoCambio?.ToString("N2") : "—")</td>
+                                <td class="text-end @(esEntrada ? "text-success" : "text-danger")">@(m.PrecioCostoGs?.ToString("N0") ?? "—")</td>
+                                <td class="text-end @(esEntrada ? "text-success" : "text-danger")">@(m.PrecioVentaGs?.ToString("N0") ?? "—")</td>
+                                <td><span class="small">@m.Motivo</span></td>
+                                <td>@m.Usuario</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+                @if (movimientos?.Any() == true)
+                {
+                    var entradas = movimientos.Where(m => m.Tipo == 1);
+                    var salidas = movimientos.Where(m => m.Tipo == 2);
+                    <tfoot class="table-light fw-bold">
+                        <tr>
+                            <td colspan="8" class="text-end">TOTALES:</td>
+                            <td class="text-end">
+                                <span class="text-success">+@entradas.Sum(m => m.Cantidad).ToString("N2")</span> /
+                                <span class="text-danger">-@salidas.Sum(m => m.Cantidad).ToString("N2")</span>
+                            </td>
+                            <td colspan="5"></td>
+                            <td class="text-end">
+                                <span class="text-success" title="Entradas">@entradas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0).ToString("N0")</span> /
+                                <span class="text-danger" title="Salidas">@salidas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0).ToString("N0")</span>
+                            </td>
+                            <td class="text-end">
+                                <span class="text-success" title="Entradas">@entradas.Sum(m => m.PrecioVentaGs * m.Cantidad ?? 0).ToString("N0")</span> /
+                                <span class="text-danger" title="Salidas">@salidas.Sum(m => m.PrecioVentaGs * m.Cantidad ?? 0).ToString("N0")</span>
+                            </td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+    </div>
+</div>
+
+</PageProtection>
+
+@code {
+    private List<MovimientoInventario>? movimientos;
+    private List<Sucursal> sucursales = new();
+    private List<Deposito> depositos = new();
+    private List<Caja> cajas = new();
+    private string? errorMsg;
+    private bool buscando;
+
+    // Info de caja actual
+    private int? idCajaActual;
+    private int turnoActual = 1;
+    private DateTime fechaCajaActual = DateTime.Today;
+    private decimal tipoCambioUsdHoy;
+    private string? usuarioActual;
+
+    // Filtros
+    private DateTime? filtroFechaDesde;
+    private DateTime? filtroFechaHasta;
+    private int filtroIdSucursal;
+    private int filtroIdDeposito;
+    private int filtroTipo;
+    private string? filtroUsuario;
+    private string? filtroProducto;
+    private string? filtroMotivo;
+    private int filtroTurno;
+    private int filtroIdCaja;
+
+    // Paginación
+    private int paginaActual = 1;
+    private int registrosPorPagina = 50;
+    private int totalRegistros;
+    private int totalPaginas => (int)Math.Ceiling((double)totalRegistros / registrosPorPagina);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener usuario actual
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        usuarioActual = authState.User?.Identity?.Name;
+
+        // Obtener caja actual
+        var caja = await CajaService.ObtenerCajaActualAsync();
+        if (caja != null)
+        {
+            idCajaActual = caja.IdCaja;
+            turnoActual = caja.TurnoActual ?? 1;
+            fechaCajaActual = caja.FechaActualCaja ?? DateTime.Today;
+        }
+
+        // Valores por defecto: fecha de caja actual, pero SIN filtrar por caja/turno
+        // para mostrar todos los movimientos del día (incluyendo los que no tienen caja asignada)
+        filtroFechaDesde = fechaCajaActual;
+        filtroFechaHasta = fechaCajaActual;
+        filtroTurno = 0;  // 0 = Todos los turnos
+        filtroIdCaja = 0; // 0 = Todas las cajas
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        sucursales = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.NombreSucursal).ToListAsync();
+        depositos = await ctx.Depositos.AsNoTracking().Where(d => d.Activo).OrderBy(d => d.Nombre).ToListAsync();
+        cajas = await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).ToListAsync();
+
+        // Obtener tipo de cambio USD del día
+        var tcUsd = await ctx.TiposCambio.AsNoTracking()
+            .Where(t => t.Estado && t.MonedaOrigen != null && t.MonedaOrigen.CodigoISO == "USD" 
+                     && t.MonedaDestino != null && t.MonedaDestino.CodigoISO == "PYG")
+            .Where(t => t.FechaTipoCambio.Date == DateTime.Today)
+            .Select(t => t.TasaCambio)
+            .FirstOrDefaultAsync();
+        if (tcUsd > 0) tipoCambioUsdHoy = tcUsd;
+
+        // Si hay sucursal del proveedor, preseleccionar
+        var sucId = SucursalProvider.GetSucursalId();
+        if (sucId.HasValue && sucursales.Any(s => s.Id == sucId.Value))
+        {
+            filtroIdSucursal = sucId.Value;
+        }
+    }
+
+    private async Task Buscar()
+    {
+        paginaActual = 1;
+        await CargarDatos();
+    }
+
+    private async Task CambiarPagina(int pagina)
+    {
+        if (pagina < 1 || pagina > totalPaginas) return;
+        paginaActual = pagina;
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            errorMsg = null;
+            buscando = true;
+            StateHasChanged();
+
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var query = ctx.MovimientosInventario
+                .Include(m => m.Producto)
+                .Include(m => m.Deposito)
+                .Include(m => m.Sucursal)
+                .Include(m => m.Caja)
+                .Include(m => m.Moneda)
+                .AsNoTracking()
+                .AsQueryable();
+
+            // Aplicar filtros - usar FechaCaja (fecha contable) en lugar de Fecha (fecha equipo)
+            // Incluir registros con FechaCaja NULL (datos históricos) solo si no hay filtro de fecha específico
+            if (filtroFechaDesde.HasValue)
+                query = query.Where(m => m.FechaCaja == null || m.FechaCaja >= filtroFechaDesde.Value.Date);
+            
+            if (filtroFechaHasta.HasValue)
+                query = query.Where(m => m.FechaCaja == null || m.FechaCaja <= filtroFechaHasta.Value.Date);
+
+            if (filtroIdSucursal > 0)
+                query = query.Where(m => m.IdSucursal == filtroIdSucursal);
+
+            if (filtroIdDeposito > 0)
+                query = query.Where(m => m.IdDeposito == filtroIdDeposito);
+
+            if (filtroTipo > 0)
+                query = query.Where(m => m.Tipo == filtroTipo);
+
+            if (!string.IsNullOrWhiteSpace(filtroUsuario))
+                query = query.Where(m => m.Usuario != null && m.Usuario.Contains(filtroUsuario));
+
+            if (!string.IsNullOrWhiteSpace(filtroProducto))
+            {
+                var texto = filtroProducto.Trim().ToLower();
+                query = query.Where(m => 
+                    (m.Producto.Descripcion != null && m.Producto.Descripcion.ToLower().Contains(texto)) ||
+                    (m.Producto.CodigoInterno != null && m.Producto.CodigoInterno.ToLower().Contains(texto)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(filtroMotivo))
+                query = query.Where(m => m.Motivo != null && m.Motivo.Contains(filtroMotivo));
+
+            if (filtroTurno > 0)
+                query = query.Where(m => m.Turno == null || m.Turno == filtroTurno);
+
+            if (filtroIdCaja > 0)
+                query = query.Where(m => m.IdCaja == null || m.IdCaja == filtroIdCaja);
+
+            // Contar total
+            totalRegistros = await query.CountAsync();
+
+            // Paginar
+            movimientos = await query
+                .OrderByDescending(m => m.Fecha)
+                .Skip((paginaActual - 1) * registrosPorPagina)
+                .Take(registrosPorPagina)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMsg = ex.Message;
+        }
+        finally
+        {
+            buscando = false;
+        }
+    }
+
+    private void LimpiarFiltros()
+    {
+        filtroFechaDesde = fechaCajaActual;
+        filtroFechaHasta = fechaCajaActual;
+        filtroIdSucursal = 0;
+        filtroIdDeposito = 0;
+        filtroTipo = 0;
+        filtroUsuario = null;
+        filtroProducto = null;
+        filtroMotivo = null;
+        filtroTurno = 0;  // 0 = Todos
+        filtroIdCaja = 0; // 0 = Todas
+        paginaActual = 1;
+        totalRegistros = 0;
+        movimientos = null;
+    }
+
+    private async Task Imprimir()
+    {
+        if (movimientos is null || !movimientos.Any()) return;
+
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset=\"utf-8\"/>");
+        head.AppendLine("<title>Informe de Movimientos de Productos</title>");
+        head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: A4 landscape; margin: 8mm; } }");
+        head.AppendLine("body{font-size:9px;color:#111;}");
+        head.AppendLine(".header{border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+        head.AppendLine(".header h2{margin:0;font-size:14px;}");
+        head.AppendLine("table{width:100%;border-collapse:collapse;}");
+        head.AppendLine("th,td{padding:3px 4px;border-bottom:1px solid #ddd;text-align:left;}");
+        head.AppendLine("th{background:#f8f9fa;font-weight:600;font-size:8px;}");
+        head.AppendLine(".text-end{text-align:right;}");
+        head.AppendLine(".text-center{text-align:center;}");
+        head.AppendLine(".badge-entrada{background:#198754;color:#fff;padding:1px 4px;border-radius:3px;font-size:8px;}");
+        head.AppendLine(".badge-salida{background:#dc3545;color:#fff;padding:1px 4px;border-radius:3px;font-size:8px;}");
+        head.AppendLine(".badge-mon{background:#6c757d;color:#fff;padding:1px 3px;border-radius:3px;font-size:7px;}");
+        head.AppendLine(".footer{margin-top:16px;text-align:center;font-size:9px;color:#666;}");
+        head.AppendLine("tfoot{background:#f8f9fa;font-weight:bold;}");
+        head.AppendLine(".text-success{color:#198754;}");
+        head.AppendLine(".text-danger{color:#dc3545;}");
+        head.AppendLine("</style>");
+
+        var filtrosTexto = new List<string>();
+        if (filtroFechaDesde.HasValue) filtrosTexto.Add($"Desde: {filtroFechaDesde:dd/MM/yyyy}");
+        if (filtroFechaHasta.HasValue) filtrosTexto.Add($"Hasta: {filtroFechaHasta:dd/MM/yyyy}");
+        if (filtroIdSucursal > 0) filtrosTexto.Add($"Sucursal: {sucursales.FirstOrDefault(s=>s.Id==filtroIdSucursal)?.NombreSucursal}");
+        if (filtroIdDeposito > 0) filtrosTexto.Add($"Depósito: {depositos.FirstOrDefault(d=>d.IdDeposito==filtroIdDeposito)?.Nombre}");
+        if (filtroTipo > 0) filtrosTexto.Add($"Tipo: {(filtroTipo==1?"Entrada":"Salida")}");
+        if (!string.IsNullOrWhiteSpace(filtroProducto)) filtrosTexto.Add($"Producto: {filtroProducto}");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class=\"container-fluid\">");
+        sb.AppendLine("<div class=\"header\">");
+        sb.AppendLine("<h2>Informe de Movimientos de Productos</h2>");
+        sb.AppendLine($"<div class=\"small text-muted\">Generado: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
+        if (filtrosTexto.Any())
+        {
+            sb.AppendLine($"<div class=\"small\">Filtros: {string.Join(" | ", filtrosTexto)}</div>");
+        }
+        sb.AppendLine("</div>");
+
+        sb.AppendLine("<table>");
+        sb.AppendLine("<thead><tr>");
+        sb.AppendLine("<th>Fecha Equipo</th><th>F. Caja</th><th>T</th><th>Sucursal</th>");
+        sb.AppendLine("<th>Producto</th><th>Depósito</th><th class=\"text-center\">Tipo</th>");
+        sb.AppendLine("<th class=\"text-end\">Anterior</th><th class=\"text-end\">Cantidad</th><th class=\"text-end\">Saldo</th>");
+        sb.AppendLine("<th class=\"text-end\">Costo</th><th class=\"text-end\">Venta</th><th>Mon</th><th class=\"text-end\">Cambio</th>");
+        sb.AppendLine("<th class=\"text-end\">Costo Gs</th><th class=\"text-end\">Venta Gs</th>");
+        sb.AppendLine("<th>Motivo</th><th>Usuario</th>");
+        sb.AppendLine("</tr></thead>");
+        sb.AppendLine("<tbody>");
+
+        foreach (var m in movimientos)
+        {
+            var esEntrada = m.Tipo == 1;
+            var badgeClass = esEntrada ? "badge-entrada" : "badge-salida";
+            var colorClass = esEntrada ? "text-success" : "text-danger";
+            sb.AppendLine("<tr>");
+            sb.AppendLine($"<td>{m.Fecha:dd/MM/yyyy HH:mm}</td>");
+            sb.AppendLine($"<td>{(m.FechaCaja?.ToString("dd/MM") ?? "—")}</td>");
+            sb.AppendLine($"<td>{(m.Turno?.ToString() ?? "—")}</td>");
+            sb.AppendLine($"<td>{Escape(m.Sucursal?.NombreSucursal ?? "")}</td>");
+            sb.AppendLine($"<td>{Escape(m.Producto?.Descripcion ?? $"#{m.IdProducto}")}</td>");
+            sb.AppendLine($"<td>{Escape(m.Deposito?.Nombre ?? "")}</td>");
+            sb.AppendLine($"<td class=\"text-center\"><span class=\"{badgeClass}\">{(esEntrada ? "E" : "S")}</span></td>");
+            sb.AppendLine($"<td class=\"text-end\">{(m.CantidadAnterior?.ToString("N2") ?? "—")}</td>");
+            sb.AppendLine($"<td class=\"text-end {colorClass}\">{(esEntrada ? "+" : "-")}{m.Cantidad:N2}</td>");
+            sb.AppendLine($"<td class=\"text-end\">{(m.SaldoPosterior?.ToString("N2") ?? "—")}</td>");
+            sb.AppendLine($"<td class=\"text-end\">{(m.PrecioCosto?.ToString("N2") ?? "—")}</td>");
+            sb.AppendLine($"<td class=\"text-end\">{(m.PrecioVenta?.ToString("N2") ?? "—")}</td>");
+            sb.AppendLine($"<td><span class=\"badge-mon\">{(m.Moneda?.CodigoISO ?? (m.IdMoneda == 1 ? "PYG" : "—"))}</span></td>");
+            sb.AppendLine($"<td class=\"text-end\">{(m.TipoCambio != 1 ? m.TipoCambio?.ToString("N2") : "—")}</td>");
+            sb.AppendLine($"<td class=\"text-end {colorClass}\">{(m.PrecioCostoGs?.ToString("N0") ?? "—")}</td>");
+            sb.AppendLine($"<td class=\"text-end {colorClass}\">{(m.PrecioVentaGs?.ToString("N0") ?? "—")}</td>");
+            sb.AppendLine($"<td>{Escape(m.Motivo ?? "")}</td>");
+            sb.AppendLine($"<td>{Escape(m.Usuario ?? "")}</td>");
+            sb.AppendLine("</tr>");
+        }
+
+        sb.AppendLine("</tbody>");
+
+        // Totales
+        var entradas = movimientos.Where(m => m.Tipo == 1);
+        var salidas = movimientos.Where(m => m.Tipo == 2);
+        sb.AppendLine("<tfoot><tr>");
+        sb.AppendLine("<td colspan=\"8\" class=\"text-end\">TOTALES:</td>");
+        sb.AppendLine($"<td class=\"text-end\"><span class=\"text-success\">+{entradas.Sum(m => m.Cantidad):N2}</span> / <span class=\"text-danger\">-{salidas.Sum(m => m.Cantidad):N2}</span></td>");
+        sb.AppendLine("<td colspan=\"5\"></td>");
+        sb.AppendLine($"<td class=\"text-end\"><span class=\"text-success\">{entradas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0):N0}</span> / <span class=\"text-danger\">{salidas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0):N0}</span></td>");
+        sb.AppendLine($"<td class=\"text-end\"><span class=\"text-success\">{entradas.Sum(m => m.PrecioVentaGs * m.Cantidad ?? 0):N0}</span> / <span class=\"text-danger\">{salidas.Sum(m => m.PrecioVentaGs * m.Cantidad ?? 0):N0}</span></td>");
+        sb.AppendLine("<td colspan=\"2\"></td>");
+        sb.AppendLine("</tr></tfoot>");
+        sb.AppendLine("</table>");
+
+        // Resumen
+        sb.AppendLine($"<div class=\"mt-3\"><strong>Resumen:</strong> Entradas: {entradas.Sum(m => m.Cantidad):N2} | Salidas: {salidas.Sum(m => m.Cantidad):N2} | Registros: {movimientos.Count}</div>");
+        sb.AppendLine($"<div><strong>Valorización en Gs:</strong> Costo Entradas: {entradas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0):N0} | Costo Salidas: {salidas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0):N0}</div>");
+        sb.AppendLine($"<div>Venta Entradas: {entradas.Sum(m => m.PrecioVentaGs * m.Cantidad ?? 0):N0} | Venta Salidas: {salidas.Sum(m => m.PrecioVentaGs * m.Cantidad ?? 0):N0}</div>");
+        sb.AppendLine("<div class=\"footer\">** Informe generado por SistemIA **</div>");
+        sb.AppendLine("</div>");
+
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+
+    private async Task ExportarExcel()
+    {
+        if (movimientos is null || !movimientos.Any()) return;
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Fecha Equipo,Fecha Caja,Turno,Sucursal,Producto,Código,Depósito,Tipo,Anterior,Cantidad,Saldo,Costo,Venta,Moneda,Cambio,Costo Gs,Venta Gs,Costo Total Gs,Venta Total Gs,Motivo,Usuario");
+
+        foreach (var m in movimientos)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var costoTotalGs = (m.PrecioCostoGs ?? 0) * m.Cantidad;
+            var ventaTotalGs = (m.PrecioVentaGs ?? 0) * m.Cantidad;
+            
+            csv.AppendLine($"\"{m.Fecha:dd/MM/yyyy HH:mm}\"," +
+                $"\"{(m.FechaCaja?.ToString("dd/MM/yyyy") ?? "")}\"," +
+                $"\"{(m.Turno?.ToString() ?? "")}\"," +
+                $"\"{EscapeCsv(m.Sucursal?.NombreSucursal ?? "")}\"," +
+                $"\"{EscapeCsv(m.Producto?.Descripcion ?? "")}\"," +
+                $"\"{EscapeCsv(m.Producto?.CodigoInterno ?? "")}\"," +
+                $"\"{EscapeCsv(m.Deposito?.Nombre ?? "")}\"," +
+                $"\"{(m.Tipo == 1 ? "Entrada" : "Salida")}\"," +
+                $"{(m.CantidadAnterior?.ToString("0.0000", inv) ?? "")}," +
+                $"{m.Cantidad.ToString("0.0000", inv)}," +
+                $"{(m.SaldoPosterior?.ToString("0.0000", inv) ?? "")}," +
+                $"{(m.PrecioCosto?.ToString("0.00", inv) ?? "")}," +
+                $"{(m.PrecioVenta?.ToString("0.00", inv) ?? "")}," +
+                $"\"{(m.Moneda?.CodigoISO ?? (m.IdMoneda == 1 ? "PYG" : ""))}\"," +
+                $"{(m.TipoCambio?.ToString("0.00", inv) ?? "")}," +
+                $"{(m.PrecioCostoGs?.ToString("0", inv) ?? "")}," +
+                $"{(m.PrecioVentaGs?.ToString("0", inv) ?? "")}," +
+                $"{costoTotalGs.ToString("0", inv)}," +
+                $"{ventaTotalGs.ToString("0", inv)}," +
+                $"\"{EscapeCsv(m.Motivo ?? "")}\"," +
+                $"\"{EscapeCsv(m.Usuario ?? "")}\"");
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        var base64 = Convert.ToBase64String(bytes);
+        var filename = $"MovimientosProductos_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+
+        await JS.InvokeVoidAsync("downloadFile", filename, "text/csv;charset=utf-8", base64);
+    }
+
+    private static string Escape(string? s) => System.Net.WebUtility.HtmlEncode(s ?? string.Empty);
+    private static string EscapeCsv(string? s) => (s ?? string.Empty).Replace("\"", "\"\"");
+}

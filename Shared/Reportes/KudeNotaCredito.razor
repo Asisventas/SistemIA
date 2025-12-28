@@ -1,0 +1,386 @@
+@using Microsoft.EntityFrameworkCore
+@namespace SistemIA.Shared.Reportes
+@using SistemIA.Models
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.ICajaService CajaService
+@using QRCoder
+@using Microsoft.AspNetCore.WebUtilities
+
+@code {
+    [Parameter] public int IdNotaCredito { get; set; }
+    [Parameter] public EventCallback OnReady { get; set; }
+    
+    private NotaCreditoVenta? nc;
+    private List<NotaCreditoVentaDetalle> detalles = new();
+    private Cliente? cliente;
+    private Caja? caja;
+    private Sociedad? empresa;
+    private Venta? ventaAsociada;
+    private string? qrDataUrl;
+    private int _lastLoadedId = -1;
+    private int _lastOnReadyId = -1;
+    private bool _ocultarImagenes = false;
+    private bool esFacturaElectronica => (caja?.TipoFacturacion ?? "ELECTRONICA") == "ELECTRONICA";
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_lastLoadedId == IdNotaCredito && nc != null)
+        {
+            ActualizarFlagsDesdeQuery();
+            if (OnReady.HasDelegate && _lastOnReadyId != IdNotaCredito)
+            {
+                _lastOnReadyId = IdNotaCredito;
+                await OnReady.InvokeAsync();
+            }
+            return;
+        }
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            nc = await ctx.NotasCreditoVentas
+                .AsNoTracking()
+                .Include(n => n.Cliente)
+                .Include(n => n.Sucursal)
+                .Include(n => n.Caja)
+                .Include(n => n.Moneda)
+                .Include(n => n.VentaAsociada)
+                .FirstOrDefaultAsync(n => n.IdNotaCredito == IdNotaCredito);
+            
+            if (nc == null) return;
+            
+            cliente = nc.Cliente;
+            ventaAsociada = nc.VentaAsociada;
+            caja = nc.Caja ?? await CajaService.ObtenerCajaActualAsync();
+            empresa = await ctx.Sociedades.FirstOrDefaultAsync();
+            
+            detalles = await ctx.NotasCreditoVentasDetalles
+                .AsNoTracking()
+                .Include(d => d.Producto)
+                .Where(d => d.IdNotaCredito == IdNotaCredito)
+                .ToListAsync();
+            
+            _lastLoadedId = IdNotaCredito;
+            
+            // Generar QR si es electrónica
+            if (esFacturaElectronica)
+            {
+                qrDataUrl = GenerarQrDataUrl();
+            }
+            
+            ActualizarFlagsDesdeQuery();
+            StateHasChanged();
+            
+            if (OnReady.HasDelegate && _lastOnReadyId != IdNotaCredito)
+            {
+                _lastOnReadyId = IdNotaCredito;
+                await OnReady.InvokeAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[KudeNotaCredito] Error: {ex.Message}");
+        }
+    }
+    
+    private string Pad7(int n) => n.ToString("D7");
+    private string NumeroNC() => $"{nc?.Establecimiento ?? "001"}-{nc?.PuntoExpedicion ?? "001"}-{Pad7(nc?.NumeroNota ?? 0)}";
+    
+    private string? LogoDataUrl()
+    {
+        try
+        {
+            var bytes = nc?.Sucursal?.Logo;
+            if (bytes == null || bytes.Length == 0) return null;
+            return $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch { return null; }
+    }
+    
+    private decimal TotExentas => detalles.Sum(x => x.Exenta);
+    private decimal TotGrav5 => detalles.Sum(x => x.Grabado5);
+    private decimal TotGrav10 => detalles.Sum(x => x.Grabado10);
+    private decimal TotIva5 => detalles.Sum(x => x.IVA5);
+    private decimal TotIva10 => detalles.Sum(x => x.IVA10);
+    
+    private void ActualizarFlagsDesdeQuery()
+    {
+        try
+        {
+            var uri = new Uri(Nav.Uri);
+            var query = QueryHelpers.ParseQuery(uri.Query);
+            _ocultarImagenes = query.ContainsKey("noimg") || query.ContainsKey("sinimg");
+        }
+        catch { }
+    }
+    
+    private string GenerarQrDataUrl()
+    {
+        try
+        {
+            var cdcParaQr = nc?.CDC;
+            if (string.IsNullOrWhiteSpace(cdcParaQr))
+            {
+                cdcParaQr = GenerarCdcPreview();
+                if (string.IsNullOrWhiteSpace(cdcParaQr)) return string.Empty;
+            }
+            
+            var url = $"https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={cdcParaQr}";
+            
+            using var generator = new QRCodeGenerator();
+            using var data = generator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+            
+            var png = new PngByteQRCode(data);
+            var bytes = png.GetGraphic(12);
+            var base64 = Convert.ToBase64String(bytes);
+            return $"data:image/png;base64,{base64}";
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+    
+    private string GenerarCdcPreview()
+    {
+        try
+        {
+            var sucursal = nc?.Sucursal;
+            if (sucursal == null || string.IsNullOrWhiteSpace(sucursal.RUC))
+                return string.Empty;
+            
+            var ruc = sucursal.RUC;
+            var dv = (sucursal.DV ?? 0).ToString();
+            var establecimiento = nc?.Establecimiento ?? "001";
+            var puntoExpedicion = nc?.PuntoExpedicion ?? "001";
+            var numero = Pad7(nc?.NumeroNota ?? 1);
+            
+            return $"{ruc}{dv}{establecimiento}{puntoExpedicion}{numero}";
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+}
+
+@if (nc == null)
+{
+    <div class="alert alert-warning">Nota de crédito no encontrada.</div>
+}
+else
+{
+<div class="kude">
+    <div class="doc-a4">
+        <div class="encabezado">
+            <div class="emisor-left">
+                <div class="logo-y-empresa">
+                    @if (!_ocultarImagenes && !string.IsNullOrEmpty(LogoDataUrl()))
+                    {
+                        <img class="logo" src="@LogoDataUrl()" alt="Logo" />
+                    }
+                    <div class="empresa">
+                        <div class="nombre">@(nc.Sucursal?.NombreEmpresa ?? empresa?.Nombre)</div>
+                        <div class="dir">@(nc.Sucursal?.Direccion ?? empresa?.Direccion)</div>
+                        @if (!string.IsNullOrWhiteSpace(nc.Sucursal?.Telefono ?? empresa?.Telefono))
+                        {
+                            <div class="tel">Teléfono: @(nc.Sucursal?.Telefono ?? empresa?.Telefono)</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(nc.Sucursal?.Correo ?? empresa?.Email))
+                        {
+                            <div class="mail">@(nc.Sucursal?.Correo ?? empresa?.Email)</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(nc.Sucursal?.RubroEmpresa))
+                        {
+                            <div class="rubro">Actividad Económica: @nc.Sucursal?.RubroEmpresa</div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="emisor-right">
+                <div>R.U.C.: @(nc.Sucursal?.RUC ?? empresa?.RUC)-@(nc.Sucursal?.DV ?? empresa?.DV ?? 0)</div>
+                <div>Timbrado N°: @nc.Timbrado</div>
+                @if (caja != null)
+                {
+                    <div>Fecha de Inicio de Vigencia: @(caja.VigenciaDelNC?.ToString("dd/MM/yyyy") ?? caja.VigenciaDel?.ToString("dd/MM/yyyy") ?? "")</div>
+                }
+                <div class="titulo-doc">@(esFacturaElectronica ? "NOTA DE CRÉDITO ELECTRÓNICA" : "NOTA DE CRÉDITO")</div>
+                <div class="numero">@NumeroNC()</div>
+            </div>
+        </div>
+
+        <div class="banda">
+            <div class="col-izq">
+                <div><b>Fecha y Hora de Emisión:</b> @nc.Fecha.ToString("dd/MM/yyyy HH:mm:ss")</div>
+                <div><b>Condición:</b> Contado</div>
+                <div><b>Moneda:</b> @(nc.Moneda?.CodigoISO ?? "PYG")</div>
+                <div><b>Tipo de Cambio:</b> @nc.CambioDelDia</div>
+                <div><b>N° Nota:</b> @nc.IdNotaCredito</div>
+                <div><b>Motivo:</b> @nc.Motivo</div>
+            </div>
+            <div class="col-der">
+                <div><b>Tipo Doc.:</b> NOTA DE CRÉDITO</div>
+                <div><b>R.U.C./C.I.:</b> @(string.IsNullOrWhiteSpace(cliente?.RUC) ? cliente?.NumeroDocumentoIdentidad : ($"{cliente?.RUC}-{cliente?.DV}"))</div>
+                <div><b>Razón Social:</b> @(cliente?.RazonSocial ?? nc.NombreCliente ?? "CONSUMIDOR FINAL")</div>
+                <div><b>Dirección:</b> @cliente?.Direccion</div>
+                @if (!string.IsNullOrWhiteSpace(cliente?.Telefono))
+                {
+                    <div><b>Teléfono:</b> @cliente!.Telefono</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(cliente?.Email))
+                {
+                    <div><b>Correo Electrónico:</b> @cliente!.Email</div>
+                }
+            </div>
+        </div>
+
+        @if (ventaAsociada != null)
+        {
+        <div class="doc-asociado">
+            <b>Documento Asociado:</b> @nc.TipoDocumentoAsociado |
+            <b>Factura Ref.:</b> @ventaAsociada.Establecimiento-@ventaAsociada.PuntoExpedicion-@ventaAsociada.NumeroFactura |
+            <b>Timbrado Ref.:</b> @ventaAsociada.Timbrado |
+            <b>Fecha Ref.:</b> @ventaAsociada.Fecha.ToString("dd/MM/yyyy")
+        </div>
+        }
+
+        <div class="items">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th style="width:10%">Código</th>
+                        <th>Descripción</th>
+                        <th style="width:9%">Unidad Medida</th>
+                        <th style="width:6%">Cajas</th>
+                        <th style="width:8%">Cantidad</th>
+                        <th style="width:10%">Precio Unitario</th>
+                        <th style="width:9%">Descuento</th>
+                        <th style="width:9%">Exentas</th>
+                        <th style="width:9%">5%</th>
+                        <th style="width:9%">10%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in detalles)
+                    {
+                        var codigo = d.CodigoProducto ?? d.Producto?.CodigoInterno ?? d.Producto?.CodigoBarras ?? d.IdProducto.ToString();
+                        <tr>
+                            <td>@codigo</td>
+                            <td>@(d.NombreProducto ?? d.Producto?.Descripcion)</td>
+                            <td class="t-center">@(d.Producto?.UndMedida ?? "UNI")</td>
+                            <td class="t-center">1,00</td>
+                            <td class="t-right">@d.Cantidad.ToString("N2")</td>
+                            <td class="t-right">@d.PrecioUnitario.ToString("N0")</td>
+                            <td class="t-right">@d.MontoDescuento.ToString("N0")</td>
+                            <td class="t-right">@d.Exenta.ToString("N0")</td>
+                            <td class="t-right">@d.Grabado5.ToString("N0")</td>
+                            <td class="t-right">@d.Grabado10.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="resumen">
+            <div class="subtotales">
+                <div>Subtotal:</div>
+                <div class="t-right">@(nc.Subtotal.ToString("N0"))</div>
+            </div>
+            @if (nc.TotalDescuento > 0)
+            {
+            <div class="subtotales">
+                <div>Descuento:</div>
+                <div class="t-right">@(nc.TotalDescuento.ToString("N0"))</div>
+            </div>
+            }
+            <div class="total-operacion">
+                <div>Total de la Operación (en guaraníes):</div>
+                <div class="t-right">@(nc.Total.ToString("N0"))</div>
+            </div>
+            @if (!string.IsNullOrEmpty(nc.TotalEnLetras))
+            {
+            <div class="en-letras">@nc.TotalEnLetras</div>
+            }
+            <div class="liquidacion-iva">
+                <div class="fila"><div>Liquidación del I.V.A.:</div><div class="t-right"></div></div>
+                <div class="fila"><div>(5%)</div><div class="t-right">@TotIva5.ToString("N0")</div></div>
+                <div class="fila"><div>(10%)</div><div class="t-right">@TotIva10.ToString("N0")</div></div>
+                <div class="fila total-iva"><div>Total I.V.A.:</div><div class="t-right">@((TotIva5 + TotIva10).ToString("N0"))</div></div>
+            </div>
+        </div>
+
+        @if (esFacturaElectronica)
+        {
+        <div class="validacion">
+            <div class="qr">
+                @if (!_ocultarImagenes)
+                {
+                    if (!string.IsNullOrEmpty(qrDataUrl))
+                    {
+                        <img src="@qrDataUrl" alt="QR de la Nota de Crédito" />
+                    }
+                    else if (!string.IsNullOrWhiteSpace(nc.CDC))
+                    {
+                        <img src="@($"https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={Uri.EscapeDataString(nc.CDC)}")" alt="QR de la Nota de Crédito" />
+                    }
+                    else
+                    {
+                        <div class="qr-placeholder">
+                            <div class="qr-icon">📋</div>
+                            <div class="qr-text">QR Preview<br />Enviar a SIFEN para validar</div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="qr-placeholder">
+                        <div class="qr-text">(QR oculto para prueba)</div>
+                    </div>
+                }
+            </div>
+            <div class="cdc-y-textos">
+                <div class="link">Consulte la validez de esta Nota de Crédito Electrónica con el número de CDC impreso abajo en:<br />https://ekuatia.set.gov.py/consultas/</div>
+                <div class="cdc">
+                    CDC: 
+                    <span>
+                        @if (!string.IsNullOrWhiteSpace(nc.CDC))
+                        {
+                            @nc.CDC
+                        }
+                        else
+                        {
+                            var cdcPreview = GenerarCdcPreview();
+                            if (!string.IsNullOrEmpty(cdcPreview))
+                            {
+                                <span class="text-info">@cdcPreview</span>
+                                <small class="text-muted d-block">(Preview - Enviar a SIFEN para validar)</small>
+                            }
+                            else
+                            {
+                                <em class="text-warning">Pendiente - Completar datos y enviar a SIFEN</em>
+                            }
+                        }
+                    </span>
+                </div>
+                <div class="nota">ESTE DOCUMENTO ES UNA REPRESENTACIÓN GRÁFICA DE UN DOCUMENTO ELECTRÓNICO (XML)</div>
+                <div class="interes">Información de interés del receptor emisor:<br />Si su documento electrónico presenta algún error, podrá solicitar la modificación dentro de las 48 horas siguientes de la emisión de este comprobante.</div>
+            </div>
+        </div>
+        }
+
+        @if (!string.IsNullOrEmpty(nc.Observaciones))
+        {
+        <div class="observaciones">
+            <b>Observaciones:</b> @nc.Observaciones
+        </div>
+        }
+
+        <div class="leyenda-final">
+            Documento generado por SistemIA - @DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")
+        </div>
+    </div>
+</div>
+}

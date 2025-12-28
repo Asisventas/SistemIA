@@ -1,16 +1,21 @@
 @page "/notas-credito"
 @page "/notas-credito/{Id:int}"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @attribute [Authorize]
 @using SistemIA.Models
 @using SistemIA.Data
 @using SistemIA.Services
 @using Microsoft.EntityFrameworkCore
-@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Nav
 @inject ISucursalProvider SucursalProvider
 @inject ICajaProvider CajaProvider
+@inject ICajaService CajaService
+@inject IInventarioService Inventario
 @inject IJSRuntime JS
+@inject PermisosService PermisosService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageProtection Modulo="/notas-credito" Permiso="CREATE">
 <PageTitle>@(_esEdicion ? "Editar" : "Nueva") Nota de Crédito</PageTitle>
@@ -40,12 +45,19 @@
                 <div class="row g-3 mb-4">
                     <div class="col-md-2">
                         <label class="form-label">Caja</label>
-                        <select class="form-select form-select-sm" @bind="_nc.IdCaja">
-                            @foreach (var caja in _cajas)
-                            {
-                                <option value="@caja.IdCaja">@caja.Nombre</option>
-                            }
-                        </select>
+                        @if (_puedeCambiarCaja && _cajas.Any())
+                        {
+                            <select class="form-select form-select-sm" @bind="_nc.IdCaja" @bind:after="OnCajaChanged">
+                                @foreach (var caja in _cajas)
+                                {
+                                    <option value="@caja.IdCaja">@(string.IsNullOrWhiteSpace(caja.Nombre) ? $"Caja #{caja.IdCaja}" : caja.Nombre)</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <span class="form-control form-control-sm bg-light">@(_cajaSeleccionada != null ? (string.IsNullOrWhiteSpace(_cajaSeleccionada.Nombre) ? $"Caja #{_cajaSeleccionada.IdCaja}" : _cajaSeleccionada.Nombre) : "Sin caja")</span>
+                        }
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Turno</label>
@@ -76,13 +88,21 @@
                 
                 @* Motivo y Documento Asociado *@
                 <div class="row g-3 mb-4">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label fw-bold">Motivo <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm" @bind="_nc.Motivo">
+                        <select class="form-select form-select-sm" @bind="_nc.Motivo" @bind:after="OnMotivoChanged">
                             @foreach (var motivo in MotivosNotaCredito.Todos)
                             {
                                 <option value="@motivo">@motivo</option>
                             }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">Afecta Stock</label>
+                        <select class="form-select form-select-sm @GetAfectaStockClass()" @bind="_afectaStock">
+                            <option value="1">➕ Suma Stock</option>
+                            <option value="0">🚫 No afecta</option>
+                            <option value="-1">➖ Resta Stock</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -109,9 +129,13 @@
                         </div>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Saldo Factura</label>
-                        <input type="text" class="form-control form-control-sm" readonly 
-                               value="@(_ventaSeleccionada?.CreditoSaldo?.ToString("N0") ?? "N/A")" />
+                        <label class="form-label">Saldo Disponible</label>
+                        <input type="text" class="form-control form-control-sm @(_ventaSeleccionada != null && _saldoDisponibleFactura <= 0 ? "bg-danger text-white" : "")" readonly 
+                               value="@(_ventaSeleccionada != null ? _saldoDisponibleFactura.ToString("N0") + " Gs." : "N/A")" />
+                        @if (_ventaSeleccionada != null && _saldoDisponibleFactura <= 0)
+                        {
+                            <small class="text-danger">Esta factura ya tiene NC por el total</small>
+                        }
                     </div>
                 </div>
                 
@@ -274,26 +298,26 @@
                         </button>
                     </div>
                     <div class="d-flex gap-2">
-                        @if (_nc.Estado == "Borrador")
+                        @if (_nc.Estado != "Confirmada")
                         {
-                            <button class="btn btn-primary" @onclick="Guardar" disabled="@_guardando">
+                            <button class="btn btn-success" @onclick="GuardarYConfirmar" disabled="@_guardando">
                                 @if (_guardando)
                                 {
                                     <span class="spinner-border spinner-border-sm me-1"></span>
                                 }
-                                <i class="bi bi-save"></i> Guardar Borrador
-                            </button>
-                            <button class="btn btn-success" @onclick="GuardarYConfirmar" disabled="@_guardando">
-                                <i class="bi bi-check-lg"></i> Guardar y Confirmar
+                                <i class="bi bi-check-lg"></i> Guardar NC
                             </button>
                         }
-                        @if (_esEdicion && _nc.Estado != "Borrador")
+                        @if (_nc.Estado == "Confirmada")
                         {
                             <button class="btn btn-info" @onclick="() => ImprimirA4()">
                                 <i class="bi bi-printer"></i> Imprimir A4
                             </button>
                             <button class="btn btn-secondary" @onclick="() => _mostrarTicket = true">
                                 <i class="bi bi-receipt"></i> Ticket
+                            </button>
+                            <button class="btn btn-primary" @onclick="NuevaNotaCredito">
+                                <i class="bi bi-plus-lg"></i> Nueva NC
                             </button>
                         }
                     </div>
@@ -307,7 +331,7 @@
 @if (_mostrarBuscarFactura)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Buscar Factura</h5>
@@ -316,38 +340,54 @@
                 <div class="modal-body">
                     <div class="input-group mb-3">
                         <input type="text" class="form-control" placeholder="Buscar por número o cliente..." 
-                               @bind="_busquedaFactura" @bind:event="oninput" />
+                               @bind="_busquedaFactura" @bind:event="oninput" 
+                               @onkeydown="@(async e => { if (e.Key == "Enter") await BuscarFacturas(); })" />
                         <button class="btn btn-primary" @onclick="BuscarFacturas">
-                            <i class="bi bi-search"></i>
+                            <i class="bi bi-search"></i> Buscar
                         </button>
                     </div>
                     
                     @if (_facturasEncontradas.Any())
                     {
-                        <div class="table-responsive" style="max-height:300px;">
+                        <div class="table-responsive" style="max-height:450px;">
                             <table class="table table-hover table-sm">
-                                <thead class="table-light sticky-top">
+                                <thead class="table-dark sticky-top">
                                     <tr>
-                                        <th>Número</th>
-                                        <th>Fecha</th>
-                                        <th>Cliente</th>
-                                        <th class="text-end">Total</th>
-                                        <th class="text-end">Saldo</th>
-                                        <th></th>
+                                        <th style="cursor:pointer" @onclick="@(() => OrdenarFacturas("numero"))">
+                                            Número @GetOrdenIcon("numero")
+                                        </th>
+                                        <th style="cursor:pointer" @onclick="@(() => OrdenarFacturas("fecha"))">
+                                            Fecha @GetOrdenIcon("fecha")
+                                        </th>
+                                        <th style="cursor:pointer" @onclick="@(() => OrdenarFacturas("cliente"))">
+                                            Cliente @GetOrdenIcon("cliente")
+                                        </th>
+                                        <th class="text-end" style="cursor:pointer" @onclick="@(() => OrdenarFacturas("total"))">
+                                            Total @GetOrdenIcon("total")
+                                        </th>
+                                        <th class="text-end" style="cursor:pointer" @onclick="@(() => OrdenarFacturas("saldo"))">
+                                            Saldo Disp. @GetOrdenIcon("saldo")
+                                        </th>
+                                        <th class="text-center" style="width:80px;">Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var v in _facturasEncontradas)
+                                    @foreach (var v in ObtenerFacturasOrdenadas())
                                     {
-                                        <tr>
-                                            <td>@v.Establecimiento-@v.PuntoExpedicion-@v.NumeroFactura</td>
+                                        var saldoDisp = v.Total - (v.CreditoUsado ?? 0);
+                                        var tieneSaldo = saldoDisp > 0;
+                                        <tr class="@(tieneSaldo ? "" : "table-secondary")">
+                                            <td class="fw-bold">@v.Establecimiento-@v.PuntoExpedicion-@v.NumeroFactura</td>
                                             <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
                                             <td>@(v.Cliente?.RazonSocial ?? "S/N")</td>
                                             <td class="text-end">@v.Total.ToString("N0")</td>
-                                            <td class="text-end">@(v.CreditoSaldo?.ToString("N0") ?? "N/A")</td>
-                                            <td>
-                                                <button class="btn btn-success btn-sm" @onclick="() => SeleccionarFactura(v)">
-                                                    <i class="bi bi-check"></i>
+                                            <td class="text-end @(tieneSaldo ? "text-success fw-bold" : "text-danger")">
+                                                @saldoDisp.ToString("N0")
+                                            </td>
+                                            <td class="text-center">
+                                                <button class="btn btn-success btn-sm" @onclick="@(() => SeleccionarFactura(v))" 
+                                                        title="Seleccionar">
+                                                    <i class="bi bi-check-lg"></i>
                                                 </button>
                                             </td>
                                         </tr>
@@ -355,10 +395,11 @@
                                 </tbody>
                             </table>
                         </div>
+                        <small class="text-muted">@_facturasEncontradas.Count facturas encontradas. Click en columna para ordenar.</small>
                     }
                     else
                     {
-                        <p class="text-muted text-center">Ingrese un término de búsqueda y presione buscar.</p>
+                        <p class="text-muted text-center">Ingrese un término de búsqueda y presione buscar o Enter.</p>
                     }
                 </div>
             </div>
@@ -436,49 +477,41 @@
                     <button type="button" class="btn-close" @onclick="() => _mostrarBuscarProducto = false"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="input-group mb-3">
-                        <input type="text" class="form-control" placeholder="Buscar por código o descripción..." 
-                               @bind="_busquedaProducto" @bind:event="oninput" />
-                        <button class="btn btn-primary" @onclick="BuscarProductos">
-                            <i class="bi bi-search"></i>
-                        </button>
+                    <div class="mb-3">
+                        <input type="text" class="form-control" placeholder="Buscar por nombre, código o código de barras..." 
+                               @bind="_busquedaProducto" @bind:event="oninput" @bind:after="BuscarProductosAsync"
+                               @ref="_inputBusquedaProducto" />
                     </div>
                     
                     @if (_productosEncontrados.Any())
                     {
-                        <div class="table-responsive" style="max-height:300px;">
-                            <table class="table table-hover table-sm">
-                                <thead class="table-light sticky-top">
-                                    <tr>
-                                        <th>Código</th>
-                                        <th>Descripción</th>
-                                        <th class="text-end">Precio</th>
-                                        <th>IVA</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var p in _productosEncontrados)
-                                    {
-                                        <tr>
-                                            <td>@p.CodigoInterno</td>
-                                            <td>@p.Descripcion</td>
-                                            <td class="text-end">@p.PrecioUnitarioGs.ToString("N0")</td>
-                                            <td>@(p.TipoIva?.Porcentaje ?? 10)%</td>
-                                            <td>
-                                                <button class="btn btn-success btn-sm" @onclick="() => AgregarProducto(p)">
-                                                    <i class="bi bi-plus"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
+                        <div class="list-group" style="max-height:350px; overflow-y:auto;">
+                            @foreach (var p in _productosEncontrados.Take(15))
+                            {
+                                <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center @(p.Stock <= 0 ? "list-group-item-warning" : "")"
+                                        @onclick="() => AgregarProducto(p)">
+                                    <div>
+                                        <div class="fw-semibold">@p.Descripcion</div>
+                                        <div class="text-muted small">
+                                            Cod: @(p.CodigoInterno ?? "-") • EAN: @(p.CodigoBarras ?? "-") • 
+                                            <span class="@(p.Stock <= 0 ? "text-danger fw-bold" : "text-success")">Stock: @p.Stock.ToString("N0")</span>
+                                        </div>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge bg-primary fs-6">@p.PrecioUnitarioGs.ToString("N0")</span>
+                                        <div class="small text-muted">IVA @(p.TipoIva?.Porcentaje ?? 10)%</div>
+                                    </div>
+                                </button>
+                            }
                         </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_busquedaProducto))
+                    {
+                        <p class="text-muted text-center">No se encontraron productos.</p>
                     }
                     else
                     {
-                        <p class="text-muted text-center">Ingrese un término de búsqueda y presione buscar.</p>
+                        <p class="text-muted text-center">Escriba para buscar productos...</p>
                     }
                 </div>
             </div>
@@ -516,8 +549,13 @@
     private NotaCreditoVenta? _ncConDetalles;
     private List<NotaCreditoVentaDetalle> _detalles = new();
     private bool _esEdicion;
+    private decimal _saldoDisponibleFactura; // Saldo disponible = Total factura - NC previas
+    private string _usuarioActual = "Sistema";
+    private int _afectaStock = 1; // 1 = Suma, 0 = No afecta, -1 = Resta
     private bool _loading = true;
     private bool _guardando;
+    private bool _puedeCambiarCaja = false;
+    private int? _usuarioId;
     
     // Selecciones
     private Caja? _cajaSeleccionada;
@@ -540,9 +578,19 @@
     private string _busquedaCliente = "";
     private string _busquedaProducto = "";
     
+    // Control de concurrencia para búsqueda de productos
+    private CancellationTokenSource? _ctsProductos;
+    private bool _buscandoProductos;
+    
+    private ElementReference _inputBusquedaProducto;
+    
     private List<Venta> _facturasEncontradas = new();
     private List<Cliente> _clientesEncontrados = new();
     private List<Producto> _productosEncontrados = new();
+    
+    // Ordenamiento de facturas
+    private string _ordenFacturas = "fecha";
+    private bool _ordenFacturasDesc = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -553,16 +601,50 @@
             return;
         }
         
-        // Cargar listas
-        _cajas = await Db.Cajas.Where(c => c.IdSucursal == sucId).ToListAsync();
-        _monedas = await Db.Monedas.Where(m => m.Estado).OrderBy(m => m.Orden).ToListAsync();
-        _empresa = await Db.Sociedades.FirstOrDefaultAsync();
+        // Capturar usuario autenticado
+        try
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var u = auth.User;
+            if (u?.Identity?.IsAuthenticated == true)
+            {
+                if (int.TryParse(u.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var idu))
+                    _usuarioId = idu;
+                
+                _usuarioActual = u.Identity.Name ?? u.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Sistema";
+            }
+        }
+        catch { }
+        
+        if (string.IsNullOrEmpty(_usuarioActual))
+            _usuarioActual = "Sistema";
+        
+        // Verificar permiso EDIT para cambiar caja
+        if (_usuarioId.HasValue)
+        {
+            _puedeCambiarCaja = await PermisosService.TienePermisoAsync(_usuarioId.Value, "/notas-credito", "EDIT");
+        }
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Cargar cajas de la sucursal actual (IdSucursal == sucId o IdSucursal == null)
+        _cajas = await db.Cajas
+            .AsNoTracking()
+            .Where(c => c.IdSucursal == sucId.Value || c.IdSucursal == null)
+            .OrderBy(c => c.IdCaja)
+            .ToListAsync();
+        
+        // Caja activa: primero la que tiene CajaActual == 1, luego la primera disponible
+        _cajaSeleccionada = _cajas.FirstOrDefault(c => c.CajaActual == 1) ?? _cajas.FirstOrDefault();
+        
+        _monedas = await db.Monedas.Where(m => m.Estado).OrderBy(m => m.Orden).ToListAsync();
+        _empresa = await db.Sociedades.FirstOrDefaultAsync();
         
         if (Id.HasValue && Id > 0)
         {
             // Edición
             _esEdicion = true;
-            var nc = await Db.NotasCreditoVentas
+            var nc = await db.NotasCreditoVentas
                 .Include(n => n.Cliente)
                 .Include(n => n.Caja)
                 .Include(n => n.VentaAsociada)
@@ -581,22 +663,19 @@
             _detalles = nc.Detalles?.ToList() ?? new();
             _clienteSeleccionado = nc.Cliente;
             _ventaSeleccionada = nc.VentaAsociada;
-            _cajaSeleccionada = nc.Caja;
+            _cajaSeleccionada = nc.Caja ?? _cajaSeleccionada;
             _monedaSeleccionada = nc.Moneda;
             _ncConDetalles = nc;
         }
         else
         {
-            // Nueva NC
-            var cajaId = CajaProvider.GetCajaId();
-            _cajaSeleccionada = _cajas.FirstOrDefault(c => c.IdCaja == cajaId) ?? _cajas.FirstOrDefault();
-            
+            // Nueva NC - _cajaSeleccionada ya está asignada arriba (la activa o la primera)
             _nc = new NotaCreditoVenta
             {
                 IdSucursal = sucId.Value,
                 IdCaja = _cajaSeleccionada?.IdCaja ?? 0,
-                Fecha = DateTime.Now,
-                Turno = "1",
+                Fecha = _cajaSeleccionada?.FechaActualCaja ?? DateTime.Now,
+                Turno = (_cajaSeleccionada?.TurnoActual ?? 1).ToString(),
                 Motivo = MotivosNotaCredito.Devolucion,
                 TipoDocumentoAsociado = "Electrónico",
                 Estado = "Borrador",
@@ -621,7 +700,8 @@
 
     private async Task<int> ObtenerSiguienteNumero(int sucId)
     {
-        var ultimo = await Db.NotasCreditoVentas
+        using var db = await DbFactory.CreateDbContextAsync();
+        var ultimo = await db.NotasCreditoVentas
             .Where(n => n.IdSucursal == sucId)
             .OrderByDescending(n => n.NumeroNota)
             .Select(n => n.NumeroNota)
@@ -652,20 +732,97 @@
         var sucId = SucursalProvider.GetSucursalId();
         var busq = _busquedaFactura.ToLower();
         
-        _facturasEncontradas = await Db.Ventas
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Cargar facturas con el total de NC previas para calcular saldo disponible
+        var facturas = await db.Ventas
             .Include(v => v.Cliente)
             .Where(v => v.IdSucursal == sucId && v.Estado == "Confirmado")
             .Where(v => (v.Cliente != null && v.Cliente.RazonSocial.ToLower().Contains(busq)) ||
                        (v.NumeroFactura != null && v.NumeroFactura.Contains(busq)))
             .OrderByDescending(v => v.Fecha)
-            .Take(50)
+            .Take(100)
             .ToListAsync();
+        
+        // Calcular saldo usado (NC confirmadas) para cada factura
+        var idsVentas = facturas.Select(v => v.IdVenta).ToList();
+        var ncPorVenta = await db.NotasCreditoVentas
+            .Where(nc => nc.IdVentaAsociada.HasValue && idsVentas.Contains(nc.IdVentaAsociada.Value) && nc.Estado == "Confirmada")
+            .GroupBy(nc => nc.IdVentaAsociada!.Value)
+            .Select(g => new { IdVenta = g.Key, TotalNC = g.Sum(nc => nc.Total) })
+            .ToDictionaryAsync(x => x.IdVenta, x => x.TotalNC);
+        
+        foreach (var v in facturas)
+        {
+            v.CreditoUsado = ncPorVenta.TryGetValue(v.IdVenta, out var usada) ? usada : 0;
+        }
+        
+        _facturasEncontradas = facturas;
+        
+        // Resetear ordenamiento a fecha desc por defecto
+        _ordenFacturas = "fecha";
+        _ordenFacturasDesc = true;
+    }
+    
+    private void OrdenarFacturas(string columna)
+    {
+        if (_ordenFacturas == columna)
+            _ordenFacturasDesc = !_ordenFacturasDesc;
+        else
+        {
+            _ordenFacturas = columna;
+            _ordenFacturasDesc = columna == "fecha" || columna == "total" || columna == "saldo"; // Desc por defecto para números
+        }
+    }
+    
+    private IEnumerable<Venta> ObtenerFacturasOrdenadas()
+    {
+        var ordenadas = _ordenFacturas switch
+        {
+            "numero" => _ordenFacturasDesc 
+                ? _facturasEncontradas.OrderByDescending(v => v.NumeroFactura)
+                : _facturasEncontradas.OrderBy(v => v.NumeroFactura),
+            "fecha" => _ordenFacturasDesc
+                ? _facturasEncontradas.OrderByDescending(v => v.Fecha)
+                : _facturasEncontradas.OrderBy(v => v.Fecha),
+            "cliente" => _ordenFacturasDesc
+                ? _facturasEncontradas.OrderByDescending(v => v.Cliente?.RazonSocial ?? "")
+                : _facturasEncontradas.OrderBy(v => v.Cliente?.RazonSocial ?? ""),
+            "total" => _ordenFacturasDesc
+                ? _facturasEncontradas.OrderByDescending(v => v.Total)
+                : _facturasEncontradas.OrderBy(v => v.Total),
+            "saldo" => _ordenFacturasDesc
+                ? _facturasEncontradas.OrderByDescending(v => v.Total - (v.CreditoUsado ?? 0))
+                : _facturasEncontradas.OrderBy(v => v.Total - (v.CreditoUsado ?? 0)),
+            _ => _facturasEncontradas.OrderByDescending(v => v.Fecha)
+        };
+        return ordenadas;
+    }
+    
+    private MarkupString GetOrdenIcon(string columna)
+    {
+        if (_ordenFacturas != columna)
+            return new MarkupString("<i class='bi bi-chevron-expand text-muted'></i>");
+        return _ordenFacturasDesc 
+            ? new MarkupString("<i class='bi bi-chevron-down'></i>") 
+            : new MarkupString("<i class='bi bi-chevron-up'></i>");
     }
 
-    private void SeleccionarFactura(Venta v)
+    private async Task SeleccionarFactura(Venta v)
     {
         _ventaSeleccionada = v;
         _nc.IdVentaAsociada = v.IdVenta;
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Calcular saldo disponible = Total factura - suma de NC confirmadas previas
+        var totalNCPrevias = await db.NotasCreditoVentas
+            .Where(nc => nc.IdVentaAsociada == v.IdVenta 
+                      && nc.Estado == "Confirmada" 
+                      && nc.IdNotaCredito != _nc.IdNotaCredito) // Excluir la actual si es edición
+            .SumAsync(nc => nc.Total);
+        
+        _saldoDisponibleFactura = v.Total - totalNCPrevias;
         
         // Auto-seleccionar cliente
         if (v.Cliente != null)
@@ -696,7 +853,8 @@
     {
         var busq = _busquedaCliente.ToLower();
         
-        _clientesEncontrados = await Db.Clientes
+        using var db = await DbFactory.CreateDbContextAsync();
+        _clientesEncontrados = await db.Clientes
             .Where(c => c.Estado)
             .Where(c => c.RazonSocial.ToLower().Contains(busq) || c.RUC.Contains(busq))
             .OrderBy(c => c.RazonSocial)
@@ -720,18 +878,74 @@
         _mostrarBuscarProducto = true;
     }
 
-    private async Task BuscarProductos()
+    private async Task BuscarProductosAsync()
     {
-        var sucId = SucursalProvider.GetSucursalId();
-        var busq = _busquedaProducto.ToLower();
+        // Cancelar búsqueda anterior si existe
+        _ctsProductos?.Cancel();
+        _ctsProductos = new CancellationTokenSource();
+        var token = _ctsProductos.Token;
         
-        _productosEncontrados = await Db.Productos
-            .Include(p => p.TipoIva)
-            .Where(p => p.IdSucursal == sucId && p.Activo)
-            .Where(p => p.CodigoInterno.ToLower().Contains(busq) || p.Descripcion.ToLower().Contains(busq))
-            .OrderBy(p => p.Descripcion)
-            .Take(50)
-            .ToListAsync();
+        if (string.IsNullOrWhiteSpace(_busquedaProducto) || _busquedaProducto.Length < 2)
+        {
+            _productosEncontrados.Clear();
+            return;
+        }
+        
+        // Evitar consultas concurrentes
+        if (_buscandoProductos) return;
+        
+        try
+        {
+            // Debounce: esperar 300ms antes de buscar
+            await Task.Delay(300, token);
+            
+            _buscandoProductos = true;
+            
+            var sucId = SucursalProvider.GetSucursalId();
+            var busq = _busquedaProducto.Trim().ToLower();
+            const int depositoPrincipal = 1; // Depósito Principal
+            
+            using var db = await DbFactory.CreateDbContextAsync();
+            
+            // Traer productos con su stock del depósito principal
+            var productos = await db.Productos
+                .AsNoTracking()
+                .Include(p => p.TipoIva)
+                .Where(p => p.IdSucursal == sucId && p.Activo)
+                .Where(p => p.CodigoInterno.ToLower().Contains(busq) 
+                         || p.Descripcion.ToLower().Contains(busq)
+                         || (p.CodigoBarras != null && p.CodigoBarras.Contains(busq)))
+                .OrderBy(p => p.Descripcion)
+                .Take(50)
+                .ToListAsync(token);
+            
+            // Obtener stock del depósito principal para cada producto
+            var idsProductos = productos.Select(p => p.IdProducto).ToList();
+            var stocksDeposito = await db.ProductosDepositos
+                .AsNoTracking()
+                .Where(s => idsProductos.Contains(s.IdProducto) && s.IdDeposito == depositoPrincipal)
+                .ToDictionaryAsync(s => s.IdProducto, s => s.Stock, token);
+            
+            // Asignar el stock del depósito principal a cada producto
+            foreach (var p in productos)
+            {
+                p.Stock = stocksDeposito.TryGetValue(p.IdProducto, out var stk) ? stk : 0;
+            }
+            
+            _productosEncontrados = productos;
+        }
+        catch (OperationCanceledException)
+        {
+            // Búsqueda cancelada por nueva búsqueda, ignorar
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error búsqueda productos: {ex.Message}");
+        }
+        finally
+        {
+            _buscandoProductos = false;
+        }
     }
 
     private void AgregarProducto(Producto p)
@@ -741,7 +955,7 @@
         var det = new NotaCreditoVentaDetalle
         {
             IdProducto = p.IdProducto,
-            Producto = p,
+            // NO asignar Producto = p para evitar conflictos de tracking
             CodigoProducto = p.CodigoInterno,
             NombreProducto = p.Descripcion,
             Cantidad = 1,
@@ -816,6 +1030,18 @@
         _nc.TotalExenta = _detalles.Sum(d => d.Exenta);
     }
 
+    private void OnCajaChanged()
+    {
+        _cajaSeleccionada = _cajas.FirstOrDefault(c => c.IdCaja == _nc.IdCaja);
+        if (_cajaSeleccionada != null)
+        {
+            _nc.Establecimiento = _cajaSeleccionada.Nivel1NC;
+            _nc.PuntoExpedicion = _cajaSeleccionada.Nivel2NC;
+            _nc.Timbrado = _cajaSeleccionada.TimbradoNC;
+            _nc.Serie = _cajaSeleccionada.SerieNC;
+        }
+    }
+
     private async Task Guardar()
     {
         if (!ValidarDatos()) return;
@@ -824,17 +1050,30 @@
         
         try
         {
+            using var db = await DbFactory.CreateDbContextAsync();
+            
+            // Limpiar referencias de navegación para evitar conflictos de tracking
+            _nc.Cliente = null;
+            _nc.Caja = null;
+            _nc.Moneda = null;
+            _nc.VentaAsociada = null;
+            
+            foreach (var det in _detalles)
+            {
+                det.Producto = null;
+            }
+            
             _nc.Detalles = _detalles;
             _nc.FechaModificacion = DateTime.Now;
-            _nc.ModificadoPor = "Sistema";
+            _nc.ModificadoPor = _usuarioActual;
             
             if (_esEdicion)
             {
                 // Actualizar detalles existentes
-                var detExistentes = await Db.Set<NotaCreditoVentaDetalle>()
+                var detExistentes = await db.Set<NotaCreditoVentaDetalle>()
                     .Where(d => d.IdNotaCredito == _nc.IdNotaCredito)
                     .ToListAsync();
-                Db.RemoveRange(detExistentes);
+                db.RemoveRange(detExistentes);
                 
                 foreach (var det in _detalles)
                 {
@@ -842,23 +1081,53 @@
                     det.IdNotaCreditoDetalle = 0;
                 }
                 
-                Db.Update(_nc);
+                db.Update(_nc);
             }
             else
             {
                 _nc.FechaCreacion = DateTime.Now;
-                _nc.CreadoPor = "Sistema";
-                Db.NotasCreditoVentas.Add(_nc);
+                _nc.CreadoPor = _usuarioActual;
+                db.NotasCreditoVentas.Add(_nc);
             }
             
-            await Db.SaveChangesAsync();
+            await db.SaveChangesAsync();
+            
+            // Cargar NC con detalles para impresión y refresco de UI
+            _ncConDetalles = await db.NotasCreditoVentas
+                .AsNoTracking()
+                .Include(n => n.Cliente)
+                .Include(n => n.Caja)
+                .Include(n => n.Moneda)
+                .Include(n => n.VentaAsociada)
+                .Include(n => n.Detalles!)
+                    .ThenInclude(d => d.Producto)
+                .FirstOrDefaultAsync(n => n.IdNotaCredito == _nc.IdNotaCredito);
+            
+            // Actualizar _nc con los datos guardados para mostrar en UI
+            if (_ncConDetalles != null)
+            {
+                _nc = _ncConDetalles;
+                _detalles = _ncConDetalles.Detalles?.ToList() ?? new();
+                _clienteSeleccionado = _ncConDetalles.Cliente;
+                _ventaSeleccionada = _ncConDetalles.VentaAsociada;
+            }
+            
+            _esEdicion = true; // Ahora es edición
             
             await JS.InvokeVoidAsync("alert", "Nota de crédito guardada correctamente.");
-            Nav.NavigateTo($"/notas-credito/{_nc.IdNotaCredito}");
+            
+            // Preguntar si desea imprimir
+            if (await JS.InvokeAsync<bool>("confirm", "¿Desea imprimir el ticket de la Nota de Crédito?"))
+            {
+                _mostrarTicket = true;
+            }
+            
+            StateHasChanged();
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}");
+            var innerMsg = ex.InnerException?.Message ?? "";
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}\n{innerMsg}");
         }
         finally
         {
@@ -870,21 +1139,100 @@
     {
         if (!ValidarDatos()) return;
         
-        if (!await JS.InvokeAsync<bool>("confirm", "¿Confirmar la nota de crédito? Una vez confirmada no podrá editarse."))
+        // Validar que no exceda el saldo disponible de la factura
+        if (_ventaSeleccionada != null && _nc.Total > _saldoDisponibleFactura)
+        {
+            await JS.InvokeVoidAsync("alert", 
+                $"El monto de la NC ({_nc.Total:N0}) excede el saldo disponible de la factura ({_saldoDisponibleFactura:N0}).\n" +
+                "No puede emitir una NC por un monto mayor al saldo pendiente.");
+            return;
+        }
+        
+        var stockMsg = _afectaStock switch
+        {
+            1 => "\n\n✅ Se SUMARÁ el stock de los productos.",
+            -1 => "\n\n⚠️ Se RESTARÁ el stock de los productos.",
+            _ => "\n\n📋 No se modificará el stock."
+        };
+        
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Guardar la nota de crédito?{stockMsg}"))
             return;
         
         _nc.Estado = "Confirmada";
+        _nc.AfectaStock = _afectaStock; // Guardar para poder revertir al anular
         await Guardar();
         
-        // Actualizar saldo de factura
+        // Obtener datos de caja para movimientos
+        var caja = await CajaService.ObtenerCajaActualAsync();
+        var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
+        var turno = caja?.TurnoActual ?? 1;
+        var idCaja = caja?.IdCaja;
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Procesar stock si corresponde
+        if (_afectaStock != 0)
+        {
+            foreach (var det in _detalles)
+            {
+                if (det.IdProducto > 0)
+                {
+                    var producto = await db.Productos.FindAsync(det.IdProducto);
+                    var depositoId = producto?.IdDepositoPredeterminado ?? 1;
+                    
+                    // Tipo: 1 = Entrada, 2 = Salida
+                    var tipoMov = _afectaStock == 1 ? 1 : 2;
+                    var motivo = $"NC #{_nc.NumeroNota} - {_nc.Motivo}";
+                    
+                    await Inventario.AjustarStockAsync(
+                        det.IdProducto,
+                        depositoId,
+                        det.Cantidad,
+                        tipoMov,
+                        motivo,
+                        _usuarioActual ?? "Sistema",
+                        _nc.IdSucursal,
+                        idCaja,
+                        fechaCaja,
+                        turno
+                    );
+                }
+            }
+        }
+        
+        // Actualizar saldo de factura (restar el monto de la NC del total de la factura)
         if (_nc.IdVentaAsociada.HasValue)
         {
-            var venta = await Db.Ventas.FindAsync(_nc.IdVentaAsociada.Value);
-            if (venta != null && venta.CreditoSaldo.HasValue)
+            var venta = await db.Ventas.FindAsync(_nc.IdVentaAsociada.Value);
+            if (venta != null)
             {
+                // Si no tiene CreditoSaldo inicializado, usar Total como base
+                if (!venta.CreditoSaldo.HasValue)
+                    venta.CreditoSaldo = venta.Total;
+                
                 venta.CreditoSaldo = Math.Max(0, venta.CreditoSaldo.Value - _nc.Total);
-                await Db.SaveChangesAsync();
+                await db.SaveChangesAsync();
             }
+        }
+        
+        // Guardar número de NC para mostrar en mensaje
+        var numeroGuardado = _nc.NumeroNota;
+        
+        // Preguntar si desea imprimir
+        var imprimir = await JS.InvokeAsync<bool>("confirm", $"NC #{numeroGuardado} guardada correctamente.\n\n¿Desea imprimir el ticket?");
+        
+        if (imprimir && _ncConDetalles != null)
+        {
+            _mostrarTicket = true;
+            StateHasChanged();
+            // Esperar un momento para que se muestre el ticket y luego limpiar
+            await Task.Delay(100);
+        }
+        
+        // Limpiar para nueva NC (pero mantener ticket visible si se eligió imprimir)
+        if (!imprimir)
+        {
+            await NuevaNotaCredito();
         }
     }
 
@@ -923,4 +1271,77 @@
         "Anulada" => "bg-danger",
         _ => "bg-secondary"
     };
+
+    private string GetAfectaStockClass() => _afectaStock switch
+    {
+        1 => "border-success text-success",
+        -1 => "border-danger text-danger",
+        _ => ""
+    };
+
+    private void OnMotivoChanged()
+    {
+        // Sugerir comportamiento de stock según motivo
+        _afectaStock = _nc.Motivo switch
+        {
+            "Devolución" => 1,           // Suma stock (cliente devuelve)
+            "Mercadería defectuosa" => 1, // Suma stock
+            "Error de facturación" => 0,  // No afecta stock
+            "Descuento" => 0,             // No afecta stock
+            "Bonificación" => 0,          // No afecta stock
+            _ => 0
+        };
+    }
+
+    private async Task NuevaNotaCredito()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        if (!sucId.HasValue) return;
+        
+        // Limpiar todos los datos
+        _detalles.Clear();
+        _ventaSeleccionada = null;
+        _clienteSeleccionado = null;
+        _saldoDisponibleFactura = 0;
+        _esEdicion = false;
+        _ncConDetalles = null;
+        _afectaStock = 0;
+        
+        // Crear nueva NC con valores por defecto (los totales de IVA se inicializan en 0)
+        _nc = new NotaCreditoVenta
+        {
+            IdSucursal = sucId.Value,
+            IdCaja = _cajaSeleccionada?.IdCaja ?? 0,
+            Fecha = _cajaSeleccionada?.FechaActualCaja ?? DateTime.Now,
+            Turno = (_cajaSeleccionada?.TurnoActual ?? 1).ToString(),
+            Motivo = MotivosNotaCredito.Devolucion,
+            Estado = "Borrador",
+            IdMoneda = _monedas.FirstOrDefault(m => m.EsMonedaBase)?.IdMoneda ?? 1,
+            CambioDelDia = 1,
+            CreadoPor = _usuarioActual ?? "Sistema",
+            FechaCreacion = DateTime.Now,
+            TotalIVA5 = 0,
+            TotalIVA10 = 0,
+            TotalExenta = 0,
+            Subtotal = 0,
+            Total = 0
+        };
+        
+        // Asignar datos de la caja seleccionada
+        if (_cajaSeleccionada != null)
+        {
+            _nc.Establecimiento = _cajaSeleccionada.Nivel1NC;
+            _nc.PuntoExpedicion = _cajaSeleccionada.Nivel2NC;
+            _nc.Timbrado = _cajaSeleccionada.TimbradoNC;
+            _nc.Serie = _cajaSeleccionada.SerieNC;
+        }
+        
+        // Obtener siguiente número
+        _nc.NumeroNota = await ObtenerSiguienteNumero(sucId.Value);
+        
+        // Seleccionar moneda base
+        _monedaSeleccionada = _monedas.FirstOrDefault(m => m.EsMonedaBase) ?? _monedas.FirstOrDefault();
+        
+        StateHasChanged();
+    }
 }

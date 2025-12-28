@@ -1,4 +1,5 @@
 @page "/pagos-proveedores/historial"
+@page "/pagos-proveedores/historial/{IdCompraParam:int}"
 @inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -35,7 +36,11 @@
                     <label class="form-label fw-bold">Número Pago</label>
                     <input type="number" class="form-control" placeholder="Ej: 1" @bind="filtroIdPago" @bind:after="AplicarFiltros" />
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">Número Compra</label>
+                    <input type="number" class="form-control" placeholder="Ej: 5" @bind="filtroIdCompra" @bind:after="AplicarFiltros" />
+                </div>
+                <div class="col-md-2">
                     <label class="form-label fw-bold">Número Recibo</label>
                     <input type="text" class="form-control" placeholder="Buscar..." @bind="filtroNumeroRecibo" @bind:after="AplicarFiltros" />
                 </div>
@@ -232,12 +237,16 @@
 </PageProtection>
 
 @code {
+    [Parameter]
+    public int? IdCompraParam { get; set; }
+
     private List<PagoProveedor> pagos = new();
     private List<PagoProveedor> pagosFiltrados = new();
     private List<Moneda> monedas = new();
 
     // Filtros
     private int? filtroIdPago = null;
+    private int? filtroIdCompra = null;
     private string filtroNumeroRecibo = "";
     private string filtroProveedor = "";
     private DateTime? filtroFechaDesde = null;
@@ -251,6 +260,12 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Si viene de PagosProveedores con un IdCompra, aplicar filtro
+        if (IdCompraParam.HasValue && IdCompraParam.Value > 0)
+        {
+            filtroIdCompra = IdCompraParam.Value;
+        }
+        
         await CargarMonedas();
         await CargarPagos();
         AplicarFiltros();
@@ -285,6 +300,11 @@
         if (filtroIdPago.HasValue)
         {
             query = query.Where(p => p.IdPagoProveedor == filtroIdPago.Value);
+        }
+
+        if (filtroIdCompra.HasValue)
+        {
+            query = query.Where(p => p.IdCompra == filtroIdCompra.Value);
         }
 
         if (!string.IsNullOrWhiteSpace(filtroNumeroRecibo))
@@ -323,6 +343,7 @@
     private void LimpiarFiltros()
     {
         filtroIdPago = null;
+        filtroIdCompra = null;
         filtroNumeroRecibo = "";
         filtroProveedor = "";
         filtroFechaDesde = null;

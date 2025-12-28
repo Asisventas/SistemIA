@@ -520,6 +520,20 @@ namespace SistemIA.Data
                         RutaPagina = "/informes/ventas-clasificacion"
                     });
                 }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/movimientos-productos"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Movimientos de Inventario",
+                        Descripcion = "Informe de movimientos de inventario con trazabilidad y valorización",
+                        Icono = "bi-arrow-left-right",
+                        Orden = 12,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/movimientos-productos"
+                    });
+                }
             }
 
             if (nuevosModulos.Any())

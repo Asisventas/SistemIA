@@ -593,15 +593,20 @@ namespace SistemIA.Models
                 entity.ToTable("AjustesStockDetalles");
                 entity.HasKey(d => d.IdAjusteStockDetalle);
 
-                // FKs explícitas para evitar columnas sombra (AjusteIdAjusteStock / ProductoIdProducto)
+                // FKs explícitas para evitar columnas sombra
                 entity.HasOne(d => d.Ajuste)
-                    .WithMany()
+                    .WithMany(a => a.Detalles)
                     .HasForeignKey(d => d.IdAjusteStock)
                     .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasOne(d => d.Producto)
                     .WithMany()
                     .HasForeignKey(d => d.IdProducto)
+                    .OnDelete(DeleteBehavior.Restrict);
+                    
+                entity.HasOne(d => d.Deposito)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdDeposito)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 

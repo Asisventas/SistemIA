@@ -6,10 +6,10 @@ namespace SistemIA.Services
     public interface IAjusteStockService
     {
         Task<int> CrearAjusteAsync(int idSucursal, int? idCaja, int? turno, string usuario, string? comentario,
-            int idDeposito, IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null);
+            IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null);
     }
 
-    public record LineaAjusteInput(int IdProducto, decimal StockSistema, decimal StockAjuste, decimal PrecioCostoGs);
+    public record LineaAjusteInput(int IdProducto, int IdDeposito, decimal StockSistema, decimal StockAjuste, decimal PrecioCostoGs);
 
     public class AjusteStockService : IAjusteStockService
     {
@@ -25,7 +25,7 @@ namespace SistemIA.Services
         }
 
         public async Task<int> CrearAjusteAsync(int idSucursal, int? idCaja, int? turno, string usuario, string? comentario,
-            int idDeposito, IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null)
+            IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null)
         {
             await using var ctx = await _dbFactory.CreateDbContextAsync();
             using var trx = await ctx.Database.BeginTransactionAsync();
@@ -59,6 +59,7 @@ namespace SistemIA.Services
                 {
                     IdAjusteStock = cab.IdAjusteStock,
                     IdProducto = l.IdProducto,
+                    IdDeposito = l.IdDeposito,
                     StockAjuste = l.StockAjuste,
                     StockSistema = l.StockSistema,
                     Diferencia = dif,
@@ -77,7 +78,7 @@ namespace SistemIA.Services
                 {
                     var tipo = dif > 0 ? 1 : 2; // 1 entrada, 2 salida
                     var cantidad = Math.Abs(dif);
-                    await _inventario.AjustarStockAsync(l.IdProducto, idDeposito, cantidad, tipo, $"Ajuste de stock #{cab.IdAjusteStock}", usr);
+                    await _inventario.AjustarStockAsync(l.IdProducto, l.IdDeposito, cantidad, tipo, $"Ajuste de stock #{cab.IdAjusteStock}", usr);
                 }
             }
 

@@ -131,6 +131,11 @@ namespace SistemIA.Models
         public int? IdUsuario { get; set; }
         public Usuario? Usuario { get; set; }
         
+        /// <summary>
+        /// Indica cómo afecta el stock: 1 = Suma (devolución), -1 = Resta (salida), 0 = No afecta
+        /// </summary>
+        public int AfectaStock { get; set; } = 0;
+        
         // Auditoría
         [MaxLength(100)]
         public string? CreadoPor { get; set; }
