@@ -17,6 +17,7 @@ public partial class Ventas
     [Inject] public ISucursalProvider SucursalProvider { get; set; } = default!;
     [Inject] public ICajaProvider CajaProvider { get; set; } = default!;
     [Inject] public IInventarioService Inventario { get; set; } = default!;
+    [Inject] public IRucDnitService RucService { get; set; } = default!;
     [Inject] public NavigationManager Nav { get; set; } = default!;
     [Inject] public IJSRuntime JS { get; set; } = default!;
     [Inject] public Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
@@ -110,12 +111,18 @@ public partial class Ventas
     private int _nuevoCliDv;
     private string _nuevoCliTelefono = string.Empty;
     private string _nuevoCliEmail = string.Empty;
-    private string _nuevoCliTipoDocumento = "11"; // RUC por defecto
+    private string _nuevoCliTipoDocumento = "RU"; // RUC por defecto
     private List<SistemIA.Models.TiposDocumentosIdentidad> _tiposDocumentosCliente = new();
     // SIFEN búsqueda de cliente
     private bool _buscandoClienteSifen;
     private string? _mensajeSifenCliente;
     private bool _esSifenClienteError;
+    
+    // UI: Búsqueda automática de RUC (al Tab)
+    private bool _buscandoRucAuto;
+    private string? _mensajeRucAuto;
+    private bool _esRucAutoError;
+    private RucBusquedaResultado? _resultadoRucAuto;
 
     // UI: Confirmación de stock cero
     private bool _mostrarConfirmStockCero;
@@ -807,7 +814,7 @@ public partial class Ventas
                 return;
             }
             
-            // Intentar buscar por RUC exacto (sin DV) primero
+            // Intentar buscar por RUC exacto (sin DV) primero en lista local
             var soloDigitos = new string(texto.Where(char.IsDigit).ToArray());
             if (!string.IsNullOrEmpty(soloDigitos))
             {
@@ -818,7 +825,15 @@ public partial class Ventas
                 if (clientePorRuc != null)
                 {
                     await OnClienteSuggestionMouseDownAsync(clientePorRuc);
+                    _mensajeRucAuto = null;
                     StateHasChanged();
+                    return;
+                }
+                
+                // Si parece ser un RUC (>= 5 dígitos), hacer búsqueda automática
+                if (soloDigitos.Length >= 5)
+                {
+                    await BuscarRucAutoClienteAsync(soloDigitos);
                     return;
                 }
             }
@@ -834,7 +849,164 @@ public partial class Ventas
         else if (e.Key == "Escape")
         {
             MostrarSugClientes = false;
+            _mensajeRucAuto = null;
             StateHasChanged();
+        }
+    }
+    
+    /// <summary>
+    /// Búsqueda automática de RUC: Cliente local → RucDnit → SIFEN
+    /// Si encuentra, registra automáticamente; si no, abre modal de creación
+    /// </summary>
+    private async Task BuscarRucAutoClienteAsync(string ruc)
+    {
+        _buscandoRucAuto = true;
+        _mensajeRucAuto = "🔍 Buscando RUC...";
+        _esRucAutoError = false;
+        MostrarSugClientes = false;
+        StateHasChanged();
+
+        try
+        {
+            var resultado = await RucService.BuscarRucUnificadoClienteAsync(ruc);
+            _resultadoRucAuto = resultado;
+
+            if (resultado.Encontrado)
+            {
+                if (resultado.YaRegistrado && resultado.IdExistente.HasValue)
+                {
+                    // Ya existe en la BD - seleccionarlo directamente
+                    var clienteExistente = Clientes.FirstOrDefault(c => c.IdCliente == resultado.IdExistente.Value);
+                    if (clienteExistente != null)
+                    {
+                        await OnClienteSuggestionMouseDownAsync(clienteExistente);
+                        _mensajeRucAuto = $"✓ {resultado.Mensaje}";
+                        _esRucAutoError = false;
+                    }
+                }
+                else
+                {
+                    // Encontrado pero no registrado - registrar automáticamente
+                    _mensajeRucAuto = $"📝 {resultado.Mensaje} - Registrando...";
+                    StateHasChanged();
+                    
+                    var nuevoCliente = await RegistrarClienteDesdeRucAsync(resultado);
+                    if (nuevoCliente != null)
+                    {
+                        Clientes.Add(nuevoCliente);
+                        await OnClienteSuggestionMouseDownAsync(nuevoCliente);
+                        _mensajeRucAuto = $"✓ Cliente registrado: {nuevoCliente.RazonSocial}";
+                        _esRucAutoError = false;
+                    }
+                    else
+                    {
+                        _mensajeRucAuto = "⚠️ Error al registrar cliente";
+                        _esRucAutoError = true;
+                    }
+                }
+            }
+            else
+            {
+                // No encontrado - abrir modal de creación rápida con datos prellenados
+                _mensajeRucAuto = resultado.Mensaje;
+                _esRucAutoError = true;
+                
+                // Precargar datos en el modal
+                _nuevoCliRuc = ruc;
+                _nuevoCliDv = resultado.DV;
+                _nuevoCliRazonSocial = string.Empty;
+                AbrirModalNuevoCliente();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR BuscarRucAutoClienteAsync] {ex.Message}");
+            _mensajeRucAuto = "⚠️ Error de conexión";
+            _esRucAutoError = true;
+        }
+        finally
+        {
+            _buscandoRucAuto = false;
+            StateHasChanged();
+            
+            // Limpiar mensaje después de 4 segundos
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(4000);
+                await InvokeAsync(() =>
+                {
+                    if (!_esRucAutoError) _mensajeRucAuto = null;
+                    StateHasChanged();
+                });
+            });
+        }
+    }
+    
+    /// <summary>
+    /// Registra un cliente automáticamente desde el resultado de búsqueda
+    /// </summary>
+    private async Task<Cliente?> RegistrarClienteDesdeRucAsync(RucBusquedaResultado resultado)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Verificar que no exista el RUC (evitar duplicados)
+            var rucSinGuion = (resultado.RUC ?? "").Replace("-", "").Trim();
+            var existente = await ctx.Clientes.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.RUC == rucSinGuion || c.RUC == resultado.RUC);
+            
+            if (existente != null)
+            {
+                Console.WriteLine($"[INFO] Cliente con RUC {resultado.RUC} ya existe (ID: {existente.IdCliente})");
+                return existente; // Retornar el existente en lugar de crear duplicado
+            }
+            
+            // Generar código de cliente automático
+            var maxCodigo = await ctx.Clientes
+                .Where(c => c.CodigoCliente != null)
+                .Select(c => c.CodigoCliente)
+                .OrderByDescending(c => c)
+                .FirstOrDefaultAsync();
+            
+            int siguienteCodigo = 1;
+            if (!string.IsNullOrEmpty(maxCodigo) && int.TryParse(maxCodigo, out var ultimoCodigo))
+            {
+                siguienteCodigo = ultimoCodigo + 1;
+            }
+            
+            var nuevoCliente = new Cliente
+            {
+                CodigoCliente = siguienteCodigo.ToString().PadLeft(6, '0'),
+                RazonSocial = resultado.RazonSocial ?? "SIN NOMBRE",
+                RUC = rucSinGuion,
+                DV = resultado.DV,
+                TipoDocumento = "RU", // RU = RUC (catálogo TiposDocumentosIdentidad)
+                NumeroDocumento = rucSinGuion,
+                Saldo = 0,
+                Estado = true,
+                IdTipoContribuyente = 2, // 2 = Persona Jurídica (típico para RUC empresarial)
+                NaturalezaReceptor = 1, // 1 = Contribuyente
+                TipoOperacion = "1", // 1 = B2B
+                PermiteCredito = false,
+                FechaAlta = DateTime.Now,
+                CodigoPais = "PRY",
+                EsExtranjero = false,
+                IdCiudad = 1 // Asunción por defecto
+            };
+            
+            ctx.Clientes.Add(nuevoCliente);
+            await ctx.SaveChangesAsync();
+            
+            // Refrescar lista de clientes (inline)
+            Clientes = await ctx.Clientes.AsNoTracking().OrderBy(c => c.RazonSocial).ToListAsync();
+            
+            return nuevoCliente;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR RegistrarClienteDesdeRucAsync] {ex.Message}");
+            return null;
         }
     }
 
@@ -847,7 +1019,29 @@ public partial class Ventas
         await Task.Delay(120);
         if (!_mouseDownEnSugerenciaCliente)
         {
-            MostrarSugClientes = false; StateHasChanged();
+            // Si hay texto que parece RUC y no hay cliente seleccionado, buscar automáticamente
+            var texto = (BuscarCliente ?? string.Empty).Trim();
+            var soloDigitos = new string(texto.Where(char.IsDigit).ToArray());
+            
+            if (!Cab.IdCliente.HasValue && soloDigitos.Length >= 5 && !_buscandoRucAuto)
+            {
+                // Verificar si el RUC ya existe en la lista local
+                var clienteExistente = Clientes.FirstOrDefault(c => 
+                    !string.IsNullOrEmpty(c.RUC) && c.RUC.Equals(soloDigitos, StringComparison.OrdinalIgnoreCase));
+                
+                if (clienteExistente != null)
+                {
+                    await OnClienteSuggestionMouseDownAsync(clienteExistente);
+                }
+                else
+                {
+                    // Buscar en RucDnit y SIFEN
+                    await BuscarRucAutoClienteAsync(soloDigitos);
+                }
+            }
+            
+            MostrarSugClientes = false; 
+            StateHasChanged();
         }
     }
     protected async Task OnClienteSuggestionMouseDownAsync(Cliente c)
@@ -2874,7 +3068,7 @@ public partial class Ventas
         _nuevoCliDv = 0;
         _nuevoCliTelefono = string.Empty;
         _nuevoCliEmail = string.Empty;
-        _nuevoCliTipoDocumento = "11"; // RUC por defecto
+        _nuevoCliTipoDocumento = "RU"; // RUC por defecto
         _mensajeSifenCliente = null;
         _esSifenClienteError = false;
     }

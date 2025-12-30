@@ -66,6 +66,14 @@ Copy-Item -Path "$installerSource\*.sql" -Destination $installerDest
 Copy-Item -Path "$installerSource\*.json" -Destination $installerDest
 Copy-Item -Path "$installerSource\README.md" -Destination $installerDest
 
+# Copiar carpeta de Certificados HTTPS
+$certSource = Join-Path $installerSource "Certificados"
+if (Test-Path $certSource) {
+    $certDest = Join-Path $installerDest "Certificados"
+    Copy-Item -Path $certSource -Destination $certDest -Recurse -Force
+    Write-Host "  Carpeta Certificados copiada" -ForegroundColor Green
+}
+
 # Crear archivo de versión
 Write-Host "[4/5] Creando archivo de versión..." -ForegroundColor Yellow
 $versionInfo = @{

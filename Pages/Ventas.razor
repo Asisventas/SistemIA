@@ -83,7 +83,21 @@
         </label>
         @if (string.IsNullOrEmpty(ClienteSeleccionadoLabel))
         {
-          <input class="form-control" placeholder="Buscar por Razón Social o RUC" @bind="BuscarCliente" @bind:event="oninput" @onkeydown="OnClienteKeyDown" @onfocus="OnClienteFocus" @onblur="OnClienteBlur" autocomplete="off" />
+          <div class="position-relative">
+            <input class="form-control @(_buscandoRucAuto ? "border-info" : "")" placeholder="Buscar por Razón Social o RUC" @bind="BuscarCliente" @bind:event="oninput" @onkeydown="OnClienteKeyDown" @onfocus="OnClienteFocus" @onblur="OnClienteBlur" autocomplete="off" />
+            @if (_buscandoRucAuto)
+            {
+              <div class="position-absolute top-50 end-0 translate-middle-y me-2">
+                <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+              </div>
+            }
+          </div>
+          @if (!string.IsNullOrEmpty(_mensajeRucAuto))
+          {
+            <div class="small mt-1 @(_esRucAutoError ? "text-warning" : "text-success")">
+              @_mensajeRucAuto
+            </div>
+          }
           @if (MostrarSugClientes && ClientesFiltrados.Any())
           {
             <div class="list-group position-absolute w-100 shadow" style="z-index: 1000; max-height: 300px; overflow:auto;">

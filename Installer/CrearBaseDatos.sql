@@ -5140,141 +5140,1377 @@ GO
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
+    WHERE [MigrationId] = N'20251217141418_Usuario_CorreoYEmbeddingOpcional'
 )
 BEGIN
-    CREATE TABLE [PagosProveedores] (
-        [IdPagoProveedor] int NOT NULL IDENTITY,
-        [IdCompra] int NOT NULL,
-        [IdProveedor] int NOT NULL,
-        [IdSucursal] int NOT NULL,
-        [IdMoneda] int NULL,
-        [IdCaja] int NULL,
-        [IdUsuario] int NULL,
-        [FechaPago] datetime2 NOT NULL,
-        [MontoTotal] decimal(18,4) NOT NULL,
-        [CambioDelDia] decimal(18,4) NULL,
-        [Estado] nvarchar(20) NOT NULL DEFAULT N'Pagado',
-        [NumeroRecibo] nvarchar(30) NULL,
-        [Observaciones] nvarchar(280) NULL,
-        CONSTRAINT [PK_PagosProveedores] PRIMARY KEY ([IdPagoProveedor]),
-        CONSTRAINT [FK_PagosProveedores_Compras_IdCompra] FOREIGN KEY ([IdCompra]) REFERENCES [Compras] ([IdCompra]) ON DELETE NO ACTION,
-        CONSTRAINT [FK_PagosProveedores_ProveedoresSifen_IdProveedor] FOREIGN KEY ([IdProveedor]) REFERENCES [ProveedoresSifen] ([IdProveedor]) ON DELETE NO ACTION,
-        CONSTRAINT [FK_PagosProveedores_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION,
-        CONSTRAINT [FK_PagosProveedores_Monedas_IdMoneda] FOREIGN KEY ([IdMoneda]) REFERENCES [Monedas] ([IdMoneda]) ON DELETE NO ACTION,
-        CONSTRAINT [FK_PagosProveedores_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]) ON DELETE NO ACTION,
-        CONSTRAINT [FK_PagosProveedores_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu]) ON DELETE NO ACTION
-    );
+    DECLARE @var20 sysname;
+    SELECT @var20 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[Usuarios]') AND [c].[name] = N'EmbeddingFacial');
+    IF @var20 IS NOT NULL EXEC(N'ALTER TABLE [Usuarios] DROP CONSTRAINT [' + @var20 + '];');
+    ALTER TABLE [Usuarios] ALTER COLUMN [EmbeddingFacial] varbinary(max) NULL;
 END;
 GO
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
+    WHERE [MigrationId] = N'20251217141418_Usuario_CorreoYEmbeddingOpcional'
 )
 BEGIN
-    CREATE TABLE [PagosProveedoresDetalles] (
-        [IdPagoProveedorDetalle] int NOT NULL IDENTITY,
-        [IdPagoProveedor] int NOT NULL,
-        [IdCuota] int NULL,
-        [MedioPago] nvarchar(20) NOT NULL DEFAULT N'EFECTIVO',
-        [Monto] decimal(18,4) NOT NULL,
-        [CambioDelDia] decimal(18,4) NULL,
-        [BancoCheque] nvarchar(100) NULL,
-        [NumeroCheque] nvarchar(30) NULL,
-        [FechaCobroCheque] datetime2 NULL,
-        [BancoTransferencia] nvarchar(100) NULL,
-        [NumeroTransferencia] nvarchar(100) NULL,
-        [BancoTarjeta] nvarchar(100) NULL,
-        [MarcaTarjeta] nvarchar(50) NULL,
-        [Ultimos4Tarjeta] nvarchar(4) NULL,
-        [NumeroAutorizacion] nvarchar(50) NULL,
-        [Observaciones] nvarchar(280) NULL,
-        CONSTRAINT [PK_PagosProveedoresDetalles] PRIMARY KEY ([IdPagoProveedorDetalle]),
-        CONSTRAINT [FK_PagosProveedoresDetalles_PagosProveedores_IdPagoProveedor] FOREIGN KEY ([IdPagoProveedor]) REFERENCES [PagosProveedores] ([IdPagoProveedor]) ON DELETE CASCADE
-    );
+    DECLARE @var21 sysname;
+    SELECT @var21 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[Usuarios]') AND [c].[name] = N'Correo');
+    IF @var21 IS NOT NULL EXEC(N'ALTER TABLE [Usuarios] DROP CONSTRAINT [' + @var21 + '];');
+    ALTER TABLE [Usuarios] ALTER COLUMN [Correo] nvarchar(150) NULL;
 END;
 GO
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
-)
-BEGIN
-    CREATE INDEX [IX_PagosProveedores_IdCompra] ON [PagosProveedores] ([IdCompra]);
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
-)
-BEGIN
-    CREATE INDEX [IX_PagosProveedores_IdProveedor] ON [PagosProveedores] ([IdProveedor]);
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
-)
-BEGIN
-    CREATE INDEX [IX_PagosProveedores_IdSucursal] ON [PagosProveedores] ([IdSucursal]);
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
-)
-BEGIN
-    CREATE INDEX [IX_PagosProveedores_IdMoneda] ON [PagosProveedores] ([IdMoneda]);
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
-)
-BEGIN
-    CREATE INDEX [IX_PagosProveedores_IdCaja] ON [PagosProveedores] ([IdCaja]);
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
-)
-BEGIN
-    CREATE INDEX [IX_PagosProveedores_IdUsuario] ON [PagosProveedores] ([IdUsuario]);
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
-)
-BEGIN
-    CREATE INDEX [IX_PagosProveedores_FechaPago] ON [PagosProveedores] ([FechaPago]);
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
-)
-BEGIN
-    CREATE INDEX [IX_PagosProveedoresDetalles_IdPagoProveedor] ON [PagosProveedoresDetalles] ([IdPagoProveedor]);
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251216024728_Crear_Tablas_Pagos_Proveedores'
+    WHERE [MigrationId] = N'20251217141418_Usuario_CorreoYEmbeddingOpcional'
 )
 BEGIN
     INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
-    VALUES (N'20251216024728_Crear_Tablas_Pagos_Proveedores', N'8.0.0');
+    VALUES (N'20251217141418_Usuario_CorreoYEmbeddingOpcional', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251217221956_Agregar_Tablas_CierreCaja'
+)
+BEGIN
+    CREATE TABLE [CierresCaja] (
+        [IdCierreCaja] int NOT NULL IDENTITY,
+        [IdCaja] int NOT NULL,
+        [FechaCierre] datetime2 NOT NULL,
+        [FechaCaja] datetime2 NOT NULL,
+        [Turno] int NOT NULL,
+        [UsuarioCierre] nvarchar(100) NULL,
+        [TotalVentasContado] decimal(18,2) NOT NULL,
+        [TotalVentasCredito] decimal(18,2) NOT NULL,
+        [TotalCobrosCredito] decimal(18,2) NOT NULL,
+        [TotalAnulaciones] decimal(18,2) NOT NULL,
+        [TotalEfectivo] decimal(18,2) NOT NULL,
+        [TotalTarjetas] decimal(18,2) NOT NULL,
+        [TotalCheques] decimal(18,2) NOT NULL,
+        [TotalTransferencias] decimal(18,2) NOT NULL,
+        [TotalQR] decimal(18,2) NOT NULL,
+        [TotalOtros] decimal(18,2) NOT NULL,
+        [TotalEsperado] decimal(18,2) NOT NULL,
+        [TotalEntregado] decimal(18,2) NOT NULL,
+        [Diferencia] decimal(18,2) NOT NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        CONSTRAINT [PK_CierresCaja] PRIMARY KEY ([IdCierreCaja]),
+        CONSTRAINT [FK_CierresCaja_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251217221956_Agregar_Tablas_CierreCaja'
+)
+BEGIN
+    CREATE TABLE [EntregasCaja] (
+        [IdEntregaCaja] int NOT NULL IDENTITY,
+        [IdCierreCaja] int NOT NULL,
+        [Medio] int NOT NULL,
+        [IdMoneda] int NULL,
+        [MontoEsperado] decimal(18,2) NOT NULL,
+        [MontoEntregado] decimal(18,2) NOT NULL,
+        [Diferencia] decimal(18,2) NOT NULL,
+        [ReceptorEntrega] nvarchar(100) NULL,
+        [Observaciones] nvarchar(300) NULL,
+        [DetalleCheques] nvarchar(500) NULL,
+        [CantidadVouchers] int NULL,
+        CONSTRAINT [PK_EntregasCaja] PRIMARY KEY ([IdEntregaCaja]),
+        CONSTRAINT [FK_EntregasCaja_CierresCaja_IdCierreCaja] FOREIGN KEY ([IdCierreCaja]) REFERENCES [CierresCaja] ([IdCierreCaja]) ON DELETE CASCADE,
+        CONSTRAINT [FK_EntregasCaja_Monedas_IdMoneda] FOREIGN KEY ([IdMoneda]) REFERENCES [Monedas] ([IdMoneda]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251217221956_Agregar_Tablas_CierreCaja'
+)
+BEGIN
+    CREATE INDEX [IX_CierresCaja_Caja_Fecha_Turno] ON [CierresCaja] ([IdCaja], [FechaCaja], [Turno]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251217221956_Agregar_Tablas_CierreCaja'
+)
+BEGIN
+    CREATE INDEX [IX_EntregasCaja_IdCierreCaja] ON [EntregasCaja] ([IdCierreCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251217221956_Agregar_Tablas_CierreCaja'
+)
+BEGIN
+    CREATE INDEX [IX_EntregasCaja_IdMoneda] ON [EntregasCaja] ([IdMoneda]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251217221956_Agregar_Tablas_CierreCaja'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251217221956_Agregar_Tablas_CierreCaja', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251219142806_Agregar_ControladoReceta_Y_RecetasVentas'
+)
+BEGIN
+                    IF COL_LENGTH('Productos', 'ControladoReceta') IS NULL
+                    BEGIN
+                        ALTER TABLE [Productos] ADD [ControladoReceta] bit NOT NULL DEFAULT CAST(0 AS bit);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251219142806_Agregar_ControladoReceta_Y_RecetasVentas'
+)
+BEGIN
+                    IF OBJECT_ID('RecetasVentas', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [RecetasVentas] (
+                            [IdRecetaVenta] int NOT NULL IDENTITY,
+                            [IdVenta] int NOT NULL,
+                            [IdProducto] int NOT NULL,
+                            [NumeroRegistro] nvarchar(50) NOT NULL,
+                            [FechaReceta] datetime2 NOT NULL,
+                            [NombreMedico] nvarchar(200) NOT NULL,
+                            [NombrePaciente] nvarchar(200) NOT NULL,
+                            [FechaRegistro] datetime2 NOT NULL,
+                            [UsuarioRegistro] nvarchar(50) NULL,
+                            CONSTRAINT [PK_RecetasVentas] PRIMARY KEY ([IdRecetaVenta]),
+                            CONSTRAINT [FK_RecetasVentas_Productos_IdProducto] FOREIGN KEY ([IdProducto]) REFERENCES [Productos] ([IdProducto]) ON DELETE CASCADE,
+                            CONSTRAINT [FK_RecetasVentas_Ventas_IdVenta] FOREIGN KEY ([IdVenta]) REFERENCES [Ventas] ([IdVenta]) ON DELETE CASCADE
+                        );
+                        CREATE INDEX [IX_RecetasVentas_IdProducto] ON [RecetasVentas] ([IdProducto]);
+                        CREATE INDEX [IX_RecetasVentas_IdVenta] ON [RecetasVentas] ([IdVenta]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251219142806_Agregar_ControladoReceta_Y_RecetasVentas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251219142806_Agregar_ControladoReceta_Y_RecetasVentas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251220174856_Agregar_PermiteDecimal_Producto'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [PermiteDecimal] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251220174856_Agregar_PermiteDecimal_Producto'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251220174856_Agregar_PermiteDecimal_Producto', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222020630_Agregar_Serie_Venta_Vuelto_Composicion'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Ventas') AND name = 'Serie')
+                    BEGIN
+                        ALTER TABLE [Ventas] ADD [Serie] int NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222020630_Agregar_Serie_Venta_Vuelto_Composicion'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'ComposicionesCaja') AND name = 'Vuelto')
+                    BEGIN
+                        ALTER TABLE [ComposicionesCaja] ADD [Vuelto] decimal(18,4) NOT NULL DEFAULT 0;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222020630_Agregar_Serie_Venta_Vuelto_Composicion'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'Ventas') AND name = 'IX_Ventas_Numeracion_Unica')
+                    BEGIN
+                        CREATE UNIQUE INDEX [IX_Ventas_Numeracion_Unica] 
+                        ON [Ventas] ([Establecimiento], [NumeroFactura], [PuntoExpedicion], [Serie], [Timbrado])
+                        WHERE [NumeroFactura] IS NOT NULL AND [Serie] IS NOT NULL AND [Timbrado] IS NOT NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222020630_Agregar_Serie_Venta_Vuelto_Composicion'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251222020630_Agregar_Serie_Venta_Vuelto_Composicion', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222030501_Agregar_Nombre_IdSucursal_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [IdSucursal] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222030501_Agregar_Nombre_IdSucursal_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [Nombre] nvarchar(50) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222030501_Agregar_Nombre_IdSucursal_Caja'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251222030501_Agregar_Nombre_IdSucursal_Caja', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222031949_Fix_IdCaja_Ventas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251222031949_Fix_IdCaja_Ventas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222124654_Agregar_Turno_Cobros_Pagos'
+)
+BEGIN
+    ALTER TABLE [PagosProveedores] ADD [Turno] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222124654_Agregar_Turno_Cobros_Pagos'
+)
+BEGIN
+    ALTER TABLE [CobrosCuotas] ADD [Turno] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222124654_Agregar_Turno_Cobros_Pagos'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251222124654_Agregar_Turno_Cobros_Pagos', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222142336_Crear_Tablas_CuentasPorPagar'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CuentasPorPagar')
+                    BEGIN
+                        CREATE TABLE [CuentasPorPagar] (
+                            [IdCuentaPorPagar] int NOT NULL IDENTITY,
+                            [IdCompra] int NOT NULL,
+                            [IdProveedor] int NOT NULL,
+                            [IdSucursal] int NOT NULL,
+                            [IdMoneda] int NULL,
+                            [MontoTotal] decimal(18,4) NOT NULL,
+                            [SaldoPendiente] decimal(18,4) NOT NULL,
+                            [FechaCredito] datetime2 NOT NULL,
+                            [FechaVencimiento] datetime2 NULL,
+                            [Estado] nvarchar(20) NOT NULL,
+                            [NumeroCuotas] int NOT NULL,
+                            [PlazoDias] int NOT NULL,
+                            [Observaciones] nvarchar(280) NULL,
+                            [IdUsuarioAutorizo] int NULL,
+                            CONSTRAINT [PK_CuentasPorPagar] PRIMARY KEY ([IdCuentaPorPagar]),
+                            CONSTRAINT [FK_CuentasPorPagar_Compras_IdCompra] FOREIGN KEY ([IdCompra]) REFERENCES [Compras] ([IdCompra]) ON DELETE NO ACTION,
+                            CONSTRAINT [FK_CuentasPorPagar_ProveedoresSifen_IdProveedor] FOREIGN KEY ([IdProveedor]) REFERENCES [ProveedoresSifen] ([IdProveedor]) ON DELETE NO ACTION,
+                            CONSTRAINT [FK_CuentasPorPagar_Monedas_IdMoneda] FOREIGN KEY ([IdMoneda]) REFERENCES [Monedas] ([IdMoneda]),
+                            CONSTRAINT [FK_CuentasPorPagar_Usuarios_IdUsuarioAutorizo] FOREIGN KEY ([IdUsuarioAutorizo]) REFERENCES [Usuarios] ([Id_Usu])
+                        );
+                        CREATE INDEX [IX_CuentasPorPagar_IdCompra] ON [CuentasPorPagar] ([IdCompra]);
+                        CREATE INDEX [IX_CuentasPorPagar_IdProveedor] ON [CuentasPorPagar] ([IdProveedor]);
+                        CREATE INDEX [IX_CuentasPorPagar_IdMoneda] ON [CuentasPorPagar] ([IdMoneda]);
+                        CREATE INDEX [IX_CuentasPorPagar_IdUsuarioAutorizo] ON [CuentasPorPagar] ([IdUsuarioAutorizo]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222142336_Crear_Tablas_CuentasPorPagar'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CuentasPorPagarCuotas')
+                    BEGIN
+                        CREATE TABLE [CuentasPorPagarCuotas] (
+                            [IdCuota] int NOT NULL IDENTITY,
+                            [IdCuentaPorPagar] int NOT NULL,
+                            [NumeroCuota] int NOT NULL,
+                            [MontoCuota] decimal(18,4) NOT NULL,
+                            [SaldoCuota] decimal(18,4) NOT NULL,
+                            [FechaVencimiento] datetime2 NOT NULL,
+                            [FechaPago] datetime2 NULL,
+                            [Estado] nvarchar(20) NOT NULL,
+                            [Observaciones] nvarchar(280) NULL,
+                            CONSTRAINT [PK_CuentasPorPagarCuotas] PRIMARY KEY ([IdCuota]),
+                            CONSTRAINT [FK_CuentasPorPagarCuotas_CuentasPorPagar_IdCuentaPorPagar] FOREIGN KEY ([IdCuentaPorPagar]) REFERENCES [CuentasPorPagar] ([IdCuentaPorPagar]) ON DELETE CASCADE
+                        );
+                        CREATE INDEX [IX_CuentasPorPagarCuotas_IdCuentaPorPagar] ON [CuentasPorPagarCuotas] ([IdCuentaPorPagar]);
+                    END
+                    ELSE
+                    BEGIN
+                        -- Si la tabla ya existe pero le falta SaldoCuota, agregar la columna
+                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'CuentasPorPagarCuotas' AND COLUMN_NAME = 'SaldoCuota')
+                        BEGIN
+                            ALTER TABLE [CuentasPorPagarCuotas] ADD [SaldoCuota] decimal(18,4) NOT NULL DEFAULT 0;
+                        END
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251222142336_Crear_Tablas_CuentasPorPagar'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251222142336_Crear_Tablas_CuentasPorPagar', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251223011802_Agregar_Factor_Compras_Producto'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Productos') AND name = 'FactorMultiplicador')
+                    BEGIN
+                        ALTER TABLE [Productos] ADD [FactorMultiplicador] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251223011802_Agregar_Factor_Compras_Producto'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'ComprasDetalles') AND name = 'FactorMultiplicador')
+                    BEGIN
+                        ALTER TABLE [ComprasDetalles] ADD [FactorMultiplicador] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251223011802_Agregar_Factor_Compras_Producto'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'ComprasDetalles') AND name = 'PorcentajeMargen')
+                    BEGIN
+                        ALTER TABLE [ComprasDetalles] ADD [PorcentajeMargen] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251223011802_Agregar_Factor_Compras_Producto'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251223011802_Agregar_Factor_Compras_Producto', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251224023749_Agregar_IdSucursal_CierreCaja'
+)
+BEGIN
+    ALTER TABLE [CierresCaja] ADD [IdSucursal] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251224023749_Agregar_IdSucursal_CierreCaja'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251224023749_Agregar_IdSucursal_CierreCaja', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251224032818_Agregar_IdSucursal_CobroCuota'
+)
+BEGIN
+    ALTER TABLE [CobrosCuotas] ADD [IdSucursal] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251224032818_Agregar_IdSucursal_CobroCuota'
+)
+BEGIN
+    CREATE INDEX [IX_CobrosCuotas_IdSucursal] ON [CobrosCuotas] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251224032818_Agregar_IdSucursal_CobroCuota'
+)
+BEGIN
+    ALTER TABLE [CobrosCuotas] ADD CONSTRAINT [FK_CobrosCuotas_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251224032818_Agregar_IdSucursal_CobroCuota'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251224032818_Agregar_IdSucursal_CobroCuota', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251225205203_Agregar_PrecioVentaRef_CompraDetalle'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                                   WHERE TABLE_NAME = 'ComprasDetalles' AND COLUMN_NAME = 'PrecioVentaRef')
+                    BEGIN
+                        ALTER TABLE [ComprasDetalles] ADD [PrecioVentaRef] decimal(18,4) NOT NULL DEFAULT 0;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251225205203_Agregar_PrecioVentaRef_CompraDetalle'
+)
+BEGIN
+                    IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_CuentasPorPagar_Proveedores_IdProveedor')
+                    BEGIN
+                        ALTER TABLE [CuentasPorPagar] DROP CONSTRAINT [FK_CuentasPorPagar_Proveedores_IdProveedor];
+                    END
+                    IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_CuentasPorPagar_ProveedoresSifen_IdProveedor')
+                    BEGIN
+                        ALTER TABLE [CuentasPorPagar] ADD CONSTRAINT [FK_CuentasPorPagar_ProveedoresSifen_IdProveedor] 
+                            FOREIGN KEY ([IdProveedor]) REFERENCES [ProveedoresSifen]([IdProveedor]) ON DELETE NO ACTION;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251225205203_Agregar_PrecioVentaRef_CompraDetalle'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251225205203_Agregar_PrecioVentaRef_CompraDetalle', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE TABLE [NotasCreditoVentas] (
+        [IdNotaCredito] int NOT NULL IDENTITY,
+        [Establecimiento] nvarchar(3) NULL,
+        [PuntoExpedicion] nvarchar(3) NULL,
+        [NumeroNota] int NOT NULL,
+        [IdSucursal] int NOT NULL,
+        [IdCaja] int NOT NULL,
+        [IdCliente] int NULL,
+        [IdVentaAsociada] int NULL,
+        [TipoDocumentoAsociado] nvarchar(20) NULL,
+        [Fecha] datetime2 NOT NULL,
+        [FechaContable] datetime2 NULL,
+        [Turno] int NULL,
+        [Motivo] nvarchar(50) NOT NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [IdMoneda] int NULL,
+        [SimboloMoneda] nvarchar(4) NULL,
+        [CambioDelDia] decimal(18,4) NULL,
+        [EsMonedaExtranjera] bit NULL,
+        [Subtotal] decimal(18,4) NOT NULL,
+        [TotalIVA10] decimal(18,4) NOT NULL,
+        [TotalIVA5] decimal(18,4) NOT NULL,
+        [TotalExenta] decimal(18,4) NOT NULL,
+        [Total] decimal(18,4) NOT NULL,
+        [TotalEnLetras] nvarchar(280) NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [Timbrado] nvarchar(8) NULL,
+        [Serie] int NULL,
+        [CDC] nvarchar(64) NULL,
+        [CodigoSeguridad] nvarchar(9) NULL,
+        [EstadoSifen] nvarchar(30) NULL,
+        [FechaEnvioSifen] datetime2 NULL,
+        [MensajeSifen] nvarchar(max) NULL,
+        [XmlCDE] nvarchar(max) NULL,
+        [IdLote] nvarchar(50) NULL,
+        [IdUsuario] int NULL,
+        CONSTRAINT [PK_NotasCreditoVentas] PRIMARY KEY ([IdNotaCredito]),
+        CONSTRAINT [FK_NotasCreditoVentas_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoVentas_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoVentas_Monedas_IdMoneda] FOREIGN KEY ([IdMoneda]) REFERENCES [Monedas] ([IdMoneda]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoVentas_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoVentas_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoVentas_Ventas_IdVentaAsociada] FOREIGN KEY ([IdVentaAsociada]) REFERENCES [Ventas] ([IdVenta]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE TABLE [NotasCreditoVentasDetalles] (
+        [IdNotaCreditoDetalle] int NOT NULL IDENTITY,
+        [IdNotaCredito] int NOT NULL,
+        [IdProducto] int NOT NULL,
+        [Cantidad] decimal(18,4) NOT NULL,
+        [PrecioUnitario] decimal(18,4) NOT NULL,
+        [PorcentajeDescuento] decimal(18,4) NOT NULL,
+        [Descuento] decimal(18,4) NOT NULL,
+        [Importe] decimal(18,4) NOT NULL,
+        [IVA10] decimal(18,4) NOT NULL,
+        [IVA5] decimal(18,4) NOT NULL,
+        [Exenta] decimal(18,4) NOT NULL,
+        [Grabado10] decimal(18,4) NOT NULL,
+        [Grabado5] decimal(18,4) NOT NULL,
+        [CambioDelDia] decimal(18,4) NULL,
+        [IdTipoIva] int NULL,
+        [IdDeposito] int NULL,
+        [Lote] nvarchar(50) NULL,
+        CONSTRAINT [PK_NotasCreditoVentasDetalles] PRIMARY KEY ([IdNotaCreditoDetalle]),
+        CONSTRAINT [FK_NotasCreditoVentasDetalles_Depositos_IdDeposito] FOREIGN KEY ([IdDeposito]) REFERENCES [Depositos] ([IdDeposito]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoVentasDetalles_NotasCreditoVentas_IdNotaCredito] FOREIGN KEY ([IdNotaCredito]) REFERENCES [NotasCreditoVentas] ([IdNotaCredito]) ON DELETE CASCADE,
+        CONSTRAINT [FK_NotasCreditoVentasDetalles_Productos_IdProducto] FOREIGN KEY ([IdProducto]) REFERENCES [Productos] ([IdProducto]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_NotaCreditoVentas_Numeracion] ON [NotasCreditoVentas] ([IdSucursal], [NumeroNota]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoVentas_IdCaja] ON [NotasCreditoVentas] ([IdCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoVentas_IdCliente] ON [NotasCreditoVentas] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoVentas_IdMoneda] ON [NotasCreditoVentas] ([IdMoneda]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoVentas_IdUsuario] ON [NotasCreditoVentas] ([IdUsuario]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoVentas_IdVentaAsociada] ON [NotasCreditoVentas] ([IdVentaAsociada]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoVentasDetalles_IdDeposito] ON [NotasCreditoVentasDetalles] ([IdDeposito]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoVentasDetalles_IdNotaCredito] ON [NotasCreditoVentasDetalles] ([IdNotaCredito]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoVentasDetalles_IdProducto] ON [NotasCreditoVentasDetalles] ([IdProducto]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227011006_Crear_NotasCreditoVentas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251227011006_Crear_NotasCreditoVentas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentasDetalles] ADD [CodigoProducto] nvarchar(50) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentasDetalles] ADD [MontoDescuento] decimal(18,4) NOT NULL DEFAULT 0.0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentasDetalles] ADD [NombreProducto] nvarchar(250) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentasDetalles] ADD [TasaIVA] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    DECLARE @var22 sysname;
+    SELECT @var22 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[NotasCreditoVentas]') AND [c].[name] = N'Turno');
+    IF @var22 IS NOT NULL EXEC(N'ALTER TABLE [NotasCreditoVentas] DROP CONSTRAINT [' + @var22 + '];');
+    ALTER TABLE [NotasCreditoVentas] ALTER COLUMN [Turno] nvarchar(3) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    DROP INDEX [IX_NotasCreditoVentas_IdMoneda] ON [NotasCreditoVentas];
+    DECLARE @var23 sysname;
+    SELECT @var23 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[NotasCreditoVentas]') AND [c].[name] = N'IdMoneda');
+    IF @var23 IS NOT NULL EXEC(N'ALTER TABLE [NotasCreditoVentas] DROP CONSTRAINT [' + @var23 + '];');
+    EXEC(N'UPDATE [NotasCreditoVentas] SET [IdMoneda] = 0 WHERE [IdMoneda] IS NULL');
+    ALTER TABLE [NotasCreditoVentas] ALTER COLUMN [IdMoneda] int NOT NULL;
+    ALTER TABLE [NotasCreditoVentas] ADD DEFAULT 0 FOR [IdMoneda];
+    CREATE INDEX [IX_NotasCreditoVentas_IdMoneda] ON [NotasCreditoVentas] ([IdMoneda]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    DECLARE @var24 sysname;
+    SELECT @var24 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[NotasCreditoVentas]') AND [c].[name] = N'EsMonedaExtranjera');
+    IF @var24 IS NOT NULL EXEC(N'ALTER TABLE [NotasCreditoVentas] DROP CONSTRAINT [' + @var24 + '];');
+    EXEC(N'UPDATE [NotasCreditoVentas] SET [EsMonedaExtranjera] = CAST(0 AS bit) WHERE [EsMonedaExtranjera] IS NULL');
+    ALTER TABLE [NotasCreditoVentas] ALTER COLUMN [EsMonedaExtranjera] bit NOT NULL;
+    ALTER TABLE [NotasCreditoVentas] ADD DEFAULT CAST(0 AS bit) FOR [EsMonedaExtranjera];
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    DECLARE @var25 sysname;
+    SELECT @var25 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[NotasCreditoVentas]') AND [c].[name] = N'CambioDelDia');
+    IF @var25 IS NOT NULL EXEC(N'ALTER TABLE [NotasCreditoVentas] DROP CONSTRAINT [' + @var25 + '];');
+    EXEC(N'UPDATE [NotasCreditoVentas] SET [CambioDelDia] = 0.0 WHERE [CambioDelDia] IS NULL');
+    ALTER TABLE [NotasCreditoVentas] ALTER COLUMN [CambioDelDia] decimal(18,4) NOT NULL;
+    ALTER TABLE [NotasCreditoVentas] ADD DEFAULT 0.0 FOR [CambioDelDia];
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentas] ADD [CreadoPor] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentas] ADD [FechaCreacion] datetime2 NOT NULL DEFAULT '0001-01-01T00:00:00.0000000';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentas] ADD [FechaModificacion] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentas] ADD [ModificadoPor] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentas] ADD [NombreCliente] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentas] ADD [TotalDescuento] decimal(18,4) NOT NULL DEFAULT 0.0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251227020637_Agregar_NotasCredito_Columnas_Faltantes', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228133522_Agregar_IdDeposito_AjusteStockDetalle'
+)
+BEGIN
+                    IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_AjustesStockDetalles_AjustesStock_AjusteStockIdAjusteStock')
+                    BEGIN
+                        ALTER TABLE [AjustesStockDetalles] DROP CONSTRAINT [FK_AjustesStockDetalles_AjustesStock_AjusteStockIdAjusteStock];
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228133522_Agregar_IdDeposito_AjusteStockDetalle'
+)
+BEGIN
+                    IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AjustesStockDetalles_AjusteStockIdAjusteStock')
+                    BEGIN
+                        DROP INDEX [IX_AjustesStockDetalles_AjusteStockIdAjusteStock] ON [AjustesStockDetalles];
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228133522_Agregar_IdDeposito_AjusteStockDetalle'
+)
+BEGIN
+                    IF EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'AjusteStockIdAjusteStock' AND Object_ID = Object_ID(N'AjustesStockDetalles'))
+                    BEGIN
+                        ALTER TABLE [AjustesStockDetalles] DROP COLUMN [AjusteStockIdAjusteStock];
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228133522_Agregar_IdDeposito_AjusteStockDetalle'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'IdDeposito' AND Object_ID = Object_ID(N'AjustesStockDetalles'))
+                    BEGIN
+                        ALTER TABLE [AjustesStockDetalles] ADD [IdDeposito] int NOT NULL DEFAULT 1;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228133522_Agregar_IdDeposito_AjusteStockDetalle'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AjustesStockDetalles_IdDeposito')
+                    BEGIN
+                        CREATE INDEX [IX_AjustesStockDetalles_IdDeposito] ON [AjustesStockDetalles] ([IdDeposito]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228133522_Agregar_IdDeposito_AjusteStockDetalle'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_AjustesStockDetalles_Depositos_IdDeposito')
+                    BEGIN
+                        ALTER TABLE [AjustesStockDetalles] ADD CONSTRAINT [FK_AjustesStockDetalles_Depositos_IdDeposito] 
+                            FOREIGN KEY ([IdDeposito]) REFERENCES [Depositos] ([IdDeposito]) ON DELETE NO ACTION;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228133522_Agregar_IdDeposito_AjusteStockDetalle'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251228133522_Agregar_IdDeposito_AjusteStockDetalle', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'CantidadAnterior')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [CantidadAnterior] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'SaldoPosterior')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [SaldoPosterior] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'FechaCaja')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [FechaCaja] datetime2 NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'Turno')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [Turno] int NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'IdSucursal')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [IdSucursal] int NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'IdCaja')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [IdCaja] int NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'IX_MovimientosInventario_IdSucursal')
+                    BEGIN
+                        CREATE INDEX [IX_MovimientosInventario_IdSucursal] ON [MovimientosInventario]([IdSucursal]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'IX_MovimientosInventario_IdCaja')
+                    BEGIN
+                        CREATE INDEX [IX_MovimientosInventario_IdCaja] ON [MovimientosInventario]([IdCaja]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_MovimientosInventario_Sucursal_IdSucursal')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD CONSTRAINT [FK_MovimientosInventario_Sucursal_IdSucursal] 
+                            FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal]([Id]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_MovimientosInventario_Cajas_IdCaja')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD CONSTRAINT [FK_MovimientosInventario_Cajas_IdCaja] 
+                            FOREIGN KEY ([IdCaja]) REFERENCES [Cajas]([id_caja]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251228144125_Agregar_Campos_Trazabilidad_MovimientosInventario', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'PrecioCosto')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [PrecioCosto] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'PrecioVenta')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [PrecioVenta] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'IdMoneda')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [IdMoneda] int NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'TipoCambio')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [TipoCambio] decimal(18,6) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'PrecioCostoGs')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [PrecioCostoGs] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'PrecioVentaGs')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD [PrecioVentaGs] decimal(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'MovimientosInventario') AND name = 'IX_MovimientosInventario_IdMoneda')
+                    BEGIN
+                        CREATE INDEX [IX_MovimientosInventario_IdMoneda] ON [MovimientosInventario]([IdMoneda]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_MovimientosInventario_Monedas_IdMoneda')
+                    BEGIN
+                        ALTER TABLE [MovimientosInventario] ADD CONSTRAINT [FK_MovimientosInventario_Monedas_IdMoneda] 
+                            FOREIGN KEY ([IdMoneda]) REFERENCES [Monedas]([IdMoneda]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228150142_Agregar_Valorizacion_MovimientosInventario'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251228150142_Agregar_Valorizacion_MovimientosInventario', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228200333_Agregar_AfectaStock_NotaCredito'
+)
+BEGIN
+    ALTER TABLE [NotasCreditoVentas] ADD [AfectaStock] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228200333_Agregar_AfectaStock_NotaCredito'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251228200333_Agregar_AfectaStock_NotaCredito', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228205647_Crear_Tabla_RucDnit'
+)
+BEGIN
+    CREATE TABLE [RucDnit] (
+        [RUC] nvarchar(20) NOT NULL,
+        [RazonSocial] nvarchar(300) NOT NULL,
+        [DV] int NOT NULL,
+        [Estado] nvarchar(20) NULL,
+        [FechaActualizacion] datetime2 NULL,
+        CONSTRAINT [PK_RucDnit] PRIMARY KEY ([RUC])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251228205647_Crear_Tabla_RucDnit'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251228205647_Crear_Tabla_RucDnit', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251229145529_Fix_TipoOperacion_StringLength'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251229145529_Fix_TipoOperacion_StringLength', N'8.0.0');
 END;
 GO
 

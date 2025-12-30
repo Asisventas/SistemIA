@@ -12,6 +12,7 @@
 @inject Sifen SifenService
 @inject PermisosService PermisosService
 @inject SistemIA.Services.ICajaService CajaService
+@inject SistemIA.Services.IRucDnitService RucService
 @using Microsoft.AspNetCore.Components.Authorization
 
 <PageProtection Modulo="/compras" Permiso="VIEW">
@@ -44,6 +45,9 @@
         <div class="d-flex gap-2">
             <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RefrescarPaginaAsync" title="Refrescar">
                 <i class="bi bi-arrow-clockwise"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-warning" @onclick="MostrarModalReciclarCompraAsync" title="Eliminar compra y editar datos para nueva carga">
+                <i class="bi bi-recycle"></i> Reciclar
             </button>
             <button type="button" class="btn btn-sm btn-primary" @onclick="NuevaCompraAsync">
                 <i class="bi bi-plus-circle"></i> Nueva Compra
@@ -99,8 +103,20 @@
             <div class="position-relative">
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input class="form-control" placeholder="Buscar por nombre o RUC (sin DV)" @bind="BuscarProveedor" @bind:event="oninput" @onkeydown="OnProveedorKeyDown" @onfocus="OnProveedorFocus" autocomplete="off" />
+                    <input class="form-control @(_buscandoRucAuto ? "border-info" : "")" placeholder="Buscar por nombre o RUC" @bind="BuscarProveedor" @bind:event="oninput" @onkeydown="OnProveedorKeyDown" @onfocus="OnProveedorFocus" @onblur="OnProveedorBlur" autocomplete="off" />
+                    @if (_buscandoRucAuto)
+                    {
+                        <span class="input-group-text bg-info border-info">
+                            <div class="spinner-border spinner-border-sm text-white" role="status"></div>
+                        </span>
+                    }
                 </div>
+                @if (!string.IsNullOrEmpty(_mensajeRucAuto))
+                {
+                    <div class="small mt-1 @(_esRucAutoError ? "text-warning" : "text-success")">
+                        @_mensajeRucAuto
+                    </div>
+                }
                 @if (MostrarSugProveedores && ProveedoresFiltrados.Any())
                 {
                     <div class="list-group position-absolute w-100 z-3" style="max-height: 260px; overflow:auto;">
@@ -384,7 +400,7 @@
                     @if (d.IdDepositoItem.HasValue)
                     {
                         var nombreDeposito = deposito?.Nombre ?? "(Otro)";
-                        <span class="badge bg-info">@nombreDeposito</span>
+                        <span class="badge bg-primary">@nombreDeposito</span>
                     }
                     else
                     {
@@ -409,7 +425,7 @@
                 <td class="text-end">
                     @if (d.FactorMultiplicador.HasValue && d.FactorMultiplicador.Value > 0)
                     {
-                        <span class="badge bg-info text-dark">@d.FactorMultiplicador.Value.ToString("N2")</span>
+                        <span class="badge bg-secondary">@d.FactorMultiplicador.Value.ToString("N2")</span>
                     }
                     else
                     {
@@ -578,6 +594,53 @@
     </div>
 }
 
+@* Modal para reciclar compra (eliminar y editar) *@
+@if (_mostrarModalReciclar)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.6);" @onclick="CerrarModalReciclar">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title"><i class="bi bi-recycle"></i> Reciclar Compra #@Compra.IdCompra</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModalReciclar"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_errorReciclar))
+                    {
+                        <div class="alert alert-danger py-2">@_errorReciclar</div>
+                    }
+                    
+                    <div class="alert alert-warning">
+                        <h6><i class="bi bi-exclamation-triangle"></i> Esta acción:</h6>
+                        <ul class="mb-0">
+                            <li><strong>Eliminará permanentemente</strong> la compra #@Compra.IdCompra</li>
+                            <li><strong>Revertirá el stock</strong> de todos los productos</li>
+                            <li>Mantendrá los datos en pantalla para <strong>editar y guardar como nueva</strong></li>
+                        </ul>
+                    </div>
+                    
+                    <p class="text-muted small">Solo el usuario <strong>admin</strong> puede realizar esta acción.</p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña del administrador (admin)</label>
+                        <input type="password" class="form-control" @bind="_passwordReciclar" placeholder="Ingrese la contraseña de admin" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalReciclar">Cancelar</button>
+                    <button type="button" class="btn btn-warning" @onclick="EjecutarReciclarCompraAsync" disabled="@_procesandoReciclar">
+                        @if (_procesandoReciclar)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-recycle"></i> Reciclar Compra
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private string? Error;
     private string? Ok;
@@ -623,6 +686,7 @@
     private bool MostrarSugProveedores;
     private bool MostrarSugProductos;
     private bool _mouseDownEnSugerenciaProducto;
+    private bool _mouseDownEnSugerenciaProveedor;
     private DateTime? VencimientoTimbradoProveedorSel;
     private string? ProductoImagenUrl;
 
@@ -640,6 +704,19 @@
     private bool _buscandoProveedorSifen;
     private string? _mensajeSifenProveedor;
     private bool _esSifenProveedorError;
+    
+    // UI: Búsqueda automática de RUC (al Tab)
+    private bool _buscandoRucAuto;
+    private string? _mensajeRucAuto;
+    private bool _esRucAutoError;
+    private RucBusquedaResultado? _resultadoRucAuto;
+
+    // Variables para modal de reciclar compra
+    private bool _mostrarModalReciclar;
+    private bool _procesandoReciclar;
+    private string? _errorReciclar;
+    private string _passwordReciclar = string.Empty;
+    private int _idCompraOriginalReciclar; // ID de la compra que se está reciclando
 
     private decimal Gravado10; private decimal Gravado5; private decimal Exenta; private decimal IVATotal10; private decimal IVATotal5;
     private decimal CantidadInput { get => NuevoDetalle.Cantidad; set { NuevoDetalle.Cantidad = value; RecalcularNuevoDetalle(); } }
@@ -2411,8 +2488,13 @@ END
 
     private async Task NuevaCompraAsync()
     {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            "¿Está seguro de crear una nueva compra?\n\n" +
+            "Los datos no guardados de la compra actual se perderán.");
+        
+        if (!confirmar) return;
+        
         Nav.NavigateTo("/compras", forceLoad: true);
-        await Task.CompletedTask;
     }
 
     private async Task RefrescarPaginaAsync()
@@ -2428,6 +2510,189 @@ END
             Nav.NavigateTo("/compras", forceLoad: true);
         }
     }
+
+    // ========== RECICLAR COMPRA ==========
+    
+    private async Task MostrarModalReciclarCompraAsync()
+    {
+        // Verificar si hay pagos/órdenes de pago asociadas ANTES de mostrar el modal
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var pagosAsociados = await ctx.PagosProveedores
+            .Where(p => p.IdCompra == Compra.IdCompra && p.Estado != "Anulado")
+            .CountAsync();
+        
+        if (pagosAsociados > 0)
+        {
+            await JS.InvokeVoidAsync("alert", 
+                $"⚠️ No se puede reciclar esta compra.\n\n" +
+                $"Hay {pagosAsociados} orden(es) de pago asociada(s).\n\n" +
+                $"Primero debe eliminar o anular las órdenes de pago desde:\n" +
+                $"• Historial de Pagos a Proveedores");
+            return;
+        }
+        
+        _mostrarModalReciclar = true;
+        _errorReciclar = null;
+        _passwordReciclar = string.Empty;
+        _idCompraOriginalReciclar = Compra.IdCompra;
+        StateHasChanged();
+    }
+    
+    private void CerrarModalReciclar()
+    {
+        _mostrarModalReciclar = false;
+        _errorReciclar = null;
+        _passwordReciclar = string.Empty;
+        StateHasChanged();
+    }
+    
+    private async Task EjecutarReciclarCompraAsync()
+    {
+        _errorReciclar = null;
+        
+        if (string.IsNullOrWhiteSpace(_passwordReciclar))
+        {
+            _errorReciclar = "Debe ingresar la contraseña del administrador.";
+            return;
+        }
+        
+        _procesandoReciclar = true;
+        StateHasChanged();
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // 1. Buscar usuario "admin" y validar su contraseña
+            var admin = await ctx.Usuarios.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UsuarioNombre.ToLower() == "admin");
+            
+            if (admin == null)
+            {
+                _errorReciclar = "No se encontró el usuario administrador (admin) en el sistema.";
+                return;
+            }
+            
+            // Validar contraseña con SHA256 (comparar bytes)
+            if (admin.ContrasenaHash == null || admin.ContrasenaHash.Length == 0)
+            {
+                _errorReciclar = "El usuario admin no tiene contraseña configurada.";
+                return;
+            }
+            
+            using var sha256 = System.Security.Cryptography.SHA256.Create();
+            var passwordHashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(_passwordReciclar));
+            
+            if (!passwordHashBytes.SequenceEqual(admin.ContrasenaHash))
+            {
+                _errorReciclar = "❌ Contraseña incorrecta. Solo el usuario 'admin' puede realizar esta acción.";
+                return;
+            }
+            
+            // 2. Verificar que la compra existe
+            var compraDb = await ctx.Compras
+                .Include(c => c.Detalles)
+                .FirstOrDefaultAsync(c => c.IdCompra == _idCompraOriginalReciclar);
+            
+            if (compraDb == null)
+            {
+                _errorReciclar = $"La compra #{_idCompraOriginalReciclar} no existe.";
+                return;
+            }
+            
+            // 3. Verificar si hay pagos confirmados
+            var pagosConfirmados = await ctx.PagosProveedores
+                .Where(p => p.IdCompra == _idCompraOriginalReciclar && p.Estado != "Anulado")
+                .CountAsync();
+            
+            if (pagosConfirmados > 0)
+            {
+                _errorReciclar = $"No se puede reciclar: hay {pagosConfirmados} pago(s) confirmado(s). Anúlelos primero desde el historial de pagos.";
+                return;
+            }
+            
+            // 4. Revertir el stock (tipo 2 = salida para quitar lo que se había ingresado)
+            if (compraDb.IdDeposito.HasValue && compraDb.Detalles.Any())
+            {
+                foreach (var d in compraDb.Detalles)
+                {
+                    var depositoAUsar = d.IdDepositoItem ?? compraDb.IdDeposito.Value;
+                    await Inventario.AjustarStockAsync(
+                        d.IdProducto,
+                        depositoAUsar,
+                        d.Cantidad,
+                        2, // SALIDA
+                        $"Reciclaje Compra #{_idCompraOriginalReciclar}",
+                        "admin");
+                }
+            }
+            
+            // 5. Eliminar registros relacionados (similar a ComprasExplorar.Eliminar)
+            var cuentaPorPagar = await ctx.CuentasPorPagar
+                .Include(c => c.Cuotas)
+                .FirstOrDefaultAsync(c => c.IdCompra == _idCompraOriginalReciclar);
+            
+            if (cuentaPorPagar != null)
+            {
+                // Eliminar pagos anulados y sus detalles
+                var pagosAnulados = await ctx.PagosProveedores
+                    .Include(p => p.Detalles)
+                    .Where(p => p.IdCompra == _idCompraOriginalReciclar)
+                    .ToListAsync();
+                
+                foreach (var pago in pagosAnulados)
+                {
+                    if (pago.Detalles != null && pago.Detalles.Any())
+                        ctx.PagosProveedoresDetalles.RemoveRange(pago.Detalles);
+                    ctx.PagosProveedores.Remove(pago);
+                }
+                
+                // Eliminar cuotas
+                if (cuentaPorPagar.Cuotas != null && cuentaPorPagar.Cuotas.Any())
+                    ctx.CuentasPorPagarCuotas.RemoveRange(cuentaPorPagar.Cuotas);
+                
+                ctx.CuentasPorPagar.Remove(cuentaPorPagar);
+            }
+            
+            // Eliminar detalles y compra de la BD
+            ctx.ComprasDetalles.RemoveRange(compraDb.Detalles);
+            ctx.Compras.Remove(compraDb);
+            
+            await ctx.SaveChangesAsync();
+            
+            // 6. Preparar la UI para edición (resetear IdCompra a 0 para que se guarde como nueva)
+            Compra.IdCompra = 0;
+            Compra.Estado = "Borrador";
+            Compra.Fecha = FechaParaNuevaCompra; // Usar fecha de caja actual
+            
+            // Los detalles ya están en memoria, solo resetear sus IDs
+            foreach (var d in Detalles)
+            {
+                d.IdCompraDetalle = 0;
+                d.IdCompra = 0;
+            }
+            
+            // 7. Desactivar modo solo vista y cerrar modal
+            ModoSoloVista = false;
+            _mostrarModalReciclar = false;
+            
+            Ok = $"✅ Compra #{_idCompraOriginalReciclar} eliminada. Datos listos para editar y guardar como nueva compra.";
+            Error = null;
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _errorReciclar = $"Error al reciclar: {ex.Message}";
+        }
+        finally
+        {
+            _procesandoReciclar = false;
+            StateHasChanged();
+        }
+    }
+    
+    // ========== FIN RECICLAR COMPRA ==========
 
     private void IrAlExplorador()
     {
@@ -2715,7 +2980,7 @@ END
         StateHasChanged();
     }
 
-    private void OnProveedorKeyDown(KeyboardEventArgs e)
+    private async Task OnProveedorKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" || e.Key == "Tab")
         {
@@ -2728,17 +2993,25 @@ END
                 return;
             }
             
-            // Buscar por RUC exacto primero
+            // Buscar por RUC exacto primero en lista local
             var soloDigitos = new string(texto.Where(char.IsDigit).ToArray());
             if (!string.IsNullOrEmpty(soloDigitos))
             {
                 var provPorRuc = Proveedores.FirstOrDefault(p => 
-                    !string.IsNullOrEmpty(p.RUC) && p.RUC.Equals(soloDigitos, StringComparison.OrdinalIgnoreCase));
+                    !string.IsNullOrEmpty(p.RUC) && (p.RUC.Equals(soloDigitos, StringComparison.OrdinalIgnoreCase) || p.RUC.StartsWith(soloDigitos)));
                 
                 if (provPorRuc != null)
                 {
                     SeleccionarProveedor(provPorRuc);
+                    _mensajeRucAuto = null;
                     StateHasChanged();
+                    return;
+                }
+                
+                // Si parece ser un RUC (>= 5 dígitos), hacer búsqueda automática
+                if (soloDigitos.Length >= 5)
+                {
+                    await BuscarRucAutoProveedorAsync(soloDigitos);
                     return;
                 }
             }
@@ -2754,7 +3027,170 @@ END
         else if (e.Key == "Escape")
         {
             MostrarSugProveedores = false;
+            _mensajeRucAuto = null;
             StateHasChanged();
+        }
+    }
+    
+    /// <summary>
+    /// Búsqueda automática de RUC: Proveedor local → RucDnit → SIFEN
+    /// </summary>
+    private async Task BuscarRucAutoProveedorAsync(string ruc)
+    {
+        _buscandoRucAuto = true;
+        _mensajeRucAuto = "🔍 Buscando RUC...";
+        _esRucAutoError = false;
+        MostrarSugProveedores = false;
+        StateHasChanged();
+
+        try
+        {
+            var resultado = await RucService.BuscarRucUnificadoProveedorAsync(ruc);
+            _resultadoRucAuto = resultado;
+
+            if (resultado.Encontrado)
+            {
+                if (resultado.YaRegistrado && resultado.IdExistente.HasValue)
+                {
+                    // Ya existe en la BD - seleccionarlo directamente
+                    var provExistente = Proveedores.FirstOrDefault(p => p.IdProveedor == resultado.IdExistente.Value);
+                    if (provExistente != null)
+                    {
+                        SeleccionarProveedor(provExistente);
+                        _mensajeRucAuto = $"✓ {resultado.Mensaje}";
+                        _esRucAutoError = false;
+                    }
+                }
+                else
+                {
+                    // Encontrado pero no registrado - registrar automáticamente
+                    _mensajeRucAuto = $"📝 {resultado.Mensaje} - Registrando...";
+                    StateHasChanged();
+                    
+                    var nuevoProveedor = await RegistrarProveedorDesdeRucAsync(resultado);
+                    if (nuevoProveedor != null)
+                    {
+                        var item = new ProvSifenItem
+                        {
+                            IdProveedor = nuevoProveedor.IdProveedor,
+                            RazonSocial = nuevoProveedor.RazonSocial,
+                            RUC = nuevoProveedor.RUC,
+                            DV = nuevoProveedor.DV
+                        };
+                        Proveedores.Add(item);
+                        SeleccionarProveedor(item);
+                        _mensajeRucAuto = $"✓ Proveedor registrado: {nuevoProveedor.RazonSocial}";
+                        _esRucAutoError = false;
+                    }
+                    else
+                    {
+                        _mensajeRucAuto = "⚠️ Error al registrar proveedor";
+                        _esRucAutoError = true;
+                    }
+                }
+            }
+            else
+            {
+                // No encontrado - abrir modal de creación rápida con datos prellenados
+                _mensajeRucAuto = resultado.Mensaje;
+                _esRucAutoError = true;
+                
+                // Precargar datos en el modal
+                _nuevoProvRuc = ruc;
+                _nuevoProvDv = resultado.DV;
+                _nuevoProvRazonSocial = string.Empty;
+                AbrirModalNuevoProveedor();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR BuscarRucAutoProveedorAsync] {ex.Message}");
+            _mensajeRucAuto = "⚠️ Error de conexión";
+            _esRucAutoError = true;
+        }
+        finally
+        {
+            _buscandoRucAuto = false;
+            StateHasChanged();
+            
+            // Limpiar mensaje después de 4 segundos
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(4000);
+                await InvokeAsync(() =>
+                {
+                    if (!_esRucAutoError) _mensajeRucAuto = null;
+                    StateHasChanged();
+                });
+            });
+        }
+    }
+    
+    /// <summary>
+    /// Registra un proveedor automáticamente desde el resultado de búsqueda
+    /// </summary>
+    private async Task<ProveedorSifenMejorado?> RegistrarProveedorDesdeRucAsync(RucBusquedaResultado resultado)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Verificar que no exista el RUC (evitar duplicados)
+            var rucSinGuion = (resultado.RUC ?? "").Replace("-", "").Trim();
+            var existente = await ctx.ProveedoresSifen.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.RUC == rucSinGuion || p.RUC == resultado.RUC);
+            
+            if (existente != null)
+            {
+                Console.WriteLine($"[INFO] Proveedor con RUC {resultado.RUC} ya existe (ID: {existente.IdProveedor})");
+                return existente; // Retornar el existente en lugar de crear duplicado
+            }
+            
+            // Generar código de proveedor automático
+            var maxCodigo = await ctx.ProveedoresSifen
+                .Where(p => p.CodigoProveedor != null)
+                .Select(p => p.CodigoProveedor)
+                .OrderByDescending(c => c)
+                .FirstOrDefaultAsync();
+            
+            int siguienteCodigo = 1;
+            if (!string.IsNullOrEmpty(maxCodigo))
+            {
+                // Extraer número del código (puede ser "01", "02", etc.)
+                var soloNumeros = new string(maxCodigo.Where(char.IsDigit).ToArray());
+                if (int.TryParse(soloNumeros, out var ultimoCodigo))
+                {
+                    siguienteCodigo = ultimoCodigo + 1;
+                }
+            }
+            
+            var nuevoProveedor = new ProveedorSifenMejorado
+            {
+                CodigoProveedor = siguienteCodigo.ToString().PadLeft(2, '0'),
+                RazonSocial = resultado.RazonSocial ?? "SIN NOMBRE",
+                NombreFantasia = resultado.RazonSocial ?? "SIN NOMBRE",
+                RUC = rucSinGuion,
+                DV = resultado.DV,
+                TipoContribuyente = 2, // 2 = Persona Jurídica (típico para RUC empresarial)
+                SaldoPendiente = 0,
+                Estado = true,
+                CodigoCiudad = 1, // Asunción por defecto
+                CodigoDepartamento = "01",
+                DescripcionDepartamento = "CAPITAL"
+            };
+            
+            ctx.ProveedoresSifen.Add(nuevoProveedor);
+            await ctx.SaveChangesAsync();
+            
+            // Refrescar lista de proveedores
+            await RefrescarProveedoresAsync();
+            
+            return nuevoProveedor;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR RegistrarProveedorDesdeRucAsync] {ex.Message}");
+            return null;
         }
     }
 
@@ -2783,6 +3219,37 @@ END
     private void OnProveedorFocus(FocusEventArgs _)
     {
         MostrarSugProveedores = ProveedoresFiltrados.Any();
+    }
+
+    private async Task OnProveedorBlur(FocusEventArgs _)
+    {
+        await Task.Delay(120);
+        if (!_mouseDownEnSugerenciaProveedor)
+        {
+            // Si hay texto que parece RUC y no hay proveedor seleccionado, buscar automáticamente
+            var texto = (BuscarProveedor ?? string.Empty).Trim();
+            var soloDigitos = new string(texto.Where(char.IsDigit).ToArray());
+            
+            if (Compra.IdProveedor == 0 && soloDigitos.Length >= 5 && !_buscandoRucAuto)
+            {
+                // Verificar si el RUC ya existe en la lista local
+                var provExistente = Proveedores.FirstOrDefault(p => 
+                    !string.IsNullOrEmpty(p.RUC) && p.RUC.Equals(soloDigitos, StringComparison.OrdinalIgnoreCase));
+                
+                if (provExistente != null)
+                {
+                    SeleccionarProveedor(provExistente);
+                }
+                else
+                {
+                    // Buscar en RucDnit y SIFEN
+                    await BuscarRucAutoProveedorAsync(soloDigitos);
+                }
+            }
+            
+            MostrarSugProveedores = false;
+            StateHasChanged();
+        }
     }
 
     private void OnProductoFocus(FocusEventArgs _)

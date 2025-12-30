@@ -63,6 +63,7 @@ builder.Services.AddScoped<ITipoCambioHistoricoService, TipoCambioHistoricoServi
 builder.Services.AddScoped<IDataInitializationService, DataInitializationService>();
 builder.Services.AddScoped<IInventarioService, InventarioService>();
 builder.Services.AddScoped<IAjusteStockService, AjusteStockService>();
+builder.Services.AddScoped<IRucDnitService, RucDnitService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ISucursalProvider, SucursalProvider>();
 builder.Services.AddScoped<ICajaProvider, CajaProvider>();

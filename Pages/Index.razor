@@ -1,9 +1,13 @@
 ﻿@page "/"
 @inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject SistemIA.Services.BackupService BackupService
+@inject SistemIA.Services.PermisosService PermisosService
+@inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using System.IO
+@using System.Security.Cryptography
 
 <div class="container-fluid p-4">
     <h1 class="mb-4">Panel de Control</h1>
@@ -12,15 +16,76 @@
     <div class="row g-3 mb-2">
         <div class="col-xl-6 col-md-8">
             <div class="card shadow-sm">
-                <div class="card-body d-flex align-items-center">
+                <div class="card-body d-flex align-items-center justify-content-between">
                     <div>
                         <div class="fw-bold">@SucursalNombre</div>
                         <div class="small text-muted">Sucursal N° @SucursalNumero · Caja @CajaIdText · Fecha @FechaCajaText · Turno @TurnoText</div>
                     </div>
+                    <button class="btn btn-sm btn-outline-warning" @onclick="AbrirModalFechaTurno" title="Cambiar Fecha y Turno">
+                        <i class="bi bi-calendar-event me-1"></i>Cambiar
+                    </button>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Modal para cambiar Fecha y Turno -->
+    @if (mostrarModalFechaTurno)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-calendar-event me-2"></i>Ajustar Fecha y Turno</h5>
+                        <button type="button" class="btn-close" @onclick="CerrarModalFechaTurno"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Seleccionar Caja</label>
+                            <select class="form-select" @bind="cajaSeleccionadaId" @bind:after="OnCajaModalChanged">
+                                @foreach (var caja in cajasDisponibles)
+                                {
+                                    <option value="@caja.IdCaja">Caja @caja.IdCaja - @(caja.Nombre ?? "Sin nombre")</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Fecha de Caja</label>
+                            <input type="date" class="form-control" @bind="nuevaFechaCaja" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Turno</label>
+                            <select class="form-select" @bind="nuevoTurno">
+                                <option value="1">Turno 1 - Mañana</option>
+                                <option value="2">Turno 2 - Tarde</option>
+                                <option value="3">Turno 3 - Noche</option>
+                            </select>
+                        </div>
+                        <hr />
+                        <div class="mb-3">
+                            <label class="form-label fw-bold"><i class="bi bi-shield-lock me-1"></i>Contraseña de Confirmación</label>
+                            <input type="password" class="form-control" @bind="passwordConfirmacion" placeholder="Ingrese su contraseña" />
+                            <small class="text-muted">Requerida para confirmar el cambio</small>
+                        </div>
+                        @if (!string.IsNullOrEmpty(mensajeFechaTurno))
+                        {
+                            <div class="alert @(mensajeFechaTurno.StartsWith("✓") ? "alert-success" : mensajeFechaTurno.StartsWith("❌") ? "alert-danger" : "alert-info") small">@mensajeFechaTurno</div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarModalFechaTurno">Cancelar</button>
+                        <button type="button" class="btn btn-primary" @onclick="GuardarFechaTurno" disabled="@guardandoFechaTurno">
+                            @if (guardandoFechaTurno)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-check-lg me-1"></i>Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 
     <div class="row">
         <!-- Tarjeta de Registro de Asistencia -->
@@ -139,6 +204,62 @@
             </div>
         </div>
     </div>
+    
+    <!-- Accesos rápidos de Operaciones -->
+    <div class="row g-3 mt-2">
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm border-warning">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-warning"><i class="bi bi-cash-stack me-1"></i>Cierre de Caja</div>
+                        <small class="text-muted">Cerrar turno y entregar valores</small>
+                    </div>
+                    <button class="btn btn-warning" @onclick='() => NavigationManager.NavigateTo("/caja/cierre")'>
+                        <i class="bi bi-lock-fill me-1"></i> Ir
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm border-primary">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-primary"><i class="bi bi-cart-plus me-1"></i>Nueva Venta</div>
+                        <small class="text-muted">Crear factura de venta</small>
+                    </div>
+                    <button class="btn btn-primary" @onclick='() => NavigationManager.NavigateTo("/ventas")'>
+                        <i class="bi bi-plus-lg me-1"></i> Ir
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm border-info">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-info"><i class="bi bi-wallet2 me-1"></i>Cobros</div>
+                        <small class="text-muted">Registrar cobros de créditos</small>
+                    </div>
+                    <button class="btn btn-info text-white" @onclick='() => NavigationManager.NavigateTo("/cobros")'>
+                        <i class="bi bi-currency-dollar me-1"></i> Ir
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm border-secondary">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-secondary"><i class="bi bi-journal-check me-1"></i>Resumen Caja</div>
+                        <small class="text-muted">Informe de movimientos</small>
+                    </div>
+                    <button class="btn btn-secondary" @onclick='() => NavigationManager.NavigateTo("/informes/resumen-caja")'>
+                        <i class="bi bi-file-earmark-bar-graph me-1"></i> Ir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Tipos de cambio -->
     <div class="row mt-4">
@@ -154,18 +275,173 @@
     private bool creandoBackup = false;
     private string mensaje = "";
     
+    // Modal Fecha/Turno
+    private bool mostrarModalFechaTurno = false;
+    private DateTime? nuevaFechaCaja;
+    private int nuevoTurno = 1;
+    private bool guardandoFechaTurno = false;
+    private string mensajeFechaTurno = "";
+    private string passwordConfirmacion = "";
+    private List<SistemIA.Models.Caja> cajasDisponibles = new();
+    private int cajaSeleccionadaId;
+    
     [Inject]
     private NavigationManager NavigationManager { get; set; } = default!;
 
     // Sucursal y Caja
     private string? SucursalNombre;
-    private int? SucursalNumero;
+    private string? SucursalNumero;
     private int? CajaIdActiva;
     private DateTime? FechaCaja;
     private int? Turno;
     private string CajaIdText => CajaIdActiva?.ToString() ?? "—";
     private string FechaCajaText => FechaCaja?.ToString("dd/MM/yyyy") ?? "—";
     private string TurnoText => Turno?.ToString() ?? "—";
+
+    private async Task AbrirModalFechaTurno()
+    {
+        // Cargar todas las cajas disponibles
+        await using var db = await DbFactory.CreateDbContextAsync();
+        cajasDisponibles = await db.Cajas.OrderBy(c => c.IdCaja).ToListAsync();
+        
+        // Seleccionar la caja activa por defecto
+        cajaSeleccionadaId = CajaIdActiva ?? (cajasDisponibles.FirstOrDefault()?.IdCaja ?? 0);
+        
+        // Cargar datos de la caja seleccionada
+        var cajaActual = cajasDisponibles.FirstOrDefault(c => c.IdCaja == cajaSeleccionadaId);
+        nuevaFechaCaja = cajaActual?.FechaActualCaja ?? DateTime.Today;
+        nuevoTurno = cajaActual?.TurnoActual ?? 1;
+        
+        mensajeFechaTurno = "";
+        passwordConfirmacion = "";
+        mostrarModalFechaTurno = true;
+    }
+    
+    private void OnCajaModalChanged()
+    {
+        // Al cambiar la caja, cargar su fecha y turno actual
+        var caja = cajasDisponibles.FirstOrDefault(c => c.IdCaja == cajaSeleccionadaId);
+        if (caja != null)
+        {
+            nuevaFechaCaja = caja.FechaActualCaja ?? DateTime.Today;
+            nuevoTurno = caja.TurnoActual ?? 1;
+        }
+    }
+
+    private void CerrarModalFechaTurno()
+    {
+        mostrarModalFechaTurno = false;
+    }
+
+    private async Task GuardarFechaTurno()
+    {
+        if (cajaSeleccionadaId <= 0)
+        {
+            mensajeFechaTurno = "❌ Debe seleccionar una caja";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(passwordConfirmacion))
+        {
+            mensajeFechaTurno = "❌ Debe ingresar su contraseña para confirmar";
+            return;
+        }
+
+        guardandoFechaTurno = true;
+        StateHasChanged();
+
+        try
+        {
+            // Obtener usuario actual
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userName = authState.User.Identity?.Name;
+            
+            if (string.IsNullOrEmpty(userName))
+            {
+                mensajeFechaTurno = "❌ No se pudo identificar el usuario actual";
+                return;
+            }
+
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            // Buscar usuario por nombre
+            var usuario = await dbContext.Usuarios
+                .FirstOrDefaultAsync(u => u.UsuarioNombre == userName);
+            
+            if (usuario == null)
+            {
+                mensajeFechaTurno = "❌ Usuario no encontrado";
+                return;
+            }
+
+            // Verificar contraseña usando SHA256
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var passwordBytes = System.Text.Encoding.UTF8.GetBytes(passwordConfirmacion);
+            var passwordHashBytes = sha.ComputeHash(passwordBytes);
+            
+            if (usuario.ContrasenaHash == null || !passwordHashBytes.SequenceEqual(usuario.ContrasenaHash))
+            {
+                mensajeFechaTurno = "❌ Contraseña incorrecta";
+                return;
+            }
+
+            // Verificar permiso - El administrador (rol 1) siempre tiene acceso
+            // O verificar permisos específicos de cajas
+            var tienePermiso = usuario.Id_Rol == 1; // Administrador
+            if (!tienePermiso)
+            {
+                tienePermiso = await PermisosService.TienePermisoAsync(usuario.Id_Usu, "/configuracion/cajas", "EDIT");
+            }
+            if (!tienePermiso)
+            {
+                tienePermiso = await PermisosService.TienePermisoAsync(usuario.Id_Usu, "/caja/cierre", "EDIT");
+            }
+            
+            if (!tienePermiso)
+            {
+                mensajeFechaTurno = "❌ No tiene permisos para modificar la fecha y turno de caja";
+                return;
+            }
+
+            // Actualizar la caja seleccionada
+            var caja = await dbContext.Cajas.FindAsync(cajaSeleccionadaId);
+            
+            if (caja != null)
+            {
+                caja.FechaActualCaja = nuevaFechaCaja;
+                caja.TurnoActual = nuevoTurno;
+                await dbContext.SaveChangesAsync();
+                
+                // Si la caja actualizada es la caja activa del usuario, actualizar el panel
+                if (cajaSeleccionadaId == CajaIdActiva)
+                {
+                    FechaCaja = nuevaFechaCaja;
+                    Turno = nuevoTurno;
+                }
+                
+                mensajeFechaTurno = $"✓ Caja {cajaSeleccionadaId} actualizada correctamente";
+                await Task.Delay(1200);
+                CerrarModalFechaTurno();
+                
+                // Refrescar el panel por si cambió la caja activa
+                StateHasChanged();
+            }
+            else
+            {
+                mensajeFechaTurno = "❌ No se encontró la caja seleccionada";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeFechaTurno = $"❌ Error: {ex.Message}";
+        }
+        finally
+        {
+            guardandoFechaTurno = false;
+            passwordConfirmacion = ""; // Limpiar contraseña
+            StateHasChanged();
+        }
+    }
 
     private void NavigateToRegistroAsistencia()
     {
@@ -227,17 +503,29 @@ Los archivos están listos para ser utilizados.";
         userCount = await dbContext.Usuarios.CountAsync();
 
     var caja = await dbContext.Cajas.AsNoTracking()
-        .Include(c => c.Sucursal)
         .Where(c => c.CajaActual == 1)
         .FirstOrDefaultAsync()
            ?? await dbContext.Cajas.AsNoTracking()
-               .Include(c => c.Sucursal)
                .OrderBy(c => c.IdCaja)
                .FirstOrDefaultAsync();
     CajaIdActiva = caja?.IdCaja;
     FechaCaja = caja?.FechaActualCaja;
     Turno = caja?.TurnoActual;
-    SucursalNombre = caja?.Sucursal?.NombreEmpresa ?? caja?.Sucursal?.Nombre ?? "Sin sucursal";
-    SucursalNumero = caja?.Sucursal?.IdSucursal;
+    
+    // Obtener sucursal por IdSucursal de la caja
+    if (caja?.IdSucursal != null)
+    {
+        var sucursal = await dbContext.Sucursal.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == caja.IdSucursal);
+        SucursalNombre = sucursal?.NombreEmpresa ?? sucursal?.NombreSucursal ?? "Sin sucursal";
+        SucursalNumero = sucursal?.NumSucursal;
+    }
+    else
+    {
+        // Si no hay IdSucursal, obtener la primera sucursal
+        var sucursal = await dbContext.Sucursal.AsNoTracking().FirstOrDefaultAsync();
+        SucursalNombre = sucursal?.NombreEmpresa ?? sucursal?.NombreSucursal ?? "Sin sucursal";
+        SucursalNumero = sucursal?.NumSucursal;
+    }
     }
 }

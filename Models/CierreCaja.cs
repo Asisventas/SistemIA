@@ -54,6 +54,28 @@ namespace SistemIA.Models
         [Column(TypeName = "decimal(18,2)")]
         public decimal TotalAnulaciones { get; set; }
 
+        /// <summary>
+        /// Total de Notas de Crédito emitidas en el turno (devoluciones/descuentos)
+        /// </summary>
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal TotalNotasCredito { get; set; }
+
+        /// <summary>
+        /// Cantidad de Notas de Crédito emitidas en el turno
+        /// </summary>
+        public int CantNotasCredito { get; set; }
+
+        /// <summary>
+        /// Total de Compras en efectivo realizadas en el turno (egresos de caja)
+        /// </summary>
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal TotalComprasEfectivo { get; set; }
+
+        /// <summary>
+        /// Cantidad de Compras en efectivo realizadas en el turno
+        /// </summary>
+        public int CantComprasEfectivo { get; set; }
+
         // Totales por medio de pago
         [Column(TypeName = "decimal(18,2)")]
         public decimal TotalEfectivo { get; set; }

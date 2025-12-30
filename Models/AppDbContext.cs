@@ -72,6 +72,9 @@ namespace SistemIA.Models
         public DbSet<VentaPagoDetalle> VentasPagosDetalles { get; set; }
         public DbSet<VentaCuota> VentasCuotas { get; set; }
 
+        // Catálogo RUC DNIT
+        public DbSet<RucDnit> RucDnit { get; set; }
+
         // Sistema de Créditos y Remisiones
         public DbSet<CuentaPorCobrar> CuentasPorCobrar { get; set; }
         public DbSet<CuentaPorCobrarCuota> CuentasPorCobrarCuotas { get; set; }

@@ -80,5 +80,33 @@ Usar `CultureInfo.InvariantCulture` en los valores de inputs numéricos:
 | Self-contained (win-x64) | ~85-90 MB |
 | Framework-dependent | ~200-210 MB |
 
+## Scripts del Instalador
+
+### CrearBaseDatos.sql
+Script idempotente generado desde EF Core migrations. **Regenerar después de cada migración**:
+```powershell
+dotnet ef migrations script --idempotent -o "Installer\CrearBaseDatos.sql"
+```
+
+### LimpiarDatos.sql
+Script para limpiar datos transaccionales manteniendo catálogos.
+
+**Se ELIMINA:**
+- Ventas, Compras, Presupuestos, Notas de Crédito
+- Productos, Stock, Movimientos
+- Clientes (excepto ID 1), Proveedores (excepto ID 1)
+- Timbrados, Pagos, Cobros, Cierres de caja
+- Asistencias, Auditoría
+
+**NO se elimina (Catálogos):**
+- Sociedades, Sucursales, Cajas, Depósitos
+- Usuarios, Roles, Permisos
+- Monedas, Tipos IVA, Tipos Pago
+- Marcas, Clasificaciones
+- Catálogos geográficos
+- Actividades económicas
+- **RucDnit** (1.5M registros de DNIT)
+
 ## Fecha de documentación
-23 de diciembre de 2025
+28 de diciembre de 2025
+

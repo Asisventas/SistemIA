@@ -214,6 +214,14 @@ if (Test-Path $diagSource) {
     Write-Info "Script Diagnostico-SistemIA.bat no encontrado (opcional)"
 }
 
+# Copiar carpeta de Certificados HTTPS
+$certSource = Join-Path $installerPath "Certificados"
+if (Test-Path $certSource) {
+    $certDest = Join-Path $publishPath "Certificados"
+    Copy-Item -Path $certSource -Destination $certDest -Recurse -Force
+    Write-Success "Carpeta Certificados HTTPS incluida"
+}
+
 # ============================================================
 # PASO 6: Crear ZIP
 # ============================================================
@@ -248,6 +256,7 @@ Write-Host "    - Aplicacion self-contained (incluye .NET 8.0 runtime)" -Foregro
 Write-Host "    - Script Actualizar.bat para instalacion automatica" -ForegroundColor White
 Write-Host "    - Script Diagnostico-SistemIA.bat (menu de diagnostico)" -ForegroundColor White
 Write-Host "    - Script Reparar-Servicio.bat (si el servicio no inicia)" -ForegroundColor White
+Write-Host "    - Carpeta Certificados/ (para configurar HTTPS)" -ForegroundColor White
 Write-Host "    - Migraciones de BD incluidas (se aplican al iniciar)" -ForegroundColor White
 Write-Host "    - NO incluye appsettings.json (preserva configuracion)" -ForegroundColor White
 Write-Host ""

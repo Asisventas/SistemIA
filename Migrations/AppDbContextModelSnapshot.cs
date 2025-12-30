@@ -619,6 +619,12 @@ namespace SistemIA.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdCierreCaja"));
 
+                    b.Property<int>("CantComprasEfectivo")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CantNotasCredito")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("Diferencia")
                         .HasColumnType("decimal(18,2)");
 
@@ -652,6 +658,9 @@ namespace SistemIA.Migrations
                     b.Property<decimal>("TotalCobrosCredito")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<decimal>("TotalComprasEfectivo")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<decimal>("TotalEfectivo")
                         .HasColumnType("decimal(18,2)");
 
@@ -659,6 +668,9 @@ namespace SistemIA.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("TotalEsperado")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalNotasCredito")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("TotalOtros")
@@ -890,8 +902,8 @@ namespace SistemIA.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("TipoOperacion")
-                        .HasMaxLength(1)
-                        .HasColumnType("nvarchar(1)");
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
 
                     b.Property<DateTime?>("VencimientoTimbrado")
                         .HasColumnType("datetime2");
@@ -3440,6 +3452,32 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdRol");
 
                     b.ToTable("RolesModulosPermisos");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.RucDnit", b =>
+                {
+                    b.Property<string>("RUC")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("DV")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Estado")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("FechaActualizacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RazonSocial")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("RUC");
+
+                    b.ToTable("RucDnit");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Sociedad", b =>

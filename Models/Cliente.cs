@@ -110,7 +110,7 @@ namespace SistemIA.Models
         /// 3 = B2G (Business to Government) - Empresa a Gobierno  
         /// 4 = B2F (Business to Foreigner) - Empresa a Extranjero
         /// </summary>
-        [StringLength(1)]
+        [StringLength(3)]
         public string? TipoOperacion { get; set; }
 
         [ForeignKey(nameof(TipoOperacion))]

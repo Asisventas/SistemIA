@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @using SistemIA.Models
 @using SistemIA.Utils
+@using SistemIA.Services
 @using System.Linq
 @using System.Xml
 @using System.ComponentModel.DataAnnotations
@@ -13,6 +14,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject Sifen Sifen
+@inject IRucDnitService RucDnitService
 
 <h3 class="mb-4">✏️ Editar Cliente</h3>
 
@@ -807,6 +809,48 @@ END");
             return;
         }
         cliente.DV = RucHelper.CalcularDvRuc(cliente.RUC);
+        
+        // PASO 1: Buscar primero en RucDnit (1.5M registros locales - más rápido)
+        try
+        {
+            var datosLocal = await RucDnitService.ObtenerDatosRucAsync(cliente.RUC);
+            if (datosLocal.Nombre != null)
+            {
+                cliente.RazonSocial = datosLocal.Nombre;
+                if (datosLocal.DV.HasValue)
+                    cliente.DV = datosLocal.DV.Value;
+                
+                // Establecer tipo contribuyente según longitud RUC
+                if (cliente.RUC.Length >= 7)
+                {
+                    cliente.IdTipoContribuyente = 2; // Persona Jurídica
+                    cliente.NaturalezaReceptor = 2;
+                }
+                else
+                {
+                    cliente.IdTipoContribuyente = 1; // Persona Física
+                    cliente.NaturalezaReceptor = 1;
+                }
+                
+                // Establecer TipoDocumento = RUC
+                cliente.TipoDocumento = "RU";
+                cliente.NumeroDocumento = cliente.RUC;
+                
+                var estadoInfo = datosLocal.Estado ?? "ACTIVO";
+                cliente.Estado = estadoInfo.ToUpper().Contains("ACTIVO");
+                
+                mensajeRuc = $"✓ {cliente.RazonSocial} (DNIT local) - {estadoInfo}";
+                esErrorRuc = false;
+                StateHasChanged();
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEBUG] RucDnit no disponible: {ex.Message}");
+        }
+        
+        // PASO 2: Si no está en RucDnit, consultar SIFEN (API externa)
         try
         {
             await using var dbContext = await DbFactory.CreateDbContextAsync();
@@ -916,12 +960,15 @@ END");
                             cliente.IdTipoContribuyente = 1; // Persona Física
                             cliente.NaturalezaReceptor = 1;
                         }
+                        // Establecer TipoDocumento = RUC
+                        cliente.TipoDocumento = "RU";
+                        cliente.NumeroDocumento = cliente.RUC;
                         datosActualizados = true;
                     }
                     
                     if (datosActualizados)
                     {
-                        mensajeRuc = $"✓ {dRazCons?.Trim()} - {dDesEstCons}";
+                        mensajeRuc = $"✓ {dRazCons?.Trim()} (SIFEN) - {dDesEstCons}";
                         esErrorRuc = false;
                         StateHasChanged();
                     }

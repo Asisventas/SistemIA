@@ -116,6 +116,40 @@ else
         </div>
     </div>
     
+    @* Notas de Crédito (si hay) *@
+    @if (resumen.CantNotasCredito > 0)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card border-warning h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1 text-warning"><i class="bi bi-receipt-cutoff me-1"></i>Notas de Crédito</h6>
+                        <h3 class="mb-0 text-warning">-@resumen.NotasCredito.ToString("N0") ₲</h3>
+                        <small class="text-muted">@resumen.CantNotasCredito NC (devoluciones/descuentos)</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-secondary h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1 text-secondary"><i class="bi bi-plus-circle me-1"></i>Ingresos Brutos</h6>
+                        <h3 class="mb-0 text-secondary">@((resumen.VentasContado + resumen.CobrosCredito).ToString("N0")) ₲</h3>
+                        <small class="text-muted">Ventas contado + Cobros</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-dark text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1"><i class="bi bi-calculator me-1"></i>Neto Ingresos</h6>
+                        <h3 class="mb-0">@((resumen.VentasContado + resumen.CobrosCredito - resumen.NotasCredito).ToString("N0")) ₲</h3>
+                        <small>Ingresos - Devoluciones NC</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    
     <!-- Resumen General EGRESOS (Compras y Pagos) -->
     @if (resumen.ComprasContado > 0 || resumen.PagosProveedores > 0)
     {
@@ -193,6 +227,13 @@ else
                                 <tr class="text-danger">
                                     <td>Efectivo Pagos Proveedores</td>
                                     <td class="text-end fw-bold">- @resumen.EfectivoEgresosPagos.ToString("N0") ₲</td>
+                                </tr>
+                            }
+                            @if (resumen.NotasCredito > 0)
+                            {
+                                <tr class="text-warning">
+                                    <td>Devoluciones (NC)</td>
+                                    <td class="text-end fw-bold">- @resumen.NotasCredito.ToString("N0") ₲</td>
                                 </tr>
                             }
                             <tr class="table-primary">
@@ -749,6 +790,21 @@ else
                 .Where(p => p.IdCaja.HasValue) // Solo los que afectan caja
                 .ToListAsync();
 
+            // Obtener Notas de Crédito del período
+            var notasCreditoQuery = ctx.NotasCreditoVentas.AsNoTracking()
+                .Where(nc => nc.Fecha >= fechaDesde && nc.Fecha < fechaHasta && nc.Estado == "Confirmada");
+            
+            if (sucId.HasValue)
+                notasCreditoQuery = notasCreditoQuery.Where(nc => nc.IdSucursal == sucId.Value);
+            if (fIdCaja > 0)
+                notasCreditoQuery = notasCreditoQuery.Where(nc => nc.IdCaja == fIdCaja);
+            if (fTurno > 0)
+                notasCreditoQuery = notasCreditoQuery.Where(nc => nc.Turno == fTurno.ToString());
+            
+            var notasCredito = await notasCreditoQuery.ToListAsync();
+            var totalNotasCredito = notasCredito.Sum(nc => nc.Total);
+            var cantNotasCredito = notasCredito.Count;
+            
             // Calcular resumen
             var ventasActivas = ventas.Where(v => v.Estado != "Anulada").ToList();
             var ventasAnuladas = ventas.Where(v => v.Estado == "Anulada").ToList();
@@ -805,8 +861,16 @@ else
                 .Where(d => d.MedioPago == "TRANSFERENCIA" || d.MedioPago == "Transferencia")
                 .Sum(d => d.Monto);
 
-            // Calcular egresos de compras contado (efectivo)
-            var efectivoEgresosCompras = comprasContado.Sum(c => c.Total);
+            // Calcular egresos de compras contado en EFECTIVO (solo afectan caja física)
+            // Filtrar por MedioPago o FormaPago para identificar pagos en efectivo
+            var comprasEfectivo = comprasContado
+                .Where(c => string.IsNullOrEmpty(c.MedioPago) 
+                         || c.MedioPago.ToUpper() == "EFECTIVO" 
+                         || c.MedioPago.ToUpper() == "CONTADO"
+                         || (string.IsNullOrEmpty(c.MedioPago) && (c.FormaPago == null || c.FormaPago.ToUpper() == "EFECTIVO" || c.FormaPago.ToUpper() == "CONTADO")))
+                .ToList();
+            var efectivoEgresosCompras = comprasEfectivo.Sum(c => c.Total);
+            var cantComprasEfectivo = comprasEfectivo.Count;
             
             // Calcular egresos de pagos a proveedores
             var efectivoEgresosPagos = pagosProveedores
@@ -827,11 +891,17 @@ else
                 Anulaciones = ventasAnuladas.Sum(v => v.Total),
                 CantAnulaciones = ventasAnuladas.Count,
                 
+                // Notas de Crédito (devoluciones que salen de caja)
+                NotasCredito = totalNotasCredito,
+                CantNotasCredito = cantNotasCredito,
+                
                 // Compras y Pagos (EGRESOS)
                 ComprasContado = comprasContado.Sum(c => c.Total),
                 CantComprasContado = comprasContado.Count,
                 ComprasCredito = comprasCredito.Sum(c => c.Total),
                 CantComprasCredito = comprasCredito.Count,
+                ComprasEfectivo = efectivoEgresosCompras,
+                CantComprasEfectivo = cantComprasEfectivo,
                 PagosProveedores = totalPagosProveedores,
                 CantPagosProveedores = pagosProveedores.Count,
                 EfectivoEgresosCompras = efectivoEgresosCompras,
@@ -841,8 +911,8 @@ else
                 // Efectivo desde ComposicionCajaDetalle
                 EfectivoRecibidoVentas = efectivoRecibidoVentas,
                 VueltoEntregado = vueltoTotal,
-                // Efectivo neto = Ingresos - Vuelto - Egresos
-                EfectivoNetoCaja = efectivoRecibidoVentas - vueltoTotal + cobrosEfectivo - efectivoEgresosCompras - efectivoEgresosPagos,
+                // Efectivo neto = Ingresos - Vuelto - Egresos - Notas Crédito
+                EfectivoNetoCaja = efectivoRecibidoVentas - vueltoTotal + cobrosEfectivo - efectivoEgresosCompras - efectivoEgresosPagos - totalNotasCredito,
                 VentasEfectivo = efectivoRecibidoVentas - vueltoTotal, // Neto de efectivo en ventas
                 CobrosEfectivo = cobrosEfectivo,
                 
@@ -1078,6 +1148,15 @@ else
         sb.AppendLine($"<div class='col-3'><strong>Cobros:</strong> {resumen.CobrosCredito:N0} ₲</div>");
         sb.AppendLine($"<div class='col-3'><strong>Anulaciones:</strong> {resumen.Anulaciones:N0} ₲</div>");
         sb.AppendLine("</div>");
+        
+        if (resumen.NotasCredito > 0)
+        {
+            sb.AppendLine("<div class='row mb-3'>");
+            sb.AppendLine($"<div class='col-4'><span class='text-warning'><strong>Notas de Crédito:</strong> -{resumen.NotasCredito:N0} ₲</span> ({resumen.CantNotasCredito} NC)</div>");
+            sb.AppendLine($"<div class='col-4'><strong>Ingresos Brutos:</strong> {(resumen.VentasContado + resumen.CobrosCredito):N0} ₲</div>");
+            sb.AppendLine($"<div class='col-4'><strong>Neto Ingresos:</strong> {(resumen.VentasContado + resumen.CobrosCredito - resumen.NotasCredito):N0} ₲</div>");
+            sb.AppendLine("</div>");
+        }
 
         sb.AppendLine($"<div class='row mb-3 bg-light p-2'>");
         sb.AppendLine($"<div class='col-4'><strong>Efectivo Recibido:</strong> +{resumen.EfectivoRecibidoVentas:N0} ₲</div>");
@@ -1157,6 +1236,11 @@ else
         sb.AppendLine($"<tr><td>Cobros Crédito:</td><td class='right'>{resumen.CobrosCredito:N0}</td></tr>");
         sb.AppendLine($"<tr><td>  ({resumen.CantCobros} cobros)</td><td></td></tr>");
         sb.AppendLine($"<tr><td>Anulaciones:</td><td class='right'>{resumen.Anulaciones:N0}</td></tr>");
+        if (resumen.NotasCredito > 0)
+        {
+            sb.AppendLine($"<tr><td>Notas Crédito ({resumen.CantNotasCredito}):</td><td class='right'>-{resumen.NotasCredito:N0}</td></tr>");
+            sb.AppendLine($"<tr class='bold'><td>NETO INGRESOS:</td><td class='right'>{(resumen.VentasContado + resumen.CobrosCredito - resumen.NotasCredito):N0}</td></tr>");
+        }
         sb.AppendLine("</table>");
         sb.AppendLine("<div class='line'></div>");
 
@@ -1231,6 +1315,8 @@ else
         sb.AppendLine($"Ventas Crédito;{resumen.VentasCredito}");
         sb.AppendLine($"Cobros;{resumen.CobrosCredito}");
         sb.AppendLine($"Anulaciones;{resumen.Anulaciones}");
+        if (resumen.NotasCredito > 0)
+            sb.AppendLine($"Notas de Crédito (Devoluciones);{resumen.NotasCredito}");
         sb.AppendLine();
         sb.AppendLine("EFECTIVO EN CAJA");
         sb.AppendLine($"Efectivo Recibido (Ventas);{resumen.EfectivoRecibidoVentas}");
@@ -1283,6 +1369,14 @@ else
         ws.Cell(row, 1).Value = "Ventas Crédito:"; ws.Cell(row, 2).Value = resumen.VentasCredito; row++;
         ws.Cell(row, 1).Value = "Cobros:"; ws.Cell(row, 2).Value = resumen.CobrosCredito; row++;
         ws.Cell(row, 1).Value = "Anulaciones:"; ws.Cell(row, 2).Value = resumen.Anulaciones; row++;
+        if (resumen.NotasCredito > 0)
+        {
+            ws.Cell(row, 1).Value = "Notas de Crédito (Devoluciones):";
+            ws.Cell(row, 2).Value = resumen.NotasCredito;
+            ws.Cell(row, 1).Style.Font.FontColor = XLColor.Orange;
+            ws.Cell(row, 2).Style.Font.FontColor = XLColor.Orange;
+            row++;
+        }
         row++;
         
         ws.Cell(row, 1).Value = "EFECTIVO EN CAJA"; ws.Cell(row, 1).Style.Font.Bold = true; row++;
@@ -1355,6 +1449,11 @@ else
         public int CantCobros { get; set; }
         public decimal Anulaciones { get; set; }
         public int CantAnulaciones { get; set; }
+        
+        // Notas de Crédito (devoluciones/descuentos)
+        public decimal NotasCredito { get; set; }
+        public int CantNotasCredito { get; set; }
+        
         public decimal VentasEfectivo { get; set; }
         public decimal CobrosEfectivo { get; set; }
         public decimal TotalIngresos { get; set; }
@@ -1364,6 +1463,8 @@ else
         public int CantComprasContado { get; set; }
         public decimal ComprasCredito { get; set; }
         public int CantComprasCredito { get; set; }
+        public decimal ComprasEfectivo { get; set; }        // Solo compras pagadas en efectivo
+        public int CantComprasEfectivo { get; set; }        // Cantidad de compras en efectivo
         public decimal PagosProveedores { get; set; }
         public int CantPagosProveedores { get; set; }
         public decimal TotalEgresos { get; set; }
