@@ -67,6 +67,10 @@
             <th class="col-iva">IVA</th>
             <th class="col-costo text-end">Costo Gs</th>
             <th class="col-precio text-end">Precio Gs</th>
+            @if (MostrarPrecioMinisterio)
+            {
+              <th class="col-pmin text-end">P.Min.</th>
+            }
             <th class="col-stock text-end">Stock</th>
             <th class="col-marca">Marca</th>
             <th class="col-sucursal">Sucursal</th>
@@ -94,6 +98,10 @@
               <td class="col-iva">@p.TipoIva?.DescripcionCompleta</td>
               <td class="col-costo text-end">@(p.CostoUnitarioGs.HasValue ? p.CostoUnitarioGs.Value.ToString("N0") : "-")</td>
         <td class="col-precio text-end">@p.PrecioUnitarioGs.ToString("N0")</td>
+        @if (MostrarPrecioMinisterio)
+        {
+          <td class="col-pmin text-end">@(p.PrecioMinisterio?.ToString("N0") ?? "—")</td>
+        }
         <td class="col-stock text-end">
           @{
             var stocksDeposito = stocksPorProductoDeposito.ContainsKey(p.IdProducto) ? stocksPorProductoDeposito[p.IdProducto] : new List<(string Deposito, decimal Stock)>();
@@ -184,105 +192,40 @@
             <DataAnnotationsValidator />
             <ValidationSummary />
             <div class="row g-3">
-              <div class="col-md-4">
+              
+              @* ========== SECCIÓN: INFORMACIÓN BÁSICA ========== *@
+              <div class="col-12"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-info-circle me-1"></i>Información Básica</h6></div>
+              
+              <div class="col-md-3">
                 <label class="form-label">Código (dCodInt)</label>
                 <input type="text" class="form-control" value="@(string.IsNullOrEmpty(editando.CodigoInterno) ? "Se generará automáticamente" : editando.CodigoInterno)" disabled style="background-color: var(--bs-secondary-bg); cursor: not-allowed;" />
                 <div class="form-text">El sistema asignará el código al guardar.</div>
               </div>
-              <div class="col-md-8">
+              <div class="col-md-6">
                 <label class="form-label">Descripción (dDesProSer) *</label>
                 <InputText class="form-control" @bind-Value="editando.Descripcion" />
               </div>
-              <div class="col-md-4">
-                <label class="form-label">Unidad (cUniMed) *</label>
-                <select class="form-select" @bind="editando.UnidadMedidaCodigo">
-                  <option value="77">77 - Unidad</option>
-                  <option value="005">005 - Caja</option>
-                  <option value="003">003 - Kilogramo</option>
-                  <option value="001">001 - Metro</option>
-                  <option value="002">002 - Litro</option>
-                  <option value="006">006 - Paquete</option>
-                </select>
-                <div class="form-text">Códigos SIFEN más usados.</div>
+              <div class="col-md-3">
+                <label class="form-label">Código de Barras</label>
+                <InputText class="form-control" @bind-Value="editando.CodigoBarras" placeholder="GTIN-8/12/13/14" />
               </div>
-              <div class="col-md-4">
-                <label class="form-label">Tipo IVA *</label>
-                <select class="form-select" @bind="editando.IdTipoIva">
-                  @foreach (var iva in tiposIva)
-                  {
-                    <option value="@iva.IdTipoIva">@iva.DescripcionCompleta</option>
-                  }
-                </select>
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">Moneda predeterminada</label>
-                <select class="form-select" @bind="editando.IdMonedaPrecio">
-                  <option value="">(PYG por defecto)</option>
-                  @foreach (var m in monedas)
-                  {
-                    <option value="@m.IdMoneda">@m.Nombre (@m.CodigoISO)</option>
-                  }
-                </select>
+              
+              @* ========== SECCIÓN: CLASIFICACIÓN ========== *@
+              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-tags me-1"></i>Clasificación</h6></div>
+              
+              <div class="col-md-3">
+                <label class="form-label">Tipo Ítem</label>
+                <div class="input-group">
+                  <select class="form-select" @bind="editando.TipoItem">
+                    @foreach (var t in tiposItem)
+                    {
+                      <option value="@t.IdTipoItem">@t.Nombre@(t.EsGasto ? " (Gasto)" : string.Empty)</option>
+                    }
+                  </select>
+                  <button class="btn btn-outline-secondary" type="button" title="Nuevo tipo" @onclick="AbrirNuevoTipoItem">+</button>
+                </div>
               </div>
               <div class="col-md-3">
-                <label class="form-label">Costo Unitario Gs</label>
-                <input type="text" inputmode="numeric" class="form-control" value="@(editando.CostoUnitarioGs.HasValue ? ((long)editando.CostoUnitarioGs.Value).ToString(System.Globalization.CultureInfo.InvariantCulture) : "")" @onchange="OnCostoChanged" />
-                <div class="form-text">Costo de compra (referencial).</div>
-              </div>
-              <div class="col-md-2">
-                <label class="form-label">Factor</label>
-                <input type="text" inputmode="decimal" class="form-control" value="@(factorPrecio?.ToString(System.Globalization.CultureInfo.InvariantCulture))" @onchange="OnFactorChanged" placeholder="ej: 1.30" />
-                <div class="form-text">Multiplicador</div>
-              </div>
-              <div class="col-md-2">
-                <label class="form-label">% Margen</label>
-                <input type="text" inputmode="decimal" class="form-control" value="@(porcentajePrecio?.ToString(System.Globalization.CultureInfo.InvariantCulture))" @onchange="OnPorcentajeChanged" placeholder="ej: 30" />
-                <div class="form-text">Ganancia %</div>
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Precio Unitario Gs *</label>
-                <input type="text" inputmode="numeric" class="form-control" value="@((long)editando.PrecioUnitarioGs)" @onchange="OnPrecioChanged" />
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">Código de barras</label>
-                <InputText class="form-control" @bind-Value="editando.CodigoBarras" placeholder="8, 12, 13 o 14 dígitos" />
-                <div class="form-text">GTIN-8/12/13/14. Si no tiene, deje vacío.</div>
-              </div>
-              <div class="col-md-4">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" id="controlarVencimientoSwitch" @bind="editando.ControlarVencimiento" />
-                  <label class="form-check-label" for="controlarVencimientoSwitch">Controlar Vencimiento</label>
-                </div>
-                @if (editando.ControlarVencimiento)
-                {
-                  <label class="form-label">Fecha de Vencimiento</label>
-                  <InputDate class="form-control" @bind-Value="editando.FechaVencimiento" />
-                  <div class="form-text">Fecha límite para vender el producto.</div>
-                }
-              </div>
-              <div class="col-md-4">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" id="controladoRecetaSwitch" @bind="editando.ControladoReceta" />
-                  <label class="form-check-label" for="controladoRecetaSwitch">🏥 Controlado con Receta</label>
-                </div>
-                <div class="form-text">Requiere datos de receta médica al vender.</div>
-                <div class="form-check form-switch mb-2 mt-3">
-                  <input class="form-check-input" type="checkbox" id="permiteDecimalSwitch" @bind="editando.PermiteDecimal" />
-                  <label class="form-check-label" for="permiteDecimalSwitch">⚖️ Permite Venta Decimal</label>
-                </div>
-                <div class="form-text">Permite vender fracciones (ej: 0.5 kg, 1.25 litros).</div>
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">Foto</label>
-                <div class="d-flex align-items-center gap-3">
-                  <img src="@(previewDataUrl ?? (string.IsNullOrWhiteSpace(editando.Foto) ? "/images/placeholder-product.svg" : editando.Foto))" alt="preview" style="width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid #ddd" />
-                  <div>
-                    <InputFile class="form-control file-no-text" OnChange="OnFileSelected" accept="image/*" />
-                    <div class="form-text">PNG/JPG/WEBP hasta 2 MB.</div>
-                  </div>
-                </div>
-              </div>
-              <div class="col-md-4">
                 <label class="form-label">Marca</label>
                 <div class="input-group">
                   <select class="form-select" @bind="editando.IdMarca">
@@ -295,20 +238,7 @@
                   <button class="btn btn-outline-secondary" type="button" title="Nueva marca" @onclick="AbrirNuevaMarca">+</button>
                 </div>
               </div>
-              <div class="col-md-4">
-                <label class="form-label">Tipo Ítem</label>
-                <div class="input-group">
-                  <select class="form-select" @bind="editando.TipoItem">
-                    @foreach (var t in tiposItem)
-                    {
-                      <option value="@t.IdTipoItem">@t.Nombre@(t.EsGasto ? " (Gasto)" : string.Empty)</option>
-                    }
-                  </select>
-                  <button class="btn btn-outline-secondary" type="button" title="Nuevo tipo" @onclick="AbrirNuevoTipoItem">+</button>
-                </div>
-                <div class="form-text">Agregue tipos como "Gasto" para registrar egresos.</div>
-              </div>
-              <div class="col-md-4">
+              <div class="col-md-3">
                 <label class="form-label">Clasificación</label>
                 <div class="input-group">
                   <select class="form-select" @bind="editando.IdClasificacion">
@@ -320,12 +250,157 @@
                   </select>
                   <button class="btn btn-outline-secondary" type="button" title="Nueva clasificación" @onclick="AbrirNuevaClasificacion">+</button>
                 </div>
-                <div class="form-text">El cliente puede crear sus clasificaciones.</div>
               </div>
+              <div class="col-md-3">
+                <label class="form-label">Depósito Predeterminado</label>
+                <select class="form-select" @bind="editando.IdDepositoPredeterminado">
+                  <option value="">(Ninguno)</option>
+                  @foreach (var d in depositosCombo)
+                  {
+                    <option value="@d.IdDeposito">@d.Nombre (@(d.Sucursal?.NombreSucursal ?? $"Suc {d.IdSucursal}"))</option>
+                  }
+                </select>
+              </div>
+              
+              @* ========== SECCIÓN: UNIDAD E IMPUESTOS ========== *@
+              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-percent me-1"></i>Unidad e Impuestos</h6></div>
+              
+              <div class="col-md-4">
+                <label class="form-label">Unidad de Medida (cUniMed) *</label>
+                <select class="form-select" @bind="editando.UnidadMedidaCodigo">
+                  <option value="77">77 - Unidad</option>
+                  <option value="005">005 - Caja</option>
+                  <option value="003">003 - Kilogramo</option>
+                  <option value="001">001 - Metro</option>
+                  <option value="002">002 - Litro</option>
+                  <option value="006">006 - Paquete</option>
+                </select>
+                <div class="form-text">Códigos SIFEN más usados.</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Tipo de IVA *</label>
+                <select class="form-select" @bind="editando.IdTipoIva">
+                  @foreach (var iva in tiposIva)
+                  {
+                    <option value="@iva.IdTipoIva">@iva.DescripcionCompleta</option>
+                  }
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Moneda Predeterminada</label>
+                <select class="form-select" @bind="editando.IdMonedaPrecio">
+                  <option value="">(PYG por defecto)</option>
+                  @foreach (var m in monedas)
+                  {
+                    <option value="@m.IdMoneda">@m.Nombre (@m.CodigoISO)</option>
+                  }
+                </select>
+              </div>
+              
+              @* ========== SECCIÓN: PRECIOS ========== *@
+              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-currency-dollar me-1"></i>Precios</h6></div>
+              
+              <div class="col-md-3">
+                <label class="form-label">Costo Unitario Gs</label>
+                <input type="text" inputmode="numeric" class="form-control" value="@(editando.CostoUnitarioGs.HasValue ? ((long)editando.CostoUnitarioGs.Value).ToString(System.Globalization.CultureInfo.InvariantCulture) : "")" @onchange="OnCostoChanged" />
+                <div class="form-text">Costo de compra (referencial).</div>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Factor</label>
+                <input type="text" inputmode="decimal" class="form-control" value="@(factorPrecio?.ToString(System.Globalization.CultureInfo.InvariantCulture))" @onchange="OnFactorChanged" placeholder="ej: 1.30" />
+                <div class="form-text">Multiplicador</div>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">% Mark-up</label>
+                <input type="text" inputmode="decimal" class="form-control" value="@(porcentajePrecio?.ToString(System.Globalization.CultureInfo.InvariantCulture))" @onchange="OnPorcentajeChanged" placeholder="ej: 30" />
+                @{
+                  decimal? pctUtilidad = null;
+                  if (editando.CostoUnitarioGs.HasValue && editando.CostoUnitarioGs.Value > 0 && editando.PrecioUnitarioGs > 0)
+                  {
+                    pctUtilidad = ((editando.PrecioUnitarioGs - editando.CostoUnitarioGs.Value) / editando.PrecioUnitarioGs) * 100;
+                  }
+                  var colorUtilidad = pctUtilidad.HasValue ? (pctUtilidad.Value >= 30 ? "text-primary" : "text-danger") : "text-muted";
+                }
+                <small class="@colorUtilidad" title="% Utilidad (sobre precio venta)">Util: @(pctUtilidad.HasValue ? $"{pctUtilidad.Value:N1}%" : "—")</small>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Precio Unitario Gs *</label>
+                <input type="text" inputmode="numeric" class="form-control @(ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio ? "is-invalid" : "")" value="@((long)editando.PrecioUnitarioGs)" @onchange="OnPrecioChanged" />
+                @if (ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio)
+                {
+                  <div class="invalid-feedback">El precio no puede superar el Precio Ministerio (@editando.PrecioMinisterio.Value.ToString("N0") Gs)</div>
+                }
+              </div>
+              @if (MostrarPrecioMinisterio)
+              {
+                <div class="col-md-2">
+                  <label class="form-label">🏥 P. Ministerio</label>
+                  <input type="text" inputmode="numeric" class="form-control" value="@(editando.PrecioMinisterio.HasValue ? ((long)editando.PrecioMinisterio.Value).ToString() : "")" @onchange="OnPrecioMinisterioChanged" placeholder="Máx. regulado" />
+                </div>
+              }
+              
+              @* ========== SECCIÓN: OPCIONES DE VENTA ========== *@
+              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-cart-check me-1"></i>Opciones de Venta</h6></div>
+              
+              <div class="col-md-3">
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="permiteDecimalSwitch" @bind="editando.PermiteDecimal" />
+                  <label class="form-check-label" for="permiteDecimalSwitch">⚖️ Permite Venta Decimal</label>
+                </div>
+                <div class="form-text">Permite vender fracciones (ej: 0.5 kg).</div>
+              </div>
+              <div class="col-md-3">
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="controladoRecetaSwitch" @bind="editando.ControladoReceta" />
+                  <label class="form-check-label" for="controladoRecetaSwitch">🏥 Controlado con Receta</label>
+                </div>
+                <div class="form-text">Requiere datos de receta médica.</div>
+              </div>
+              <div class="col-md-3">
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="controlarVencimientoSwitch" @bind="editando.ControlarVencimiento" />
+                  <label class="form-check-label" for="controlarVencimientoSwitch">📅 Controlar Vencimiento</label>
+                </div>
+                @if (editando.ControlarVencimiento)
+                {
+                  <InputDate class="form-control form-control-sm" @bind-Value="editando.FechaVencimiento" />
+                }
+              </div>
+              <div class="col-md-3">
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" role="switch" id="activoSwitch" @bind="editando.Activo" />
+                  <label class="form-check-label" for="activoSwitch">✅ Activo</label>
+                </div>
+                <div class="form-text">Producto disponible para venta.</div>
+              </div>
+              <div class="col-md-3">
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="permiteVentaBajoCostoSwitch" @bind="editando.PermiteVentaBajoCosto" />
+                  <label class="form-check-label" for="permiteVentaBajoCostoSwitch">💰 Permite Venta Bajo Costo</label>
+                </div>
+                <div class="form-text">Permite vender por debajo del precio de costo.</div>
+              </div>
+              
+              @* ========== SECCIÓN: IMAGEN ========== *@
+              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-image me-1"></i>Imagen</h6></div>
+              
+              <div class="col-md-4">
+                <div class="d-flex align-items-center gap-3">
+                  <img src="@(previewDataUrl ?? (string.IsNullOrWhiteSpace(editando.Foto) ? "/images/placeholder-product.svg" : editando.Foto))" alt="preview" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #ddd" />
+                  <div>
+                    <InputFile class="form-control form-control-sm file-no-text" OnChange="OnFileSelected" accept="image/*" />
+                    <div class="form-text">PNG/JPG/WEBP hasta 2 MB.</div>
+                  </div>
+                </div>
+              </div>
+              
+              @* ========== SECCIÓN: COMBO ========== *@
+              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-boxes me-1"></i>Combo</h6></div>
+              
               <div class="col-md-12">
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" id="esComboSwitch" @bind="editando.EsCombo" />
-                  <label class="form-check-label" for="esComboSwitch">Utilizar combo</label>
+                  <label class="form-check-label" for="esComboSwitch">📦 Es un Combo</label>
                 </div>
                 @if (editando.EsCombo)
                 {
@@ -342,7 +417,7 @@
                           <div class="col-md-6">
                             <label class="form-label">Producto componente</label>
                             <div class="position-relative">
-                              <input class="form-control" placeholder="Tipee nombre o código..." value="@componenteSearch" @oninput="OnComponenteSearchChanged" @onfocus="ShowComponenteOpciones" @onblur="OnComponenteBlur" @onkeydown="OnComponenteKeyDown" />
+                              <input class="form-control" placeholder="Escriba nombre o código..." value="@componenteSearch" @oninput="OnComponenteSearchChanged" @onfocus="ShowComponenteOpciones" @onblur="OnComponenteBlur" @onkeydown="OnComponenteKeyDown" />
                               @if (mostrandoOpciones && componenteOpciones.Count > 0)
                               {
                                 <div class="list-group position-absolute w-100 shadow-sm bg-white" style="z-index:1000; max-height:260px; overflow:auto;">
@@ -380,8 +455,8 @@
                               <tr>
                                 <th style="width:80px">ID</th>
                                 <th>Nombre</th>
-                                <th class="text-end" style="width:140px">C. Descontar</th>
-                                <th style="width:120px">Unidad M.</th>
+                                <th class="text-end" style="width:140px">Cant. Descontar</th>
+                                <th style="width:120px">Unidad</th>
                                 <th style="width:70px"></th>
                               </tr>
                             </thead>
@@ -412,21 +487,6 @@
                     </div>
                   }
                 }
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">Depósito predeterminado</label>
-                <select class="form-select" @bind="editando.IdDepositoPredeterminado">
-                  <option value="">(Ninguno)</option>
-                  @foreach (var d in depositosCombo)
-                  {
-                    <option value="@d.IdDeposito">@d.Nombre (@(d.Sucursal?.NombreSucursal ?? $"Suc {d.IdSucursal}"))</option>
-                  }
-                </select>
-                <div class="form-text">Se usará por defecto para entradas/salidas y compras.</div>
-              </div>
-              <div class="col-md-4 form-check form-switch d-flex align-items-end">
-                <input class="form-check-input" type="checkbox" role="switch" id="activoSwitch" @bind="editando.Activo" />
-                <label class="form-check-label ms-2" for="activoSwitch">Activo</label>
               </div>
             </div>
           </EditForm>
@@ -614,6 +674,11 @@
   private bool mostrandoOpciones = false;
   private CancellationTokenSource? _searchCts;
   private int selectedOptionIndex = -1;
+  
+  // Configuración de farmacia (Precio Ministerio)
+  private Models.ConfiguracionSistema? _config;
+  private bool MostrarPrecioMinisterio => _config?.FarmaciaModoActivo == true && _config?.FarmaciaMostrarPrecioMinisterio == true;
+  private bool ValidarPrecioMinisterio => _config?.FarmaciaModoActivo == true && _config?.FarmaciaValidarPrecioMinisterio == true;
 
   protected override async Task OnInitializedAsync()
   {
@@ -636,6 +701,10 @@
   private async Task Cargar()
   {
     await using var db = await DbFactory.CreateDbContextAsync();
+    
+    // Cargar configuración del sistema (farmacia)
+    _config = await db.ConfiguracionSistema.FirstOrDefaultAsync();
+    
   // Asegurar columna de moneda predeterminada del producto (si no existe)
   try
   {
@@ -719,7 +788,7 @@ END");
       UndMedida = "UNIDAD",
       IdSucursal = sucursales.FirstOrDefault()?.Id ?? 0,
   IdClasificacion = null,
-  IdDepositoPredeterminado = depositosCombo.FirstOrDefault()?.IdDeposito ?? 1,
+  IdDepositoPredeterminado = 1,
   IdMonedaPrecio = monedas.FirstOrDefault(m => m.CodigoISO == "PYG")?.IdMoneda
     };
     undMedidaValue = "UNIDAD";
@@ -772,7 +841,16 @@ END");
       FechaCreacion = p.FechaCreacion,
       UsuarioCreacion = p.UsuarioCreacion,
       FechaModificacion = p.FechaModificacion,
-      UsuarioModificacion = p.UsuarioModificacion
+      UsuarioModificacion = p.UsuarioModificacion,
+      // Campo Precio Ministerio (farmacia)
+      PrecioMinisterio = p.PrecioMinisterio,
+      // Campos de descuentos y opciones de venta
+      PermiteDescuento = p.PermiteDescuento,
+      PermiteVentaBajoCosto = p.PermiteVentaBajoCosto,
+      UsaDescuentoEspecifico = p.UsaDescuentoEspecifico,
+      DescuentoAutomaticoProducto = p.DescuentoAutomaticoProducto,
+      DescuentoMaximoProducto = p.DescuentoMaximoProducto,
+      MargenAdicionalCajeroProducto = p.MargenAdicionalCajeroProducto
     };
     undMedidaValue = (p.UndMedida ?? "UNIDAD").Trim();
     pendingImage = null;
@@ -918,6 +996,19 @@ END");
     }
   }
 
+  private void OnPrecioMinisterioChanged(ChangeEventArgs e)
+  {
+    var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+    if (string.IsNullOrWhiteSpace(valorStr))
+    {
+      editando.PrecioMinisterio = null;
+    }
+    else if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precio))
+    {
+      editando.PrecioMinisterio = precio;
+    }
+  }
+
   private void CalcularFactorYPorcentajeDesdePrecios()
   {
     if (editando.CostoUnitarioGs.HasValue && editando.CostoUnitarioGs.Value > 0 && editando.PrecioUnitarioGs > 0)
@@ -942,6 +1033,14 @@ END");
       await JS.InvokeVoidAsync("alert", "Complete Descripción, Unidad SIFEN, UndMedida y Sucursal");
       return;
     }
+    
+    // Validar Precio Ministerio (solo si está activa la validación en configuración)
+    if (ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio.Value)
+    {
+      await JS.InvokeVoidAsync("alert", $"El Precio Unitario ({editando.PrecioUnitarioGs:N0} Gs) no puede superar el Precio Ministerio ({editando.PrecioMinisterio.Value:N0} Gs)");
+      return;
+    }
+    
     editando.UndMedida = undMedidaValue.Trim();
     await using var db = await DbFactory.CreateDbContextAsync();
 

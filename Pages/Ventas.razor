@@ -236,7 +236,7 @@
 <div class="card mb-3">
   <div class="card-body">
   <div class="row g-2 align-items-end">
-  <div class="col-md-6 position-relative">
+  <div class="@(PermitirVenderConDescuento ? "col-md-5" : "col-md-6") position-relative">
         <label class="form-label">Producto</label>
   <input class="form-control" placeholder="Buscar por nombre, código o código de barras" @bind="BuscarProducto" @bind:event="oninput" @onkeyup="OnProductoKeyUp" @onfocus="OnProductoFocus" @onblur="OnProductoBlur" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}" />
         @if (MostrarSugProductos && ProductosFiltrados.Any())
@@ -259,8 +259,8 @@
           </div>
         }
       </div>
-      <div class="col-md-2">
-        <label class="form-label">Cantidad @(ProductoPermiteDecimal ? "(decimal)" : "")</label>
+      <div class="@(PermitirVenderConDescuento ? "col-md-1" : "col-md-2")">
+        <label class="form-label">Cant. @(ProductoPermiteDecimal ? "(dec)" : "")</label>
   <input type="number" class="form-control" step="@(ProductoPermiteDecimal ? "any" : "1")" min="@(ProductoPermiteDecimal ? "0.001" : "1")" @bind="NuevoDetalle.Cantidad" @bind:event="oninput" @bind:after="@(() => OnCantidadChanged())" />
       </div>
       <div class="col-md-2">
@@ -274,6 +274,48 @@
           <input type="number" class="form-control" step="0.01" value="@NuevoDetalle.PrecioUnitario" readonly style="background-color: var(--bs-secondary-bg);" />
         }
       </div>
+      @if (PermitirVenderConDescuento)
+      {
+        <div class="col-md-2">
+          <label class="form-label">Desc. %</label>
+          <div class="input-group input-group-sm">
+            @if (PuedeModificarDescuento)
+            {
+              @* El descuento solo es editable si hay una regla configurada (producto, categoría o global) *@
+              @* Sin regla = campo deshabilitado, aunque esté en modo farmacia *@
+              <input type="number" class="form-control @(!string.IsNullOrEmpty(ErrorDescuento) ? "is-invalid" : "") @(!ProductoPermiteDescuento || !ProductoTieneDescuentoConfigurado ? "bg-light" : "")" 
+                     step="0.01" min="0" max="@(DescuentoMaximoActual ?? 100)"
+                     @bind="NuevoDetalleDescuentoPorcentaje" @bind:event="oninput" @bind:after="OnDescuentoChanged" 
+                     disabled="@(NuevoDetalle.IdProducto <= 0 || !ProductoPermiteDescuento || !ProductoTieneDescuentoConfigurado)" 
+                     title="@GetTituloDescuento()" />
+            }
+            else
+            {
+              <input type="number" class="form-control" 
+                     value="@NuevoDetalleDescuentoPorcentaje" readonly 
+                     style="background-color: var(--bs-secondary-bg);"
+                     title="No tiene permiso para modificar descuentos" />
+            }
+            <span class="input-group-text">%</span>
+          </div>
+          @if (!string.IsNullOrEmpty(ErrorDescuento))
+          {
+            <div class="invalid-feedback d-block small">@ErrorDescuento</div>
+          }
+          @if (!ProductoPermiteDescuento && NuevoDetalle.IdProducto > 0)
+          {
+            <div class="form-text text-muted small"><i class="bi bi-info-circle"></i> Sin descuento</div>
+          }
+          else if (!ProductoTieneDescuentoConfigurado && NuevoDetalle.IdProducto > 0 && ProductoPermiteDescuento)
+          {
+            <div class="form-text text-warning small"><i class="bi bi-exclamation-triangle"></i> Sin regla configurada</div>
+          }
+          @if (!PuedeModificarDescuento && NuevoDetalleDescuentoPorcentaje > 0)
+          {
+            <div class="form-text text-info small"><i class="bi bi-lock"></i> Automático</div>
+          }
+        </div>
+      }
       <div class="col-md-2 d-grid">
         <button type="button" class="btn btn-primary" @onclick="AgregarDetalleAsync">Agregar</button>
       </div>
@@ -317,6 +359,14 @@
           <th>Producto</th>
           <th class="text-end">Cantidad</th>
           <th class="text-end">Precio</th>
+          @if (ModoFarmaciaActivo)
+          {
+            <th class="text-end">P.Min.</th>
+          }
+          @if (PermitirVenderConDescuento)
+          {
+            <th class="text-end">Desc.%</th>
+          }
           <th class="text-end">Importe</th>
           <th class="text-end">TC</th>
           <th></th>
@@ -330,6 +380,32 @@
             <td>@prod?.Descripcion</td>
             <td class="text-end">@d.Cantidad.ToString("N2")</td>
             <td class="text-end">@FormatearPrecio(d.PrecioUnitario)</td>
+            @if (ModoFarmaciaActivo)
+            {
+              <td class="text-end">
+                @if (d.PrecioMinisterio.HasValue)
+                {
+                  <span class="text-info">@FormatearPrecio(d.PrecioMinisterio.Value)</span>
+                }
+                else
+                {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+            }
+            @if (PermitirVenderConDescuento)
+            {
+              <td class="text-end">
+                @if (d.PorcentajeDescuento.HasValue && d.PorcentajeDescuento.Value > 0)
+                {
+                  <span class="badge bg-success">@d.PorcentajeDescuento.Value.ToString("N2")%</span>
+                }
+                else
+                {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+            }
         <td class="text-end">@FormatearPrecio(d.Importe)</td>
       @{ 
         var prodTc = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
@@ -350,7 +426,7 @@
       </tbody>
       <tfoot>
         <tr>
-          <th colspan="3" class="text-end">Total</th>
+          <th colspan="@(PermitirVenderConDescuento ? 4 : 3)" class="text-end">Total</th>
           <th class="text-end">@FormatearPrecio(Cab?.Total ?? 0M)</th>
         </tr>
       </tfoot>
@@ -384,7 +460,7 @@
       @if (!ModoSoloVista)
       {
         <div class="d-flex justify-content-end gap-2 mt-3">
-          <button class="btn btn-success" @onclick="GuardarAsync"><i class="bi bi-check2-circle"></i> Guardar</button>
+          <button id="btnGuardarVenta" class="btn btn-success" @onclick="GuardarAsync"><i class="bi bi-check2-circle"></i> Guardar</button>
           <button class="btn btn-secondary" @onclick="@(() => Limpiar())">Limpiar</button>
         </div>
       }
@@ -536,7 +612,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @onclick="CerrarComposicionCaja">Cerrar</button>
-          <button type="button" class="btn btn-success" @onclick="ConfirmarComposicionCaja">Confirmar</button>
+          <button id="btnConfirmarComposicion" type="button" class="btn btn-success" @onclick="ConfirmarComposicionCaja">Confirmar</button>
         </div>
       </div>
     </div>

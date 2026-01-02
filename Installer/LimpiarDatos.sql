@@ -5,7 +5,7 @@
 -- 
 -- DATOS QUE SE ELIMINAN:
 --   - Ventas, Compras, Presupuestos y sus detalles
---   - Notas de crédito y sus detalles
+--   - Notas de crédito (ventas y compras) y sus detalles
 --   - Productos (y stock, movimientos, etc.)
 --   - Clientes (excepto ID 1 = Consumidor Final)
 --   - Proveedores (excepto ID 1 = Proveedor General)
@@ -23,6 +23,8 @@
 --   - Catálogos geográficos (Países, Departamentos, Ciudades)
 --   - Actividades económicas
 --   - **RucDnit** (catálogo de RUC de DNIT - 1.5M registros)
+--   - **ConfiguracionSistema** (modo farmacia, etc.)
+--   - **DescuentosCategorias** (descuentos automáticos)
 --
 -- ============================================
 
@@ -63,13 +65,23 @@ IF OBJECT_ID('Ventas', 'U') IS NOT NULL
 GO
 
 -- ============================================
--- 3. LIMPIAR TABLAS DE COMPRAS
+-- 3. LIMPIAR TABLAS DE COMPRAS Y NOTAS DE CRÉDITO COMPRAS
 -- ============================================
-PRINT '[3/15] Limpiando compras...'
+PRINT '[3/15] Limpiando compras y NC compras...'
 
+-- Detalles de notas de crédito compras
+IF OBJECT_ID('NotasCreditoComprasDetalles', 'U') IS NOT NULL
+    DELETE FROM NotasCreditoComprasDetalles;
+
+-- Notas de crédito compras
+IF OBJECT_ID('NotasCreditoCompras', 'U') IS NOT NULL
+    DELETE FROM NotasCreditoCompras;
+
+-- Detalles de compras
 IF OBJECT_ID('ComprasDetalles', 'U') IS NOT NULL
     DELETE FROM ComprasDetalles;
 
+-- Compras
 IF OBJECT_ID('Compras', 'U') IS NOT NULL
     DELETE FROM Compras;
 GO
@@ -236,6 +248,13 @@ IF OBJECT_ID('Compras', 'U') IS NOT NULL
 IF OBJECT_ID('ComprasDetalles', 'U') IS NOT NULL
     DBCC CHECKIDENT ('ComprasDetalles', RESEED, 0);
 
+-- Notas de Crédito Compras
+IF OBJECT_ID('NotasCreditoCompras', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('NotasCreditoCompras', RESEED, 0);
+
+IF OBJECT_ID('NotasCreditoComprasDetalles', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('NotasCreditoComprasDetalles', RESEED, 0);
+
 -- Presupuestos
 IF OBJECT_ID('Presupuestos', 'U') IS NOT NULL
     DBCC CHECKIDENT ('Presupuestos', RESEED, 0);
@@ -288,7 +307,7 @@ PRINT '[15/15] Limpieza completada'
 PRINT '============================================'
 PRINT ''
 PRINT 'Datos ELIMINADOS:'
-PRINT '  - Ventas, Compras, Presupuestos y NC'
+PRINT '  - Ventas, Compras, Presupuestos y NC (ventas y compras)'
 PRINT '  - Productos, Stock, Movimientos'
 PRINT '  - Clientes (excepto ID 1)'
 PRINT '  - Proveedores (excepto ID 1)'
@@ -304,6 +323,7 @@ PRINT '  - Marcas, Clasificaciones'
 PRINT '  - Catálogos geográficos'
 PRINT '  - Actividades económicas'
 PRINT '  - RucDnit (catálogo DNIT)'
+PRINT '  - ConfiguracionSistema, DescuentosCategorias'
 PRINT ''
 PRINT '============================================'
 GO

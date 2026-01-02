@@ -1,0 +1,127 @@
+@page "/notas-credito-compra/imprimir/{Id:int}"
+@page "/notas-credito-compra/imprimir/{Id:int}/{Formato}"
+@using SistemIA.Shared.Reportes
+@using SistemIA.Models
+@using Microsoft.EntityFrameworkCore
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<PageTitle>Imprimir Nota de Crédito Compra</PageTitle>
+
+<PageProtection Modulo="/notas-credito-compra" Permiso="VIEW">
+
+<div class="d-print-none mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-printer me-2"></i>Impresión de Nota de Crédito Compra #@Id
+        </h5>
+        <div class="btn-group">
+            <button class="btn btn-outline-secondary" @onclick="Volver">
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+            <button class="btn @(EsFormatoA4 ? "btn-primary" : "btn-outline-primary")" @onclick="() => CambiarFormato(true)">
+                <i class="bi bi-file-earmark me-1"></i>A4
+            </button>
+            <button class="btn @(!EsFormatoA4 ? "btn-primary" : "btn-outline-primary")" @onclick="() => CambiarFormato(false)">
+                <i class="bi bi-receipt me-1"></i>Ticket
+            </button>
+            <button class="btn btn-success" @onclick="Imprimir">
+                <i class="bi bi-printer me-1"></i>Imprimir
+            </button>
+            <button class="btn btn-outline-danger" @onclick="Cerrar">
+                <i class="bi bi-x-lg me-1"></i>Cerrar
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (EsFormatoA4)
+{
+    <KudeNotaCreditoCompra IdNotaCreditoCompra="@Id" />
+}
+else
+{
+    <div class="d-flex justify-content-center">
+        <NotaCreditoCompraTicketVistaPrevia NotaCredito="@notaCredito" 
+                                            Detalles="@detalles" 
+                                            Empresa="@empresa" 
+                                            MostrarBotonImprimir="false" />
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Parameter] public string? Formato { get; set; }
+    
+    private bool EsFormatoA4 => string.IsNullOrEmpty(Formato) || Formato?.ToLower() != "ticket";
+    
+    private NotaCreditoCompra? notaCredito;
+    private List<NotaCreditoCompraDetalle> detalles = new();
+    private Sociedad? empresa;
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!EsFormatoA4 && notaCredito == null)
+        {
+            await CargarDatosTicket();
+        }
+    }
+    
+    private async Task CargarDatosTicket()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        notaCredito = await ctx.NotasCreditoCompras
+            .AsNoTracking()
+            .Include(n => n.Proveedor)
+            .Include(n => n.Moneda)
+            .Include(n => n.CompraAsociada)
+            .FirstOrDefaultAsync(n => n.IdNotaCreditoCompra == Id);
+        
+        if (notaCredito != null)
+        {
+            detalles = await ctx.NotasCreditoComprasDetalles
+                .AsNoTracking()
+                .Include(d => d.Producto)
+                .Where(d => d.IdNotaCreditoCompra == Id)
+                .ToListAsync();
+        }
+        
+        empresa = await ctx.Sociedades.FirstOrDefaultAsync();
+    }
+    
+    private async Task CambiarFormato(bool a4)
+    {
+        var nuevoFormato = a4 ? "" : "ticket";
+        if (a4)
+        {
+            Nav.NavigateTo($"/notas-credito-compra/imprimir/{Id}");
+        }
+        else
+        {
+            if (notaCredito == null)
+            {
+                await CargarDatosTicket();
+            }
+            Nav.NavigateTo($"/notas-credito-compra/imprimir/{Id}/ticket");
+        }
+    }
+    
+    private void Volver()
+    {
+        Nav.NavigateTo("/notas-credito-compra/explorar");
+    }
+    
+    private async Task Imprimir()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
+    
+    private async Task Cerrar()
+    {
+        await JS.InvokeVoidAsync("close");
+    }
+}

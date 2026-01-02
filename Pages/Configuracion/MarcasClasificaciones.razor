@@ -1,0 +1,523 @@
+@page "/configuracion/marcas-clasificaciones"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using SistemIA.Components
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<PageTitle>Marcas y Clasificaciones - SistemIA</PageTitle>
+
+<div class="container-fluid">
+    <h3 class="mb-4"><i class="bi bi-tags-fill me-2"></i>Marcas y Clasificaciones</h3>
+
+    @if (!string.IsNullOrEmpty(_mensaje))
+    {
+        <div class="alert @(_esError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+            @_mensaje
+            <button type="button" class="btn-close" @onclick="() => _mensaje = null"></button>
+        </div>
+    }
+
+    <div class="row g-4">
+        <!-- Columna de Marcas -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center" style="background-color: var(--bar-bg); border-bottom: 1px solid var(--bar-border);">
+                    <h5 class="mb-0"><i class="bi bi-bookmark-fill me-2 text-primary"></i>Marcas</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="AbrirModalNuevaMarca">
+                        <i class="bi bi-plus-lg me-1"></i>Nueva
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    @if (_cargando)
+                    {
+                        <div class="text-center py-4">
+                            <span class="spinner-border spinner-border-sm"></span> Cargando...
+                        </div>
+                    }
+                    else if (!_marcas.Any())
+                    {
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-bookmark fs-1 d-block mb-2"></i>
+                            No hay marcas registradas
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="sticky-top" style="background-color: var(--bar-bg); color: var(--text-primary);">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre</th>
+                                        <th class="text-center" style="width: 100px;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var marca in _marcas.OrderBy(m => m.NombreMarca))
+                                    {
+                                        <tr>
+                                            <td><code>@marca.IdMarca</code></td>
+                                            <td class="fw-semibold">@marca.NombreMarca</td>
+                                            <td class="text-center">
+                                                <button class="btn btn-sm btn-outline-primary me-1" 
+                                                        @onclick="() => EditarMarca(marca)" title="Editar">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger" 
+                                                        @onclick="() => EliminarMarca(marca)" title="Eliminar">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+                <div class="card-footer small" style="background-color: var(--bar-bg); border-top: 1px solid var(--bar-border); color: var(--text-muted);">
+                    Total: @_marcas.Count marcas
+                </div>
+            </div>
+        </div>
+
+        <!-- Columna de Clasificaciones -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center" style="background-color: var(--bar-bg); border-bottom: 1px solid var(--bar-border);">
+                    <h5 class="mb-0"><i class="bi bi-folder-fill me-2 text-success"></i>Clasificaciones</h5>
+                    <button class="btn btn-sm btn-success" @onclick="AbrirModalNuevaClasificacion">
+                        <i class="bi bi-plus-lg me-1"></i>Nueva
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    @if (_cargando)
+                    {
+                        <div class="text-center py-4">
+                            <span class="spinner-border spinner-border-sm"></span> Cargando...
+                        </div>
+                    }
+                    else if (!_clasificaciones.Any())
+                    {
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-folder fs-1 d-block mb-2"></i>
+                            No hay clasificaciones registradas
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="sticky-top" style="background-color: var(--bar-bg); color: var(--text-primary);">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre</th>
+                                        <th>Descripción</th>
+                                        <th class="text-center">Activo</th>
+                                        <th class="text-center" style="width: 100px;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var clas in _clasificaciones.OrderBy(c => c.Nombre))
+                                    {
+                                        <tr class="@(!clas.Activo ? "table-secondary" : "")">
+                                            <td><code>@clas.IdClasificacion</code></td>
+                                            <td class="fw-semibold">@clas.Nombre</td>
+                                            <td class="text-muted small text-truncate" style="max-width: 150px;" title="@clas.Descripcion">
+                                                @(clas.Descripcion ?? "—")
+                                            </td>
+                                            <td class="text-center">
+                                                @if (clas.Activo)
+                                                {
+                                                    <span class="badge bg-success">Sí</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">No</span>
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                <button class="btn btn-sm btn-outline-primary me-1" 
+                                                        @onclick="() => EditarClasificacion(clas)" title="Editar">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger" 
+                                                        @onclick="() => EliminarClasificacion(clas)" title="Eliminar">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+                <div class="card-footer small" style="background-color: var(--bar-bg); border-top: 1px solid var(--bar-border); color: var(--text-muted);">
+                    Total: @_clasificaciones.Count clasificaciones (@_clasificaciones.Count(c => c.Activo) activas)
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Marca -->
+@if (_mostrarModalMarca)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: var(--bar-bg); border-bottom: 1px solid var(--bar-border);">
+                    <h5 class="modal-title">
+                        <i class="bi bi-bookmark me-2 text-primary"></i>
+                        @(_marcaEdicion.IdMarca == 0 ? "Nueva Marca" : "Editar Marca")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModalMarca"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Nombre de la Marca <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_marcaEdicion.NombreMarca" 
+                               maxlength="50" placeholder="Ej: Samsung, Apple, etc." />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalMarca">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarMarca" disabled="@_guardando">
+                        @if (_guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Clasificación -->
+@if (_mostrarModalClasificacion)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: var(--bar-bg); border-bottom: 1px solid var(--bar-border);">
+                    <h5 class="modal-title">
+                        <i class="bi bi-folder me-2 text-success"></i>
+                        @(_clasificacionEdicion.IdClasificacion == 0 ? "Nueva Clasificación" : "Editar Clasificación")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModalClasificacion"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Nombre <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_clasificacionEdicion.Nombre" 
+                               maxlength="100" placeholder="Ej: Electrónica, Alimentos, etc." />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea class="form-control" @bind="_clasificacionEdicion.Descripcion" 
+                                  maxlength="200" rows="2" placeholder="Descripción opcional..."></textarea>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="clasActivo" 
+                               @bind="_clasificacionEdicion.Activo" />
+                        <label class="form-check-label" for="clasActivo">Activo</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalClasificacion">Cancelar</button>
+                    <button type="button" class="btn btn-success" @onclick="GuardarClasificacion" disabled="@_guardando">
+                        @if (_guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private bool _cargando = true;
+    private bool _guardando = false;
+    private string? _mensaje;
+    private bool _esError = false;
+
+    private List<Marca> _marcas = new();
+    private List<Clasificacion> _clasificaciones = new();
+
+    // Modal Marca
+    private bool _mostrarModalMarca = false;
+    private Marca _marcaEdicion = new();
+
+    // Modal Clasificación
+    private bool _mostrarModalClasificacion = false;
+    private Clasificacion _clasificacionEdicion = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _cargando = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _marcas = await db.Marcas.ToListAsync();
+            _clasificaciones = await db.Clasificaciones.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error al cargar datos: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    // ========== MARCAS ==========
+
+    private void AbrirModalNuevaMarca()
+    {
+        _marcaEdicion = new Marca();
+        _mostrarModalMarca = true;
+    }
+
+    private void EditarMarca(Marca marca)
+    {
+        _marcaEdicion = new Marca
+        {
+            IdMarca = marca.IdMarca,
+            NombreMarca = marca.NombreMarca
+        };
+        _mostrarModalMarca = true;
+    }
+
+    private void CerrarModalMarca()
+    {
+        _mostrarModalMarca = false;
+        _marcaEdicion = new Marca();
+    }
+
+    private async Task GuardarMarca()
+    {
+        if (string.IsNullOrWhiteSpace(_marcaEdicion.NombreMarca))
+        {
+            _mensaje = "El nombre de la marca es requerido";
+            _esError = true;
+            return;
+        }
+
+        _guardando = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Verificar duplicados
+            var existe = await db.Marcas
+                .AnyAsync(m => m.NombreMarca.ToLower() == _marcaEdicion.NombreMarca.ToLower() 
+                            && m.IdMarca != _marcaEdicion.IdMarca);
+            if (existe)
+            {
+                _mensaje = "Ya existe una marca con ese nombre";
+                _esError = true;
+                return;
+            }
+
+            if (_marcaEdicion.IdMarca == 0)
+            {
+                db.Marcas.Add(_marcaEdicion);
+            }
+            else
+            {
+                var existente = await db.Marcas.FindAsync(_marcaEdicion.IdMarca);
+                if (existente != null)
+                {
+                    existente.NombreMarca = _marcaEdicion.NombreMarca;
+                }
+            }
+
+            await db.SaveChangesAsync();
+            _mensaje = "✅ Marca guardada correctamente";
+            _esError = false;
+            CerrarModalMarca();
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error al guardar: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task EliminarMarca(Marca marca)
+    {
+        // Verificar si tiene productos asociados
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var tieneProductos = await db.Productos.AnyAsync(p => p.IdMarca == marca.IdMarca);
+        
+        if (tieneProductos)
+        {
+            _mensaje = $"No se puede eliminar la marca '{marca.NombreMarca}' porque tiene productos asociados";
+            _esError = true;
+            return;
+        }
+
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar la marca '{marca.NombreMarca}'?"))
+            return;
+
+        try
+        {
+            var entity = await db.Marcas.FindAsync(marca.IdMarca);
+            if (entity != null)
+            {
+                db.Marcas.Remove(entity);
+                await db.SaveChangesAsync();
+                _mensaje = "✅ Marca eliminada correctamente";
+                _esError = false;
+                await CargarDatos();
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error al eliminar: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    // ========== CLASIFICACIONES ==========
+
+    private void AbrirModalNuevaClasificacion()
+    {
+        _clasificacionEdicion = new Clasificacion { Activo = true };
+        _mostrarModalClasificacion = true;
+    }
+
+    private void EditarClasificacion(Clasificacion clas)
+    {
+        _clasificacionEdicion = new Clasificacion
+        {
+            IdClasificacion = clas.IdClasificacion,
+            Nombre = clas.Nombre,
+            Descripcion = clas.Descripcion,
+            Activo = clas.Activo
+        };
+        _mostrarModalClasificacion = true;
+    }
+
+    private void CerrarModalClasificacion()
+    {
+        _mostrarModalClasificacion = false;
+        _clasificacionEdicion = new Clasificacion();
+    }
+
+    private async Task GuardarClasificacion()
+    {
+        if (string.IsNullOrWhiteSpace(_clasificacionEdicion.Nombre))
+        {
+            _mensaje = "El nombre de la clasificación es requerido";
+            _esError = true;
+            return;
+        }
+
+        _guardando = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Verificar duplicados
+            var existe = await db.Clasificaciones
+                .AnyAsync(c => c.Nombre.ToLower() == _clasificacionEdicion.Nombre.ToLower() 
+                            && c.IdClasificacion != _clasificacionEdicion.IdClasificacion);
+            if (existe)
+            {
+                _mensaje = "Ya existe una clasificación con ese nombre";
+                _esError = true;
+                return;
+            }
+
+            if (_clasificacionEdicion.IdClasificacion == 0)
+            {
+                _clasificacionEdicion.FechaCreacion = DateTime.Now;
+                db.Clasificaciones.Add(_clasificacionEdicion);
+            }
+            else
+            {
+                var existente = await db.Clasificaciones.FindAsync(_clasificacionEdicion.IdClasificacion);
+                if (existente != null)
+                {
+                    existente.Nombre = _clasificacionEdicion.Nombre;
+                    existente.Descripcion = _clasificacionEdicion.Descripcion;
+                    existente.Activo = _clasificacionEdicion.Activo;
+                }
+            }
+
+            await db.SaveChangesAsync();
+            _mensaje = "✅ Clasificación guardada correctamente";
+            _esError = false;
+            CerrarModalClasificacion();
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error al guardar: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task EliminarClasificacion(Clasificacion clas)
+    {
+        // Verificar si tiene productos asociados
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var tieneProductos = await db.Productos.AnyAsync(p => p.IdClasificacion == clas.IdClasificacion);
+        
+        if (tieneProductos)
+        {
+            _mensaje = $"No se puede eliminar la clasificación '{clas.Nombre}' porque tiene productos asociados";
+            _esError = true;
+            return;
+        }
+
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar la clasificación '{clas.Nombre}'?"))
+            return;
+
+        try
+        {
+            var entity = await db.Clasificaciones.FindAsync(clas.IdClasificacion);
+            if (entity != null)
+            {
+                db.Clasificaciones.Remove(entity);
+                await db.SaveChangesAsync();
+                _mensaje = "✅ Clasificación eliminada correctamente";
+                _esError = false;
+                await CargarDatos();
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error al eliminar: {ex.Message}";
+            _esError = true;
+        }
+    }
+}

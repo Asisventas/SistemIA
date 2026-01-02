@@ -121,30 +121,33 @@ namespace SistemIA.Services
 
         /// <summary>
         /// Obtiene el tipo de operación según el cliente
+        /// Regla: RUC >= 50,000,000 = B2B (empresas/extranjeros), RUC < 50,000,000 = B2C (clientes/personas físicas)
         /// </summary>
         private int ObtenerTipoOperacion(Cliente cliente)
         {
+            // Si el cliente tiene tipo de operación explícito, usarlo
             if (!string.IsNullOrEmpty(cliente.TipoOperacion))
             {
                 return cliente.TipoOperacion switch
                 {
-                    "1" => 1, // B2B - Business to Business
-                    "2" => 2, // B2C - Business to Consumer
-                    "3" => 3, // B2G - Business to Government
-                    "4" => 4, // B2F - Business to Final Consumer
+                    "1" => 1, // B2B - Empresa a Empresa/Extranjero
+                    "2" => 2, // B2C - Empresa a Cliente
+                    "3" => 3, // B2G - Empresa a Gobierno
+                    "4" => 4, // B2F - Empresa a Extranjero
                     _ => 1    // Por defecto B2B
                 };
             }
 
-            // Determinación automática basada en el tipo de contribuyente
-            if (cliente.IdTipoContribuyente == 1) // Asumiendo que 1 = Empresa
+            // Determinación automática basada en el valor del RUC
+            // RUC >= 50,000,000 = B2B (empresas y extranjeros)
+            // RUC < 50,000,000 = B2C (personas físicas/clientes)
+            if (!string.IsNullOrEmpty(cliente.RUC) && long.TryParse(cliente.RUC, out long rucNumerico))
             {
-                return 1; // B2B
+                return rucNumerico >= 50_000_000 ? 1 : 2; // 1=B2B, 2=B2C
             }
-            else
-            {
-                return 2; // B2C
-            }
+
+            // Fallback: si no se puede determinar, usar B2C (más común)
+            return 2; // B2C
         }
 
         /// <summary>
@@ -245,10 +248,10 @@ CAMPOS OPCIONALES:
         {
             return tipo switch
             {
-                1 => "B2B - Business to Business",
-                2 => "B2C - Business to Consumer", 
-                3 => "B2G - Business to Government",
-                4 => "B2F - Business to Final Consumer",
+                1 => "B2B - Empresa a Empresa/Extranjero",
+                2 => "B2C - Empresa a Cliente", 
+                3 => "B2G - Empresa a Gobierno",
+                4 => "B2F - Empresa a Extranjero",
                 _ => "No definido"
             };
         }

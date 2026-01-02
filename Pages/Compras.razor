@@ -46,9 +46,6 @@
             <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RefrescarPaginaAsync" title="Refrescar">
                 <i class="bi bi-arrow-clockwise"></i>
             </button>
-            <button type="button" class="btn btn-sm btn-warning" @onclick="MostrarModalReciclarCompraAsync" title="Eliminar compra y editar datos para nueva carga">
-                <i class="bi bi-recycle"></i> Reciclar
-            </button>
             <button type="button" class="btn btn-sm btn-primary" @onclick="NuevaCompraAsync">
                 <i class="bi bi-plus-circle"></i> Nueva Compra
             </button>
@@ -259,15 +256,15 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary" title="Refrescar productos" @onclick="RefrescarProductosAsync">
                         <i class="bi bi-arrow-clockwise"></i>
                     </button>
-                    <a href="/productos" class="btn btn-sm btn-outline-primary" title="Nuevo producto" target="_blank">
+                    <button type="button" class="btn btn-sm btn-outline-primary" title="Nuevo producto" @onclick="AbrirModalNuevoProducto">
                         <i class="bi bi-plus-circle"></i>
-                    </a>
+                    </button>
                 </span>
             </label>
             <div class="position-relative">
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input class="form-control" placeholder="Buscar por parte del nombre" @bind="BuscarProducto" @bind:event="oninput" @onkeyup="OnProductoKeyUp" @onfocus="OnProductoFocus" @onblur="OnProductoBlur" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}" />
+                    <input id="inputBuscarProductoCompras" class="form-control" placeholder="Buscar por parte del nombre" @bind="BuscarProducto" @bind:event="oninput" @onkeyup="OnProductoKeyUp" @onfocus="OnProductoFocus" @onblur="OnProductoBlur" autocomplete="off" />
                 </div>
                 @if (MostrarSugProductos && ProductosFiltrados.Any())
                 {
@@ -289,27 +286,33 @@
         </div>
         <div class="col-md-1">
             <label class="form-label">Cantidad</label>
-            <input type="number" step="any" class="form-control" @bind="CantidadInput" @bind:event="oninput" />
+            <input id="inputCantidadCompras" type="number" step="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" min="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" class="form-control" @bind="CantidadInput" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
         </div>
         <div class="col-md-1">
             <label class="form-label">Precio</label>
-            <input type="number" step="0.01" class="form-control" @bind="PrecioInput" @bind:event="oninput" />
+            <input id="inputPrecioCompras" type="number" step="0.01" class="form-control" @bind="PrecioInput" @bind:event="oninput" />
         </div>
         <div class="col-md-1">
             <label class="form-label">Factor</label>
-            <input type="number" step="any" class="form-control" 
+            <input id="inputFactorCompras" type="number" step="any" class="form-control" 
                    value="@(FactorMultiplicador?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
                    @onchange="OnFactorInputChanged" placeholder="1.30" />
         </div>
         <div class="col-md-1">
-            <label class="form-label">% Margen</label>
-            <input type="number" step="any" class="form-control" 
+            <label class="form-label">% Mark-up</label>
+            <input id="inputMarkupCompras" type="number" step="any" class="form-control" 
                    value="@(PorcentajeMargen?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
-                   @onchange="OnPorcentajeInputChanged" placeholder="30" />
+                   @onchange="OnPorcentajeInputChanged" placeholder="30" title="Porcentaje sobre el costo" />
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">Pre. Venta <span class="text-danger">*</span></label>
+            <input id="inputPrecioVentaCompras" type="number" step="1" class="form-control" 
+                   value="@(PrecioVentaCalculado?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                   @onchange="OnPrecioVentaInputChanged" placeholder="0" title="Precio de venta al público" />
         </div>
         <div class="col-md-1">
             <label class="form-label">Depósito</label>
-            <select class="form-select" @bind="IdDepositoItemSeleccionado">
+            <select id="inputDepositoCompras" class="form-select" @bind="IdDepositoItemSeleccionado">
                 <option value="">-- Seleccione --</option>
                 @foreach (var d in Depositos)
                 {
@@ -317,23 +320,29 @@
                 }
             </select>
         </div>
-        <div class="col-md-2">
-            <label class="form-label">
-                <input class="form-check-input me-1" type="checkbox" id="controlarVencItemSwitch" @bind="ControlarVencimientoItem" />
-                Vencimiento
-            </label>
-            @if (ControlarVencimientoItem)
-            {
-                <input type="date" class="form-control" @bind="FechaVencimientoItemSeleccionada" />
-            }
-            else
-            {
-                <input type="date" class="form-control" disabled placeholder="dd/mm/aaaa" />
-            }
-        </div>
-        <div class="col-md-2 d-flex flex-column">
+        @if (MostrarPrecioMinisterioEnCompras)
+        {
+            <div class="col-md-1">
+                <label class="form-label">🏥 P.Min.</label>
+                <input id="inputPrecioMinisterioCompras" type="number" step="1" class="form-control" @bind="PrecioMinisterioInput" @bind:event="oninput" placeholder="0" title="Precio Ministerio (máximo regulado)" />
+            </div>
+        }
+        @{
+            var productoSeleccionado = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var productoRequiereVencimiento = productoSeleccionado?.ControlarVencimiento == true;
+        }
+        @if (productoRequiereVencimiento)
+        {
+            <div class="col-md-2">
+                <label class="form-label">
+                    <i class="bi bi-calendar-x me-1 text-warning"></i>Vencimiento
+                </label>
+                <input id="inputVencimientoCompras" type="date" class="form-control" @bind="FechaVencimientoItemSeleccionada" />
+            </div>
+        }
+        <div class="col-md-1 d-flex flex-column">
             <label class="form-label">&nbsp;</label>
-            <button type="button" class="btn btn-primary" @onclick="AgregarDetalleAsync">
+            <button id="btnAgregarDetalleCompras" type="button" class="btn btn-primary" @onclick="AgregarDetalleAsync" @onkeydown="OnBtnAgregarKeyDown" @onkeydown:preventDefault="@_prevenirTabEnAgregar">
                 <i class="bi bi-plus-circle me-1"></i>Agregar
             </button>
         </div>
@@ -353,6 +362,19 @@
                 <span>Exenta: <strong>@FormatearPrecio(NuevoDetalle.Exenta)</strong></span>
                 <span>|</span>
                 <span>Total línea: <strong class="text-primary">@FormatearPrecio(NuevoDetalle.Importe)</strong></span>
+                @{
+                    decimal? pctUtilidadCompra = null;
+                    if (PrecioInput > 0 && PrecioVentaCalculado.HasValue && PrecioVentaCalculado.Value > 0)
+                    {
+                        pctUtilidadCompra = ((PrecioVentaCalculado.Value - PrecioInput) / PrecioVentaCalculado.Value) * 100;
+                    }
+                    var colorUtilidadCompra = pctUtilidadCompra.HasValue ? (pctUtilidadCompra.Value >= 30 ? "text-success" : "text-danger") : "text-muted";
+                }
+                @if (pctUtilidadCompra.HasValue)
+                {
+                    <span>|</span>
+                    <span class="@colorUtilidadCompra" title="% Utilidad (sobre precio venta)"><strong>Util: @pctUtilidadCompra.Value.ToString("N1")%</strong></span>
+                }
                 @if (FactorMultiplicador.HasValue && FactorMultiplicador.Value > 0 && PrecioVentaCalculado.HasValue)
                 {
                     <span>|</span>
@@ -372,24 +394,30 @@
         </div>
     </div>
 
-    <table class="table table-sm mt-3">
-        <thead>
-        <tr>
-            <th>Producto</th>
-            <th>Depósito</th>
-            <th>Vencimiento</th>
-            <th class="text-end">Cantidad</th>
-            <th class="text-end">Pre. Unit. Compra</th>
-            <th class="text-end">Importe Compra</th>
-            <th class="text-end">Factor</th>
-            <th class="text-end">% Margen</th>
-            <th class="text-end">Pre. Unit. Venta</th>
-            <th class="text-end">TC</th>
-            <th>IVA</th>
-            <th></th>
-        </tr>
-        </thead>
-        <tbody>
+    <div class="row g-3 mt-2">
+        <div class="col-lg-8">
+            <table class="table table-sm">
+                <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>Depósito</th>
+                    <th>Vencimiento</th>
+                    <th class="text-end">Cantidad</th>
+                    <th class="text-end">Pre. Unit. Compra</th>
+                    <th class="text-end">Importe Compra</th>
+                    <th class="text-end">Factor</th>
+                    <th class="text-end">% Mark-up</th>
+                    <th class="text-end">Pre. Unit. Venta</th>
+                    @if (MostrarPrecioMinisterioEnCompras)
+                    {
+                        <th class="text-end">🏥 P.Ministerio</th>
+                    }
+                    <th class="text-end">TC</th>
+                    <th>IVA</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
         @foreach (var d in Detalles)
         {
             var prod = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
@@ -435,15 +463,46 @@
                 <td class="text-end">
                     @if (d.PorcentajeMargen.HasValue)
                     {
-                        var colorMargen = d.PorcentajeMargen.Value >= 30m ? "bg-primary" : "bg-danger";
-                        <span class="badge @colorMargen text-white">@d.PorcentajeMargen.Value.ToString("N2")%</span>
+                        <span class="badge bg-secondary text-white">@d.PorcentajeMargen.Value.ToString("N1")%</span>
                     }
                     else
                     {
                         <span class="text-muted">—</span>
                     }
+                    @{
+                      decimal? pctUtilidadDet = null;
+                      if (d.PrecioUnitario > 0 && d.PrecioVentaRef > 0)
+                      {
+                        pctUtilidadDet = ((d.PrecioVentaRef - d.PrecioUnitario) / d.PrecioVentaRef) * 100;
+                      }
+                      var colorUtilidadDet = pctUtilidadDet.HasValue ? (pctUtilidadDet.Value >= 30m ? "text-primary" : "text-danger") : "text-muted";
+                    }
+                    <br/><small class="@colorUtilidadDet">Ut: @(pctUtilidadDet.HasValue ? $"{pctUtilidadDet.Value:N1}%" : "—")</small>
                 </td>
                 <td class="text-end text-info fw-semibold">@FormatearPrecio(d.PrecioVentaRef)</td>
+                @if (MostrarPrecioMinisterioEnCompras)
+                {
+                    // Usar precio ministerio del detalle si existe, sino del producto
+                    var precioMin = d.PrecioMinisterio ?? prod?.PrecioMinisterio;
+                    var precioVenta = d.PrecioVentaRef;
+                    var superaPrecio = ValidarPrecioMinisterio && precioMin.HasValue && precioVenta > precioMin.Value;
+                    <td class="text-end">
+                        @if (precioMin.HasValue)
+                        {
+                            <span class="@(superaPrecio ? "text-danger fw-bold" : "text-warning")">
+                                @FormatearPrecio(precioMin.Value)
+                                @if (superaPrecio)
+                                {
+                                    <i class="bi bi-exclamation-triangle-fill" title="El precio de venta supera el precio ministerio"></i>
+                                }
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
+                }
                 @{ var codOriTc = Monedas.FirstOrDefault(m => m.IdMoneda == (prod?.IdMonedaPrecio ?? Compra.IdMoneda))?.CodigoISO ?? string.Empty;
                     var codDesTc = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda)?.CodigoISO ?? string.Empty;
                     var txTxt = d.CambioDelDia.HasValue ? ($"{GetCurrencyFlag(codOriTc)} {codOriTc}/{codDesTc} {GetCurrencyFlag(codDesTc)} {d.CambioDelDia.Value.ToString("N4")}") : "—"; }
@@ -456,11 +515,10 @@
         }
         </tbody>
     </table>
-
-    <div class="row g-3 mt-2">
-        @if (!string.IsNullOrWhiteSpace(ProductoImagenUrl))
-        {
-            <div class="col-md-3">
+        </div>
+        <div class="col-lg-4">
+            @if (!string.IsNullOrWhiteSpace(ProductoImagenUrl))
+            {
                 <div class="card mb-3 border-primary">
                     <div class="card-header bg-primary text-white py-2">
                         <small><i class="bi bi-image"></i> Imagen del Producto</small>
@@ -469,9 +527,7 @@
                         <img src="@ProductoImagenUrl" alt="Producto" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;" />
                     </div>
                 </div>
-            </div>
-        }
-        <div class="col-md-3 ms-auto">
+            }
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
@@ -501,22 +557,42 @@
                     </div>
                 </div>
             </div>
+            @if (!ModoSoloVista)
+            {
+                <div class="d-flex justify-content-end gap-2 mt-3 align-items-center">
+                    <small class="text-muted me-2" title="Atajo de teclado"><kbd>F2</kbd> Guardar</small>
+                    <button class="btn btn-success" type="submit"><i class="bi bi-check2-circle"></i> Guardar</button>
+                    <button class="btn btn-secondary" type="button" @onclick="Limpiar">Limpiar</button>
+                </div>
+            }
+            <div class="mt-3 text-muted small">
+                <span title="Total en letras según moneda seleccionada">@TotalActualEnLetras</span>
+            </div>
         </div>
-    </div>
-
-    @if (!ModoSoloVista)
-    {
-        <div class="mt-3 d-flex gap-2">
-            <button class="btn btn-success" type="submit">Guardar</button>
-            <button class="btn btn-secondary" type="button" @onclick="Limpiar">Limpiar</button>
-        </div>
-    }
-
-    <div class="mt-3 text-muted">
-        <span title="Total en letras según moneda seleccionada">@TotalActualEnLetras</span>
     </div>
 </EditForm>
 </fieldset>
+
+@* Sección de administración avanzada (solo visible en modo visualización para usuarios con permisos de editar y eliminar) *@
+@if (ModoSoloVista && PuedeReciclar)
+{
+    <div class="mt-4">
+        <details class="border rounded p-2 bg-light">
+            <summary class="text-muted small cursor-pointer" style="cursor:pointer;">
+                <i class="bi bi-gear"></i> Opciones avanzadas de administración
+            </summary>
+            <div class="mt-3 p-2">
+                <div class="alert alert-warning py-2 small">
+                    <i class="bi bi-exclamation-triangle"></i> <strong>Precaución:</strong> 
+                    Esta acción eliminará la compra de la base de datos y preparará los datos para editar y guardar como nueva.
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-warning" @onclick="MostrarModalReciclarCompraAsync">
+                    <i class="bi bi-recycle"></i> Reciclar Compra #@Compra.IdCompra
+                </button>
+            </div>
+        </details>
+    </div>
+}
 
 @* Modal para crear nuevo proveedor rápido *@
 @if (_mostrarModalProveedor)
@@ -594,6 +670,170 @@
     </div>
 }
 
+@* Modal para crear nuevo producto rápido *@
+@if (_mostrarModalProducto)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);" @onclick="CerrarModalProducto">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-box-seam-fill me-2"></i>Nuevo Producto Rápido</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalProducto"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_errorProducto))
+                    {
+                        <div class="alert alert-danger py-2">@_errorProducto</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_successProducto))
+                    {
+                        <div class="alert alert-success py-2">@_successProducto</div>
+                    }
+
+                    <div class="row g-3">
+                        @* Información Básica *@
+                        <div class="col-12">
+                            <h6 class="text-success border-bottom pb-1 mb-2"><i class="bi bi-info-circle me-1"></i>Información Básica</h6>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Código (dCodInt)</label>
+                            <input type="text" class="form-control form-control-sm bg-secondary-subtle" value="Se generará automáticamente" readonly />
+                            <small class="text-muted">El sistema asignará el código al guardar.</small>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Descripción (dDesProSer) <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_nuevoProducto.Descripcion" placeholder="Nombre del producto" maxlength="200" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Código de Barras</label>
+                            <input type="text" class="form-control" @bind="_nuevoProducto.CodigoBarras" placeholder="GTIN-8/12/13/14" maxlength="14" />
+                        </div>
+
+                        @* Clasificación *@
+                        <div class="col-12 mt-3">
+                            <h6 class="text-success border-bottom pb-1 mb-2"><i class="bi bi-tags me-1"></i>Clasificación</h6>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo Ítem</label>
+                            <select class="form-select" @bind="_nuevoProducto.TipoItem">
+                                <option value="1">Producto</option>
+                                <option value="2">Servicio</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Marca</label>
+                            <select class="form-select" @bind="_nuevoProducto.IdMarca">
+                                <option value="">(Sin marca)</option>
+                                @foreach (var m in _marcasModal)
+                                {
+                                    <option value="@m.IdMarca">@m.NombreMarca</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Clasificación</label>
+                            <select class="form-select" @bind="_nuevoProducto.IdClasificacion">
+                                <option value="">(Sin clasificación)</option>
+                                @foreach (var c in _clasificacionesModal)
+                                {
+                                    <option value="@c.IdClasificacion">@c.Nombre</option>
+                                }
+                            </select>
+                        </div>
+
+                        @* Unidad e Impuestos *@
+                        <div class="col-12 mt-3">
+                            <h6 class="text-success border-bottom pb-1 mb-2"><i class="bi bi-percent me-1"></i>Unidad e Impuestos</h6>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo de IVA <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="_nuevoProducto.IdTipoIva">
+                                @foreach (var iva in _tiposIvaModal)
+                                {
+                                    <option value="@iva.IdTipoIva">@iva.Descripcion (@iva.Porcentaje%)</option>
+                                }
+                            </select>
+                        </div>
+
+                        @* Opciones de Venta *@
+                        <div class="col-12 mt-3">
+                            <h6 class="text-success border-bottom pb-1 mb-2"><i class="bi bi-toggles me-1"></i>Opciones de Venta</h6>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="npPermiteDecimal" @bind="_nuevoProducto.PermiteDecimal" />
+                                <label class="form-check-label" for="npPermiteDecimal">
+                                    <i class="bi bi-123 me-1"></i>Permite Venta Decimal
+                                </label>
+                            </div>
+                            <small class="text-muted">Ej: 0.5 kg</small>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="npControladoReceta" @bind="_nuevoProducto.ControladoReceta" />
+                                <label class="form-check-label" for="npControladoReceta">
+                                    <i class="bi bi-file-medical me-1"></i>Controlado con Receta
+                                </label>
+                            </div>
+                            <small class="text-muted">Requiere receta médica</small>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="npControlarVenc" @bind="_nuevoProducto.ControlarVencimiento" />
+                                <label class="form-check-label" for="npControlarVenc">
+                                    <i class="bi bi-calendar-x me-1"></i>Controlar Vencimiento
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="npActivo" @bind="_nuevoProducto.Activo" />
+                                <label class="form-check-label" for="npActivo">
+                                    <i class="bi bi-check-circle me-1"></i>Activo
+                                </label>
+                            </div>
+                            <small class="text-muted">Disponible para venta</small>
+                        </div>
+
+                        @* Imagen *@
+                        <div class="col-12 mt-3">
+                            <h6 class="text-success border-bottom pb-1 mb-2"><i class="bi bi-image me-1"></i>Imagen</h6>
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="border rounded p-2 bg-light" style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;">
+                                    @if (!string.IsNullOrEmpty(_previewImagenProducto))
+                                    {
+                                        <img src="@_previewImagenProducto" style="max-width:100%;max-height:100%;object-fit:contain;" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-image text-muted" style="font-size:2rem;"></i>
+                                    }
+                                </div>
+                                <div>
+                                    <InputFile OnChange="OnImagenProductoChange" accept="image/png,image/jpeg,image/webp" class="form-control form-control-sm" style="max-width:250px;" />
+                                    <small class="text-muted d-block">PNG/JPG/WEBP hasta 2 MB.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalProducto">Cancelar</button>
+                    <button type="button" class="btn btn-success" @onclick="GuardarNuevoProductoAsync" disabled="@_guardandoProducto">
+                        @if (_guardandoProducto)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* Modal para reciclar compra (eliminar y editar) *@
 @if (_mostrarModalReciclar)
 {
@@ -619,11 +859,11 @@
                         </ul>
                     </div>
                     
-                    <p class="text-muted small">Solo el usuario <strong>admin</strong> puede realizar esta acción.</p>
+                    <p class="text-muted small">Requiere: perfil <strong>administrador</strong> con permisos de <strong>Editar</strong> y <strong>Eliminar</strong> en Compras.</p>
                     
                     <div class="mb-3">
-                        <label class="form-label">Contraseña del administrador (admin)</label>
-                        <input type="password" class="form-control" @bind="_passwordReciclar" placeholder="Ingrese la contraseña de admin" />
+                        <label class="form-label">Ingrese su contraseña para confirmar</label>
+                        <input type="password" class="form-control" @bind="_passwordReciclar" placeholder="Su contraseña" />
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -649,6 +889,15 @@
     private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
     private int? _usuarioId;
     private string? _usuarioNombre;
+    private bool _esUsuarioAdmin; // Si el usuario actual tiene rol administrador
+    private bool _tienePermisoEditar; // Permiso EDIT en módulo Compras
+    private bool _tienePermisoEliminar; // Permiso DELETE en módulo Compras
+    private bool PuedeReciclar => _esUsuarioAdmin && _tienePermisoEditar && _tienePermisoEliminar;
+    
+    // Configuración de farmacia (Precio Ministerio)
+    private SistemIA.Models.ConfiguracionSistema? _configSistema;
+    private bool MostrarPrecioMinisterioEnCompras => _configSistema?.FarmaciaModoActivo == true && _configSistema?.FarmaciaMostrarPrecioMinisterioEnCompras == true;
+    private bool ValidarPrecioMinisterio => _configSistema?.FarmaciaModoActivo == true && _configSistema?.FarmaciaValidarPrecioMinisterio == true;
 
     private SistemIA.Models.Compra Compra = new() { Fecha = DateTime.Today, TipoDocumento = "FACTURA" };
     private List<SistemIA.Models.CompraDetalle> Detalles = new();
@@ -718,6 +967,18 @@
     private string _passwordReciclar = string.Empty;
     private int _idCompraOriginalReciclar; // ID de la compra que se está reciclando
 
+    // Variables para modal de nuevo producto rápido
+    private bool _mostrarModalProducto;
+    private bool _guardandoProducto;
+    private string? _errorProducto;
+    private string? _successProducto;
+    private SistemIA.Models.Producto _nuevoProducto = new();
+    private List<SistemIA.Models.Marca> _marcasModal = new();
+    private List<SistemIA.Models.Clasificacion> _clasificacionesModal = new();
+    private List<SistemIA.Models.TiposIva> _tiposIvaModal = new();
+    private IBrowserFile? _imagenProductoPendiente;
+    private string? _previewImagenProducto;
+
     private decimal Gravado10; private decimal Gravado5; private decimal Exenta; private decimal IVATotal10; private decimal IVATotal5;
     private decimal CantidadInput { get => NuevoDetalle.Cantidad; set { NuevoDetalle.Cantidad = value; RecalcularNuevoDetalle(); } }
     private decimal PrecioInput { get => NuevoDetalle.PrecioUnitario; set { NuevoDetalle.PrecioUnitario = value; RecalcularNuevoDetalle(); } }
@@ -729,7 +990,6 @@
 
     // Variables para depósito y vencimiento del item
     private int? IdDepositoItemSeleccionado;
-    private bool ControlarVencimientoItem = false;
     private DateTime? FechaVencimientoItemSeleccionada;
     
     // Factor multiplicador para calcular precio de venta
@@ -738,8 +998,20 @@
     private decimal? PrecioVentaCalculado;
     private bool _actualizandoFactorPorcentaje = false;
     
+    // Precio Ministerio para el producto actual (entrada)
+    private decimal? PrecioMinisterioInput;
+    
+    // Control para prevenir el comportamiento por defecto de Tab en el botón Agregar
+    private bool _prevenirTabEnAgregar = false;
+    
     // Diccionario para guardar el factor aplicado a cada producto (para actualizar al guardar)
     private Dictionary<int, decimal> _factoresPorProducto = new();
+    
+    // Diccionario para guardar el precio ministerio aplicado a cada producto (para actualizar al guardar)
+    private Dictionary<int, decimal> _preciosMinisterioPorProducto = new();
+    
+    // Diccionario para guardar el precio de venta ingresado directamente (para actualizar al guardar)
+    private Dictionary<int, decimal> _preciosVentaPorProducto = new();
 
     private string FormatoMonedaActual
     {
@@ -797,13 +1069,28 @@
         }
         catch { }
         
-        // Verificar permiso EDIT para cambiar caja
+        // Verificar permisos EDIT y DELETE para cambiar caja y reciclar
         if (_usuarioId.HasValue)
         {
             PuedeCambiarCaja = await PermisosService.TienePermisoAsync(_usuarioId.Value, "/compras", "EDIT");
+            _tienePermisoEditar = PuedeCambiarCaja; // EDIT ya se verificó
+            _tienePermisoEliminar = await PermisosService.TienePermisoAsync(_usuarioId.Value, "/compras", "DELETE");
+            
+            // Verificar si el usuario tiene rol de administrador (Id_Rol = 1 típicamente)
+            await using var ctxUser = await DbFactory.CreateDbContextAsync();
+            var usuarioActual = await ctxUser.Usuarios
+                .Include(u => u.Rol)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id_Usu == _usuarioId.Value);
+            _esUsuarioAdmin = usuarioActual?.Rol?.NombreRol?.ToLower() == "administrador" 
+                           || usuarioActual?.Rol?.NombreRol?.ToLower() == "admin"
+                           || usuarioActual?.Id_Rol == 1;
         }
         
         await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        // Cargar configuración del sistema (farmacia)
+        _configSistema = await ctx.ConfiguracionSistema.AsNoTracking().FirstOrDefaultAsync();
 
         // Opcional: asegurar monedas EUR/CLP/UYU/COP/MXN
     await EnsureMonedasAsync(ctx);
@@ -824,11 +1111,9 @@
             .SqlQuery<ProvSifenItem>(
                 $"SELECT IdProveedor, RazonSocial, RUC, DV FROM ProveedoresSifen ORDER BY RazonSocial")
             .ToListAsync();
-    // Solo Principal y Almacen
+    // Cargar todos los depósitos activos, ordenados por ID
     Depositos = await ctx.Depositos.AsNoTracking()
-        .Where(d => d.Nombre.ToLower().Contains("principal") || 
-                    d.Nombre.ToLower().Contains("almacen"))
-        .OrderBy(d => d.Nombre)
+        .OrderBy(d => d.IdDeposito)
         .ToListAsync();
     // Solo mostrar ARS, USD, BRL y PYG
     var codsMonedas = new[] { "ARS", "USD", "BRL", "PYG" };
@@ -1357,7 +1642,7 @@ END
             PrecioUnitario = NuevoDetalle.PrecioUnitario,
             CambioDelDia = NuevoDetalle.CambioDelDia,
             IdDepositoItem = depositoItem,
-            FechaVencimientoItem = ControlarVencimientoItem ? FechaVencimientoItemSeleccionada : null
+            FechaVencimientoItem = prod.ControlarVencimiento ? FechaVencimientoItemSeleccionada : null
         };
         // Precio de venta de referencia convertido a moneda de la compra
     try
@@ -1417,18 +1702,50 @@ END
         det.PrecioVentaRef = Math.Round(det.PrecioUnitario * FactorMultiplicador.Value, 0);
     }
     
+    // Guardar precio de venta ingresado directamente (para actualizar al guardar)
+    if (PrecioVentaCalculado.HasValue && PrecioVentaCalculado.Value > 0)
+    {
+        _preciosVentaPorProducto[prod.IdProducto] = PrecioVentaCalculado.Value;
+        det.PrecioVentaRef = PrecioVentaCalculado.Value;
+    }
+    
+    // Guardar precio ministerio en el detalle y en el diccionario para actualizar al guardar
+    if (MostrarPrecioMinisterioEnCompras && PrecioMinisterioInput.HasValue && PrecioMinisterioInput.Value > 0)
+    {
+        det.PrecioMinisterio = PrecioMinisterioInput.Value;
+        _preciosMinisterioPorProducto[prod.IdProducto] = PrecioMinisterioInput.Value;
+    }
+    else if (prod.PrecioMinisterio.HasValue)
+    {
+        // Si no se ingresó, usar el del producto
+        det.PrecioMinisterio = prod.PrecioMinisterio;
+    }
+    
+    // Validar si el precio de venta supera el precio ministerio (solo si está activa la validación)
+    var precioMinValidar = det.PrecioMinisterio ?? prod.PrecioMinisterio;
+    if (ValidarPrecioMinisterio && precioMinValidar.HasValue && det.PrecioVentaRef > 0)
+    {
+        if (det.PrecioVentaRef > precioMinValidar.Value)
+        {
+            Error = $"⚠️ Advertencia: El precio de venta ({det.PrecioVentaRef:N0} Gs) supera el Precio Ministerio ({precioMinValidar.Value:N0} Gs) para '{prod.Descripcion}'";
+        }
+    }
+    
     // Resetear el editor de línea
     NuevoDetalle = new SistemIA.Models.CompraDetalle { Cantidad = 1, PrecioUnitario = 0 };
     IdDepositoItemSeleccionado = null;
-    ControlarVencimientoItem = false;
     FechaVencimientoItemSeleccionada = null;
     FactorMultiplicador = null;
     PorcentajeMargen = null;
     PrecioVentaCalculado = null;
+    PrecioMinisterioInput = null;
     RecalcularNuevoDetalle();
     // Limpiar el buscador y cerrar sugerencias al agregar
     BuscarProducto = string.Empty;
     MostrarSugProductos = false;
+    
+    // Hacer foco en el input de búsqueda de producto para agregar otro
+    await JS.InvokeVoidAsync("eval", "document.getElementById('inputBuscarProductoCompras')?.focus()");
     }
 
     private void QuitarDetalle(SistemIA.Models.CompraDetalle det)
@@ -1446,6 +1763,20 @@ END
     IVATotal5 = Detalles.Sum(d => d.IVA5);
         Compra.Total = Detalles.Sum(d => d.Importe);
         StateHasChanged();
+    }
+
+    private void ValidarCantidadCompra()
+    {
+        // Si el producto no permite decimales, redondear a entero
+        if (!NuevoDetalle.PermiteDecimal)
+        {
+            NuevoDetalle.Cantidad = Math.Max(1, Math.Round(NuevoDetalle.Cantidad, 0));
+        }
+        else
+        {
+            NuevoDetalle.Cantidad = Math.Max(0.01m, NuevoDetalle.Cantidad);
+        }
+        RecalcularNuevoDetalle();
     }
 
     private void RecalcularNuevoDetalle()
@@ -1553,6 +1884,55 @@ END
         }
         RecalcularPrecioVentaPorFactor();
         _actualizandoFactorPorcentaje = false;
+    }
+
+    private void OnPrecioVentaInputChanged(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString();
+        if (decimal.TryParse(valor, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precioVenta) && precioVenta > 0)
+        {
+            PrecioVentaCalculado = precioVenta;
+            
+            // Calcular Factor y Markup basados en el precio de venta
+            if (NuevoDetalle.PrecioUnitario > 0)
+            {
+                _actualizandoFactorPorcentaje = true;
+                
+                // Factor = PrecioVenta / Costo
+                FactorMultiplicador = Math.Round(precioVenta / NuevoDetalle.PrecioUnitario, 4);
+                
+                // Markup = (Factor - 1) * 100
+                PorcentajeMargen = Math.Round((FactorMultiplicador.Value - 1) * 100, 2);
+                
+                _actualizandoFactorPorcentaje = false;
+            }
+        }
+        else
+        {
+            PrecioVentaCalculado = null;
+            FactorMultiplicador = null;
+            PorcentajeMargen = null;
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Maneja el Tab en el botón Agregar: agrega el detalle y vuelve al campo de producto.
+    /// </summary>
+    private async Task OnBtnAgregarKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Tab") 
+        {
+            _prevenirTabEnAgregar = false;
+            return;
+        }
+        
+        _prevenirTabEnAgregar = true;
+        
+        // Agregar el detalle
+        await AgregarDetalleAsync();
+        
+        // El foco ya se mueve automáticamente en AgregarDetalleAsync al input de búsqueda
     }
 
     private async Task OnMonedaChangedAsync(ChangeEventArgs e)
@@ -1924,11 +2304,27 @@ END
                 }
                 prod.CostoUnitarioGs = Math.Round(costoParaProducto, 4);
                 
+                // Si se ingresó precio de venta directamente, usarlo y calcular factor
+                if (_preciosVentaPorProducto.TryGetValue(d.IdProducto, out var precioVentaGuardado) && precioVentaGuardado > 0)
+                {
+                    prod.PrecioUnitarioGs = Math.Round(precioVentaGuardado, 0);
+                    // Calcular y guardar el factor basado en el precio de venta
+                    if (costoParaProducto > 0)
+                    {
+                        prod.FactorMultiplicador = Math.Round(precioVentaGuardado / costoParaProducto, 4);
+                    }
+                }
                 // Si se especificó factor multiplicador, actualizar Factor y PrecioUnitarioGs
-                if (_factoresPorProducto.TryGetValue(d.IdProducto, out var factorGuardado) && factorGuardado > 0)
+                else if (_factoresPorProducto.TryGetValue(d.IdProducto, out var factorGuardado) && factorGuardado > 0)
                 {
                     prod.FactorMultiplicador = factorGuardado;
                     prod.PrecioUnitarioGs = Math.Round(costoParaProducto * factorGuardado, 0);
+                }
+                
+                // Actualizar Precio Ministerio si se especificó en el detalle
+                if (_preciosMinisterioPorProducto.TryGetValue(d.IdProducto, out var precioMinGuardado) && precioMinGuardado > 0)
+                {
+                    prod.PrecioMinisterio = precioMinGuardado;
                 }
                 
                 prod.FechaModificacion = DateTime.Now;
@@ -2023,7 +2419,9 @@ END
                 IVA5 = d.IVA5,
                 Exenta = d.Exenta,
                 Grabado10 = d.Grabado10,
-                Grabado5 = d.Grabado5
+                Grabado5 = d.Grabado5,
+                PrecioVentaRef = d.PrecioVentaRef,
+                PrecioMinisterio = d.PrecioMinisterio
             }).ToList();
 
             Ok = $"Compra #{Compra.IdCompra} guardada";
@@ -2048,8 +2446,10 @@ END
             MostrarCamposCredito = false;
             NumeroCuotasCompra = 1;
             
-            // Limpiar factores guardados
+            // Limpiar factores y precios guardados
             _factoresPorProducto.Clear();
+            _preciosVentaPorProducto.Clear();
+            _preciosMinisterioPorProducto.Clear();
             
             // Predeterminar tipo de documento FACTURA
             var factura = TiposDocumento.FirstOrDefault(t => t.Nombre == "FACTURA");
@@ -2194,14 +2594,31 @@ END
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
 
+            // Encabezados de tabla (incluir P.Ministerio si modo farmacia activo)
+            var mostrarPMinImpresion = _configSistema?.FarmaciaModoActivo == true && _configSistema?.FarmaciaMostrarPrecioMinisterioEnCompras == true;
             sb.AppendLine("  <table class=\"table table-sm table-factura\">");
-            sb.AppendLine("    <thead><tr><th>Descripción</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
+            if (mostrarPMinImpresion)
+            {
+                sb.AppendLine("    <thead><tr><th>Descripción</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">P.Venta</th><th class=\"text-end\">P.Ministerio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
+            }
+            else
+            {
+                sb.AppendLine("    <thead><tr><th>Descripción</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
+            }
             sb.AppendLine("    <tbody>");
             foreach (var d in dets)
             {
                 var prod = Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto);
                 var desc = prod?.Descripcion ?? $"Producto #{d.IdProducto}";
-                sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                if (mostrarPMinImpresion)
+                {
+                    var pMinStr = d.PrecioMinisterio.HasValue ? d.PrecioMinisterio.Value.ToString(formato) : (prod?.PrecioMinisterio.HasValue == true ? prod.PrecioMinisterio.Value.ToString(formato) : "-");
+                    sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.PrecioVentaRef.ToString(formato)}</td><td class=\"text-end\">{pMinStr}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                }
+                else
+                {
+                    sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                }
             }
             sb.AppendLine("    </tbody>");
             sb.AppendLine("  </table>");
@@ -2277,6 +2694,20 @@ END
     {
         if (firstRender)
         {
+            // Registrar atajo de teclado F2 para guardar la compra
+            await JS.InvokeVoidAsync("eval", @"
+                if (!window._comprasF2Handler) {
+                    window._comprasF2Handler = function(e) {
+                        if (e.key === 'F2') {
+                            e.preventDefault();
+                            var btnGuardar = document.querySelector('button.btn-success[type=""submit""]');
+                            if (btnGuardar) btnGuardar.click();
+                        }
+                    };
+                    document.addEventListener('keydown', window._comprasF2Handler);
+                }
+            ");
+            
             // Si venimos desde el explorador con ?id=..&print=1, dispara reimpresión
             var uri = Nav.ToAbsoluteUri(Nav.Uri);
             var query = QueryHelpers.ParseQuery(uri.Query);
@@ -2436,8 +2867,10 @@ END
         ProductoImagenUrl = null;
         NuevoDetalle = new SistemIA.Models.CompraDetalle { Cantidad = 1, PrecioUnitario = 0 };
         
-        // Limpiar factores guardados
+        // Limpiar factores y precios guardados
         _factoresPorProducto.Clear();
+        _preciosVentaPorProducto.Clear();
+        _preciosMinisterioPorProducto.Clear();
         
         // Predeterminar tipo documento FACTURA
         var factura = TiposDocumento.FirstOrDefault(t => t.Nombre == "FACTURA");
@@ -2552,7 +2985,14 @@ END
         
         if (string.IsNullOrWhiteSpace(_passwordReciclar))
         {
-            _errorReciclar = "Debe ingresar la contraseña del administrador.";
+            _errorReciclar = "Debe ingresar su contraseña para confirmar.";
+            return;
+        }
+        
+        // Verificar que el usuario tiene los permisos necesarios (admin + editar + eliminar)
+        if (!PuedeReciclar)
+        {
+            _errorReciclar = "No tiene los permisos necesarios para realizar esta acción. Requiere: perfil administrador + permisos de Editar y Eliminar en Compras.";
             return;
         }
         
@@ -2563,29 +3003,35 @@ END
         {
             await using var ctx = await DbFactory.CreateDbContextAsync();
             
-            // 1. Buscar usuario "admin" y validar su contraseña
-            var admin = await ctx.Usuarios.AsNoTracking()
-                .FirstOrDefaultAsync(u => u.UsuarioNombre.ToLower() == "admin");
-            
-            if (admin == null)
+            // 1. Validar la contraseña del usuario actual (que ya verificamos tiene permisos)
+            if (!_usuarioId.HasValue)
             {
-                _errorReciclar = "No se encontró el usuario administrador (admin) en el sistema.";
+                _errorReciclar = "No se pudo identificar al usuario actual.";
+                return;
+            }
+            
+            var usuarioActual = await ctx.Usuarios.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id_Usu == _usuarioId.Value);
+            
+            if (usuarioActual == null)
+            {
+                _errorReciclar = "No se encontró el usuario actual en el sistema.";
                 return;
             }
             
             // Validar contraseña con SHA256 (comparar bytes)
-            if (admin.ContrasenaHash == null || admin.ContrasenaHash.Length == 0)
+            if (usuarioActual.ContrasenaHash == null || usuarioActual.ContrasenaHash.Length == 0)
             {
-                _errorReciclar = "El usuario admin no tiene contraseña configurada.";
+                _errorReciclar = "Su usuario no tiene contraseña configurada.";
                 return;
             }
             
             using var sha256 = System.Security.Cryptography.SHA256.Create();
             var passwordHashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(_passwordReciclar));
             
-            if (!passwordHashBytes.SequenceEqual(admin.ContrasenaHash))
+            if (!passwordHashBytes.SequenceEqual(usuarioActual.ContrasenaHash))
             {
-                _errorReciclar = "❌ Contraseña incorrecta. Solo el usuario 'admin' puede realizar esta acción.";
+                _errorReciclar = "❌ Contraseña incorrecta.";
                 return;
             }
             
@@ -2600,7 +3046,20 @@ END
                 return;
             }
             
-            // 3. Verificar si hay pagos confirmados
+            // 3. Verificar si hay Notas de Crédito asociadas
+            var notasCreditoAsociadas = await ctx.NotasCreditoCompras
+                .Where(nc => nc.IdCompraAsociada == _idCompraOriginalReciclar && nc.Estado != "Anulada")
+                .Select(nc => new { nc.Establecimiento, nc.PuntoExpedicion, nc.NumeroNota, nc.Estado })
+                .ToListAsync();
+            
+            if (notasCreditoAsociadas.Any())
+            {
+                var ncList = string.Join(", ", notasCreditoAsociadas.Select(nc => $"{nc.Establecimiento}-{nc.PuntoExpedicion}-{nc.NumeroNota}"));
+                _errorReciclar = $"No se puede reciclar: hay {notasCreditoAsociadas.Count} NC asociada(s): {ncList}. Anúlelas primero.";
+                return;
+            }
+            
+            // 4. Verificar si hay pagos confirmados
             var pagosConfirmados = await ctx.PagosProveedores
                 .Where(p => p.IdCompra == _idCompraOriginalReciclar && p.Estado != "Anulado")
                 .CountAsync();
@@ -2821,6 +3280,7 @@ END
     private async Task SeleccionarProductoAsync(SistemIA.Models.Producto p)
     {
         NuevoDetalle.IdProducto = p.IdProducto;
+        NuevoDetalle.PermiteDecimal = p.PermiteDecimal;
         // Mostrar el producto seleccionado en el buscador (no limpiar para mantener la lista abierta)
         BuscarProducto = p.Descripcion ?? string.Empty;
         
@@ -2933,6 +3393,41 @@ END
             NuevoDetalle.Exenta = totalLinea;
         }
         NuevoDetalle.Importe = totalLinea;
+
+        // Precargar Precio Ministerio del producto si existe y el modo farmacia está activo
+        if (MostrarPrecioMinisterioEnCompras && p.PrecioMinisterio.HasValue)
+        {
+            PrecioMinisterioInput = p.PrecioMinisterio.Value;
+        }
+        else
+        {
+            PrecioMinisterioInput = null;
+        }
+
+        // Asignar depósito predeterminado del producto por ID (no por nombre)
+        if (p.IdDepositoPredeterminado.HasValue && Depositos.Any(d => d.IdDeposito == p.IdDepositoPredeterminado.Value))
+        {
+            IdDepositoItemSeleccionado = p.IdDepositoPredeterminado.Value;
+        }
+        else if (Depositos.Any())
+        {
+            // Si el producto no tiene depósito predeterminado, usar el primero (ID 1 si existe)
+            IdDepositoItemSeleccionado = Depositos.FirstOrDefault(d => d.IdDeposito == 1)?.IdDeposito ?? Depositos.First().IdDeposito;
+        }
+
+        // Cargar precio de venta actual del producto y calcular factor/markup
+        if (NuevoDetalle.PrecioVentaRef > 0 && NuevoDetalle.PrecioUnitario > 0)
+        {
+            PrecioVentaCalculado = Math.Round(NuevoDetalle.PrecioVentaRef, 0);
+            FactorMultiplicador = Math.Round(NuevoDetalle.PrecioVentaRef / NuevoDetalle.PrecioUnitario, 4);
+            PorcentajeMargen = Math.Round((FactorMultiplicador.Value - 1) * 100, 2);
+        }
+        else
+        {
+            PrecioVentaCalculado = null;
+            FactorMultiplicador = null;
+            PorcentajeMargen = null;
+        }
 
         // No cerrar la lista aquí; se cerrará solo cuando se haga blur fuera del control
         await ActualizarStockSeleccionadoAsync();
@@ -3637,7 +4132,213 @@ END
             StateHasChanged();
         }
     }
+
+    // ============ Métodos para modal de nuevo producto rápido ============
+    private async Task AbrirModalNuevoProducto()
+    {
+        _mostrarModalProducto = true;
+        _errorProducto = null;
+        _successProducto = null;
+        _imagenProductoPendiente = null;
+        _previewImagenProducto = null;
+        
+        // Inicializar producto con valores por defecto
+        _nuevoProducto = new SistemIA.Models.Producto
+        {
+            TipoItem = 1, // Producto
+            Activo = true,
+            UnidadMedidaCodigo = "77", // Unidad
+            UndMedida = "UNIDAD",
+            IdDepositoPredeterminado = 1 // Depósito predeterminado oculto
+        };
+        
+        // Cargar catálogos si no están cargados
+        if (!_marcasModal.Any() || !_tiposIvaModal.Any())
+        {
+            try
+            {
+                await using var ctx = await DbFactory.CreateDbContextAsync();
+                _marcasModal = await ctx.Marcas.OrderBy(m => m.NombreMarca).ToListAsync();
+                _clasificacionesModal = await ctx.Clasificaciones.Where(c => c.Activo).OrderBy(c => c.Nombre).ToListAsync();
+                _tiposIvaModal = await ctx.TiposIva.OrderBy(t => t.Porcentaje).ToListAsync();
+                
+                // Seleccionar IVA 10% por defecto si existe
+                var iva10 = _tiposIvaModal.FirstOrDefault(i => i.Porcentaje == 10);
+                if (iva10 != null)
+                {
+                    _nuevoProducto.IdTipoIva = iva10.IdTipoIva;
+                }
+                else if (_tiposIvaModal.Any())
+                {
+                    _nuevoProducto.IdTipoIva = _tiposIvaModal.First().IdTipoIva;
+                }
+            }
+            catch (Exception ex)
+            {
+                _errorProducto = $"Error al cargar catálogos: {ex.Message}";
+            }
+        }
+        else
+        {
+            // Ya están cargados, solo establecer IVA por defecto
+            var iva10 = _tiposIvaModal.FirstOrDefault(i => i.Porcentaje == 10);
+            _nuevoProducto.IdTipoIva = iva10?.IdTipoIva ?? _tiposIvaModal.FirstOrDefault()?.IdTipoIva ?? 0;
+        }
+    }
+
+    private void CerrarModalProducto()
+    {
+        _mostrarModalProducto = false;
+        _imagenProductoPendiente = null;
+        _previewImagenProducto = null;
+    }
+
+    private async Task OnImagenProductoChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        // Validar tamaño (2MB)
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            _errorProducto = "La imagen no puede superar 2 MB.";
+            return;
+        }
+
+        // Validar tipo
+        var allowedTypes = new[] { "image/png", "image/jpeg", "image/webp" };
+        if (!allowedTypes.Contains(file.ContentType.ToLower()))
+        {
+            _errorProducto = "Solo se permiten imágenes PNG, JPG o WEBP.";
+            return;
+        }
+
+        _imagenProductoPendiente = file;
+        _errorProducto = null;
+
+        // Generar preview
+        try
+        {
+            using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var base64 = Convert.ToBase64String(ms.ToArray());
+            _previewImagenProducto = $"data:{file.ContentType};base64,{base64}";
+        }
+        catch
+        {
+            _previewImagenProducto = null;
+        }
+    }
+
+    private async Task GuardarNuevoProductoAsync()
+    {
+        _errorProducto = null;
+        _successProducto = null;
+
+        // Validaciones
+        if (string.IsNullOrWhiteSpace(_nuevoProducto.Descripcion))
+        {
+            _errorProducto = "La descripción es obligatoria.";
+            return;
+        }
+
+        if (_nuevoProducto.IdTipoIva == 0)
+        {
+            _errorProducto = "Debe seleccionar un tipo de IVA.";
+            return;
+        }
+
+        _guardandoProducto = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Obtener sucursal actual
+            var sucId = SucursalProvider.GetSucursalId();
+            if (!sucId.HasValue)
+            {
+                _errorProducto = "No hay sucursal seleccionada.";
+                return;
+            }
+            _nuevoProducto.IdSucursal = sucId.Value;
+
+            // Código temporal - se actualizará después del SaveChanges con el IdProducto real
+            _nuevoProducto.CodigoInterno = "AUTO";
+
+            // Guardar imagen si hay una pendiente
+            if (_imagenProductoPendiente != null)
+            {
+                try
+                {
+                    var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "productos");
+                    Directory.CreateDirectory(uploadsPath);
+
+                    var ext = Path.GetExtension(_imagenProductoPendiente.Name).ToLowerInvariant();
+                    if (string.IsNullOrEmpty(ext)) ext = ".jpg";
+                    var fileName = $"{Guid.NewGuid()}{ext}";
+                    var filePath = Path.Combine(uploadsPath, fileName);
+
+                    using var stream = _imagenProductoPendiente.OpenReadStream(2 * 1024 * 1024);
+                    using var fs = new FileStream(filePath, FileMode.Create);
+                    await stream.CopyToAsync(fs);
+
+                    _nuevoProducto.Foto = $"/uploads/productos/{fileName}";
+                }
+                catch (Exception exImg)
+                {
+                    // No fallar por la imagen, solo loguear
+                    Console.WriteLine($"Error guardando imagen: {exImg.Message}");
+                }
+            }
+
+            // Valores por defecto adicionales
+            _nuevoProducto.CostoUnitarioGs = 0;
+            _nuevoProducto.PrecioUnitarioGs = 0;
+            _nuevoProducto.Stock = 0;
+            _nuevoProducto.StockMinimo = 0;
+
+            ctx.Productos.Add(_nuevoProducto);
+            await ctx.SaveChangesAsync();
+
+            // Generar código definitivo basado en el Id y sucursal (garantiza correlatividad)
+            _nuevoProducto.CodigoInterno = $"PROD-{_nuevoProducto.IdSucursal:000}-{_nuevoProducto.IdProducto:000000}";
+            ctx.Productos.Update(_nuevoProducto);
+            await ctx.SaveChangesAsync();
+
+            _successProducto = $"✓ Producto '{_nuevoProducto.CodigoInterno}' creado exitosamente.";
+
+            // Agregar a la lista local de productos
+            var productoCreado = await ctx.Productos
+                .Include(p => p.TipoIva)
+                .Include(p => p.Marca)
+                .FirstOrDefaultAsync(p => p.IdProducto == _nuevoProducto.IdProducto);
+
+            if (productoCreado != null)
+            {
+                Productos.Add(productoCreado);
+            }
+
+            // Seleccionar automáticamente el producto en el buscador
+            if (productoCreado != null)
+            {
+                await Task.Delay(500);
+                await SeleccionarProductoAsync(productoCreado);
+                _mostrarModalProducto = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorProducto = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardandoProducto = false;
+            StateHasChanged();
+        }
+    }
 }
 
 </PageProtection>
-}

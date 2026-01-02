@@ -95,6 +95,8 @@
             <th>Producto</th>
             <th class="text-end">Cant.</th>
             <th class="text-end">Precio</th>
+            <th class="text-end">P. Venta</th>
+            <th class="text-end">P.Min.</th>
             <th class="text-end">Factor</th>
             <th class="text-end">% Marg</th>
             <th>Mon</th>
@@ -110,7 +112,7 @@
         <tbody>
           @if (!filas.Any())
           {
-            <tr><td colspan="17" class="text-muted text-center py-3">Sin resultados</td></tr>
+            <tr><td colspan="19" class="text-muted text-center py-3">Sin resultados</td></tr>
           }
           else
           {
@@ -130,6 +132,8 @@
                 </td>
                 <td class="text-end">@r.Cantidad.ToString("N2")</td>
                 <td class="text-end">@r.Precio.ToString(r.Formato)</td>
+                <td class="text-end text-success">@r.PrecioVenta.ToString("N0")</td>
+                <td class="text-end text-info">@(r.PrecioMinisterio.HasValue ? r.PrecioMinisterio.Value.ToString("N0") : "-")</td>
                 <td class="text-end">
                   @if (r.Factor.HasValue && r.Factor.Value > 0)
                   {
@@ -165,7 +169,7 @@
         </tbody>
         <tfoot>
           <tr>
-            <th colspan="12" class="text-end">Totales</th>
+            <th colspan="14" class="text-end">Totales</th>
             <th class="text-end">@filas.Sum(x=>x.ImporteGs).ToString("N0")</th>
             <th class="text-end">@filas.Sum(x=>x.ImporteUsd).ToString("N2")</th>
             <th></th>
@@ -265,6 +269,10 @@ END";
               d.Cantidad, d.PrecioUnitario, d.Importe,
               d.FactorMultiplicador, d.PorcentajeMargen,
               p.Descripcion, p.CodigoInterno,
+              // Precio de venta al momento de la compra (del detalle si tiene valor > 0, o del producto)
+              PrecioVentaRef = d.PrecioVentaRef > 0 ? d.PrecioVentaRef : p.PrecioUnitarioGs,
+              // Precio Ministerio del detalle
+              PrecioMinisterio = d.PrecioMinisterio,
               Usuario = (c.Usuario != null ? c.Usuario.UsuarioNombre : (c.UsuarioCreacion ?? c.Vendedor ?? ""))
             };
 
@@ -335,6 +343,8 @@ END";
         Codigo = x.CodigoInterno ?? "",
         Cantidad = x.Cantidad,
         Precio = x.PrecioUnitario,
+        PrecioVenta = x.PrecioVentaRef,
+        PrecioMinisterio = x.PrecioMinisterio,
         Factor = x.FactorMultiplicador,
         PorcentajeMargen = x.PorcentajeMargen,
         Moneda = codMon,
@@ -409,17 +419,18 @@ END";
 
     // Tabla
     sb.AppendLine("  <table class=\"table table-sm tabla\">");
-    sb.AppendLine("    <thead><tr><th>#</th><th>Fecha</th><th>Doc.</th><th>Proveedor</th><th>Producto</th><th class='right'>Cant.</th><th class='right'>Precio</th><th class='right'>Factor</th><th class='right'>% Marg</th><th>Mon</th><th class='right'>Cambio</th><th class='right'>Importe</th><th class='right'>Importe Gs</th><th class='right'>Importe $</th><th>Usu</th><th>Caja</th><th>Turno</th></tr></thead>");
+    sb.AppendLine("    <thead><tr><th>#</th><th>Fecha</th><th>Doc.</th><th>Proveedor</th><th>Producto</th><th class='right'>Cant.</th><th class='right'>Precio</th><th class='right'>P.Venta</th><th class='right'>P.Min.</th><th class='right'>Factor</th><th class='right'>% Marg</th><th>Mon</th><th class='right'>Cambio</th><th class='right'>Importe</th><th class='right'>Importe Gs</th><th class='right'>Importe $</th><th>Usu</th><th>Caja</th><th>Turno</th></tr></thead>");
     sb.AppendLine("    <tbody>");
     int n = 0;
     foreach (var r in filas)
     {
       var factorStr = r.Factor.HasValue && r.Factor.Value > 0 ? r.Factor.Value.ToString("N2") : "—";
       var margenStr = r.PorcentajeMargen.HasValue ? $"{r.PorcentajeMargen.Value:N2}%" : "—";
-      sb.AppendLine($"      <tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td class='right'>{r.Cantidad:N2}</td><td class='right'>{r.Precio.ToString(r.Formato)}</td><td class='right'>{factorStr}</td><td class='right'>{margenStr}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Importe.ToString(r.Formato)}</td><td class='right'>{r.ImporteGs:N0}</td><td class='right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
+      var pminStr = r.PrecioMinisterio.HasValue ? r.PrecioMinisterio.Value.ToString("N0") : "—";
+      sb.AppendLine($"      <tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td class='right'>{r.Cantidad:N2}</td><td class='right'>{r.Precio.ToString(r.Formato)}</td><td class='right'>{r.PrecioVenta:N0}</td><td class='right'>{pminStr}</td><td class='right'>{factorStr}</td><td class='right'>{margenStr}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Importe.ToString(r.Formato)}</td><td class='right'>{r.ImporteGs:N0}</td><td class='right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
     }
     sb.AppendLine("    </tbody>");
-    sb.AppendLine($"    <tfoot><tr><th colspan='12' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.ImporteGs):N0}</th><th class='right'>{filas.Sum(x=>x.ImporteUsd):N2}</th><th></th><th></th><th></th></tr></tfoot>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='14' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.ImporteGs):N0}</th><th class='right'>{filas.Sum(x=>x.ImporteUsd):N2}</th><th></th><th></th><th></th></tr></tfoot>");
     sb.AppendLine("  </table>");
     sb.AppendLine("</div>");
 
@@ -435,7 +446,7 @@ END";
     var usuario = auth.User?.Identity?.Name ?? "";
     var suc = SucursalProvider.GetSucursalNombre() ?? "";
     sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
-    sb.AppendLine(string.Join(sep, new[]{"Nro","Fecha","Doc.","Proveedor","Producto","Cant.","Precio","Factor","% Margen","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"}));
+    sb.AppendLine(string.Join(sep, new[]{"Nro","Fecha","Doc.","Proveedor","Producto","Cant.","Precio","P. Venta","P.Min.","Factor","% Margen","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"}));
     int n=0;
     foreach (var r in filas)
     {
@@ -448,6 +459,8 @@ END";
         r.Producto,
         r.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
         r.Precio.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.PrecioVenta.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        (r.PrecioMinisterio ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
         (r.Factor ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
         (r.PorcentajeMargen ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
         r.Moneda,
@@ -483,7 +496,7 @@ END";
     ws.Cell(row, 1).Value = "Usuario"; ws.Cell(row, 2).Value = usuario; row++;
     ws.Cell(row, 1).Value = "Sucursal"; ws.Cell(row, 2).Value = suc; row += 2;
 
-    var headers = new[]{"#","Fecha","Doc.","Proveedor","Producto","Cant.","Precio","Factor","% Margen","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"};
+    var headers = new[]{"#","Fecha","Doc.","Proveedor","Producto","Cant.","Precio","P. Venta","P.Min.","Factor","% Margen","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"};
     for (int c=0;c<headers.Length;c++) ws.Cell(row, c+1).Value = headers[c];
     ws.Range(row,1,row,headers.Length).Style.Font.Bold = true; row++;
 
@@ -497,24 +510,26 @@ END";
       ws.Cell(row,5).Value = r.Producto;
       ws.Cell(row,6).Value = r.Cantidad; ws.Cell(row,6).Style.NumberFormat.Format = "#,##0.00";
       ws.Cell(row,7).Value = r.Precio; ws.Cell(row,7).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
-      ws.Cell(row,8).Value = r.Factor ?? 0m; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,9).Value = r.PorcentajeMargen ?? 0m; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,10).Value = r.Moneda;
-      ws.Cell(row,11).Value = r.Cambio ?? 0m; ws.Cell(row,11).Style.NumberFormat.Format = "0.00";
-      ws.Cell(row,12).Value = r.Importe; ws.Cell(row,12).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
-      ws.Cell(row,13).Value = r.ImporteGs; ws.Cell(row,13).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row,14).Value = r.ImporteUsd; ws.Cell(row,14).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,15).Value = r.Usuario;
-      ws.Cell(row,16).Value = r.IdCaja;
-      ws.Cell(row,17).Value = r.Turno;
+      ws.Cell(row,8).Value = r.PrecioVenta; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,9).Value = r.PrecioMinisterio ?? 0m; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,10).Value = r.Factor ?? 0m; ws.Cell(row,10).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,11).Value = r.PorcentajeMargen ?? 0m; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,12).Value = r.Moneda;
+      ws.Cell(row,13).Value = r.Cambio ?? 0m; ws.Cell(row,13).Style.NumberFormat.Format = "0.00";
+      ws.Cell(row,14).Value = r.Importe; ws.Cell(row,14).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
+      ws.Cell(row,15).Value = r.ImporteGs; ws.Cell(row,15).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,16).Value = r.ImporteUsd; ws.Cell(row,16).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,17).Value = r.Usuario;
+      ws.Cell(row,18).Value = r.IdCaja;
+      ws.Cell(row,19).Value = r.Turno;
       totalGs += r.ImporteGs;
       totalUsd += r.ImporteUsd;
       row++;
     }
 
-    ws.Cell(row,12).Value = "Totales"; ws.Cell(row,12).Style.Font.Bold = true;
-    ws.Cell(row,13).Value = totalGs; ws.Cell(row,13).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,13).Style.Font.Bold = true;
-    ws.Cell(row,14).Value = totalUsd; ws.Cell(row,14).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,14).Style.Font.Bold = true;
+    ws.Cell(row,14).Value = "Totales"; ws.Cell(row,14).Style.Font.Bold = true;
+    ws.Cell(row,15).Value = totalGs; ws.Cell(row,15).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,15).Style.Font.Bold = true;
+    ws.Cell(row,16).Value = totalUsd; ws.Cell(row,16).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,16).Style.Font.Bold = true;
     ws.Columns().AdjustToContents();
     using var ms = new System.IO.MemoryStream();
     wb.SaveAs(ms);
@@ -534,6 +549,8 @@ END";
     public string Codigo { get; set; } = string.Empty;
     public decimal Cantidad { get; set; }
     public decimal Precio { get; set; }
+    public decimal PrecioVenta { get; set; }
+    public decimal? PrecioMinisterio { get; set; }
     public decimal? Factor { get; set; }
     public decimal? PorcentajeMargen { get; set; }
     public string Moneda { get; set; } = "PYG";

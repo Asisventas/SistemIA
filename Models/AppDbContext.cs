@@ -58,6 +58,12 @@ namespace SistemIA.Models
     public DbSet<PresupuestoDetalle> PresupuestosDetalles { get; set; }
     public DbSet<Sociedad> Sociedades { get; set; }
     public DbSet<SociedadActividadEconomica> SociedadesActividades { get; set; }
+    
+    // Configuración del sistema
+    public DbSet<ConfiguracionSistema> ConfiguracionSistema { get; set; }
+    
+    // Descuentos por categoría (marca/clasificación/todos)
+    public DbSet<DescuentoCategoria> DescuentosCategorias { get; set; }
         
     // Catálogo SIFEN nuevo (departamento/ciudad/distrito)
     public DbSet<DepartamentoCatalogo> DepartamentosCatalogo { get; set; }
@@ -102,6 +108,10 @@ namespace SistemIA.Models
         // Notas de Crédito Ventas
         public DbSet<NotaCreditoVenta> NotasCreditoVentas { get; set; }
         public DbSet<NotaCreditoVentaDetalle> NotasCreditoVentasDetalles { get; set; }
+
+        // Notas de Crédito Compras
+        public DbSet<NotaCreditoCompra> NotasCreditoCompras { get; set; }
+        public DbSet<NotaCreditoCompraDetalle> NotasCreditoComprasDetalles { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1418,6 +1428,90 @@ namespace SistemIA.Models
             entity.HasOne(d => d.Deposito)
                 .WithMany()
                 .HasForeignKey(d => d.IdDeposito)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configuración NotaCreditoCompra
+        modelBuilder.Entity<NotaCreditoCompra>(entity =>
+        {
+            entity.ToTable("NotasCreditoCompras");
+            entity.HasKey(nc => nc.IdNotaCreditoCompra);
+            entity.Property(nc => nc.Subtotal).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.TotalIVA10).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.TotalIVA5).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.TotalExenta).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.TotalDescuento).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.Total).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.CambioDelDia).HasColumnType("decimal(18,4)");
+            entity.Property(nc => nc.Motivo).HasMaxLength(50);
+            entity.Property(nc => nc.Observaciones).HasMaxLength(500);
+            entity.Property(nc => nc.Estado).HasMaxLength(20);
+
+            entity.HasOne(nc => nc.Sucursal)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Caja)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdCaja)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Proveedor)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdProveedor)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.CompraAsociada)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdCompraAsociada)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Moneda)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdMoneda)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Deposito)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdDeposito)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(nc => nc.Usuario)
+                .WithMany()
+                .HasForeignKey(nc => nc.IdUsuario)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configuración NotaCreditoCompraDetalle
+        modelBuilder.Entity<NotaCreditoCompraDetalle>(entity =>
+        {
+            entity.ToTable("NotasCreditoComprasDetalles");
+            entity.HasKey(d => d.IdNotaCreditoCompraDetalle);
+            entity.Property(d => d.Cantidad).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.PrecioUnitario).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.PorcentajeDescuento).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.MontoDescuento).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Importe).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.IVA10).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.IVA5).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Exenta).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Grabado10).HasColumnType("decimal(18,4)");
+            entity.Property(d => d.Grabado5).HasColumnType("decimal(18,4)");
+
+            entity.HasOne(d => d.NotaCreditoCompra)
+                .WithMany(nc => nc.Detalles)
+                .HasForeignKey(d => d.IdNotaCreditoCompra)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.Producto)
+                .WithMany()
+                .HasForeignKey(d => d.IdProducto)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.DepositoItem)
+                .WithMany()
+                .HasForeignKey(d => d.IdDepositoItem)
                 .OnDelete(DeleteBehavior.Restrict);
         });
         }

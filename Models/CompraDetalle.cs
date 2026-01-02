@@ -52,6 +52,11 @@ namespace SistemIA.Models
     [Display(Name = "% Margen")]
     public decimal? PorcentajeMargen { get; set; }
 
+    // Precio Ministerio (para farmacias) - precio máximo regulado al momento de la compra
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Precio Ministerio")]
+    public decimal? PrecioMinisterio { get; set; }
+
         // Auditoría básica
         public DateTime FechaCreacion { get; set; } = DateTime.Now;
         public string? UsuarioCreacion { get; set; }
@@ -61,5 +66,9 @@ namespace SistemIA.Models
         // Navegación
         public Compra? Compra { get; set; }
         public Producto? Producto { get; set; }
+        
+        // Propiedad auxiliar para validación (no se persiste en BD)
+        [NotMapped]
+        public bool PermiteDecimal { get; set; }
     }
 }

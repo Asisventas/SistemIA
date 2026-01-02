@@ -19,6 +19,7 @@
   private int _lastLoadedIdVenta = -1; // Cache para evitar recargas innecesarias
   private int _lastOnReadyIdVenta = -1; // Evitar invocaciones repetidas de OnReady
   private bool _ocultarImagenes = false; // Debug: ocultar imágenes (logo/QR)
+  private bool _modoFarmaciaActivo = false; // Modo farmacia para mostrar Precio Ministerio
   private bool esFacturaElectronica => (caja?.TipoFacturacion ?? "ELECTRONICA") == "ELECTRONICA";
   private string numeroCompleto => $"{venta?.Establecimiento}-{venta?.PuntoExpedicion}-{venta?.NumeroFactura}";
 
@@ -84,6 +85,14 @@
           caja = await CajaService.ObtenerCajaActualAsync();
         }));
       }
+      
+      // Cargar configuración de farmacia
+      loadTasks.Add(Task.Run(async () =>
+      {
+        await using var configCtx = await DbFactory.CreateDbContextAsync();
+        var config = await configCtx.ConfiguracionSistema.FirstOrDefaultAsync();
+        _modoFarmaciaActivo = config?.FarmaciaModoActivo == true;
+      }));
       
       await Task.WhenAll(loadTasks);
       _lastLoadedIdVenta = IdVenta; // Marcar como cargado
@@ -243,6 +252,10 @@ else
             <th style="width:6%">Cajas</th>
             <th style="width:8%">Cantidad</th>
             <th style="width:10%">Precio Unitario</th>
+            @if (_modoFarmaciaActivo)
+            {
+              <th style="width:8%">P.Min.</th>
+            }
             <th style="width:9%">Descuento</th>
             <th style="width:9%">Exentas</th>
             <th style="width:9%">5%</th>
@@ -260,7 +273,11 @@ else
               <td class="t-center">1,00</td>
               <td class="t-right">@d.Cantidad.ToString("N2")</td>
               <td class="t-right">@d.PrecioUnitario.ToString("N0")</td>
-              <td class="t-right">0</td>
+              @if (_modoFarmaciaActivo)
+              {
+                <td class="t-right">@(d.PrecioMinisterio?.ToString("N0") ?? "—")</td>
+              }
+              <td class="t-right">@((d.PorcentajeDescuento ?? 0).ToString("N0"))</td>
               <td class="t-right">@d.Exenta.ToString("N0")</td>
               <td class="t-right">@d.Grabado5.ToString("N0")</td>
               <td class="t-right">@d.Grabado10.ToString("N0")</td>

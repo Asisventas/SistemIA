@@ -105,6 +105,66 @@ namespace SistemIA.Models
         [Range(0, 999999999999.9999)]
         public decimal? PrecioUnitarioUsd { get; set; }
 
+        // ========== PRECIO MINISTERIO (FARMACIAS) ==========
+        
+        /// <summary>
+        /// Precio máximo de venta regulado por el Ministerio de Salud (solo farmacias).
+        /// El precio de venta no puede superar este valor.
+        /// </summary>
+        [Column(TypeName = "decimal(18,4)")]
+        [Display(Name = "Precio Ministerio (Precio Máximo)")]
+        [Range(0, 999999999999.9999)]
+        public decimal? PrecioMinisterio { get; set; }
+
+        // ========== CONFIGURACIÓN DE DESCUENTOS POR PRODUCTO ==========
+        
+        /// <summary>
+        /// Indica si este producto permite aplicar descuentos en ventas
+        /// </summary>
+        [Display(Name = "Permitir Descuento")]
+        public bool PermiteDescuento { get; set; } = true;
+
+        /// <summary>
+        /// Indica si este producto puede venderse a un precio menor al costo.
+        /// Por defecto es false (no permite venta bajo costo).
+        /// </summary>
+        [Display(Name = "Permite Venta Bajo Costo")]
+        public bool PermiteVentaBajoCosto { get; set; } = false;
+
+        /// <summary>
+        /// Si es true, usa el descuento específico del producto (DescuentoAutomaticoProducto).
+        /// Si es false, usa el descuento de la configuración general (por marca/clasificación/todos).
+        /// </summary>
+        [Display(Name = "Usar Descuento Específico")]
+        public bool UsaDescuentoEspecifico { get; set; } = false;
+
+        /// <summary>
+        /// Porcentaje de descuento automático específico para este producto.
+        /// Solo se aplica si UsaDescuentoEspecifico = true.
+        /// </summary>
+        [Column(TypeName = "decimal(5,2)")]
+        [Display(Name = "Descuento Automático (%)")]
+        [Range(0, 100)]
+        public decimal? DescuentoAutomaticoProducto { get; set; }
+
+        /// <summary>
+        /// Porcentaje máximo de descuento permitido para este producto específico.
+        /// Si es null, usa el máximo del sistema.
+        /// </summary>
+        [Column(TypeName = "decimal(5,2)")]
+        [Display(Name = "Descuento Máximo (%)")]
+        [Range(0, 100)]
+        public decimal? DescuentoMaximoProducto { get; set; }
+
+        /// <summary>
+        /// Porcentaje adicional que el cajero puede modificar sobre el descuento base del producto.
+        /// Solo aplica si UsaDescuentoEspecifico = true.
+        /// </summary>
+        [Column(TypeName = "decimal(5,2)")]
+        [Display(Name = "Margen adicional cajero (%)")]
+        [Range(0, 100)]
+        public decimal? MargenAdicionalCajeroProducto { get; set; }
+
         // Inventario básico
         [Column(TypeName = "decimal(18,4)")]
         [Display(Name = "Stock")]

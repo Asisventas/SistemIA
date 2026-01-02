@@ -1,4 +1,5 @@
 @page "/proveedores/sifen"
+@page "/proveedores/sifen/crear"
 @page "/proveedores/sifen/editar/{Id:int}"
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Forms
@@ -31,28 +32,23 @@
 
 <div class="row mb-3">
     <div class="col">
-        <button class="btn btn-primary btn-sm" @onclick="MostrarFormularioCrear">
-            <i class="bi bi-plus-circle me-1"></i> Nuevo Proveedor
-        </button>
-        <button class="btn btn-outline-secondary btn-sm ms-2" @onclick="CargarProveedores">
-            <i class="bi bi-arrow-repeat me-1"></i> Actualizar
-        </button>
+        <a class="btn btn-outline-secondary btn-sm" href="/proveedores/explorar">
+            <i class="bi bi-arrow-left me-1"></i> Volver al Explorador
+        </a>
     </div>
 </div>
 
-@if (mostrarFormulario)
-{
-    <div class="card mb-4">
-        <div class="card-header py-2">
-            <h6 class="mb-0">
-                @if (proveedorEditando.IdProveedor == 0)
-                {
-                    <i class="bi bi-plus-circle text-success"></i> <text>Nuevo Proveedor</text>
-                }
-                else
-                {
-                    <i class="bi bi-pencil-square text-warning"></i> <text>Editar Proveedor</text>
-                }
+<div class="card mb-4">
+    <div class="card-header py-2">
+        <h6 class="mb-0">
+            @if (proveedorEditando.IdProveedor == 0)
+            {
+                <i class="bi bi-plus-circle text-success"></i> <text>Nuevo Proveedor</text>
+            }
+            else
+            {
+                <i class="bi bi-pencil-square text-warning"></i> <text>Editar Proveedor</text>
+            }
             </h6>
         </div>
         <div class="card-body py-2">
@@ -141,84 +137,13 @@
                     <button type="submit" class="btn btn-success btn-sm">
                         <i class="bi bi-save me-1"></i> Guardar
                     </button>
-                    <button type="button" class="btn btn-secondary btn-sm ms-2" @onclick="CancelarEdicion">
+                    <a class="btn btn-secondary btn-sm ms-2" href="/proveedores/explorar">
                         <i class="bi bi-x-lg me-1"></i> Cancelar
-                    </button>
+                    </a>
                 </div>
             </EditForm>
         </div>
     </div>
-}
-
-<!-- Lista de Proveedores -->
-<div class="card">
-    <div class="card-header py-2">
-        <h6 class="mb-0"><i class="bi bi-list-ul me-1"></i> Proveedores Registrados (@proveedores.Count)</h6>
-    </div>
-    <div class="card-body p-0">
-        @if (proveedores.Any())
-        {
-            <div class="table-responsive">
-                <table class="table table-striped table-hover table-sm mb-0 align-middle">
-                    <thead class="table-dark">
-                        <tr>
-                            <th style="width:80px">Código</th>
-                            <th>Razón Social</th>
-                            <th style="width:120px">RUC</th>
-                            <th style="width:100px">Teléfono</th>
-                            <th style="width:120px">Ciudad</th>
-                            <th style="width:70px">Estado</th>
-                            <th style="width:100px">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var proveedor in proveedores)
-                        {
-                            <tr>
-                                <td><code class="small">@proveedor.CodigoProveedor</code></td>
-                                <td>
-                                    <strong>@proveedor.RazonSocial</strong>
-                                    @if (!string.IsNullOrEmpty(proveedor.NombreFantasia))
-                                    {
-                                        <br><small class="text-muted">@proveedor.NombreFantasia</small>
-                                    }
-                                </td>
-                                <td><code class="small">@proveedor.RUCCompleto</code></td>
-                                <td class="small">@(proveedor.Telefono ?? proveedor.Celular ?? "-")</td>
-                                <td class="small">@(proveedor.DescripcionCiudad ?? "-")</td>
-                                <td>
-                                    <span class="badge bg-@(proveedor.Estado ? "success" : "danger")">
-                                        @(proveedor.Estado ? "Activo" : "Inactivo")
-                                    </span>
-                                </td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-warning" title="Editar" @onclick="() => EditarProveedor(proveedor.IdProveedor)">
-                                            <i class="bi bi-pencil-square"></i>
-                                        </button>
-                                        <button class="btn btn-danger" title="Eliminar" @onclick="() => EliminarProveedor(proveedor.IdProveedor)">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-        else
-        {
-            <div class="text-center py-4">
-                <i class="bi bi-building display-6 text-muted mb-3"></i>
-                <p class="text-muted">No hay proveedores registrados.</p>
-                <button class="btn btn-primary btn-sm" @onclick="MostrarFormularioCrear">
-                    <i class="bi bi-plus-circle me-1"></i> Crear Primer Proveedor
-                </button>
-            </div>
-        }
-    </div>
-</div>
 
 </PageProtection>
 

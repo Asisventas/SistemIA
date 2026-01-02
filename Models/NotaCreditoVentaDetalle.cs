@@ -35,6 +35,12 @@ namespace SistemIA.Models
         [MaxLength(50)]
         public string? CodigoProducto { get; set; }
         
+        /// <summary>
+        /// Indica si el producto permite cantidades decimales (no persistido)
+        /// </summary>
+        [NotMapped]
+        public bool PermiteDecimal { get; set; }
+        
         [MaxLength(250)]
         public string? NombreProducto { get; set; }
 

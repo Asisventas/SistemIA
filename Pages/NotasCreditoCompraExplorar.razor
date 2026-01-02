@@ -1,0 +1,361 @@
+@page "/notas-credito-compra/explorar"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@using SistemIA.Models
+@using SistemIA.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject ISucursalProvider SucursalProvider
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/notas-credito-compra" Permiso="VIEW">
+<PageTitle>Explorar Notas de Crédito de Compras</PageTitle>
+
+<div class="container-fluid">
+    <div class="card shadow-sm">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-file-earmark-minus me-2"></i>
+                Notas de Crédito de Compras
+            </h5>
+            <a href="/notas-credito-compra" class="btn btn-light btn-sm">
+                <i class="bi bi-plus-lg"></i> Nueva NC Compra
+            </a>
+        </div>
+        
+        <div class="card-body">
+            @* Filtros *@
+            <div class="row g-3 mb-4">
+                <div class="col-md-2">
+                    <label class="form-label">Desde</label>
+                    <input type="date" class="form-control form-control-sm" @bind="_fechaDesde" @bind:after="Filtrar" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" class="form-control form-control-sm" @bind="_fechaHasta" @bind:after="Filtrar" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Estado</label>
+                    <select class="form-select form-select-sm" @bind="_filtroEstado" @bind:after="Filtrar">
+                        <option value="">Todos</option>
+                        <option value="Borrador">Borrador</option>
+                        <option value="Confirmada">Confirmada</option>
+                        <option value="Anulada">Anulada</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Buscar</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="Proveedor, número, RUC..." 
+                           @bind="_busqueda" @bind:event="oninput" @bind:after="Filtrar" />
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-outline-secondary btn-sm w-100" @onclick="LimpiarFiltros">
+                        <i class="bi bi-x-circle"></i> Limpiar
+                    </button>
+                </div>
+            </div>
+            
+            @* Tabla de resultados *@
+            @if (_loading)
+            {
+                <div class="text-center p-4">
+                    <div class="spinner-border text-danger" role="status"></div>
+                </div>
+            }
+            else if (!_notasCredito.Any())
+            {
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox display-4"></i>
+                    <p class="mt-2">No se encontraron notas de crédito de compras.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width:140px;">Número</th>
+                                <th style="width:100px;">Fecha</th>
+                                <th>Proveedor</th>
+                                <th style="width:120px;">RUC</th>
+                                <th style="width:100px;">Motivo</th>
+                                <th style="width:110px;" class="text-end">Total</th>
+                                <th style="width:90px;" class="text-center">Estado</th>
+                                <th style="width:120px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var nc in _notasCredito)
+                            {
+                                <tr>
+                                    <td class="fw-bold">@nc.Establecimiento-@nc.PuntoExpedicion-@nc.NumeroNota</td>
+                                    <td>@nc.Fecha.ToString("dd/MM/yyyy")</td>
+                                    <td>@(nc.NombreProveedor ?? nc.Proveedor?.RazonSocial ?? "-")</td>
+                                    <td>@(nc.RucProveedor ?? nc.Proveedor?.RUC ?? "-")</td>
+                                    <td><small>@nc.Motivo</small></td>
+                                    <td class="text-end fw-bold">@nc.Total.ToString("N0")</td>
+                                    <td class="text-center">
+                                        <span class="badge @GetBadgeClass(nc.Estado)">@nc.Estado</span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="/notas-credito-compra/@nc.IdNotaCreditoCompra" class="btn btn-outline-primary" title="Ver/Editar">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            @if (nc.Estado == "Confirmada")
+                                            {
+                                                <button class="btn btn-outline-secondary" @onclick="() => ImprimirA4(nc.IdNotaCreditoCompra)" title="Imprimir">
+                                                    <i class="bi bi-printer"></i>
+                                                </button>
+                                            }
+                                            @if (nc.Estado == "Confirmada" && _esAdmin)
+                                            {
+                                                <button class="btn btn-outline-danger" @onclick="() => AnularNC(nc)" title="Anular">
+                                                    <i class="bi bi-x-circle"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <td colspan="5" class="text-end fw-bold">Total:</td>
+                                <td class="text-end fw-bold">@_notasCredito.Where(n => n.Estado == "Confirmada").Sum(n => n.Total).ToString("N0")</td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <small class="text-muted">@_notasCredito.Count registros encontrados</small>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item @(_pagina == 1 ? "disabled" : "")">
+                                <button class="page-link" @onclick="() => CambiarPagina(_pagina - 1)">Anterior</button>
+                            </li>
+                            @for (int i = 1; i <= _totalPaginas; i++)
+                            {
+                                var pag = i;
+                                <li class="page-item @(_pagina == pag ? "active" : "")">
+                                    <button class="page-link" @onclick="() => CambiarPagina(pag)">@pag</button>
+                                </li>
+                            }
+                            <li class="page-item @(_pagina >= _totalPaginas ? "disabled" : "")">
+                                <button class="page-link" @onclick="() => CambiarPagina(_pagina + 1)">Siguiente</button>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* Modal confirmar anulación *@
+@if (_mostrarModalAnular)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Anular NC de Compra</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarModalAnular = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Está seguro de anular la nota de crédito <strong>@_ncAnular?.NumeroNota</strong>?</p>
+                    <p class="text-muted small">Proveedor: @_ncAnular?.NombreProveedor</p>
+                    <p class="text-muted small">Total: @_ncAnular?.Total.ToString("N0") Gs.</p>
+                    
+                    @if (_ncAnular?.AfectaStock != 0)
+                    {
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            Se revertirá el movimiento de stock asociado.
+                        </div>
+                    }
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Motivo de anulación</label>
+                        <textarea class="form-control" rows="2" @bind="_motivoAnulacion"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _mostrarModalAnular = false">Cancelar</button>
+                    <button class="btn btn-danger" @onclick="ConfirmarAnulacion" disabled="@_anulando">
+                        @if (_anulando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-x-circle"></i> Anular
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private bool _loading = true;
+    private bool _esAdmin = false;
+    private List<NotaCreditoCompra> _notasCredito = new();
+    
+    // Filtros
+    private DateTime _fechaDesde = DateTime.Today.AddMonths(-1);
+    private DateTime _fechaHasta = DateTime.Today;
+    private string _filtroEstado = "";
+    private string _busqueda = "";
+    
+    // Paginación
+    private int _pagina = 1;
+    private int _registrosPorPagina = 50;
+    private int _totalPaginas = 1;
+    private int _totalRegistros = 0;
+    
+    // Anulación
+    private bool _mostrarModalAnular = false;
+    private NotaCreditoCompra? _ncAnular;
+    private string _motivoAnulacion = "";
+    private bool _anulando = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Verificar si es admin
+        _esAdmin = true; // TODO: Implementar verificación real
+        
+        await Filtrar();
+    }
+
+    private async Task Filtrar()
+    {
+        _loading = true;
+        var sucId = SucursalProvider.GetSucursalId();
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        var query = db.NotasCreditoCompras
+            .AsNoTracking()
+            .Include(n => n.Proveedor)
+            .Where(n => n.IdSucursal == sucId)
+            .Where(n => n.Fecha >= _fechaDesde && n.Fecha <= _fechaHasta.AddDays(1));
+        
+        if (!string.IsNullOrEmpty(_filtroEstado))
+            query = query.Where(n => n.Estado == _filtroEstado);
+        
+        if (!string.IsNullOrWhiteSpace(_busqueda))
+        {
+            var busq = _busqueda.ToLower();
+            query = query.Where(n => 
+                (n.NombreProveedor != null && n.NombreProveedor.ToLower().Contains(busq)) ||
+                (n.RucProveedor != null && n.RucProveedor.Contains(busq)) ||
+                (n.NumeroNota != null && n.NumeroNota.Contains(busq)) ||
+                (n.Proveedor != null && n.Proveedor.RazonSocial.ToLower().Contains(busq)));
+        }
+        
+        _totalRegistros = await query.CountAsync();
+        _totalPaginas = (int)Math.Ceiling((double)_totalRegistros / _registrosPorPagina);
+        
+        _notasCredito = await query
+            .OrderByDescending(n => n.Fecha)
+            .ThenByDescending(n => n.IdNotaCreditoCompra)
+            .Skip((_pagina - 1) * _registrosPorPagina)
+            .Take(_registrosPorPagina)
+            .ToListAsync();
+        
+        _loading = false;
+    }
+
+    private void LimpiarFiltros()
+    {
+        _fechaDesde = DateTime.Today.AddMonths(-1);
+        _fechaHasta = DateTime.Today;
+        _filtroEstado = "";
+        _busqueda = "";
+        _pagina = 1;
+        _ = Filtrar();
+    }
+
+    private void CambiarPagina(int pagina)
+    {
+        if (pagina < 1 || pagina > _totalPaginas) return;
+        _pagina = pagina;
+        _ = Filtrar();
+    }
+
+    private void ImprimirA4(int id)
+    {
+        Nav.NavigateTo($"/notas-credito-compra/imprimir/{id}");
+    }
+
+    private void AnularNC(NotaCreditoCompra nc)
+    {
+        _ncAnular = nc;
+        _motivoAnulacion = "";
+        _mostrarModalAnular = true;
+    }
+
+    private async Task ConfirmarAnulacion()
+    {
+        if (_ncAnular == null) return;
+        
+        if (string.IsNullOrWhiteSpace(_motivoAnulacion))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe ingresar un motivo de anulación.");
+            return;
+        }
+        
+        _anulando = true;
+        
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            
+            var nc = await db.NotasCreditoCompras
+                .Include(n => n.Detalles)
+                .FirstOrDefaultAsync(n => n.IdNotaCreditoCompra == _ncAnular.IdNotaCreditoCompra);
+            
+            if (nc == null)
+            {
+                await JS.InvokeVoidAsync("alert", "NC no encontrada.");
+                return;
+            }
+            
+            // TODO: Revertir movimientos de stock si corresponde
+            // if (nc.AfectaStock != 0) { ... }
+            
+            nc.Estado = "Anulada";
+            nc.Observaciones = (nc.Observaciones ?? "") + $"\n[ANULADA]: {_motivoAnulacion}";
+            nc.FechaModificacion = DateTime.Now;
+            
+            await db.SaveChangesAsync();
+            
+            _mostrarModalAnular = false;
+            await Filtrar();
+            
+            await JS.InvokeVoidAsync("alert", "NC anulada correctamente.");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            _anulando = false;
+        }
+    }
+
+    private string GetBadgeClass(string estado) => estado switch
+    {
+        "Borrador" => "bg-warning text-dark",
+        "Confirmada" => "bg-success",
+        "Anulada" => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

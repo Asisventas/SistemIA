@@ -216,7 +216,9 @@
                                             <td>@det.NombreProducto</td>
                                             <td>
                                                 <input type="number" class="form-control form-control-sm text-end" 
-                                                       step="0.01" min="0.01" @bind="det.Cantidad" @bind:after="RecalcularLinea" />
+                                                       step="@(det.PermiteDecimal ? "0.01" : "1")" 
+                                                       min="@(det.PermiteDecimal ? "0.01" : "1")" 
+                                                       @bind="det.Cantidad" @bind:after="() => ValidarYRecalcularLinea(det)" />
                                             </td>
                                             <td>
                                                 <input type="number" class="form-control form-control-sm text-end" 
@@ -661,6 +663,13 @@
             
             _nc = nc;
             _detalles = nc.Detalles?.ToList() ?? new();
+            
+            // Asignar PermiteDecimal desde el Producto cargado
+            foreach (var det in _detalles)
+            {
+                det.PermiteDecimal = det.Producto?.PermiteDecimal ?? false;
+            }
+            
             _clienteSeleccionado = nc.Cliente;
             _ventaSeleccionada = nc.VentaAsociada;
             _cajaSeleccionada = nc.Caja ?? _cajaSeleccionada;
@@ -832,6 +841,40 @@
             _nc.NombreCliente = v.Cliente.RazonSocial;
         }
         
+        // Cargar detalles de la factura al detalle de NC (si no hay detalles ya cargados)
+        if (!_detalles.Any())
+        {
+            var detallesVenta = await db.VentasDetalles
+                .Include(d => d.Producto)
+                .Where(d => d.IdVenta == v.IdVenta)
+                .ToListAsync();
+            
+            foreach (var dv in detallesVenta)
+            {
+                // Determinar tasa IVA
+                int tasaIVA = 10; // default
+                if (dv.IVA5 > 0 || dv.Grabado5 > 0) tasaIVA = 5;
+                else if (dv.Exenta > 0 && dv.IVA10 == 0 && dv.IVA5 == 0) tasaIVA = 0;
+                
+                var det = new NotaCreditoVentaDetalle
+                {
+                    IdProducto = dv.IdProducto,
+                    CodigoProducto = dv.Producto?.CodigoInterno,
+                    NombreProducto = dv.Producto?.Descripcion,
+                    Cantidad = dv.Cantidad,
+                    PrecioUnitario = dv.PrecioUnitario,
+                    PorcentajeDescuento = 0,
+                    MontoDescuento = 0,
+                    TasaIVA = tasaIVA
+                };
+                
+                CalcularLinea(det);
+                _detalles.Add(det);
+            }
+            
+            RecalcularTotales();
+        }
+        
         _mostrarBuscarFactura = false;
     }
 
@@ -964,7 +1007,8 @@
             MontoDescuento = 0,
             TasaIVA = (int)tasa,
             IdTipoIva = p.IdTipoIva,
-            CambioDelDia = _nc.CambioDelDia
+            CambioDelDia = _nc.CambioDelDia,
+            PermiteDecimal = p.PermiteDecimal
         };
         
         CalcularLinea(det);
@@ -977,6 +1021,24 @@
     private void QuitarDetalle(NotaCreditoVentaDetalle det)
     {
         _detalles.Remove(det);
+        RecalcularTotales();
+    }
+
+    private void ValidarYRecalcularLinea(NotaCreditoVentaDetalle det)
+    {
+        // Si no permite decimal, redondear a entero
+        if (!det.PermiteDecimal && det.Cantidad != Math.Floor(det.Cantidad))
+        {
+            det.Cantidad = Math.Max(1, Math.Round(det.Cantidad));
+        }
+        
+        // Asegurar cantidad mínima
+        if (det.Cantidad < (det.PermiteDecimal ? 0.01m : 1m))
+        {
+            det.Cantidad = det.PermiteDecimal ? 0.01m : 1m;
+        }
+        
+        CalcularLinea(det);
         RecalcularTotales();
     }
 

@@ -14,6 +14,7 @@ namespace SistemIA.Data
             var inventario = await ctx.Modulos.FirstOrDefaultAsync(m => m.RutaPagina == "/inventario" && m.IdModuloPadre == null);
             var clientes = await ctx.Modulos.FirstOrDefaultAsync(m => m.RutaPagina == "/clientes" && m.IdModuloPadre == null);
             var proveedores = await ctx.Modulos.FirstOrDefaultAsync(m => m.RutaPagina == "/proveedores" && m.IdModuloPadre == null);
+            var compras = await ctx.Modulos.FirstOrDefaultAsync(m => m.RutaPagina == "/compras" && m.IdModuloPadre == null);
             var reportes = await ctx.Modulos.FirstOrDefaultAsync(m => m.RutaPagina == "/reportes" && m.IdModuloPadre == null);
             var personal = await ctx.Modulos.FirstOrDefaultAsync(m => m.RutaPagina == "/personal" && m.IdModuloPadre == null);
             var configuracion = await ctx.Modulos.FirstOrDefaultAsync(m => m.RutaPagina == "/configuracion" && m.IdModuloPadre == null);
@@ -424,6 +425,21 @@ namespace SistemIA.Data
                         RutaPagina = "/generar-paquete-actualizacion"
                     });
                 }
+
+                // Módulo Manual del Sistema
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/manual-sistema"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Manual del Sistema",
+                        Descripcion = "Documentación y ayuda del sistema",
+                        Icono = "bi-book",
+                        Orden = 9,
+                        IdModuloPadre = configuracion.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/manual-sistema"
+                    });
+                }
             }
 
             // Agregar submódulos de Notas de Crédito (bajo Ventas) si no existen
@@ -454,6 +470,80 @@ namespace SistemIA.Data
                         IdModuloPadre = ventas.IdModulo,
                         Activo = true,
                         RutaPagina = "/notas-credito/explorar"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/notas-credito/imprimir"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Imprimir NC Ventas",
+                        Descripcion = "Impresión de notas de crédito de ventas",
+                        Icono = "bi-printer",
+                        Orden = 6,
+                        IdModuloPadre = ventas.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/notas-credito/imprimir"
+                    });
+                }
+            }
+
+            // Agregar submódulos de Notas de Crédito Compra (bajo Compras) si no existen
+            if (compras != null)
+            {
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/notas-credito-compra"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Nota de Crédito Compra",
+                        Descripcion = "Emisión de notas de crédito sobre compras",
+                        Icono = "bi-file-earmark-minus",
+                        Orden = 3,
+                        IdModuloPadre = compras.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/notas-credito-compra"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/notas-credito-compra/explorar"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Explorar NC Compras",
+                        Descripcion = "Consulta de notas de crédito de compras",
+                        Icono = "bi-clock-history",
+                        Orden = 4,
+                        IdModuloPadre = compras.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/notas-credito-compra/explorar"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/notas-credito-compra/imprimir"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Imprimir NC Compras",
+                        Descripcion = "Impresión de notas de crédito de compras",
+                        Icono = "bi-printer",
+                        Orden = 5,
+                        IdModuloPadre = compras.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/notas-credito-compra/imprimir"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/compras/explorar"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Historial de Compras",
+                        Descripcion = "Consulta de compras realizadas",
+                        Icono = "bi-clock-history",
+                        Orden = 2,
+                        IdModuloPadre = compras.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/compras/explorar"
                     });
                 }
             }
@@ -532,6 +622,124 @@ namespace SistemIA.Data
                         IdModuloPadre = reportes.IdModulo,
                         Activo = true,
                         RutaPagina = "/informes/movimientos-productos"
+                    });
+                }
+
+                // Informes de Notas de Crédito de Compras
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/nc-compras-detallado"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "NC Compras Detallado",
+                        Descripcion = "Informe detallado de notas de crédito de compras",
+                        Icono = "bi-file-earmark-minus",
+                        Orden = 13,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/nc-compras-detallado"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/nc-compras-agrupado"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "NC Compras Agrupado",
+                        Descripcion = "Informe agrupado de notas de crédito de compras",
+                        Icono = "bi-file-earmark-minus",
+                        Orden = 14,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/nc-compras-agrupado"
+                    });
+                }
+
+                // Informes de Notas de Crédito de Ventas
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/nc-detallado"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "NC Ventas Detallado",
+                        Descripcion = "Informe detallado de notas de crédito de ventas",
+                        Icono = "bi-file-earmark-minus",
+                        Orden = 15,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/nc-detallado"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/nc-agrupado"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "NC Ventas Agrupado",
+                        Descripcion = "Informe agrupado de notas de crédito de ventas",
+                        Icono = "bi-file-earmark-minus",
+                        Orden = 16,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/nc-agrupado"
+                    });
+                }
+
+                // Informe de Ventas Agrupado
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/ventas-agrupado"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Ventas Agrupado",
+                        Descripcion = "Informe de ventas agrupado por fecha/cliente/producto",
+                        Icono = "bi-bar-chart",
+                        Orden = 17,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/ventas-agrupado"
+                    });
+                }
+
+                // Informe de Ventas Detallado
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/ventas-detallado"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Ventas Detallado",
+                        Descripcion = "Informe detallado de ventas con desglose de productos",
+                        Icono = "bi-list-ul",
+                        Orden = 18,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/ventas-detallado"
+                    });
+                }
+
+                // Informe de Productos Valorizado
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/productos-valorizado"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Inventario Valorizado",
+                        Descripcion = "Informe de productos con valorización de stock",
+                        Icono = "bi-currency-dollar",
+                        Orden = 19,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/productos-valorizado"
+                    });
+                }
+
+                // Informe de Ajustes de Stock
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/informes/ajustes-stock"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Ajustes de Stock",
+                        Descripcion = "Informe de ajustes de inventario realizados",
+                        Icono = "bi-clipboard-data",
+                        Orden = 20,
+                        IdModuloPadre = reportes.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/informes/ajustes-stock"
                     });
                 }
             }

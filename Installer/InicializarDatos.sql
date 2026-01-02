@@ -321,6 +321,20 @@ ELSE
     PRINT '- Permisos del Administrador ya existen'
 
 -- ============================================
+-- 15. CONFIGURACIÓN DEL SISTEMA
+-- ============================================
+IF NOT EXISTS (SELECT 1 FROM ConfiguracionSistema WHERE IdConfiguracion = 1)
+BEGIN
+    SET IDENTITY_INSERT ConfiguracionSistema ON;
+    INSERT INTO ConfiguracionSistema (IdConfiguracion, ModoFarmacia, UsaPrecioMinisterio, FechaModificacion)
+    VALUES (1, 0, 0, GETDATE());
+    SET IDENTITY_INSERT ConfiguracionSistema OFF;
+    PRINT '✓ Configuración del sistema creada'
+END
+ELSE
+    PRINT '- Configuración del sistema ya existe'
+
+-- ============================================
 -- FINALIZACIÓN
 -- ============================================
 PRINT ''

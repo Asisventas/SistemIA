@@ -1,0 +1,953 @@
+@page "/configuracion/precios-descuentos"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using SistemIA.Components
+@using SistemIA.Shared
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<PageTitle>Precios y Descuentos - SistemIA</PageTitle>
+
+<div class="container-fluid">
+    <h3 class="mb-4"><i class="bi bi-currency-dollar me-2"></i>Precios y Descuentos</h3>
+
+    @if (_configFarmaciaDescuentoMinisterio)
+    {
+        <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
+            <i class="bi bi-info-circle-fill me-2 fs-5"></i>
+            <div>
+                <strong>Modo Farmacia Activo:</strong> Los descuentos automáticos se calcularán como porcentaje 
+                sobre el <strong>Precio Ministerio</strong> del producto.
+                <br/>
+                <small class="text-muted">Fórmula: ((Precio Ministerio - Precio Venta) / Precio Ministerio) × 100</small>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_mensaje))
+    {
+        <div class="alert @(_esError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+            @_mensaje
+            <button type="button" class="btn-close" @onclick="() => _mensaje = null"></button>
+        </div>
+    }
+
+    <!-- Pestañas -->
+    <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_tabActiva == "precios" ? "active" : "")" 
+                    type="button" @onclick='() => CambiarTab("precios")'>
+                <i class="bi bi-tags me-1"></i>Listas de Precios
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_tabActiva == "categorias" ? "active" : "")" 
+                    type="button" @onclick='() => CambiarTab("categorias")'>
+                <i class="bi bi-percent me-1"></i>Descuentos por Categoría
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_tabActiva == "productos" ? "active" : "")" 
+                    type="button" @onclick='() => CambiarTab("productos")'>
+                <i class="bi bi-box-seam me-1"></i>Descuentos por Producto
+            </button>
+        </li>
+    </ul>
+
+    <!-- Contenido de pestañas -->
+    <div class="tab-content">
+        <!-- TAB: Listas de Precios -->
+        @if (_tabActiva == "precios")
+        {
+            <div class="row g-3">
+                <div class="col-lg-8">
+                    <div class="card shadow-sm">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-tags me-2"></i>
+                                <strong>Listas configuradas</strong>
+                            </div>
+                            <div class="text-muted small">Total: @_listasPrecios.Count</div>
+                        </div>
+                        <div class="card-body p-0">
+                            @if (_cargando)
+                            {
+                                <div class="py-3 text-center text-muted small">
+                                    <span class="spinner-border spinner-border-sm me-2"></span>Cargando listas...
+                                </div>
+                            }
+                            else if (_listasPrecios.Count == 0)
+                            {
+                                <div class="py-3 text-center text-muted small">No hay listas de precios configuradas</div>
+                            }
+                            else
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                            <tr class="text-success">
+                                                <th class="text-uppercase small">Lista</th>
+                                                <th class="text-uppercase small">Moneda</th>
+                                                <th class="text-uppercase small">Vigencia</th>
+                                                <th class="text-uppercase small text-center">Predet.</th>
+                                                <th class="text-uppercase small text-center">Estado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var l in _listasPrecios)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <div class="fw-semibold">@l.Nombre</div>
+                                                        <div class="small text-muted">@l.Descripcion</div>
+                                                    </td>
+                                                    <td>
+                                                        <img src="@GetFlagUrl(l.Moneda?.CodigoISO)" alt="@l.Moneda?.CodigoISO" 
+                                                             class="me-2" style="width:20px;height:14px;object-fit:cover;border-radius:1px;border:1px solid rgba(0,0,0,.1)" />
+                                                        <span class="fw-semibold">@l.Moneda?.CodigoISO</span>
+                                                        <small class="text-muted ms-1">@l.Moneda?.Nombre</small>
+                                                    </td>
+                                                    <td><small>@l.VigenciaDescripcion</small></td>
+                                                    <td class="text-center">@(l.EsPredeterminada ? "✔" : "—")</td>
+                                                    <td class="text-center">
+                                                        @if (l.Estado)
+                                                        {
+                                                            <span class="badge bg-success-subtle text-success">Activa</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge bg-secondary-subtle text-secondary">Inactiva</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <TablaTiposCambio />
+                </div>
+            </div>
+        }
+
+        <!-- TAB: Descuentos por Categoría -->
+        @if (_tabActiva == "categorias")
+        {
+            <div class="card">
+                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-tags me-2"></i>Descuentos Automáticos por Categoría</h5>
+                    <button class="btn btn-sm btn-light" @onclick="AbrirModalNuevoDescuento">
+                        <i class="bi bi-plus-lg me-1"></i>Agregar
+                    </button>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Configure descuentos automáticos que se aplicarán a todos los productos de una marca, 
+                        clasificación o a todos los productos. Los descuentos específicos por producto tienen prioridad.
+                    </p>
+
+                    @if (_descuentosCategorias.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Categoría</th>
+                                        <th class="text-center">Descuento %</th>
+                                        <th class="text-center" title="% máximo adicional que el cajero puede modificar">Margen Cajero %</th>
+                                        <th class="text-center">Activo</th>
+                                        <th class="text-center" style="width: 100px;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var desc in _descuentosCategorias.OrderBy(d => d.TipoCategoria == "TODOS" ? 3 : d.TipoCategoria == "CLASIFICACION" ? 2 : 1))
+                                    {
+                                        <tr>
+                                            <td>
+                                                @if (desc.TipoCategoria == "TODOS")
+                                                {
+                                                    <span class="badge bg-primary">🌐 Todos</span>
+                                                }
+                                                else if (desc.TipoCategoria == "MARCA")
+                                                {
+                                                    <span class="badge bg-secondary">🏷️ Marca</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-warning text-dark">📁 Clasificación</span>
+                                                }
+                                            </td>
+                                            <td>@desc.NombreCategoria</td>
+                                            <td class="text-center fw-bold text-success">@desc.PorcentajeDescuento.ToString("N2")%</td>
+                                            <td class="text-center">
+                                                @if (desc.MargenAdicionalCajero > 0)
+                                                {
+                                                    <span class="text-info fw-semibold">+@desc.MargenAdicionalCajero.ToString("N2")%</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                @if (desc.Activo)
+                                                {
+                                                    <span class="badge bg-success">Sí</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">No</span>
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditarDescuento(desc)" title="Editar">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarDescuentoCategoria(desc)" title="Eliminar">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-tags fs-1 d-block mb-2"></i>
+                            No hay descuentos por categoría configurados.<br />
+                            <button class="btn btn-outline-info btn-sm mt-2" @onclick="AbrirModalNuevoDescuento">
+                                <i class="bi bi-plus-lg me-1"></i>Agregar primer descuento
+                            </button>
+                        </div>
+                    }
+
+                    <div class="alert alert-info small mt-3 mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Orden de aplicación automático:</strong> Producto específico → Marca → Clasificación → Todos.
+                        El sistema aplica el descuento más específico disponible.
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- TAB: Descuentos por Producto -->
+        @if (_tabActiva == "productos")
+        {
+            <div class="row">
+                <div class="col-lg-5 mb-4">
+                    <!-- Buscador de productos para agregar -->
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0"><i class="bi bi-search me-2"></i>Buscar Producto para Agregar</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    <input type="text" class="form-control" placeholder="Buscar por código o descripción..."
+                                           @bind="_busquedaProducto" @bind:event="oninput"
+                                           @onkeyup="BuscarProductosAsync" />
+                                </div>
+                            </div>
+
+                            @if (_buscandoProductos)
+                            {
+                                <div class="text-center py-3">
+                                    <span class="spinner-border spinner-border-sm"></span> Buscando...
+                                </div>
+                            }
+                            else if (_productosBusqueda.Any())
+                            {
+                                <div class="list-group" style="max-height: 300px; overflow-y: auto;">
+                                    @foreach (var prod in _productosBusqueda.Take(20))
+                                    {
+                                        var yaAgregado = _productosConDescuento.Any(p => p.IdProducto == prod.IdProducto);
+                                        <button type="button" 
+                                                class="list-group-item list-group-item-action d-flex justify-content-between align-items-center @(yaAgregado ? "disabled" : "")"
+                                                @onclick="() => AgregarProductoDescuento(prod)"
+                                                disabled="@yaAgregado">
+                                            <div>
+                                                <div class="fw-bold">@prod.CodigoInterno</div>
+                                                <small class="text-muted">@prod.Descripcion</small>
+                                            </div>
+                                            @if (yaAgregado)
+                                            {
+                                                <span class="badge bg-secondary">Ya agregado</span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-plus-circle text-success"></i>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+                                @if (_productosBusqueda.Count > 20)
+                                {
+                                    <div class="text-muted small mt-2 text-center">
+                                        Mostrando 20 de @_productosBusqueda.Count resultados. Refine su búsqueda.
+                                    </div>
+                                }
+                            }
+                            else if (!string.IsNullOrWhiteSpace(_busquedaProducto) && _busquedaProducto.Length >= 2)
+                            {
+                                <div class="text-muted text-center py-3">
+                                    No se encontraron productos
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-7 mb-4">
+                    <!-- Lista de productos con descuento específico -->
+                    <div class="card">
+                        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="bi bi-box-seam me-2"></i>Productos con Descuento Específico</h6>
+                            <span class="badge bg-dark">@_productosConDescuento.Count productos</span>
+                        </div>
+                        <div class="card-body p-0">
+                            @if (_productosConDescuento.Any())
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Código</th>
+                                                <th>Descripción</th>
+                                                <th class="text-center" style="width: 100px;">Descuento %</th>
+                                                <th class="text-center" style="width: 110px;" title="% máximo adicional que el cajero puede modificar">Margen Cajero %</th>
+                                                <th class="text-center" style="width: 90px;">Activo</th>
+                                                <th class="text-center" style="width: 60px;">Quitar</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var prod in _productosConDescuento.OrderBy(p => p.Descripcion))
+                                            {
+                                                <tr>
+                                                    <td><code>@prod.CodigoInterno</code></td>
+                                                    <td class="text-truncate" style="max-width: 200px;" title="@prod.Descripcion">
+                                                        @prod.Descripcion
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <div class="input-group input-group-sm">
+                                                            <input type="number" class="form-control form-control-sm text-center"
+                                                                   value="@prod.DescuentoAutomaticoProducto"
+                                                                   @onchange="(e) => CambiarDescuentoProducto(prod, e)"
+                                                                   min="0" max="100" step="0.01" style="width: 70px;" />
+                                                            <span class="input-group-text">%</span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <div class="input-group input-group-sm">
+                                                            <input type="number" class="form-control form-control-sm text-center"
+                                                                   value="@(prod.MargenAdicionalCajeroProducto ?? 0)"
+                                                                   @onchange="(e) => CambiarMargenProducto(prod, e)"
+                                                                   min="0" max="100" step="0.01" style="width: 70px;" />
+                                                            <span class="input-group-text">%</span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <div class="form-check form-switch d-flex justify-content-center">
+                                                            <input class="form-check-input" type="checkbox"
+                                                                   checked="@prod.UsaDescuentoEspecifico"
+                                                                   @onchange="(e) => ToggleDescuentoActivo(prod, e)" />
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <button class="btn btn-sm btn-outline-danger" 
+                                                                @onclick="() => QuitarProductoDescuento(prod)" title="Quitar">
+                                                            <i class="bi bi-x-lg"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center text-muted py-4">
+                                    <i class="bi bi-box-seam fs-1 d-block mb-2"></i>
+                                    No hay productos con descuento específico configurado.<br />
+                                    <small>Use el buscador de la izquierda para agregar productos.</small>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning small mt-3">
+                        <i class="bi bi-lightbulb me-1"></i>
+                        <strong>Nota:</strong> Los productos con "Activo" habilitado usarán su descuento específico 
+                        en lugar del descuento por categoría configurado.
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Modal para Descuento por Categoría -->
+@if (_mostrarModalDescuento)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-tags me-2"></i>
+                        @(_descuentoEdicion.IdDescuentoCategoria == 0 ? "Nuevo" : "Editar") Descuento por Categoría
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalDescuento"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tipo de Categoría</label>
+                        <select class="form-select" @bind="_descuentoEdicion.TipoCategoria">
+                            <option value="TODOS">🌐 Todos los productos</option>
+                            <option value="MARCA">🏷️ Por Marca</option>
+                            <option value="CLASIFICACION">📁 Por Clasificación</option>
+                        </select>
+                    </div>
+
+                    @if (_descuentoEdicion.TipoCategoria == "MARCA")
+                    {
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Seleccionar Marca</label>
+                            <select class="form-select" @bind="_descuentoEdicion.IdMarca">
+                                <option value="">-- Seleccione --</option>
+                                @foreach (var marca in _marcas)
+                                {
+                                    <option value="@marca.IdMarca">@marca.NombreMarca</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    else if (_descuentoEdicion.TipoCategoria == "CLASIFICACION")
+                    {
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Seleccionar Clasificación</label>
+                            <select class="form-select" @bind="_descuentoEdicion.IdClasificacion">
+                                <option value="">-- Seleccione --</option>
+                                @foreach (var clasif in _clasificaciones)
+                                {
+                                    <option value="@clasif.IdClasificacion">@clasif.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Porcentaje de Descuento</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" @bind="_descuentoEdicion.PorcentajeDescuento"
+                                   min="0" max="100" step="0.01" />
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Margen Adicional para Cajero</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" @bind="_descuentoEdicion.MargenAdicionalCajero"
+                                   min="0" max="100" step="0.01" />
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Porcentaje adicional que el cajero puede aplicar por encima del descuento base. 
+                            El sistema validará que el precio final no sea menor al costo.
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="descuentoActivo" 
+                               @bind="_descuentoEdicion.Activo" />
+                        <label class="form-check-label" for="descuentoActivo">Activo</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalDescuento">Cancelar</button>
+                    <button type="button" class="btn btn-info" @onclick="GuardarDescuentoCategoria" disabled="@_guardandoDescuento">
+                        @if (_guardandoDescuento)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    // ========== ESTADO GENERAL ==========
+    private string _tabActiva = "precios";
+    private bool _cargando = true;
+    private string? _mensaje;
+    private bool _esError;
+
+    // ========== CONFIGURACIÓN FARMACIA ==========
+    private bool _configFarmaciaDescuentoMinisterio = false;
+
+    // ========== LISTAS DE PRECIOS ==========
+    private List<ListaPrecio> _listasPrecios = new();
+
+    // ========== DESCUENTOS POR CATEGORÍA ==========
+    private List<DescuentoCategoria> _descuentosCategorias = new();
+    private List<Marca> _marcas = new();
+    private List<Clasificacion> _clasificaciones = new();
+    private DescuentoCategoria _descuentoEdicion = new();
+    private bool _mostrarModalDescuento;
+    private bool _guardandoDescuento;
+
+    // ========== DESCUENTOS POR PRODUCTO ==========
+    private string _busquedaProducto = "";
+    private bool _buscandoProductos;
+    private List<Producto> _productosBusqueda = new();
+    private List<Producto> _productosConDescuento = new();
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+    private string? _usuarioNombre;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateTask;
+            _usuarioNombre = authState.User?.Identity?.Name;
+        }
+        catch { }
+
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Cargar configuración del sistema para verificar modo farmacia
+            var config = await db.Set<SistemIA.Models.ConfiguracionSistema>().FirstOrDefaultAsync();
+            _configFarmaciaDescuentoMinisterio = config?.FarmaciaModoActivo == true && config?.FarmaciaDescuentoBasadoEnPrecioMinisterio == true;
+
+            // Cargar listas de precios
+            _listasPrecios = await db.ListasPrecios
+                .Include(l => l.Moneda)
+                .OrderBy(l => l.Orden)
+                .ThenBy(l => l.Nombre)
+                .ToListAsync();
+
+            // Cargar descuentos por categoría
+            _descuentosCategorias = await db.DescuentosCategorias
+                .Include(d => d.Marca)
+                .Include(d => d.Clasificacion)
+                .OrderByDescending(d => d.Prioridad)
+                .ThenBy(d => d.TipoCategoria)
+                .ToListAsync();
+
+            // Cargar catálogos para modal
+            _marcas = await db.Marcas.OrderBy(m => m.NombreMarca).ToListAsync();
+            _clasificaciones = await db.Clasificaciones.Where(c => c.Activo).OrderBy(c => c.Nombre).ToListAsync();
+
+            // Cargar productos con descuento específico
+            _productosConDescuento = await db.Productos
+                .Where(p => p.UsaDescuentoEspecifico || p.DescuentoAutomaticoProducto.HasValue)
+                .OrderBy(p => p.Descripcion)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error al cargar datos: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void CambiarTab(string tab)
+    {
+        _tabActiva = tab;
+        _mensaje = null;
+    }
+
+    private static string GetFlagUrl(string? iso) => iso switch
+    {
+        "PYG" => "/img/flags/pyg.svg",
+        "USD" => "/img/flags/usd.svg",
+        "BRL" => "/img/flags/brl.svg",
+        "ARS" => "/img/flags/ars.svg",
+        _ => "/img/flags/usd.svg"
+    };
+
+    // ========== MÉTODOS PARA DESCUENTOS POR CATEGORÍA ==========
+
+    private void AbrirModalNuevoDescuento()
+    {
+        _descuentoEdicion = new DescuentoCategoria
+        {
+            TipoCategoria = "TODOS",
+            PorcentajeDescuento = 0,
+            Prioridad = 0,
+            Activo = true
+        };
+        _mostrarModalDescuento = true;
+    }
+
+    private void EditarDescuento(DescuentoCategoria descuento)
+    {
+        _descuentoEdicion = new DescuentoCategoria
+        {
+            IdDescuentoCategoria = descuento.IdDescuentoCategoria,
+            TipoCategoria = descuento.TipoCategoria,
+            IdMarca = descuento.IdMarca,
+            IdClasificacion = descuento.IdClasificacion,
+            PorcentajeDescuento = descuento.PorcentajeDescuento,
+            Prioridad = descuento.Prioridad,
+            Activo = descuento.Activo
+        };
+        _mostrarModalDescuento = true;
+    }
+
+    private void CerrarModalDescuento()
+    {
+        _mostrarModalDescuento = false;
+        _descuentoEdicion = new();
+    }
+
+    private async Task GuardarDescuentoCategoria()
+    {
+        // Validaciones
+        if (_descuentoEdicion.TipoCategoria == "MARCA" && !_descuentoEdicion.IdMarca.HasValue)
+        {
+            _mensaje = "❌ Debe seleccionar una marca";
+            _esError = true;
+            return;
+        }
+        if (_descuentoEdicion.TipoCategoria == "CLASIFICACION" && !_descuentoEdicion.IdClasificacion.HasValue)
+        {
+            _mensaje = "❌ Debe seleccionar una clasificación";
+            _esError = true;
+            return;
+        }
+        if (_descuentoEdicion.PorcentajeDescuento < 0 || _descuentoEdicion.PorcentajeDescuento > 100)
+        {
+            _mensaje = "❌ El porcentaje debe estar entre 0 y 100";
+            _esError = true;
+            return;
+        }
+
+        _guardandoDescuento = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Limpiar IDs según tipo
+            if (_descuentoEdicion.TipoCategoria == "TODOS")
+            {
+                _descuentoEdicion.IdMarca = null;
+                _descuentoEdicion.IdClasificacion = null;
+            }
+            else if (_descuentoEdicion.TipoCategoria == "MARCA")
+            {
+                _descuentoEdicion.IdClasificacion = null;
+            }
+            else if (_descuentoEdicion.TipoCategoria == "CLASIFICACION")
+            {
+                _descuentoEdicion.IdMarca = null;
+            }
+
+            // Asignar prioridad automática según el tipo (más específico = mayor prioridad)
+            _descuentoEdicion.Prioridad = _descuentoEdicion.TipoCategoria switch
+            {
+                "MARCA" => 100,           // Mayor prioridad
+                "CLASIFICACION" => 50,     // Prioridad media
+                "TODOS" => 10,             // Menor prioridad
+                _ => 0
+            };
+
+            if (_descuentoEdicion.IdDescuentoCategoria == 0)
+            {
+                _descuentoEdicion.FechaCreacion = DateTime.Now;
+                _descuentoEdicion.UsuarioCreacion = _usuarioNombre;
+                db.DescuentosCategorias.Add(_descuentoEdicion);
+            }
+            else
+            {
+                var existente = await db.DescuentosCategorias.FindAsync(_descuentoEdicion.IdDescuentoCategoria);
+                if (existente != null)
+                {
+                    existente.TipoCategoria = _descuentoEdicion.TipoCategoria;
+                    existente.IdMarca = _descuentoEdicion.IdMarca;
+                    existente.IdClasificacion = _descuentoEdicion.IdClasificacion;
+                    existente.PorcentajeDescuento = _descuentoEdicion.PorcentajeDescuento;
+                    existente.MargenAdicionalCajero = _descuentoEdicion.MargenAdicionalCajero;
+                    existente.Prioridad = _descuentoEdicion.Prioridad;
+                    existente.Activo = _descuentoEdicion.Activo;
+                    existente.FechaModificacion = DateTime.Now;
+                    existente.UsuarioModificacion = _usuarioNombre;
+                }
+            }
+
+            await db.SaveChangesAsync();
+
+            _mensaje = "✅ Descuento guardado correctamente";
+            _esError = false;
+            CerrarModalDescuento();
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _guardandoDescuento = false;
+        }
+    }
+
+    private async Task EliminarDescuentoCategoria(DescuentoCategoria descuento)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar descuento para '{descuento.NombreCategoria}'?"))
+            return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var entity = await db.DescuentosCategorias.FindAsync(descuento.IdDescuentoCategoria);
+            if (entity != null)
+            {
+                db.DescuentosCategorias.Remove(entity);
+                await db.SaveChangesAsync();
+                _mensaje = "✅ Descuento eliminado";
+                _esError = false;
+                await CargarDatos();
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    // ========== MÉTODOS PARA DESCUENTOS POR PRODUCTO ==========
+
+    private System.Timers.Timer? _timerBusqueda;
+
+    private void BuscarProductosAsync()
+    {
+        _timerBusqueda?.Stop();
+        _timerBusqueda?.Dispose();
+
+        if (string.IsNullOrWhiteSpace(_busquedaProducto) || _busquedaProducto.Length < 2)
+        {
+            _productosBusqueda.Clear();
+            return;
+        }
+
+        _timerBusqueda = new System.Timers.Timer(300);
+        _timerBusqueda.Elapsed += async (_, _) =>
+        {
+            _timerBusqueda?.Stop();
+            await InvokeAsync(async () =>
+            {
+                await EjecutarBusquedaProductosAsync();
+                StateHasChanged();
+            });
+        };
+        _timerBusqueda.Start();
+    }
+
+    private async Task EjecutarBusquedaProductosAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_busquedaProducto) || _busquedaProducto.Length < 2)
+        {
+            _productosBusqueda.Clear();
+            return;
+        }
+
+        _buscandoProductos = true;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var termino = _busquedaProducto.ToLower();
+
+            _productosBusqueda = await db.Productos
+                .Where(p => p.CodigoInterno.ToLower().Contains(termino) ||
+                            p.Descripcion.ToLower().Contains(termino) ||
+                            (p.CodigoBarras != null && p.CodigoBarras.Contains(termino)))
+                .OrderBy(p => p.Descripcion)
+                .Take(50)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error en búsqueda: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _buscandoProductos = false;
+        }
+    }
+
+    private async Task AgregarProductoDescuento(Producto producto)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var prod = await db.Productos.FindAsync(producto.IdProducto);
+            if (prod != null)
+            {
+                prod.UsaDescuentoEspecifico = true;
+                prod.DescuentoAutomaticoProducto = prod.DescuentoAutomaticoProducto ?? 0;
+                await db.SaveChangesAsync();
+
+                _productosConDescuento.Add(prod);
+                _productosBusqueda.Remove(producto);
+                _mensaje = $"✅ Producto '{prod.CodigoInterno}' agregado a descuentos específicos";
+                _esError = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    private async Task QuitarProductoDescuento(Producto producto)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Quitar descuento específico del producto '{producto.CodigoInterno}'?"))
+            return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var prod = await db.Productos.FindAsync(producto.IdProducto);
+            if (prod != null)
+            {
+                prod.UsaDescuentoEspecifico = false;
+                prod.DescuentoAutomaticoProducto = null;
+                await db.SaveChangesAsync();
+
+                _productosConDescuento.RemoveAll(p => p.IdProducto == producto.IdProducto);
+                _mensaje = $"✅ Producto '{prod.CodigoInterno}' quitado de descuentos específicos";
+                _esError = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    private async Task CambiarDescuentoProducto(Producto producto, ChangeEventArgs e)
+    {
+        if (!decimal.TryParse(e.Value?.ToString(), out var nuevoDescuento))
+            return;
+
+        if (nuevoDescuento < 0) nuevoDescuento = 0;
+        if (nuevoDescuento > 100) nuevoDescuento = 100;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var prod = await db.Productos.FindAsync(producto.IdProducto);
+            if (prod != null)
+            {
+                prod.DescuentoAutomaticoProducto = nuevoDescuento;
+                await db.SaveChangesAsync();
+
+                producto.DescuentoAutomaticoProducto = nuevoDescuento;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    private async Task ToggleDescuentoActivo(Producto producto, ChangeEventArgs e)
+    {
+        var activo = (bool)(e.Value ?? false);
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var prod = await db.Productos.FindAsync(producto.IdProducto);
+            if (prod != null)
+            {
+                prod.UsaDescuentoEspecifico = activo;
+                await db.SaveChangesAsync();
+
+                producto.UsaDescuentoEspecifico = activo;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    private async Task CambiarMargenProducto(Producto producto, ChangeEventArgs e)
+    {
+        if (!decimal.TryParse(e.Value?.ToString(), out var nuevoMargen))
+            return;
+
+        if (nuevoMargen < 0) nuevoMargen = 0;
+        if (nuevoMargen > 100) nuevoMargen = 100;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var prod = await db.Productos.FindAsync(producto.IdProducto);
+            if (prod != null)
+            {
+                prod.MargenAdicionalCajeroProducto = nuevoMargen == 0 ? null : nuevoMargen;
+                await db.SaveChangesAsync();
+
+                producto.MargenAdicionalCajeroProducto = prod.MargenAdicionalCajeroProducto;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        _timerBusqueda?.Dispose();
+    }
+}

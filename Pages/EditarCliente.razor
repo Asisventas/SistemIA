@@ -171,11 +171,11 @@ else if (cliente is not null)
 
                         <div class="mt-3">
                             <label class="form-label">Tipo de Operación</label>
-                            <small class="form-text text-muted">1=B2B, 2=B2C, 3=B2G, 4=B2F</small>
+                            <small class="form-text text-muted">Se determina automáticamente según el RUC (>=50M = B2B)</small>
                             <InputSelect @bind-Value="cliente.TipoOperacion" class="form-select">
                                 <option value="">Seleccione...</option>
-                                <option value="1">1 - B2B (Empresa a Empresa)</option>
-                                <option value="2">2 - B2C (Empresa a Consumidor Final)</option>
+                                <option value="1">1 - B2B (Empresa a Empresa/Extranjero)</option>
+                                <option value="2">2 - B2C (Empresa a Cliente)</option>
                                 <option value="3">3 - B2G (Empresa a Gobierno)</option>
                                 <option value="4">4 - B2F (Empresa a Extranjero)</option>
                             </InputSelect>
@@ -830,6 +830,14 @@ END");
                 {
                     cliente.IdTipoContribuyente = 1; // Persona Física
                     cliente.NaturalezaReceptor = 1;
+                }
+                
+                // Determinar TipoOperacion según valor del RUC:
+                // RUC >= 50,000,000 = B2B (empresas y extranjeros)
+                // RUC < 50,000,000 = B2C (personas físicas/clientes)
+                if (long.TryParse(cliente.RUC, out long rucNumerico))
+                {
+                    cliente.TipoOperacion = rucNumerico >= 50_000_000 ? "1" : "2"; // 1=B2B, 2=B2C
                 }
                 
                 // Establecer TipoDocumento = RUC

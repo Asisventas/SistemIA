@@ -226,7 +226,20 @@ END";
       return;
     }
     
-    // 2. Verificar si hay pagos CONFIRMADOS (solo estos bloquean)
+    // 2. Verificar si hay Notas de Crédito asociadas (deben eliminarse primero)
+    var notasCreditoAsociadas = await ctx.NotasCreditoCompras
+      .Where(nc => nc.IdCompraAsociada == id && nc.Estado != "Anulada")
+      .Select(nc => new { nc.IdNotaCreditoCompra, nc.Establecimiento, nc.PuntoExpedicion, nc.NumeroNota, nc.Estado })
+      .ToListAsync();
+    
+    if (notasCreditoAsociadas.Any())
+    {
+      var ncList = string.Join("\n", notasCreditoAsociadas.Select(nc => $"  • NC #{nc.Establecimiento}-{nc.PuntoExpedicion}-{nc.NumeroNota} ({nc.Estado})"));
+      await JS.InvokeVoidAsync("alert", $"❌ No se puede eliminar esta compra.\n\nTiene {notasCreditoAsociadas.Count} Nota(s) de Crédito asociada(s):\n{ncList}\n\nDebe anular o eliminar las NC primero.");
+      return;
+    }
+    
+    // 3. Verificar si hay pagos CONFIRMADOS (solo estos bloquean)
     var pagosConfirmados = await ctx.PagosProveedores
       .Where(p => p.IdCompra == id && p.Estado != "Anulado")
       .ToListAsync();

@@ -203,8 +203,8 @@ namespace SistemIA.Models
         /// Convierte códigos de texto a números requeridos por SIFEN
         /// </summary>
         /// <returns>
-        /// 1 = B2B (Business to Business) - Empresa a Empresa
-        /// 2 = B2C (Business to Consumer) - Empresa a Consumidor Final  
+        /// 1 = B2B (Business to Business) - Empresa a Empresa/Extranjero (RUC >= 50M)
+        /// 2 = B2C (Business to Client) - Empresa a Cliente (RUC < 50M)  
         /// 3 = B2G (Business to Government) - Empresa a Gobierno
         /// 4 = B2F (Business to Foreigner) - Empresa a Extranjero
         /// </returns>
@@ -213,7 +213,7 @@ namespace SistemIA.Models
             return TipoOperacion switch
             {
                 "1" => 1, // B2B - Business to Business
-                "2" => 2, // B2C - Business to Consumer
+                "2" => 2, // B2C - Business to Client
                 "3" => 3, // B2G - Business to Government
                 "4" => 4, // B2F - Business to Foreigner
                 _ => 1   // Por defecto B2B
@@ -228,8 +228,8 @@ namespace SistemIA.Models
         {
             return TipoOperacion switch
             {
-                "1" => "B2B - Empresa a Empresa",
-                "2" => "B2C - Empresa a Consumidor Final",
+                "1" => "B2B - Empresa a Empresa/Extranjero",
+                "2" => "B2C - Empresa a Cliente",
                 "3" => "B2G - Empresa a Gobierno",
                 "4" => "B2F - Empresa a Extranjero",
                 _ => "B2B - Empresa a Empresa (Por defecto)"

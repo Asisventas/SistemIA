@@ -1,0 +1,257 @@
+@page "/configuracion-sistema"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Models = SistemIA.Models
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="text-primary mb-0"><i class="bi bi-gear me-2"></i>Configuración del Sistema</h2>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_mensaje))
+    {
+        <div class="alert @(_esError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+            @_mensaje
+            <button type="button" class="btn-close" @onclick="() => _mensaje = null"></button>
+        </div>
+    }
+
+    <div class="row">
+        <!-- Sección Farmacia -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-capsule me-2"></i>Configuración de Farmacia</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Estas opciones habilitan funcionalidades específicas para farmacias, 
+                        como el control de precios regulados por el Ministerio de Salud.
+                    </p>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="farmaciaActivo" 
+                                   @bind="_config.FarmaciaModoActivo" />
+                            <label class="form-check-label fw-bold" for="farmaciaActivo">
+                                🏥 Modo Farmacia Activo
+                            </label>
+                        </div>
+                        <div class="form-text">Habilita todas las funcionalidades específicas para farmacias.</div>
+                    </div>
+
+                    @if (_config.FarmaciaModoActivo)
+                    {
+                        <div class="ps-4 border-start border-primary border-3">
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="mostrarPrecioMinisterio" 
+                                           @bind="_config.FarmaciaMostrarPrecioMinisterio" />
+                                    <label class="form-check-label" for="mostrarPrecioMinisterio">
+                                        Mostrar campo "Precio Ministerio" en Productos
+                                    </label>
+                                </div>
+                                <div class="form-text">Muestra el campo para ingresar el precio máximo regulado.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="validarPrecioMinisterio" 
+                                           @bind="_config.FarmaciaValidarPrecioMinisterio" />
+                                    <label class="form-check-label" for="validarPrecioMinisterio">
+                                        <i class="bi bi-shield-check text-success"></i> Validar que el precio no supere el Precio Ministerio
+                                    </label>
+                                </div>
+                                <div class="form-text text-warning">
+                                    <i class="bi bi-exclamation-triangle"></i> 
+                                    Si está activo, no se podrá guardar un producto con precio mayor al regulado.
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="mostrarPrecioMinisterioCompras" 
+                                           @bind="_config.FarmaciaMostrarPrecioMinisterioEnCompras" />
+                                    <label class="form-check-label" for="mostrarPrecioMinisterioCompras">
+                                        Mostrar "Precio Ministerio" en Compras
+                                    </label>
+                                </div>
+                                <div class="form-text">Muestra el precio ministerio en los detalles de compra para referencia.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="descuentoBasadoPrecioMinisterio" 
+                                           @bind="_config.FarmaciaDescuentoBasadoEnPrecioMinisterio" />
+                                    <label class="form-check-label" for="descuentoBasadoPrecioMinisterio">
+                                        <i class="bi bi-percent text-info"></i> Calcular descuento basado en Precio Ministerio
+                                    </label>
+                                </div>
+                                <div class="form-text text-info">
+                                    <i class="bi bi-info-circle"></i> 
+                                    Si está activo, el descuento en ventas se mostrará como: ((Precio Ministerio - Precio Venta) / Precio Ministerio) × 100
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="row">
+        <!-- Sección General -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-building me-2"></i>Información General</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Negocio</label>
+                        <input type="text" class="form-control" @bind="_config.NombreNegocio" placeholder="Nombre de la empresa" />
+                        <div class="form-text">Se mostrará en reportes e impresiones.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botones de acción -->
+    <div class="card">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div class="text-muted small">
+                @if (_config.FechaModificacion.HasValue)
+                {
+                    <span>Última modificación: @_config.FechaModificacion.Value.ToString("dd/MM/yyyy HH:mm") por @_config.UsuarioModificacion</span>
+                }
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary" @onclick="Cargar">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Recargar
+                </button>
+                <button class="btn btn-success" @onclick="Guardar" disabled="@_guardando">
+                    @if (_guardando)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    <i class="bi bi-check-lg me-1"></i> Guardar Cambios
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+</PageProtection>
+
+@code {
+    private Models.ConfiguracionSistema _config = new();
+    private string? _mensaje;
+    private bool _esError;
+    private bool _guardando;
+    
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+    private string? _usuarioNombre;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener usuario actual
+        try
+        {
+            var authState = await AuthStateTask;
+            _usuarioNombre = authState.User?.Identity?.Name;
+        }
+        catch { }
+        
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Asegurar que existe la tabla (crear si no existe)
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ConfiguracionSistema')
+                BEGIN
+                    CREATE TABLE ConfiguracionSistema (
+                        IdConfiguracion INT IDENTITY(1,1) PRIMARY KEY,
+                        FarmaciaModoActivo BIT NOT NULL DEFAULT 0,
+                        FarmaciaValidarPrecioMinisterio BIT NOT NULL DEFAULT 0,
+                        FarmaciaMostrarPrecioMinisterio BIT NOT NULL DEFAULT 0,
+                        FarmaciaMostrarPrecioMinisterioEnCompras BIT NOT NULL DEFAULT 0,
+                        NombreNegocio NVARCHAR(200) NULL,
+                        FechaModificacion DATETIME NULL,
+                        UsuarioModificacion NVARCHAR(50) NULL
+                    );
+                    INSERT INTO ConfiguracionSistema (FarmaciaModoActivo) VALUES (0);
+                END
+            ");
+        }
+        catch { }
+        
+        var config = await db.ConfiguracionSistema.FirstOrDefaultAsync();
+        if (config == null)
+        {
+            // Crear registro inicial si no existe
+            config = new Models.ConfiguracionSistema();
+            db.ConfiguracionSistema.Add(config);
+            await db.SaveChangesAsync();
+        }
+        
+        _config = config;
+    }
+
+    private async Task Guardar()
+    {
+        _guardando = true;
+        _mensaje = null;
+        StateHasChanged();
+        
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            var configDb = await db.ConfiguracionSistema.FirstOrDefaultAsync();
+            if (configDb == null)
+            {
+                configDb = new Models.ConfiguracionSistema();
+                db.ConfiguracionSistema.Add(configDb);
+            }
+            
+            // Actualizar valores
+            configDb.FarmaciaModoActivo = _config.FarmaciaModoActivo;
+            configDb.FarmaciaValidarPrecioMinisterio = _config.FarmaciaValidarPrecioMinisterio;
+            configDb.FarmaciaMostrarPrecioMinisterio = _config.FarmaciaMostrarPrecioMinisterio;
+            configDb.FarmaciaMostrarPrecioMinisterioEnCompras = _config.FarmaciaMostrarPrecioMinisterioEnCompras;
+            configDb.FarmaciaDescuentoBasadoEnPrecioMinisterio = _config.FarmaciaDescuentoBasadoEnPrecioMinisterio;
+            configDb.NombreNegocio = _config.NombreNegocio;
+            configDb.FechaModificacion = DateTime.Now;
+            configDb.UsuarioModificacion = _usuarioNombre;
+            
+            await db.SaveChangesAsync();
+            
+            _config = configDb;
+            _mensaje = "✅ Configuración guardada correctamente";
+            _esError = false;
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error al guardar: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+}

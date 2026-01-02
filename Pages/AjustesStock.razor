@@ -124,7 +124,7 @@
       </div>
       <div class="col-md-1">
         <label class="form-label">Stock ajuste</label>
-        <input class="form-control" type="number" step="0.01" @bind-value="stockAjuste" @bind-value:event="oninput" />
+        <input class="form-control" type="number" step="@(productoPermiteDecimal ? "0.01" : "1")" min="@(productoPermiteDecimal ? "0.01" : "1")" @bind-value="stockAjuste" @bind-value:event="oninput" @onfocusout="ValidarStockAjustePrincipal" />
       </div>
       <div class="col-md-2">
         <label class="form-label">Costo (Gs)</label>
@@ -174,8 +174,8 @@
                 <td>@l.DepositoNombre</td>
                 <td class="text-end">@l.StockSistema.ToString("N2")</td>
                 <td class="text-end">
-                  <input class="form-control form-control-sm text-end" style="max-width:120px; display:inline-block;" type="number" step="0.01" value="@l.StockAjuste"
-                         @oninput="(e)=>ActualizarAjuste(l, e.Value?.ToString())" />
+                  <input class="form-control form-control-sm text-end" style="max-width:120px; display:inline-block;" type="number" step="@(l.PermiteDecimal ? "0.01" : "1")" min="@(l.PermiteDecimal ? "0.01" : "1")" value="@l.StockAjuste"
+                         @oninput="(e)=>ActualizarAjuste(l, e.Value?.ToString())" @onfocusout="(()=>ValidarStockAjusteLinea(l))" />
                 </td>
                 <td class="text-end @(l.Diferencia<0?"text-danger fw-semibold":"")">@l.Diferencia.ToString("N2")</td>
                 <td class="text-end">@l.CostoUnitarioGs.ToString("N0")</td>
@@ -280,6 +280,7 @@
   private decimal stockSistema;
   private decimal stockAjuste;
   private decimal costo;
+  private bool productoPermiteDecimal; // Para validar cantidad
   private string? comentario;
   private string? errorMsg;
   private string? okMsg;
@@ -374,12 +375,19 @@
     var p = productos!.First(x=>x.IdProducto==selectedProductoId);
     var dep = depositos!.First(d=>d.IdDeposito==selectedDepositoId);
     
+    // Validar cantidad según PermiteDecimal
+    if (!productoPermiteDecimal)
+    {
+      stockAjuste = Math.Round(stockAjuste, 0);
+    }
+    
     // Verificar si ya existe la misma combinación producto+depósito
     var existente = lineas.FirstOrDefault(x=>x.IdProducto==p.IdProducto && x.IdDeposito==selectedDepositoId);
     if (existente is not null)
     {
       existente.StockSistema = stockSistema;
       existente.StockAjuste = stockAjuste;
+      existente.PermiteDecimal = p.PermiteDecimal;
       Recalcular(existente);
     }
     else
@@ -394,13 +402,14 @@
         StockSistema = stockSistema,
         StockAjuste = stockAjuste,
         CostoUnitarioGs = costo,
-        PrecioVentaGs = p.PrecioUnitarioGs
+        PrecioVentaGs = p.PrecioUnitarioGs,
+        PermiteDecimal = p.PermiteDecimal
       };
       Recalcular(l);
       lineas.Add(l);
     }
     // limpiar editor de línea
-    selectedProductoId = 0; stockSistema = 0; stockAjuste = 0; costo = 0; BuscarProducto = string.Empty; MostrarSugProductos = false;
+    selectedProductoId = 0; stockSistema = 0; stockAjuste = 0; costo = 0; productoPermiteDecimal = false; BuscarProducto = string.Empty; MostrarSugProductos = false;
   }
 
   private void AplicarFiltroProductos()
@@ -417,6 +426,7 @@
   private async Task OnProductoSuggestionMouseDownAsync(SistemIA.Models.Producto p)
   {
     SelectedProductoId = p.IdProducto;
+    productoPermiteDecimal = p.PermiteDecimal;
     BuscarProducto = p.Descripcion ?? string.Empty;
     MostrarSugProductos = false;
     await CargarContextoProducto();
@@ -475,6 +485,27 @@
       l.StockAjuste = val;
       Recalcular(l);
     }
+  }
+
+  private void ValidarStockAjustePrincipal()
+  {
+    // Si el producto no permite decimales, redondear a entero
+    if (!productoPermiteDecimal)
+    {
+      stockAjuste = Math.Round(stockAjuste, 0);
+    }
+    StateHasChanged();
+  }
+
+  private void ValidarStockAjusteLinea(LineaVM l)
+  {
+    // Si el producto no permite decimales, redondear a entero
+    if (!l.PermiteDecimal)
+    {
+      l.StockAjuste = Math.Round(l.StockAjuste, 0);
+    }
+    Recalcular(l);
+    StateHasChanged();
   }
 
   private static void Recalcular(LineaVM l)
@@ -781,5 +812,6 @@
     public decimal CostoUnitarioGs { get; set; }
     public decimal PrecioVentaGs { get; set; }
     public decimal Monto { get; set; }
+    public bool PermiteDecimal { get; set; }
   }
 }

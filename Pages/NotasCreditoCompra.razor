@@ -1,0 +1,1304 @@
+@page "/notas-credito-compra"
+@page "/notas-credito-compra/{Id:int}"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@using SistemIA.Models
+@using SistemIA.Data
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject ISucursalProvider SucursalProvider
+@inject ICajaProvider CajaProvider
+@inject ICajaService CajaService
+@inject IInventarioService Inventario
+@inject IJSRuntime JS
+@inject PermisosService PermisosService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageProtection Modulo="/notas-credito-compra" Permiso="CREATE">
+<PageTitle>@(_esEdicion ? "Editar" : "Nueva") Nota de Crédito Compra</PageTitle>
+
+<div class="container-fluid">
+    <div class="card shadow-sm">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-file-earmark-minus me-2"></i>
+                @(_esEdicion ? "Editar" : "Nueva") Nota de Crédito de Compra
+            </h5>
+            <button class="btn btn-light btn-sm" @onclick="Volver">
+                <i class="bi bi-arrow-left"></i> Volver
+            </button>
+        </div>
+        
+        <div class="card-body">
+            @if (_loading)
+            {
+                <div class="text-center p-4">
+                    <div class="spinner-border text-danger" role="status"></div>
+                </div>
+            }
+            else
+            {
+                @* Encabezado - Información principal *@
+                <div class="row g-3 mb-4">
+                    <div class="col-md-2">
+                        <label class="form-label">Caja</label>
+                        @if (_puedeCambiarCaja && _cajas.Any())
+                        {
+                            <select class="form-select form-select-sm" @bind="_nc.IdCaja" @bind:after="OnCajaChanged">
+                                @foreach (var caja in _cajas)
+                                {
+                                    <option value="@caja.IdCaja">@(string.IsNullOrWhiteSpace(caja.Nombre) ? $"Caja #{caja.IdCaja}" : caja.Nombre)</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <span class="form-control form-control-sm bg-light">@(_cajaSeleccionada != null ? (string.IsNullOrWhiteSpace(_cajaSeleccionada.Nombre) ? $"Caja #{_cajaSeleccionada.IdCaja}" : _cajaSeleccionada.Nombre) : "Sin caja")</span>
+                        }
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Turno</label>
+                        <select class="form-select form-select-sm" @bind="_nc.Turno">
+                            <option value="1">Turno 1</option>
+                            <option value="2">Turno 2</option>
+                            <option value="3">Turno 3</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Fecha</label>
+                        <input type="date" class="form-control form-control-sm" @bind="_nc.Fecha" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Número NC</label>
+                        <input type="text" class="form-control form-control-sm" readonly 
+                               value="@(_nc.Establecimiento ?? "001")-@(_nc.PuntoExpedicion ?? "001")-@(_nc.NumeroNota ?? "0000001")" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Estado</label>
+                        <span class="badge @GetBadgeClass(_nc.Estado) d-block py-2">@_nc.Estado</span>
+                    </div>
+                </div>
+                
+                @* Motivo y Documento Asociado *@
+                <div class="row g-3 mb-4">
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">Motivo <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" @bind="_nc.Motivo" @bind:after="OnMotivoChanged">
+                            @foreach (var motivo in MotivosNotaCreditoCompra.Todos)
+                            {
+                                <option value="@motivo">@motivo</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">Afecta Stock</label>
+                        <select class="form-select form-select-sm @GetAfectaStockClass()" @bind="_afectaStock">
+                            <option value="-1">➖ Resta Stock (Devuelvo)</option>
+                            <option value="0">🚫 No afecta</option>
+                            <option value="1">➕ Suma Stock (Ingreso)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold">Factura de Compra Asociada</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" readonly 
+                                   value="@(_compraSeleccionada != null ? $"{_compraSeleccionada.Establecimiento}-{_compraSeleccionada.PuntoExpedicion}-{_compraSeleccionada.NumeroFactura} (T:{_compraSeleccionada.Timbrado})" : "(Ninguna)")" />
+                            <button class="btn btn-outline-danger" type="button" @onclick="AbrirBuscarCompra">
+                                <i class="bi bi-search"></i>
+                            </button>
+                            @if (_compraSeleccionada != null)
+                            {
+                                <button class="btn btn-outline-secondary" type="button" @onclick="QuitarCompra">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Saldo Disponible</label>
+                        <input type="text" class="form-control form-control-sm @(_compraSeleccionada != null && _saldoDisponibleCompra <= 0 ? "bg-danger text-white" : "")" readonly 
+                               value="@(_compraSeleccionada != null ? _saldoDisponibleCompra.ToString("N0") + " Gs." : "N/A")" />
+                        @if (_compraSeleccionada != null && _saldoDisponibleCompra <= 0)
+                        {
+                            <small class="text-danger">Esta compra ya tiene NC por el total</small>
+                        }
+                    </div>
+                </div>
+                
+                @* Proveedor *@
+                <div class="row g-3 mb-4 p-3 bg-light rounded">
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold">Proveedor <span class="text-danger">*</span></label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" readonly 
+                                   value="@(_proveedorSeleccionado?.RazonSocial ?? _nc.NombreProveedor ?? "")" />
+                            <button class="btn btn-outline-danger" type="button" @onclick="AbrirBuscarProveedor">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">RUC</label>
+                        <input type="text" class="form-control form-control-sm" readonly 
+                               value="@(_proveedorSeleccionado?.RUC ?? _nc.RucProveedor ?? "")" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Dirección</label>
+                        <input type="text" class="form-control form-control-sm" readonly 
+                               value="@(_proveedorSeleccionado?.Direccion ?? "")" />
+                    </div>
+                </div>
+                
+                @* Datos documento proveedor (manual) *@
+                @if (_compraSeleccionada == null)
+                {
+                    <div class="row g-3 mb-4">
+                        <div class="col-12">
+                            <label class="form-label text-muted">Datos de factura del proveedor (manual):</label>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Establecimiento</label>
+                            <input type="text" class="form-control form-control-sm" maxlength="3" @bind="_nc.EstablecimientoAsociado" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Punto Expedición</label>
+                            <input type="text" class="form-control form-control-sm" maxlength="3" @bind="_nc.PuntoExpedicionAsociado" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Número Factura</label>
+                            <input type="text" class="form-control form-control-sm" maxlength="7" @bind="_nc.NumeroFacturaAsociado" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Timbrado</label>
+                            <input type="text" class="form-control form-control-sm" maxlength="8" @bind="_nc.TimbradoAsociado" />
+                        </div>
+                    </div>
+                }
+                
+                @* Moneda *@
+                <div class="row g-3 mb-4">
+                    <div class="col-md-2">
+                        <label class="form-label">Moneda</label>
+                        <select class="form-select form-select-sm" @bind="_nc.IdMoneda" @bind:after="OnMonedaChanged">
+                            @foreach (var mon in _monedas)
+                            {
+                                <option value="@mon.IdMoneda">@mon.Nombre (@mon.Simbolo)</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_nc.EsMonedaExtranjera)
+                    {
+                        <div class="col-md-2">
+                            <label class="form-label">Cambio del día</label>
+                            <input type="number" class="form-control form-control-sm" step="0.01" @bind="_nc.CambioDelDia" />
+                        </div>
+                    }
+                </div>
+                
+                @* Detalles de productos *@
+                <div class="card mb-4">
+                    <div class="card-header bg-secondary text-white py-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-list-ul me-2"></i>Detalle de Productos</span>
+                            <button class="btn btn-light btn-sm" @onclick="AbrirBuscarProducto">
+                                <i class="bi bi-plus-lg"></i> Agregar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:80px;">Código</th>
+                                        <th>Descripción</th>
+                                        <th style="width:90px;" class="text-end">Cantidad</th>
+                                        <th style="width:110px;" class="text-end">P. Unitario</th>
+                                        <th style="width:80px;" class="text-end">% Desc.</th>
+                                        <th style="width:70px;" class="text-center">IVA</th>
+                                        <th style="width:110px;" class="text-end">Subtotal</th>
+                                        <th style="width:50px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var det in _detalles)
+                                    {
+                                        <tr>
+                                            <td>@det.CodigoProducto</td>
+                                            <td>@det.NombreProducto</td>
+                                            <td>
+                                                <input type="number" class="form-control form-control-sm text-end" 
+                                                       step="@(det.PermiteDecimal ? "0.01" : "1")" 
+                                                       min="@(det.PermiteDecimal ? "0.01" : "1")" 
+                                                       @bind="det.Cantidad" @bind:after="() => ValidarYRecalcularLinea(det)" />
+                                            </td>
+                                            <td>
+                                                <input type="number" class="form-control form-control-sm text-end" 
+                                                       step="1" min="0" @bind="det.PrecioUnitario" @bind:after="RecalcularLinea" />
+                                            </td>
+                                            <td>
+                                                <input type="number" class="form-control form-control-sm text-end" 
+                                                       step="0.5" min="0" max="100" @bind="det.PorcentajeDescuento" @bind:after="RecalcularLinea" />
+                                            </td>
+                                            <td class="text-center">@det.TasaIVA%</td>
+                                            <td class="text-end">@det.Importe.ToString("N0")</td>
+                                            <td>
+                                                <button class="btn btn-outline-danger btn-sm" @onclick="() => QuitarDetalle(det)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                    @if (!_detalles.Any())
+                                    {
+                                        <tr>
+                                            <td colspan="8" class="text-center text-muted py-3">
+                                                No hay productos. Haga clic en "Agregar" para comenzar.
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                @* Totales *@
+                <div class="row">
+                    <div class="col-md-5">
+                        <label class="form-label">Observaciones</label>
+                        <textarea class="form-control" rows="3" @bind="_nc.Observaciones"></textarea>
+                    </div>
+                    <div class="col-md-4 offset-md-3">
+                        <table class="table table-sm">
+                            <tr>
+                                <td>Subtotal:</td>
+                                <td class="text-end">@_nc.Subtotal.ToString("N0")</td>
+                            </tr>
+                            <tr>
+                                <td>Descuento:</td>
+                                <td class="text-end">@_nc.TotalDescuento.ToString("N0")</td>
+                            </tr>
+                            <tr class="table-danger">
+                                <td><strong>TOTAL @(_monedaSeleccionada?.Simbolo ?? "Gs."):</strong></td>
+                                <td class="text-end"><strong>@_nc.Total.ToString("N0")</strong></td>
+                            </tr>
+                        </table>
+                        
+                        <div class="bg-light p-2 rounded small">
+                            <div class="row">
+                                <div class="col-4">
+                                    <span>IVA 10%:</span><br/>
+                                    <strong>@_nc.TotalIVA10.ToString("N0")</strong>
+                                </div>
+                                <div class="col-4">
+                                    <span>IVA 5%:</span><br/>
+                                    <strong>@_nc.TotalIVA5.ToString("N0")</strong>
+                                </div>
+                                <div class="col-4">
+                                    <span>Exenta:</span><br/>
+                                    <strong>@_nc.TotalExenta.ToString("N0")</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                @* Imputaciones tributarias *@
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Imputaciones Tributarias</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="chkIVA" @bind="_nc.ImputarIVA" />
+                                <label class="form-check-label" for="chkIVA">IVA Crédito</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="chkIRP" @bind="_nc.ImputarIRP" />
+                                <label class="form-check-label" for="chkIRP">IRP</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="chkIRE" @bind="_nc.ImputarIRE" />
+                                <label class="form-check-label" for="chkIRE">IRE</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="chkNoImputar" @bind="_nc.NoImputar" />
+                                <label class="form-check-label" for="chkNoImputar">No Imputar</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                @* Botones de acción *@
+                <div class="d-flex justify-content-between mt-4 pt-3 border-top">
+                    <div>
+                        <button class="btn btn-secondary" @onclick="Volver">
+                            <i class="bi bi-x-lg"></i> Cancelar
+                        </button>
+                    </div>
+                    <div class="d-flex gap-2">
+                        @if (_nc.Estado != "Confirmada")
+                        {
+                            <button class="btn btn-danger" @onclick="GuardarYConfirmar" disabled="@_guardando">
+                                @if (_guardando)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                <i class="bi bi-check-lg"></i> Guardar NC Compra
+                            </button>
+                        }
+                        @if (_nc.Estado == "Confirmada")
+                        {
+                            <button class="btn btn-info" @onclick="ImprimirA4">
+                                <i class="bi bi-printer"></i> Imprimir A4
+                            </button>
+                            <button class="btn btn-danger" @onclick="NuevaNotaCredito">
+                                <i class="bi bi-plus-lg"></i> Nueva NC Compra
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* Modal buscar compra *@
+@if (_mostrarBuscarCompra)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Buscar Factura de Compra</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarBuscarCompra = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Buscar por número, proveedor..." 
+                               @bind="_busquedaCompra" @bind:event="oninput" 
+                               @onkeydown="@(async e => { if (e.Key == "Enter") await BuscarCompras(); })" />
+                        <button class="btn btn-danger" @onclick="BuscarCompras">
+                            <i class="bi bi-search"></i> Buscar
+                        </button>
+                    </div>
+                    
+                    @if (_comprasEncontradas.Any())
+                    {
+                        <div class="table-responsive" style="max-height:450px;">
+                            <table class="table table-hover table-sm">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th>Número</th>
+                                        <th>Fecha</th>
+                                        <th>Proveedor</th>
+                                        <th>Timbrado</th>
+                                        <th class="text-end">Total</th>
+                                        <th class="text-end">Saldo Disp.</th>
+                                        <th class="text-center" style="width:80px;">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var cs in _comprasEncontradas)
+                                    {
+                                        var c = cs.Compra;
+                                        <tr class="@(cs.SaldoDisponible <= 0 ? "table-secondary" : "")">
+                                            <td class="fw-bold">@c.Establecimiento-@c.PuntoExpedicion-@c.NumeroFactura</td>
+                                            <td>@c.Fecha.ToString("dd/MM/yyyy")</td>
+                                            <td>@(c.Proveedor?.RazonSocial ?? "S/N")</td>
+                                            <td>@c.Timbrado</td>
+                                            <td class="text-end">@c.Total.ToString("N0")</td>
+                                            <td class="text-end @(cs.SaldoDisponible <= 0 ? "text-danger" : "text-success fw-bold")">
+                                                @cs.SaldoDisponible.ToString("N0")
+                                            </td>
+                                            <td class="text-center">
+                                                <button class="btn btn-success btn-sm" 
+                                                        @onclick="@(() => SeleccionarCompra(cs))" 
+                                                        title="Seleccionar"
+                                                        disabled="@(cs.SaldoDisponible <= 0)">
+                                                    <i class="bi bi-check-lg"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <small class="text-muted">@_comprasEncontradas.Count compras encontradas.</small>
+                    }
+                    else
+                    {
+                        <p class="text-center text-muted py-4">
+                            Ingrese un término de búsqueda y presione Enter o clic en Buscar.
+                        </p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal buscar proveedor *@
+@if (_mostrarBuscarProveedor)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Buscar Proveedor</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarBuscarProveedor = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Buscar por nombre o RUC..." 
+                               @bind="_busquedaProveedor" @bind:event="oninput" 
+                               @onkeydown="@(async e => { if (e.Key == "Enter") await BuscarProveedores(); })" />
+                        <button class="btn btn-danger" @onclick="BuscarProveedores">
+                            <i class="bi bi-search"></i> Buscar
+                        </button>
+                    </div>
+                    
+                    @if (_proveedoresEncontrados.Any())
+                    {
+                        <div class="table-responsive" style="max-height:400px;">
+                            <table class="table table-hover table-sm">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th>RUC</th>
+                                        <th>Razón Social</th>
+                                        <th>Teléfono</th>
+                                        <th style="width:80px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in _proveedoresEncontrados)
+                                    {
+                                        <tr>
+                                            <td>@p.RUC</td>
+                                            <td>@p.RazonSocial</td>
+                                            <td>@p.Telefono</td>
+                                            <td>
+                                                <button class="btn btn-success btn-sm" @onclick="@(() => SeleccionarProveedor(p))">
+                                                    <i class="bi bi-check-lg"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-center text-muted py-4">
+                            Ingrese un término de búsqueda.
+                        </p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal buscar producto *@
+@if (_mostrarBuscarProducto)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-secondary text-white">
+                    <h5 class="modal-title">Agregar Producto</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarBuscarProducto = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Código o descripción..." 
+                               @bind="_busquedaProducto" @bind:event="oninput" @bind:after="BuscarProductosAsync" />
+                        @if (_buscandoProductos)
+                        {
+                            <span class="input-group-text">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </span>
+                        }
+                    </div>
+                    
+                    @if (_productosEncontrados.Any())
+                    {
+                        <div class="table-responsive" style="max-height:400px;">
+                            <table class="table table-hover table-sm">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Descripción</th>
+                                        <th class="text-end">Precio</th>
+                                        <th class="text-center">IVA</th>
+                                        <th style="width:80px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in _productosEncontrados)
+                                    {
+                                        <tr>
+                                            <td>@p.CodigoInterno</td>
+                                            <td>@p.Descripcion</td>
+                                            <td class="text-end">@p.PrecioUnitarioGs.ToString("N0")</td>
+                                            <td class="text-center">@(p.TipoIva?.Porcentaje ?? 10)%</td>
+                                            <td>
+                                                <button class="btn btn-success btn-sm" @onclick="@(() => AgregarProducto(p))">
+                                                    <i class="bi bi-plus-lg"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_busquedaProducto))
+                    {
+                        <p class="text-center text-muted py-4">
+                            No se encontraron productos.
+                        </p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    
+    // Estado
+    private bool _loading = true;
+    private bool _guardando = false;
+    private bool _esEdicion = false;
+    private string? _usuarioActual;
+    private bool _puedeCambiarCaja = false;
+    
+    // Datos principales
+    private NotaCreditoCompra _nc = new();
+    private List<NotaCreditoCompraDetalle> _detalles = new();
+    private int _afectaStock = 0;
+    
+    // Selecciones
+    private Caja? _cajaSeleccionada;
+    private Moneda? _monedaSeleccionada;
+    private ProveedorSifenMejorado? _proveedorSeleccionado;
+    private Compra? _compraSeleccionada;
+    private decimal _saldoDisponibleCompra = 0;
+    
+    // Catálogos
+    private List<Caja> _cajas = new();
+    private List<Moneda> _monedas = new();
+    
+    // Modal búsqueda compras
+    private bool _mostrarBuscarCompra = false;
+    private string _busquedaCompra = "";
+    private List<CompraConSaldo> _comprasEncontradas = new();
+    
+    // Clase auxiliar para compras con saldo
+    private class CompraConSaldo
+    {
+        public Compra Compra { get; set; } = null!;
+        public decimal SaldoDisponible { get; set; }
+    }
+    
+    // Modal búsqueda proveedores
+    private bool _mostrarBuscarProveedor = false;
+    private string _busquedaProveedor = "";
+    private List<ProveedorSifenMejorado> _proveedoresEncontrados = new();
+    
+    // Modal búsqueda productos
+    private bool _mostrarBuscarProducto = false;
+    private string _busquedaProducto = "";
+    private List<Producto> _productosEncontrados = new();
+    private bool _buscandoProductos = false;
+    private CancellationTokenSource? _ctsProductos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        
+        // Obtener usuario actual
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _usuarioActual = authState.User.Identity?.Name;
+        
+        // Cargar catálogos
+        await CargarCatalogos();
+        
+        // Determinar si puede cambiar caja
+        _puedeCambiarCaja = _usuarioActual == "admin";
+        
+        // Cargar NC existente o crear nueva
+        if (Id.HasValue && Id.Value > 0)
+        {
+            await CargarNotaCredito(Id.Value);
+        }
+        else
+        {
+            await NuevaNotaCredito();
+        }
+        
+        _loading = false;
+    }
+
+    private async Task CargarCatalogos()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        _monedas = await db.Monedas.OrderBy(m => m.Nombre).ToListAsync();
+        _cajas = await db.Cajas.Where(c => c.IdSucursal == sucId).ToListAsync();
+        
+        // Obtener caja actual
+        var cajaActual = await CajaService.ObtenerCajaActualAsync();
+        if (cajaActual != null)
+        {
+            _cajaSeleccionada = cajaActual;
+        }
+        else if (_cajas.Any())
+        {
+            _cajaSeleccionada = _cajas.First();
+        }
+    }
+
+    private async Task CargarNotaCredito(int id)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        var nc = await db.NotasCreditoCompras
+            .AsNoTracking()
+            .Include(n => n.Proveedor)
+            .Include(n => n.CompraAsociada)
+            .Include(n => n.Moneda)
+            .Include(n => n.Caja)
+            .Include(n => n.Detalles!)
+                .ThenInclude(d => d.Producto)
+            .FirstOrDefaultAsync(n => n.IdNotaCreditoCompra == id);
+        
+        if (nc != null)
+        {
+            _nc = nc;
+            _detalles = nc.Detalles?.ToList() ?? new();
+            
+            // Asignar PermiteDecimal desde el Producto cargado
+            foreach (var det in _detalles)
+            {
+                det.PermiteDecimal = det.Producto?.PermiteDecimal ?? false;
+            }
+            
+            _proveedorSeleccionado = nc.Proveedor;
+            _compraSeleccionada = nc.CompraAsociada;
+            _monedaSeleccionada = nc.Moneda;
+            _cajaSeleccionada = nc.Caja ?? _cajas.FirstOrDefault(c => c.IdCaja == nc.IdCaja);
+            _afectaStock = nc.AfectaStock;
+            _esEdicion = true;
+            
+            // Calcular saldo disponible de la compra asociada
+            if (_compraSeleccionada != null)
+            {
+                var totalNCPrevias = await db.NotasCreditoCompras
+                    .Where(n => n.IdCompraAsociada == _compraSeleccionada.IdCompra 
+                             && n.Estado == "Confirmada" 
+                             && n.IdNotaCreditoCompra != _nc.IdNotaCreditoCompra)
+                    .SumAsync(n => n.Total);
+                
+                _saldoDisponibleCompra = _compraSeleccionada.Total - totalNCPrevias;
+            }
+        }
+        else
+        {
+            await NuevaNotaCredito();
+        }
+    }
+
+    private async Task<string> ObtenerSiguienteNumero(int sucId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var ultimo = await db.NotasCreditoCompras
+            .Where(n => n.IdSucursal == sucId)
+            .OrderByDescending(n => n.NumeroNota)
+            .Select(n => n.NumeroNota)
+            .FirstOrDefaultAsync();
+        
+        if (string.IsNullOrEmpty(ultimo))
+            return "0000001";
+        
+        if (int.TryParse(ultimo, out int num))
+            return (num + 1).ToString("D7");
+        
+        return "0000001";
+    }
+
+    private void OnMonedaChanged()
+    {
+        _monedaSeleccionada = _monedas.FirstOrDefault(m => m.IdMoneda == _nc.IdMoneda);
+        _nc.SimboloMoneda = _monedaSeleccionada?.Simbolo;
+        _nc.EsMonedaExtranjera = _monedaSeleccionada != null && !_monedaSeleccionada.EsMonedaBase;
+        if (!_nc.EsMonedaExtranjera)
+            _nc.CambioDelDia = 1;
+    }
+
+    private void OnCajaChanged()
+    {
+        _cajaSeleccionada = _cajas.FirstOrDefault(c => c.IdCaja == _nc.IdCaja);
+    }
+
+    // ========== BÚSQUEDA DE COMPRAS ==========
+    private async Task AbrirBuscarCompra()
+    {
+        _busquedaCompra = "";
+        _comprasEncontradas.Clear();
+        _mostrarBuscarCompra = true;
+        await BuscarCompras(); // Cargar compras automáticamente al abrir
+    }
+
+    private async Task BuscarCompras()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        var busq = (_busquedaCompra ?? "").Trim().ToLower();
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Buscar compras confirmadas (estado "Confirmado" en Compras)
+        var query = db.Compras
+            .Include(c => c.Proveedor)
+            .Where(c => c.IdSucursal == sucId && c.Estado == "Confirmado");
+        
+        // Aplicar filtro de búsqueda si hay texto
+        if (!string.IsNullOrEmpty(busq))
+        {
+            query = query.Where(c => 
+                (c.Proveedor != null && c.Proveedor.RazonSocial.ToLower().Contains(busq)) ||
+                (c.NumeroFactura != null && c.NumeroFactura.Contains(busq)) ||
+                (c.Proveedor != null && c.Proveedor.RUC != null && c.Proveedor.RUC.Contains(busq)) ||
+                (c.Establecimiento != null && c.Establecimiento.Contains(busq)));
+        }
+        
+        var compras = await query
+            .OrderByDescending(c => c.Fecha)
+            .ThenByDescending(c => c.IdCompra)
+            .Take(100)
+            .ToListAsync();
+        
+        // Obtener NC previas para calcular saldos
+        var idsCompras = compras.Select(c => c.IdCompra).ToList();
+        var ncPorCompra = await db.NotasCreditoCompras
+            .Where(nc => nc.IdCompraAsociada != null 
+                      && idsCompras.Contains(nc.IdCompraAsociada.Value) 
+                      && nc.Estado == "Confirmada"
+                      && nc.IdNotaCreditoCompra != _nc.IdNotaCreditoCompra)
+            .GroupBy(nc => nc.IdCompraAsociada)
+            .Select(g => new { IdCompra = g.Key, TotalNC = g.Sum(nc => nc.Total) })
+            .ToDictionaryAsync(x => x.IdCompra!.Value, x => x.TotalNC);
+        
+        // Crear lista con saldos
+        _comprasEncontradas = compras.Select(c => new CompraConSaldo
+        {
+            Compra = c,
+            SaldoDisponible = c.Total - (ncPorCompra.TryGetValue(c.IdCompra, out var totalNC) ? totalNC : 0)
+        }).ToList();
+    }
+
+    private async Task SeleccionarCompra(CompraConSaldo cs)
+    {
+        var c = cs.Compra;
+        _compraSeleccionada = c;
+        _nc.IdCompraAsociada = c.IdCompra;
+        
+        // Copiar datos del documento
+        _nc.EstablecimientoAsociado = c.Establecimiento;
+        _nc.PuntoExpedicionAsociado = c.PuntoExpedicion;
+        _nc.NumeroFacturaAsociado = c.NumeroFactura;
+        _nc.TimbradoAsociado = c.Timbrado;
+        
+        // Usar el saldo ya calculado
+        _saldoDisponibleCompra = cs.SaldoDisponible;
+        
+        // Auto-seleccionar proveedor
+        if (c.Proveedor != null)
+        {
+            _proveedorSeleccionado = c.Proveedor;
+            _nc.IdProveedor = c.IdProveedor;
+            _nc.NombreProveedor = c.Proveedor.RazonSocial;
+            _nc.RucProveedor = c.Proveedor.RUC;
+        }
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Cargar detalles de la compra al detalle de NC (si no hay detalles ya cargados)
+        if (!_detalles.Any())
+        {
+            var detallesCompra = await db.ComprasDetalles
+                .Include(d => d.Producto)
+                .Where(d => d.IdCompra == c.IdCompra)
+                .ToListAsync();
+            
+            foreach (var dc in detallesCompra)
+            {
+                // Determinar tasa IVA
+                int tasaIVA = 10; // default
+                if (dc.IVA5 > 0 || dc.Grabado5 > 0) tasaIVA = 5;
+                else if (dc.Exenta > 0 && dc.IVA10 == 0 && dc.IVA5 == 0) tasaIVA = 0;
+                
+                var det = new NotaCreditoCompraDetalle
+                {
+                    IdProducto = dc.IdProducto,
+                    CodigoProducto = dc.Producto?.CodigoInterno,
+                    NombreProducto = dc.Producto?.Descripcion,
+                    Cantidad = dc.Cantidad,
+                    PrecioUnitario = dc.PrecioUnitario,
+                    PorcentajeDescuento = 0,
+                    MontoDescuento = 0,
+                    TasaIVA = tasaIVA,
+                    IdDepositoItem = dc.IdDepositoItem,
+                    FechaCreacion = DateTime.Now,
+                    UsuarioCreacion = _usuarioActual
+                };
+                
+                CalcularLinea(det);
+                _detalles.Add(det);
+            }
+            
+            RecalcularTotales();
+        }
+        
+        _mostrarBuscarCompra = false;
+    }
+
+    private void QuitarCompra()
+    {
+        _compraSeleccionada = null;
+        _nc.IdCompraAsociada = null;
+        _nc.EstablecimientoAsociado = null;
+        _nc.PuntoExpedicionAsociado = null;
+        _nc.NumeroFacturaAsociado = null;
+        _nc.TimbradoAsociado = null;
+        _saldoDisponibleCompra = 0;
+    }
+
+    // ========== BÚSQUEDA DE PROVEEDORES ==========
+    private void AbrirBuscarProveedor()
+    {
+        _busquedaProveedor = "";
+        _proveedoresEncontrados.Clear();
+        _mostrarBuscarProveedor = true;
+    }
+
+    private async Task BuscarProveedores()
+    {
+        var busq = _busquedaProveedor.ToLower();
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        _proveedoresEncontrados = await db.ProveedoresSifen
+            .Where(p => p.Estado)
+            .Where(p => p.RazonSocial.ToLower().Contains(busq) || (p.RUC != null && p.RUC.Contains(busq)))
+            .OrderBy(p => p.RazonSocial)
+            .Take(50)
+            .ToListAsync();
+    }
+
+    private void SeleccionarProveedor(ProveedorSifenMejorado p)
+    {
+        _proveedorSeleccionado = p;
+        _nc.IdProveedor = p.IdProveedor;
+        _nc.NombreProveedor = p.RazonSocial;
+        _nc.RucProveedor = p.RUC;
+        _mostrarBuscarProveedor = false;
+    }
+
+    // ========== BÚSQUEDA DE PRODUCTOS ==========
+    private void AbrirBuscarProducto()
+    {
+        _busquedaProducto = "";
+        _productosEncontrados.Clear();
+        _mostrarBuscarProducto = true;
+    }
+
+    private async Task BuscarProductosAsync()
+    {
+        _ctsProductos?.Cancel();
+        _ctsProductos = new CancellationTokenSource();
+        var token = _ctsProductos.Token;
+        
+        if (string.IsNullOrWhiteSpace(_busquedaProducto) || _busquedaProducto.Length < 2)
+        {
+            _productosEncontrados.Clear();
+            return;
+        }
+        
+        if (_buscandoProductos) return;
+        
+        try
+        {
+            await Task.Delay(300, token);
+            _buscandoProductos = true;
+            
+            var sucId = SucursalProvider.GetSucursalId();
+            var busq = _busquedaProducto.Trim().ToLower();
+            
+            using var db = await DbFactory.CreateDbContextAsync();
+            
+            _productosEncontrados = await db.Productos
+                .AsNoTracking()
+                .Include(p => p.TipoIva)
+                .Where(p => p.IdSucursal == sucId && p.Activo)
+                .Where(p => p.CodigoInterno.ToLower().Contains(busq) 
+                         || p.Descripcion.ToLower().Contains(busq)
+                         || (p.CodigoBarras != null && p.CodigoBarras.Contains(busq)))
+                .OrderBy(p => p.Descripcion)
+                .Take(50)
+                .ToListAsync(token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error búsqueda productos: {ex.Message}");
+        }
+        finally
+        {
+            _buscandoProductos = false;
+        }
+    }
+
+    private void AgregarProducto(Producto p)
+    {
+        var tasa = p.TipoIva?.Porcentaje ?? 10;
+        
+        var det = new NotaCreditoCompraDetalle
+        {
+            IdProducto = p.IdProducto,
+            CodigoProducto = p.CodigoInterno,
+            NombreProducto = p.Descripcion,
+            Cantidad = 1,
+            PrecioUnitario = p.CostoUnitarioGs ?? 0,
+            PorcentajeDescuento = 0,
+            MontoDescuento = 0,
+            TasaIVA = (int)tasa,
+            FechaCreacion = DateTime.Now,
+            UsuarioCreacion = _usuarioActual,
+            PermiteDecimal = p.PermiteDecimal
+        };
+        
+        CalcularLinea(det);
+        _detalles.Add(det);
+        RecalcularTotales();
+        
+        _mostrarBuscarProducto = false;
+    }
+
+    private void QuitarDetalle(NotaCreditoCompraDetalle det)
+    {
+        _detalles.Remove(det);
+        RecalcularTotales();
+    }
+
+    private void ValidarYRecalcularLinea(NotaCreditoCompraDetalle det)
+    {
+        // Si no permite decimal, redondear a entero
+        if (!det.PermiteDecimal && det.Cantidad != Math.Floor(det.Cantidad))
+        {
+            det.Cantidad = Math.Max(1, Math.Round(det.Cantidad));
+        }
+        
+        // Asegurar cantidad mínima
+        if (det.Cantidad < (det.PermiteDecimal ? 0.01m : 1m))
+        {
+            det.Cantidad = det.PermiteDecimal ? 0.01m : 1m;
+        }
+        
+        CalcularLinea(det);
+        RecalcularTotales();
+    }
+
+    private void RecalcularLinea()
+    {
+        foreach (var det in _detalles)
+            CalcularLinea(det);
+        RecalcularTotales();
+    }
+
+    private void CalcularLinea(NotaCreditoCompraDetalle det)
+    {
+        var subtotal = det.Cantidad * det.PrecioUnitario;
+        det.MontoDescuento = subtotal * det.PorcentajeDescuento / 100;
+        det.Importe = subtotal - det.MontoDescuento;
+        
+        if (det.TasaIVA == 10)
+        {
+            det.IVA10 = det.Importe / 11;
+            det.Grabado10 = det.Importe - det.IVA10;
+            det.IVA5 = 0;
+            det.Grabado5 = 0;
+            det.Exenta = 0;
+        }
+        else if (det.TasaIVA == 5)
+        {
+            det.IVA5 = det.Importe / 21;
+            det.Grabado5 = det.Importe - det.IVA5;
+            det.IVA10 = 0;
+            det.Grabado10 = 0;
+            det.Exenta = 0;
+        }
+        else
+        {
+            det.Exenta = det.Importe;
+            det.IVA10 = 0;
+            det.IVA5 = 0;
+            det.Grabado10 = 0;
+            det.Grabado5 = 0;
+        }
+    }
+
+    private void RecalcularTotales()
+    {
+        _nc.Subtotal = _detalles.Sum(d => d.Cantidad * d.PrecioUnitario);
+        _nc.TotalDescuento = _detalles.Sum(d => d.MontoDescuento);
+        _nc.Total = _detalles.Sum(d => d.Importe);
+        _nc.TotalIVA10 = _detalles.Sum(d => d.IVA10);
+        _nc.TotalIVA5 = _detalles.Sum(d => d.IVA5);
+        _nc.TotalExenta = _detalles.Sum(d => d.Exenta);
+    }
+
+    private async Task GuardarYConfirmar()
+    {
+        if (!ValidarDatos()) return;
+        
+        // Validar que no exceda el saldo disponible
+        if (_compraSeleccionada != null && _nc.Total > _saldoDisponibleCompra)
+        {
+            await JS.InvokeVoidAsync("alert", 
+                $"El monto de la NC ({_nc.Total:N0}) excede el saldo disponible de la compra ({_saldoDisponibleCompra:N0}).");
+            return;
+        }
+        
+        var stockMsg = _afectaStock switch
+        {
+            -1 => "\n\n⚠️ Se RESTARÁ el stock (devolución al proveedor).",
+            1 => "\n\n✅ Se SUMARÁ el stock (ingreso).",
+            _ => "\n\n📋 No se modificará el stock."
+        };
+        
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Guardar la nota de crédito de compra?{stockMsg}"))
+            return;
+        
+        _guardando = true;
+        
+        try
+        {
+            _nc.Estado = "Confirmada";
+            _nc.AfectaStock = _afectaStock;
+            
+            using var db = await DbFactory.CreateDbContextAsync();
+            
+            // Limpiar referencias para evitar conflictos
+            _nc.Proveedor = null;
+            _nc.Caja = null;
+            _nc.Moneda = null;
+            _nc.CompraAsociada = null;
+            _nc.Deposito = null;
+            _nc.Usuario = null;
+            
+            foreach (var det in _detalles)
+            {
+                det.Producto = null;
+                det.DepositoItem = null;
+                det.NotaCreditoCompra = null;
+            }
+            
+            _nc.Detalles = _detalles;
+            _nc.FechaModificacion = DateTime.Now;
+            _nc.ModificadoPor = _usuarioActual;
+            
+            if (_esEdicion)
+            {
+                var detExistentes = await db.NotasCreditoComprasDetalles
+                    .Where(d => d.IdNotaCreditoCompra == _nc.IdNotaCreditoCompra)
+                    .ToListAsync();
+                db.RemoveRange(detExistentes);
+                
+                foreach (var det in _detalles)
+                {
+                    det.IdNotaCreditoCompra = _nc.IdNotaCreditoCompra;
+                    det.IdNotaCreditoCompraDetalle = 0;
+                }
+                
+                db.Update(_nc);
+            }
+            else
+            {
+                _nc.FechaCreacion = DateTime.Now;
+                _nc.CreadoPor = _usuarioActual;
+                db.NotasCreditoCompras.Add(_nc);
+            }
+            
+            await db.SaveChangesAsync();
+            
+            // Procesar stock si corresponde
+            if (_afectaStock != 0)
+            {
+                var caja = await CajaService.ObtenerCajaActualAsync();
+                var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
+                var turno = caja?.TurnoActual ?? 1;
+                var idCaja = caja?.IdCaja;
+                
+                foreach (var det in _detalles)
+                {
+                    if (det.IdProducto > 0)
+                    {
+                        var producto = await db.Productos.FindAsync(det.IdProducto);
+                        var depositoId = det.IdDepositoItem ?? producto?.IdDepositoPredeterminado ?? 1;
+                        
+                        // Si AfectaStock = -1 (devolución proveedor), tipo = 2 (salida)
+                        // Si AfectaStock = 1 (ingreso), tipo = 1 (entrada)
+                        var tipoMov = _afectaStock == -1 ? 2 : 1;
+                        var motivo = $"NC Compra #{_nc.NumeroNota} - {_nc.Motivo}";
+                        
+                        await Inventario.AjustarStockAsync(
+                            det.IdProducto,
+                            depositoId,
+                            det.Cantidad,
+                            tipoMov,
+                            motivo,
+                            _usuarioActual ?? "Sistema",
+                            _nc.IdSucursal,
+                            idCaja,
+                            fechaCaja,
+                            turno
+                        );
+                    }
+                }
+            }
+            
+            _esEdicion = true;
+            
+            // Actualizar saldo disponible después de guardar
+            if (_compraSeleccionada != null)
+            {
+                var totalNCPrevias = await db.NotasCreditoCompras
+                    .Where(n => n.IdCompraAsociada == _compraSeleccionada.IdCompra 
+                             && n.Estado == "Confirmada")
+                    .SumAsync(n => n.Total);
+                
+                _saldoDisponibleCompra = _compraSeleccionada.Total - totalNCPrevias;
+            }
+            
+            var ncGuardada = _nc.NumeroNota;
+            await JS.InvokeVoidAsync("alert", $"NC de Compra #{ncGuardada} guardada correctamente.");
+            
+            // Limpiar formulario para crear nueva NC
+            await NuevaNotaCredito();
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException?.Message ?? "";
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}\n{innerMsg}");
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private bool ValidarDatos()
+    {
+        if (_nc.IdProveedor <= 0)
+        {
+            JS.InvokeVoidAsync("alert", "Debe seleccionar un proveedor.");
+            return false;
+        }
+        
+        if (!_detalles.Any())
+        {
+            JS.InvokeVoidAsync("alert", "Debe agregar al menos un producto.");
+            return false;
+        }
+        
+        return true;
+    }
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/notas-credito-compra/explorar");
+    }
+
+    private void ImprimirA4()
+    {
+        if (_nc.IdNotaCreditoCompra > 0)
+            Nav.NavigateTo($"/notas-credito-compra/imprimir/{_nc.IdNotaCreditoCompra}");
+    }
+
+    private string GetBadgeClass(string estado) => estado switch
+    {
+        "Borrador" => "bg-warning text-dark",
+        "Confirmada" => "bg-success",
+        "Anulada" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetAfectaStockClass() => _afectaStock switch
+    {
+        1 => "border-success text-success",
+        -1 => "border-danger text-danger",
+        _ => ""
+    };
+
+    private void OnMotivoChanged()
+    {
+        _afectaStock = _nc.Motivo switch
+        {
+            "Devolución" => -1,           // Resta stock (devuelvo al proveedor)
+            "Producto defectuoso" => -1,  // Resta stock
+            "Error de facturación" => 0,   // No afecta stock
+            "Descuento" => 0,              // No afecta stock
+            "Bonificación" => 0,           // No afecta stock
+            "Ajuste de precio" => 0,       // No afecta stock
+            _ => 0
+        };
+    }
+
+    private async Task NuevaNotaCredito()
+    {
+        var sucId = SucursalProvider.GetSucursalId();
+        if (!sucId.HasValue) return;
+        
+        _detalles.Clear();
+        _compraSeleccionada = null;
+        _proveedorSeleccionado = null;
+        _saldoDisponibleCompra = 0;
+        _esEdicion = false;
+        _afectaStock = 0;
+        
+        _nc = new NotaCreditoCompra
+        {
+            IdSucursal = sucId.Value,
+            IdCaja = _cajaSeleccionada?.IdCaja ?? 0,
+            Fecha = _cajaSeleccionada?.FechaActualCaja ?? DateTime.Now,
+            Turno = _cajaSeleccionada?.TurnoActual ?? 1,
+            Motivo = MotivosNotaCreditoCompra.Devolucion,
+            Estado = "Borrador",
+            IdMoneda = _monedas.FirstOrDefault(m => m.EsMonedaBase)?.IdMoneda ?? 1,
+            CambioDelDia = 1,
+            CreadoPor = _usuarioActual ?? "Sistema",
+            FechaCreacion = DateTime.Now,
+            Establecimiento = "001",
+            PuntoExpedicion = "001",
+            ImputarIVA = true
+        };
+        
+        _nc.NumeroNota = await ObtenerSiguienteNumero(sucId.Value);
+        
+        _monedaSeleccionada = _monedas.FirstOrDefault(m => m.EsMonedaBase) ?? _monedas.FirstOrDefault();
+        
+        StateHasChanged();
+    }
+}

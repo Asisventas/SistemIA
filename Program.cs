@@ -75,6 +75,7 @@ builder.Services.AddScoped<PagoProveedorService>();
 builder.Services.AddScoped<AuditoriaService>();
 builder.Services.AddScoped<PermisosService>();
 builder.Services.AddScoped<ActualizacionService>();
+builder.Services.AddScoped<DescuentoService>();
 // Impresión directa sin diálogo (solo Windows)
 if (OperatingSystem.IsWindows())
 {

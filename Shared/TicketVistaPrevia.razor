@@ -143,9 +143,11 @@
                                 <span class="col-cant">CANT.</span>
                                 <span class="col-desc">DESCRIPCIÓN</span>
                                 <span class="col-precio">P.UNIT.</span>
-                                <span class="col-exenta">EXENTA</span>
-                                <span class="col-iva5">5%</span>
-                                <span class="col-iva10">10%</span>
+                                @if (_modoFarmaciaActivo)
+                                {
+                                    <span class="col-pmin">P.MIN.</span>
+                                }
+                                <span class="col-importe">IMPORTE</span>
                             </div>
 
                             <div class="ticket-separator"></div>
@@ -158,9 +160,11 @@
                                         <span class="col-cant">@det.Cantidad</span>
                                         <span class="col-desc">@det.Producto?.Descripcion</span>
                                         <span class="col-precio">@FormatearImporte(det.PrecioUnitario)</span>
-                                        <span class="col-exenta">@(det.Exenta > 0 ? FormatearImporte(det.Exenta) : "-")</span>
-                                        <span class="col-iva5">@(det.Grabado5 > 0 ? FormatearImporte(det.Importe) : "-")</span>
-                                        <span class="col-iva10">@(det.Grabado10 > 0 ? FormatearImporte(det.Importe) : "-")</span>
+                                        @if (_modoFarmaciaActivo)
+                                        {
+                                            <span class="col-pmin">@(det.PrecioMinisterio.HasValue ? FormatearImporte(det.PrecioMinisterio.Value) : "-")</span>
+                                        }
+                                        <span class="col-importe">@FormatearImporte(det.Importe)</span>
                                     </div>
                                 }
                             </div>
@@ -382,10 +386,9 @@
 
     .ticket-preview-container .ticket-detalle-header .col-cant { width: 38px; text-align: center; }
     .ticket-preview-container .ticket-detalle-header .col-desc { flex: 1; text-align: left; padding-left: 4px; }
-    .ticket-preview-container .ticket-detalle-header .col-precio { width: 58px; text-align: right; }
-    .ticket-preview-container .ticket-detalle-header .col-exenta { width: 52px; text-align: right; }
-    .ticket-preview-container .ticket-detalle-header .col-iva5 { width: 52px; text-align: right; }
-    .ticket-preview-container .ticket-detalle-header .col-iva10 { width: 58px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-header .col-precio { width: 60px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-header .col-pmin { width: 60px; text-align: right; color: #0d6efd; }
+    .ticket-preview-container .ticket-detalle-header .col-importe { width: 70px; text-align: right; font-weight: bold; }
 
     /* ═══════════════════ DETALLE DE PRODUCTOS ═══════════════════ */
     .ticket-preview-container .ticket-detalle {
@@ -414,10 +417,9 @@
         white-space: normal;
         line-height: 1.2;
     }
-    .ticket-preview-container .ticket-detalle-item .col-precio { width: 58px; text-align: right; flex-shrink: 0; }
-    .ticket-preview-container .ticket-detalle-item .col-exenta { width: 52px; text-align: right; }
-    .ticket-preview-container .ticket-detalle-item .col-iva5 { width: 52px; text-align: right; }
-    .ticket-preview-container .ticket-detalle-item .col-iva10 { width: 58px; text-align: right; }
+    .ticket-preview-container .ticket-detalle-item .col-precio { width: 60px; text-align: right; flex-shrink: 0; }
+    .ticket-preview-container .ticket-detalle-item .col-pmin { width: 60px; text-align: right; flex-shrink: 0; color: #0d6efd; }
+    .ticket-preview-container .ticket-detalle-item .col-importe { width: 70px; text-align: right; flex-shrink: 0; font-weight: 600; }
 
     /* ═══════════════════ SUBTOTALES ═══════════════════ */
     .ticket-preview-container .ticket-subtotales {
@@ -563,6 +565,9 @@
     
     // Flag para evitar múltiples impresiones automáticas
     private bool _yaImprimioAutomatico = false;
+    
+    // Modo farmacia - mostrar precio ministerio
+    private bool _modoFarmaciaActivo = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -604,6 +609,10 @@
                     ? await ctx.TiposPago.FindAsync(_venta.IdTipoPago) 
                     : null;
                 _caja = await ctx.Cajas.FirstOrDefaultAsync(c => c.CajaActual == 1);
+                
+                // Cargar configuración de farmacia
+                var configSistema = await ctx.ConfiguracionSistema.FirstOrDefaultAsync();
+                _modoFarmaciaActivo = configSistema?.FarmaciaModoActivo ?? false;
 
                 // ═══════════════════ CÁLCULO DE TOTALES E IMPUESTOS ═══════════════════
                 

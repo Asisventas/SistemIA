@@ -1,0 +1,253 @@
+@using Microsoft.EntityFrameworkCore
+@namespace SistemIA.Shared.Reportes
+@using SistemIA.Models
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.ICajaService CajaService
+
+@code {
+    [Parameter] public int IdNotaCreditoCompra { get; set; }
+    [Parameter] public EventCallback OnReady { get; set; }
+    
+    private NotaCreditoCompra? nc;
+    private List<NotaCreditoCompraDetalle> detalles = new();
+    private ProveedorSifenMejorado? proveedor;
+    private Caja? caja;
+    private Sociedad? empresa;
+    private Compra? compraAsociada;
+    private int _lastLoadedId = -1;
+    private int _lastOnReadyId = -1;
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_lastLoadedId == IdNotaCreditoCompra && nc != null)
+        {
+            if (OnReady.HasDelegate && _lastOnReadyId != IdNotaCreditoCompra)
+            {
+                _lastOnReadyId = IdNotaCreditoCompra;
+                await OnReady.InvokeAsync();
+            }
+            return;
+        }
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            nc = await ctx.NotasCreditoCompras
+                .AsNoTracking()
+                .Include(n => n.Proveedor)
+                .Include(n => n.Sucursal)
+                .Include(n => n.Caja)
+                .Include(n => n.Moneda)
+                .Include(n => n.CompraAsociada)
+                .FirstOrDefaultAsync(n => n.IdNotaCreditoCompra == IdNotaCreditoCompra);
+            
+            if (nc == null) return;
+            
+            proveedor = nc.Proveedor;
+            compraAsociada = nc.CompraAsociada;
+            caja = nc.Caja ?? await CajaService.ObtenerCajaActualAsync();
+            empresa = await ctx.Sociedades.FirstOrDefaultAsync();
+            
+            detalles = await ctx.NotasCreditoComprasDetalles
+                .AsNoTracking()
+                .Include(d => d.Producto)
+                .Where(d => d.IdNotaCreditoCompra == IdNotaCreditoCompra)
+                .ToListAsync();
+            
+            _lastLoadedId = IdNotaCreditoCompra;
+            
+            StateHasChanged();
+            
+            if (OnReady.HasDelegate && _lastOnReadyId != IdNotaCreditoCompra)
+            {
+                _lastOnReadyId = IdNotaCreditoCompra;
+                await OnReady.InvokeAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[KudeNotaCreditoCompra] Error: {ex.Message}");
+        }
+    }
+    
+    private string NumeroNC() => $"{nc?.Establecimiento ?? "001"}-{nc?.PuntoExpedicion ?? "001"}-{nc?.NumeroNota ?? "0000001"}";
+    
+    private string? LogoDataUrl()
+    {
+        try
+        {
+            var bytes = nc?.Sucursal?.Logo;
+            if (bytes == null || bytes.Length == 0) return null;
+            return $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch { return null; }
+    }
+    
+    private decimal TotExentas => detalles.Sum(x => x.Exenta);
+    private decimal TotGrav5 => detalles.Sum(x => x.Grabado5);
+    private decimal TotGrav10 => detalles.Sum(x => x.Grabado10);
+    private decimal TotIva5 => detalles.Sum(x => x.IVA5);
+    private decimal TotIva10 => detalles.Sum(x => x.IVA10);
+}
+
+@if (nc == null)
+{
+    <div class="alert alert-warning">Nota de crédito de compra no encontrada.</div>
+}
+else
+{
+<div class="kude">
+    <div class="doc-a4">
+        <div class="encabezado">
+            <div class="emisor-left">
+                <div class="logo-y-empresa">
+                    @if (!string.IsNullOrEmpty(LogoDataUrl()))
+                    {
+                        <img class="logo" src="@LogoDataUrl()" alt="Logo" />
+                    }
+                    <div class="empresa">
+                        <div class="nombre">@(nc.Sucursal?.NombreEmpresa ?? empresa?.Nombre)</div>
+                        <div class="dir">@(nc.Sucursal?.Direccion ?? empresa?.Direccion)</div>
+                        @if (!string.IsNullOrWhiteSpace(nc.Sucursal?.Telefono ?? empresa?.Telefono))
+                        {
+                            <div class="tel">Teléfono: @(nc.Sucursal?.Telefono ?? empresa?.Telefono)</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(nc.Sucursal?.Correo ?? empresa?.Email))
+                        {
+                            <div class="mail">@(nc.Sucursal?.Correo ?? empresa?.Email)</div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="emisor-right">
+                <div>R.U.C.: @(nc.Sucursal?.RUC ?? empresa?.RUC)-@(nc.Sucursal?.DV ?? empresa?.DV ?? 0)</div>
+                <div class="titulo-doc text-danger">NOTA DE CRÉDITO COMPRA</div>
+                <div class="numero">@NumeroNC()</div>
+            </div>
+        </div>
+
+        <div class="banda">
+            <div class="col-izq">
+                <div><b>Fecha de Emisión:</b> @nc.Fecha.ToString("dd/MM/yyyy")</div>
+                <div><b>Moneda:</b> @(nc.Moneda?.CodigoISO ?? "PYG")</div>
+                <div><b>Tipo de Cambio:</b> @nc.CambioDelDia</div>
+                <div><b>N° Interno:</b> @nc.IdNotaCreditoCompra</div>
+                <div><b>Motivo:</b> @nc.Motivo</div>
+            </div>
+            <div class="col-der">
+                <div><b>Tipo Doc.:</b> NOTA DE CRÉDITO COMPRA</div>
+                <div><b>R.U.C. Proveedor:</b> @(nc.RucProveedor ?? proveedor?.RUC)</div>
+                <div><b>Proveedor:</b> @(nc.NombreProveedor ?? proveedor?.RazonSocial ?? "S/N")</div>
+                @if (!string.IsNullOrWhiteSpace(proveedor?.Direccion))
+                {
+                    <div><b>Dirección:</b> @proveedor!.Direccion</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(proveedor?.Telefono))
+                {
+                    <div><b>Teléfono:</b> @proveedor!.Telefono</div>
+                }
+            </div>
+        </div>
+
+        @if (compraAsociada != null || !string.IsNullOrEmpty(nc.NumeroFacturaAsociado))
+        {
+        <div class="doc-asociado">
+            <b>Factura de Compra Asociada:</b> 
+            @(nc.EstablecimientoAsociado ?? compraAsociada?.Establecimiento)-@(nc.PuntoExpedicionAsociado ?? compraAsociada?.PuntoExpedicion)-@(nc.NumeroFacturaAsociado ?? compraAsociada?.NumeroFactura) |
+            @if (!string.IsNullOrEmpty(nc.TimbradoAsociado ?? compraAsociada?.Timbrado))
+            {
+                <span><b>Timbrado:</b> @(nc.TimbradoAsociado ?? compraAsociada?.Timbrado) |</span>
+            }
+            @if (compraAsociada != null)
+            {
+                <span><b>Fecha:</b> @compraAsociada.Fecha.ToString("dd/MM/yyyy")</span>
+            }
+        </div>
+        }
+
+        <div class="items">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th style="width:12%">Código</th>
+                        <th>Descripción</th>
+                        <th style="width:10%">Unidad</th>
+                        <th style="width:10%">Cantidad</th>
+                        <th style="width:12%">Precio Unit.</th>
+                        <th style="width:10%">Descuento</th>
+                        <th style="width:10%">Exentas</th>
+                        <th style="width:10%">5%</th>
+                        <th style="width:10%">10%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in detalles)
+                    {
+                        var codigo = d.CodigoProducto ?? d.Producto?.CodigoInterno ?? d.Producto?.CodigoBarras ?? d.IdProducto.ToString();
+                        <tr>
+                            <td>@codigo</td>
+                            <td>@(d.NombreProducto ?? d.Producto?.Descripcion)</td>
+                            <td class="t-center">@(d.Producto?.UndMedida ?? "UNI")</td>
+                            <td class="t-right">@d.Cantidad.ToString("N2")</td>
+                            <td class="t-right">@d.PrecioUnitario.ToString("N0")</td>
+                            <td class="t-right">@d.MontoDescuento.ToString("N0")</td>
+                            <td class="t-right">@d.Exenta.ToString("N0")</td>
+                            <td class="t-right">@d.Grabado5.ToString("N0")</td>
+                            <td class="t-right">@d.Grabado10.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="resumen">
+            <div class="subtotales">
+                <div>Subtotal:</div>
+                <div class="t-right">@(nc.Subtotal.ToString("N0"))</div>
+            </div>
+            @if (nc.TotalDescuento > 0)
+            {
+            <div class="subtotales">
+                <div>Descuento:</div>
+                <div class="t-right">@(nc.TotalDescuento.ToString("N0"))</div>
+            </div>
+            }
+            <div class="total-operacion">
+                <div>Total de la Nota de Crédito:</div>
+                <div class="t-right">@(nc.Total.ToString("N0"))</div>
+            </div>
+            <div class="liquidacion-iva">
+                <div class="fila"><div>Liquidación del I.V.A.:</div><div class="t-right"></div></div>
+                <div class="fila"><div>Total Exentas:</div><div class="t-right">@TotExentas.ToString("N0")</div></div>
+                <div class="fila"><div>Total Gravadas 5%:</div><div class="t-right">@TotGrav5.ToString("N0")</div></div>
+                <div class="fila"><div>Total Gravadas 10%:</div><div class="t-right">@TotGrav10.ToString("N0")</div></div>
+                <div class="fila"><div>IVA (5%)</div><div class="t-right">@TotIva5.ToString("N0")</div></div>
+                <div class="fila"><div>IVA (10%)</div><div class="t-right">@TotIva10.ToString("N0")</div></div>
+                <div class="fila total-iva"><div>Total I.V.A.:</div><div class="t-right">@((TotIva5 + TotIva10).ToString("N0"))</div></div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(nc.Observaciones))
+        {
+        <div class="observaciones">
+            <b>Observaciones:</b> @nc.Observaciones
+        </div>
+        }
+
+        <div class="imputaciones" style="margin-top:15px; padding:10px; border:1px solid #ccc; border-radius:5px;">
+            <b>Imputaciones Tributarias:</b>
+            @if (nc.ImputarIVA == true) { <span class="badge bg-primary me-1">IVA Crédito</span> }
+            @if (nc.ImputarIRP == true) { <span class="badge bg-info me-1">IRP</span> }
+            @if (nc.ImputarIRE == true) { <span class="badge bg-warning text-dark me-1">IRE</span> }
+            @if (nc.NoImputar == true) { <span class="badge bg-secondary me-1">No Imputar</span> }
+        </div>
+
+        <div class="leyenda-final">
+            Documento interno generado por SistemIA - @DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")
+        </div>
+    </div>
+</div>
+}

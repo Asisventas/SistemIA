@@ -5,6 +5,8 @@
 
 <PageTitle>Imprimir Nota de Crédito</PageTitle>
 
+<PageProtection Modulo="/notas-credito" Permiso="VIEW">
+
 <div class="d-print-none mb-3">
     <div class="d-flex justify-content-between align-items-center">
         <h5 class="mb-0">
@@ -25,6 +27,8 @@
 </div>
 
 <KudeNotaCredito IdNotaCredito="@Id" />
+
+</PageProtection>
 
 @code {
     [Parameter] public int Id { get; set; }

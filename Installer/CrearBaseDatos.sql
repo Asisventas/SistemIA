@@ -6517,3 +6517,617 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251229185747_Agregar_NotasCredito_CierreCaja'
+)
+BEGIN
+    ALTER TABLE [CierresCaja] ADD [CantNotasCredito] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251229185747_Agregar_NotasCredito_CierreCaja'
+)
+BEGIN
+    ALTER TABLE [CierresCaja] ADD [TotalNotasCredito] decimal(18,2) NOT NULL DEFAULT 0.0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251229185747_Agregar_NotasCredito_CierreCaja'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251229185747_Agregar_NotasCredito_CierreCaja', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251229235006_Agregar_ComprasEfectivo_CierreCaja'
+)
+BEGIN
+    ALTER TABLE [CierresCaja] ADD [CantComprasEfectivo] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251229235006_Agregar_ComprasEfectivo_CierreCaja'
+)
+BEGIN
+    ALTER TABLE [CierresCaja] ADD [TotalComprasEfectivo] decimal(18,2) NOT NULL DEFAULT 0.0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251229235006_Agregar_ComprasEfectivo_CierreCaja'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251229235006_Agregar_ComprasEfectivo_CierreCaja', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [PrecioMinisterio] decimal(18,4) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE TABLE [ConfiguracionSistema] (
+        [IdConfiguracion] int NOT NULL IDENTITY,
+        [FarmaciaModoActivo] bit NOT NULL,
+        [FarmaciaValidarPrecioMinisterio] bit NOT NULL,
+        [FarmaciaMostrarPrecioMinisterio] bit NOT NULL,
+        [FarmaciaMostrarPrecioMinisterioEnCompras] bit NOT NULL,
+        [NombreNegocio] nvarchar(200) NULL,
+        [FechaModificacion] datetime2 NULL,
+        [UsuarioModificacion] nvarchar(50) NULL,
+        CONSTRAINT [PK_ConfiguracionSistema] PRIMARY KEY ([IdConfiguracion])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE TABLE [NotasCreditoCompras] (
+        [IdNotaCreditoCompra] int NOT NULL IDENTITY,
+        [Establecimiento] nvarchar(3) NULL,
+        [PuntoExpedicion] nvarchar(3) NULL,
+        [NumeroNota] nvarchar(7) NULL,
+        [IdSucursal] int NOT NULL,
+        [IdCaja] int NULL,
+        [IdProveedor] int NOT NULL,
+        [NombreProveedor] nvarchar(200) NULL,
+        [RucProveedor] nvarchar(20) NULL,
+        [IdCompraAsociada] int NULL,
+        [EstablecimientoAsociado] nvarchar(3) NULL,
+        [PuntoExpedicionAsociado] nvarchar(3) NULL,
+        [NumeroFacturaAsociado] nvarchar(7) NULL,
+        [TimbradoAsociado] nvarchar(8) NULL,
+        [Fecha] datetime2 NOT NULL,
+        [FechaContable] datetime2 NULL,
+        [Turno] int NULL,
+        [Motivo] nvarchar(50) NOT NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [IdMoneda] int NULL,
+        [SimboloMoneda] nvarchar(4) NULL,
+        [CambioDelDia] decimal(18,4) NOT NULL,
+        [EsMonedaExtranjera] bit NOT NULL,
+        [Subtotal] decimal(18,4) NOT NULL,
+        [TotalIVA10] decimal(18,4) NOT NULL,
+        [TotalIVA5] decimal(18,4) NOT NULL,
+        [TotalExenta] decimal(18,4) NOT NULL,
+        [TotalDescuento] decimal(18,4) NOT NULL,
+        [Total] decimal(18,4) NOT NULL,
+        [TotalEnLetras] nvarchar(280) NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [ImputarIVA] bit NULL,
+        [ImputarIRP] bit NULL,
+        [ImputarIRE] bit NULL,
+        [NoImputar] bit NULL,
+        [IdDeposito] int NULL,
+        [AfectaStock] int NOT NULL,
+        [IdUsuario] int NULL,
+        [CreadoPor] nvarchar(100) NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [ModificadoPor] nvarchar(100) NULL,
+        [FechaModificacion] datetime2 NULL,
+        CONSTRAINT [PK_NotasCreditoCompras] PRIMARY KEY ([IdNotaCreditoCompra]),
+        CONSTRAINT [FK_NotasCreditoCompras_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoCompras_Compras_IdCompraAsociada] FOREIGN KEY ([IdCompraAsociada]) REFERENCES [Compras] ([IdCompra]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoCompras_Depositos_IdDeposito] FOREIGN KEY ([IdDeposito]) REFERENCES [Depositos] ([IdDeposito]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoCompras_Monedas_IdMoneda] FOREIGN KEY ([IdMoneda]) REFERENCES [Monedas] ([IdMoneda]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoCompras_ProveedoresSifen_IdProveedor] FOREIGN KEY ([IdProveedor]) REFERENCES [ProveedoresSifen] ([IdProveedor]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoCompras_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoCompras_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE TABLE [NotasCreditoComprasDetalles] (
+        [IdNotaCreditoCompraDetalle] int NOT NULL IDENTITY,
+        [IdNotaCreditoCompra] int NOT NULL,
+        [IdProducto] int NOT NULL,
+        [CodigoProducto] nvarchar(50) NULL,
+        [NombreProducto] nvarchar(250) NULL,
+        [Cantidad] decimal(18,4) NOT NULL,
+        [PrecioUnitario] decimal(18,4) NOT NULL,
+        [PorcentajeDescuento] decimal(18,4) NOT NULL,
+        [MontoDescuento] decimal(18,4) NOT NULL,
+        [Importe] decimal(18,4) NOT NULL,
+        [TasaIVA] int NOT NULL,
+        [IVA10] decimal(18,4) NOT NULL,
+        [IVA5] decimal(18,4) NOT NULL,
+        [Exenta] decimal(18,4) NOT NULL,
+        [Grabado10] decimal(18,4) NOT NULL,
+        [Grabado5] decimal(18,4) NOT NULL,
+        [IdDepositoItem] int NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [UsuarioCreacion] nvarchar(100) NULL,
+        [FechaModificacion] datetime2 NULL,
+        [UsuarioModificacion] nvarchar(100) NULL,
+        CONSTRAINT [PK_NotasCreditoComprasDetalles] PRIMARY KEY ([IdNotaCreditoCompraDetalle]),
+        CONSTRAINT [FK_NotasCreditoComprasDetalles_Depositos_IdDepositoItem] FOREIGN KEY ([IdDepositoItem]) REFERENCES [Depositos] ([IdDeposito]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_NotasCreditoComprasDetalles_NotasCreditoCompras_IdNotaCreditoCompra] FOREIGN KEY ([IdNotaCreditoCompra]) REFERENCES [NotasCreditoCompras] ([IdNotaCreditoCompra]) ON DELETE CASCADE,
+        CONSTRAINT [FK_NotasCreditoComprasDetalles_Productos_IdProducto] FOREIGN KEY ([IdProducto]) REFERENCES [Productos] ([IdProducto]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    EXEC(N'CREATE UNIQUE INDEX [IX_NotaCreditoCompras_Numeracion] ON [NotasCreditoCompras] ([IdSucursal], [NumeroNota]) WHERE [NumeroNota] IS NOT NULL');
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoCompras_IdCaja] ON [NotasCreditoCompras] ([IdCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoCompras_IdCompraAsociada] ON [NotasCreditoCompras] ([IdCompraAsociada]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoCompras_IdDeposito] ON [NotasCreditoCompras] ([IdDeposito]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoCompras_IdMoneda] ON [NotasCreditoCompras] ([IdMoneda]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoCompras_IdProveedor] ON [NotasCreditoCompras] ([IdProveedor]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoCompras_IdUsuario] ON [NotasCreditoCompras] ([IdUsuario]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoComprasDetalles_IdDepositoItem] ON [NotasCreditoComprasDetalles] ([IdDepositoItem]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoComprasDetalles_IdNotaCreditoCompra] ON [NotasCreditoComprasDetalles] ([IdNotaCreditoCompra]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    CREATE INDEX [IX_NotasCreditoComprasDetalles_IdProducto] ON [NotasCreditoComprasDetalles] ([IdProducto]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251230135900_Agregar_NCCompra_PrecioMinisterio_Configuracion', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230171143_Agregar_Descuentos_Sistema'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Productos') AND name = 'PermiteDescuento')
+                    BEGIN
+                        ALTER TABLE [Productos] ADD [PermiteDescuento] BIT NOT NULL DEFAULT 1;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230171143_Agregar_Descuentos_Sistema'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Productos') AND name = 'DescuentoMaximoProducto')
+                    BEGIN
+                        ALTER TABLE [Productos] ADD [DescuentoMaximoProducto] DECIMAL(5,2) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230171143_Agregar_Descuentos_Sistema'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'ConfiguracionSistema') AND name = 'PermitirVenderConDescuento')
+                    BEGIN
+                        ALTER TABLE [ConfiguracionSistema] ADD [PermitirVenderConDescuento] BIT NOT NULL DEFAULT 0;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230171143_Agregar_Descuentos_Sistema'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'ConfiguracionSistema') AND name = 'PorcentajeDescuentoMaximo')
+                    BEGIN
+                        ALTER TABLE [ConfiguracionSistema] ADD [PorcentajeDescuentoMaximo] DECIMAL(5,2) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230171143_Agregar_Descuentos_Sistema'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'VentasDetalles') AND name = 'PrecioMinisterio')
+                    BEGIN
+                        ALTER TABLE [VentasDetalles] ADD [PrecioMinisterio] DECIMAL(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230171143_Agregar_Descuentos_Sistema'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'VentasDetalles') AND name = 'PorcentajeDescuento')
+                    BEGIN
+                        ALTER TABLE [VentasDetalles] ADD [PorcentajeDescuento] DECIMAL(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230171143_Agregar_Descuentos_Sistema'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'ComprasDetalles') AND name = 'PrecioMinisterio')
+                    BEGIN
+                        ALTER TABLE [ComprasDetalles] ADD [PrecioMinisterio] DECIMAL(18,4) NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230171143_Agregar_Descuentos_Sistema'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251230171143_Agregar_Descuentos_Sistema', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230191350_Agregar_CostoUnitario_VentaDetalle'
+)
+BEGIN
+    ALTER TABLE [VentasDetalles] ADD [CostoUnitario] decimal(18,4) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230191350_Agregar_CostoUnitario_VentaDetalle'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251230191350_Agregar_CostoUnitario_VentaDetalle', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230193919_Agregar_DescuentosCategorias_y_Producto_Descuento'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [DescuentoAutomaticoProducto] decimal(5,2) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230193919_Agregar_DescuentosCategorias_y_Producto_Descuento'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [UsaDescuentoEspecifico] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230193919_Agregar_DescuentosCategorias_y_Producto_Descuento'
+)
+BEGIN
+    CREATE TABLE [DescuentosCategorias] (
+        [IdDescuentoCategoria] int NOT NULL IDENTITY,
+        [TipoCategoria] nvarchar(20) NOT NULL,
+        [IdMarca] int NULL,
+        [IdClasificacion] int NULL,
+        [PorcentajeDescuento] decimal(5,2) NOT NULL,
+        [Activo] bit NOT NULL,
+        [Prioridad] int NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        [UsuarioCreacion] nvarchar(50) NULL,
+        [UsuarioModificacion] nvarchar(50) NULL,
+        CONSTRAINT [PK_DescuentosCategorias] PRIMARY KEY ([IdDescuentoCategoria]),
+        CONSTRAINT [FK_DescuentosCategorias_Clasificaciones_IdClasificacion] FOREIGN KEY ([IdClasificacion]) REFERENCES [Clasificaciones] ([IdClasificacion]),
+        CONSTRAINT [FK_DescuentosCategorias_Marcas_IdMarca] FOREIGN KEY ([IdMarca]) REFERENCES [Marcas] ([Id_Marca])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230193919_Agregar_DescuentosCategorias_y_Producto_Descuento'
+)
+BEGIN
+    CREATE INDEX [IX_DescuentosCategorias_IdClasificacion] ON [DescuentosCategorias] ([IdClasificacion]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230193919_Agregar_DescuentosCategorias_y_Producto_Descuento'
+)
+BEGIN
+    CREATE INDEX [IX_DescuentosCategorias_IdMarca] ON [DescuentosCategorias] ([IdMarca]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251230193919_Agregar_DescuentosCategorias_y_Producto_Descuento'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251230193919_Agregar_DescuentosCategorias_y_Producto_Descuento', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251231151002_Agregar_MargenAdicionalCajero_v2'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [MargenAdicionalCajeroProducto] decimal(5,2) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251231151002_Agregar_MargenAdicionalCajero_v2'
+)
+BEGIN
+    ALTER TABLE [DescuentosCategorias] ADD [MargenAdicionalCajero] decimal(5,2) NOT NULL DEFAULT 0.0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20251231151002_Agregar_MargenAdicionalCajero_v2'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20251231151002_Agregar_MargenAdicionalCajero_v2', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102130626_Agregar_FarmaciaDescuentoBasadoEnPrecioMinisterio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [FarmaciaDescuentoBasadoEnPrecioMinisterio] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102130626_Agregar_FarmaciaDescuentoBasadoEnPrecioMinisterio'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260102130626_Agregar_FarmaciaDescuentoBasadoEnPrecioMinisterio', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102151905_Agregar_PermiteVentaBajoCosto_Producto'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [PermiteVentaBajoCosto] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102151905_Agregar_PermiteVentaBajoCosto_Producto'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260102151905_Agregar_PermiteVentaBajoCosto_Producto', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102164138_Actualizar_Descripciones_TiposOperacion'
+)
+BEGIN
+                    UPDATE TiposOperacion 
+                    SET Descripcion = 'B2B - Empresa a Empresa/Extranjero', 
+                        Comentario = 'RUC >= 50.000.000 (Empresas y Extranjeros)'
+                    WHERE Codigo = '1';
+                    UPDATE TiposOperacion 
+                    SET Descripcion = 'B2C - Empresa a Cliente', 
+                        Comentario = 'RUC < 50.000.000 (Personas Físicas)'
+                    WHERE Codigo = '2';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102164138_Actualizar_Descripciones_TiposOperacion'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260102164138_Actualizar_Descripciones_TiposOperacion', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+

@@ -49,5 +49,9 @@ namespace SistemIA.Models
         
         [ForeignKey("IdDeposito")]
         public Deposito? Deposito { get; set; }
+        
+        // Propiedad auxiliar para validación (no se persiste en BD)
+        [NotMapped]
+        public bool PermiteDecimal { get; set; }
     }
 }

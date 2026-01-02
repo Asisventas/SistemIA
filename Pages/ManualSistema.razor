@@ -1,0 +1,819 @@
+@page "/manual-sistema"
+@using Microsoft.AspNetCore.Components.Authorization
+
+<PageTitle>Manual del Sistema - SistemIA</PageTitle>
+
+<PageProtection Modulo="/manual-sistema" Permiso="VIEW">
+
+<div class="container-fluid py-3 manual-sistema">
+    <div class="row">
+        <!-- Sidebar de navegación del manual -->
+        <div class="col-md-3 col-lg-2">
+            <div class="card manual-card shadow-sm sticky-top" style="top: 70px;">
+                <div class="card-header manual-header-primary">
+                    <i class="bi bi-book me-2"></i>Manual del Sistema
+                </div>
+                <div class="card-body p-0">
+                    <nav class="nav flex-column nav-pills manual-nav">
+                        <a class="nav-link @(seccionActiva == "inicio" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("inicio")'>
+                            <i class="bi bi-house me-2"></i>Inicio
+                        </a>
+                        <a class="nav-link @(seccionActiva == "descuentos" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("descuentos")'>
+                            <i class="bi bi-percent me-2"></i>Descuentos Automáticos
+                        </a>
+                        <a class="nav-link @(seccionActiva == "ventas" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("ventas")'>
+                            <i class="bi bi-cart me-2"></i>Ventas
+                        </a>
+                        <a class="nav-link @(seccionActiva == "farmacia" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("farmacia")'>
+                            <i class="bi bi-capsule me-2"></i>Modo Farmacia
+                        </a>
+                        <a class="nav-link @(seccionActiva == "sifen" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("sifen")'>
+                            <i class="bi bi-file-earmark-code me-2"></i>SIFEN
+                        </a>
+                        <a class="nav-link @(seccionActiva == "permisos" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("permisos")'>
+                            <i class="bi bi-shield-lock me-2"></i>Permisos
+                        </a>
+                    </nav>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Contenido principal -->
+        <div class="col-md-9 col-lg-10">
+            @switch (seccionActiva)
+            {
+                case "inicio":
+                    @RenderInicio()
+                    break;
+                case "descuentos":
+                    @RenderDescuentos()
+                    break;
+                case "ventas":
+                    @RenderVentas()
+                    break;
+                case "farmacia":
+                    @RenderFarmacia()
+                    break;
+                case "sifen":
+                    @RenderSifen()
+                    break;
+                case "permisos":
+                    @RenderPermisos()
+                    break;
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string seccionActiva = "inicio";
+    
+    private void CambiarSeccion(string seccion)
+    {
+        seccionActiva = seccion;
+    }
+    
+    // ========== SECCIÓN: INICIO ==========
+    private RenderFragment RenderInicio() => __builder =>
+    {
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-house me-2"></i>Bienvenido al Manual del Sistema</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>SistemIA</strong> es un sistema de gestión empresarial integral con facturación electrónica SIFEN.
+                </div>
+                
+                <h5><i class="bi bi-stars me-2"></i>Características Principales</h5>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <div class="card h-100 border-primary">
+                            <div class="card-body">
+                                <h6 class="card-title text-primary"><i class="bi bi-cart me-2"></i>Ventas</h6>
+                                <p class="card-text small">Gestión completa de ventas con múltiples formas de pago, descuentos automáticos y generación de facturas electrónicas.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-success">
+                            <div class="card-body">
+                                <h6 class="card-title text-success"><i class="bi bi-box-seam me-2"></i>Inventario</h6>
+                                <p class="card-text small">Control de stock por depósito, alertas de stock mínimo, transferencias entre depósitos y ajustes de inventario.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-warning">
+                            <div class="card-body">
+                                <h6 class="card-title text-warning"><i class="bi bi-file-earmark-code me-2"></i>SIFEN</h6>
+                                <p class="card-text small">Integración completa con el Sistema de Facturación Electrónica Nacional de Paraguay (SET).</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-info">
+                            <div class="card-body">
+                                <h6 class="card-title text-info"><i class="bi bi-capsule me-2"></i>Modo Farmacia</h6>
+                                <p class="card-text small">Funcionalidades específicas para farmacias: precios ministerio, control de recetas y productos controlados.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-lightning me-2"></i>Accesos Rápidos</h5>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <a href="/configuracion-sistema" class="btn btn-outline-primary">
+                        <i class="bi bi-sliders me-1"></i>Configuración General
+                    </a>
+                    <a href="/ventas" class="btn btn-outline-success">
+                        <i class="bi bi-cart me-1"></i>Nueva Venta
+                    </a>
+                    <a href="/productos" class="btn btn-outline-info">
+                        <i class="bi bi-box me-1"></i>Productos
+                    </a>
+                </div>
+            </div>
+        </div>
+    };
+    
+    // ========== SECCIÓN: DESCUENTOS AUTOMÁTICOS ==========
+    private RenderFragment RenderDescuentos() => __builder =>
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0"><i class="bi bi-percent me-2"></i>Sistema de Descuentos Automáticos</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-2"></i>
+                    El sistema permite configurar descuentos automáticos que se aplican al momento de seleccionar un producto en ventas.
+                </div>
+                
+                <!-- Jerarquía de Prioridad -->
+                <h5 class="mt-4"><i class="bi bi-diagram-3 me-2"></i>Jerarquía de Prioridad</h5>
+                <p>Los descuentos se aplican según el siguiente orden de prioridad:</p>
+                
+                <div class="row g-3 mt-2">
+                    <div class="col-12">
+                        <div class="d-flex align-items-stretch gap-2 flex-wrap">
+                            <div class="card border-danger flex-fill" style="min-width: 180px;">
+                                <div class="card-body text-center">
+                                    <div class="badge bg-danger fs-5 mb-2">1°</div>
+                                    <h6 class="card-title">Producto Específico</h6>
+                                    <p class="card-text small text-muted">Descuento configurado directamente en la ficha del producto</p>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-chevron-right fs-4 text-muted"></i>
+                            </div>
+                            <div class="card border-warning flex-fill" style="min-width: 180px;">
+                                <div class="card-body text-center">
+                                    <div class="badge bg-warning text-dark fs-5 mb-2">2°</div>
+                                    <h6 class="card-title">Por Marca</h6>
+                                    <p class="card-text small text-muted">Descuento aplicado a todos los productos de una marca</p>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-chevron-right fs-4 text-muted"></i>
+                            </div>
+                            <div class="card border-info flex-fill" style="min-width: 180px;">
+                                <div class="card-body text-center">
+                                    <div class="badge bg-info fs-5 mb-2">3°</div>
+                                    <h6 class="card-title">Por Clasificación</h6>
+                                    <p class="card-text small text-muted">Descuento por categoría de productos</p>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-chevron-right fs-4 text-muted"></i>
+                            </div>
+                            <div class="card border-secondary flex-fill" style="min-width: 180px;">
+                                <div class="card-body text-center">
+                                    <div class="badge bg-secondary fs-5 mb-2">4°</div>
+                                    <h6 class="card-title">General (TODOS)</h6>
+                                    <p class="card-text small text-muted">Descuento aplicado a todos los productos</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-4" />
+                
+                <!-- Tutorial Paso a Paso -->
+                <h5><i class="bi bi-journal-check me-2"></i>Tutorial: Configurar Descuentos por Categoría</h5>
+                
+                <div class="accordion mt-3" id="accordionDescuentos">
+                    <!-- Paso 1 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#paso1">
+                                <span class="badge bg-primary me-2">Paso 1</span>
+                                Acceder a Configuración General
+                            </button>
+                        </h2>
+                        <div id="paso1" class="accordion-collapse collapse show" data-bs-parent="#accordionDescuentos">
+                            <div class="accordion-body">
+                                <ol>
+                                    <li>En el menú lateral, haga clic en <strong>Configuración</strong></li>
+                                    <li>Seleccione <strong>Config. General</strong></li>
+                                    <li>Busque la sección <strong>"Descuentos por Categoría"</strong></li>
+                                </ol>
+                                <div class="alert alert-light border mt-2">
+                                    <i class="bi bi-lightbulb me-2 text-warning"></i>
+                                    <strong>Tip:</strong> Asegúrese de tener habilitada la opción "Permitir Vender con Descuento" en la configuración de ventas.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Paso 2 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#paso2">
+                                <span class="badge bg-primary me-2">Paso 2</span>
+                                Agregar un Nuevo Descuento
+                            </button>
+                        </h2>
+                        <div id="paso2" class="accordion-collapse collapse" data-bs-parent="#accordionDescuentos">
+                            <div class="accordion-body">
+                                <ol>
+                                    <li>Haga clic en el botón <span class="btn btn-success btn-sm"><i class="bi bi-plus-lg"></i> Nuevo Descuento</span></li>
+                                    <li>Se abrirá un formulario modal</li>
+                                    <li>Complete los campos:
+                                        <ul>
+                                            <li><strong>Tipo:</strong> Seleccione TODOS, MARCA o CLASIFICACIÓN</li>
+                                            <li><strong>Marca/Clasificación:</strong> Si eligió MARCA o CLASIFICACIÓN, seleccione cuál</li>
+                                            <li><strong>Porcentaje:</strong> Ingrese el % de descuento (ej: 10 para 10%)</li>
+                                            <li><strong>Prioridad:</strong> Número mayor = mayor prioridad entre descuentos del mismo tipo</li>
+                                        </ul>
+                                    </li>
+                                </ol>
+                                <div class="card bg-light mt-2">
+                                    <div class="card-body">
+                                        <strong>Ejemplo:</strong> Para aplicar 15% a todos los productos de la marca "Laboratorio ABC":
+                                        <ul class="mb-0 mt-2">
+                                            <li>Tipo: MARCA</li>
+                                            <li>Marca: Laboratorio ABC</li>
+                                            <li>Porcentaje: 15</li>
+                                            <li>Prioridad: 1</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Paso 3 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#paso3">
+                                <span class="badge bg-primary me-2">Paso 3</span>
+                                Configurar Descuento por Producto (Opcional)
+                            </button>
+                        </h2>
+                        <div id="paso3" class="accordion-collapse collapse" data-bs-parent="#accordionDescuentos">
+                            <div class="accordion-body">
+                                <p>Si desea que un producto tenga su propio descuento (ignorando la configuración general):</p>
+                                <ol>
+                                    <li>Vaya a <strong>Inventario → Productos</strong></li>
+                                    <li>Busque y edite el producto</li>
+                                    <li>En la sección de descuentos:
+                                        <ul>
+                                            <li>Marque <strong>"Usar descuento específico"</strong></li>
+                                            <li>Ingrese el <strong>porcentaje de descuento automático</strong></li>
+                                        </ul>
+                                    </li>
+                                    <li>Guarde los cambios</li>
+                                </ol>
+                                <div class="alert alert-warning mt-2">
+                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                    <strong>Importante:</strong> El descuento específico del producto tiene la máxima prioridad y anula cualquier configuración general.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Paso 4 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#paso4">
+                                <span class="badge bg-primary me-2">Paso 4</span>
+                                Verificar en Ventas
+                            </button>
+                        </h2>
+                        <div id="paso4" class="accordion-collapse collapse" data-bs-parent="#accordionDescuentos">
+                            <div class="accordion-body">
+                                <ol>
+                                    <li>Abra una <strong>Nueva Venta</strong></li>
+                                    <li>Busque y seleccione un producto con descuento configurado</li>
+                                    <li>El descuento se aplicará <strong>automáticamente</strong>:
+                                        <ul>
+                                            <li>El campo de descuento mostrará el % aplicado</li>
+                                            <li>El precio se calculará con el descuento incluido</li>
+                                        </ul>
+                                    </li>
+                                    <li>Puede modificar el descuento manualmente si lo desea (respetando límites)</li>
+                                </ol>
+                                <div class="alert alert-success mt-2">
+                                    <i class="bi bi-check2-circle me-2"></i>
+                                    <strong>¡Listo!</strong> El descuento se aplica automáticamente al seleccionar el producto.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-4" />
+                
+                <!-- Notas Importantes -->
+                <h5><i class="bi bi-exclamation-diamond me-2"></i>Notas Importantes</h5>
+                <ul class="list-group mt-2">
+                    <li class="list-group-item">
+                        <i class="bi bi-check text-success me-2"></i>
+                        El descuento <strong>no puede reducir</strong> el precio por debajo del costo del producto
+                    </li>
+                    <li class="list-group-item">
+                        <i class="bi bi-check text-success me-2"></i>
+                        El descuento máximo está limitado por la configuración general o del producto
+                    </li>
+                    <li class="list-group-item">
+                        <i class="bi bi-check text-success me-2"></i>
+                        Los productos con <strong>"No permite descuento"</strong> no recibirán descuentos automáticos
+                    </li>
+                    <li class="list-group-item">
+                        <i class="bi bi-check text-success me-2"></i>
+                        Puede <strong>desactivar</strong> descuentos temporalmente sin eliminarlos (campo "Activo")
+                    </li>
+                </ul>
+                
+                <div class="mt-4">
+                    <a href="/configuracion-sistema" class="btn btn-primary">
+                        <i class="bi bi-gear me-1"></i>Ir a Configuración General
+                    </a>
+                    <a href="/productos" class="btn btn-outline-primary ms-2">
+                        <i class="bi bi-box me-1"></i>Ir a Productos
+                    </a>
+                </div>
+            </div>
+        </div>
+    };
+    
+    // ========== SECCIÓN: VENTAS ==========
+    private RenderFragment RenderVentas() => __builder =>
+    {
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-cart me-2"></i>Módulo de Ventas</h4>
+            </div>
+            <div class="card-body">
+                <h5><i class="bi bi-info-circle me-2"></i>Descripción General</h5>
+                <p>El módulo de ventas permite registrar transacciones comerciales con soporte para:</p>
+                <ul>
+                    <li>Múltiples tipos de documento (Factura, Boleta, Ticket)</li>
+                    <li>Descuentos automáticos y manuales</li>
+                    <li>Múltiples formas de pago</li>
+                    <li>Integración con SIFEN (Facturación Electrónica)</li>
+                    <li>Control de stock en tiempo real</li>
+                </ul>
+                
+                <hr />
+                
+                <h5><i class="bi bi-keyboard me-2"></i>Atajos de Teclado</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Atajo</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><kbd>F2</kbd></td><td>Buscar producto</td></tr>
+                            <tr><td><kbd>F4</kbd></td><td>Buscar cliente</td></tr>
+                            <tr><td><kbd>F8</kbd></td><td>Guardar venta</td></tr>
+                            <tr><td><kbd>Enter</kbd></td><td>Agregar producto seleccionado</td></tr>
+                            <tr><td><kbd>Esc</kbd></td><td>Cerrar modal / Cancelar</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <hr />
+                
+                <h5><i class="bi bi-gear me-2"></i>Configuraciones Relacionadas</h5>
+                <ul>
+                    <li><strong>Permitir Vender con Descuento:</strong> Habilita/deshabilita descuentos en ventas</li>
+                    <li><strong>Descuento Máximo:</strong> Límite de descuento aplicable</li>
+                    <li><strong>Modo Farmacia:</strong> Activa funciones especiales para farmacias</li>
+                </ul>
+                
+                <a href="/ventas" class="btn btn-success mt-3">
+                    <i class="bi bi-cart me-1"></i>Ir a Ventas
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ========== SECCIÓN: MODO FARMACIA ==========
+    private RenderFragment RenderFarmacia() => __builder =>
+    {
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0"><i class="bi bi-capsule me-2"></i>Modo Farmacia</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    El modo farmacia activa funcionalidades especiales para establecimientos farmacéuticos.
+                </div>
+                
+                <h5><i class="bi bi-check2-square me-2"></i>Funcionalidades</h5>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-tag text-primary me-2"></i>Precio Ministerio</h6>
+                                <p class="small">Registro y control de precios regulados por el Ministerio de Salud. Se muestra en ticket y facturas.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-file-medical text-danger me-2"></i>Control de Recetas</h6>
+                                <p class="small">Productos controlados requieren registro de receta médica con datos del médico y paciente.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-box-seam text-success me-2"></i>Lotes y Vencimientos</h6>
+                                <p class="small">Control de lotes de productos con fechas de vencimiento y alertas automáticas.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-printer text-warning me-2"></i>Ticket Farmacia</h6>
+                                <p class="small">Formato de ticket especial que incluye información de precio ministerio y datos de receta.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr />
+                
+                <h5><i class="bi bi-toggle-on me-2"></i>Cómo Activar</h5>
+                <ol>
+                    <li>Vaya a <strong>Configuración → Config. General</strong></li>
+                    <li>Busque la sección <strong>"Modo Farmacia"</strong></li>
+                    <li>Active la opción <strong>"Habilitar Modo Farmacia"</strong></li>
+                    <li>Guarde los cambios</li>
+                </ol>
+                
+                <a href="/configuracion-sistema" class="btn btn-info mt-3">
+                    <i class="bi bi-gear me-1"></i>Ir a Configuración
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ========== SECCIÓN: SIFEN ==========
+    private RenderFragment RenderSifen() => __builder =>
+    {
+        <div class="card shadow-sm">
+            <div class="card-header bg-warning text-dark">
+                <h4 class="mb-0"><i class="bi bi-file-earmark-code me-2"></i>SIFEN - Facturación Electrónica</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    SIFEN es el Sistema Integrado de Facturación Electrónica Nacional de Paraguay (SET).
+                </div>
+                
+                <h5><i class="bi bi-file-text me-2"></i>Tipos de Documentos Electrónicos</h5>
+                <ul>
+                    <li><strong>FE</strong> - Factura Electrónica</li>
+                    <li><strong>NCE</strong> - Nota de Crédito Electrónica</li>
+                    <li><strong>NDE</strong> - Nota de Débito Electrónica</li>
+                    <li><strong>AFE</strong> - Autofactura Electrónica</li>
+                    <li><strong>NRE</strong> - Nota de Remisión Electrónica</li>
+                </ul>
+                
+                <hr />
+                
+                <h5><i class="bi bi-gear me-2"></i>Configuración Inicial</h5>
+                <ol>
+                    <li>Configurar datos de la Sociedad/Empresa</li>
+                    <li>Cargar certificado digital (.pfx)</li>
+                    <li>Configurar timbrado y puntos de emisión</li>
+                    <li>Configurar actividades económicas</li>
+                    <li>Realizar pruebas en ambiente de TEST</li>
+                </ol>
+                
+                <hr />
+                
+                <h5><i class="bi bi-diagram-2 me-2"></i>Estados de Documentos</h5>
+                <div class="d-flex gap-2 flex-wrap">
+                    <span class="badge bg-secondary">PENDIENTE</span>
+                    <span class="badge bg-info">ENVIADO</span>
+                    <span class="badge bg-success">ACEPTADO</span>
+                    <span class="badge bg-danger">RECHAZADO</span>
+                    <span class="badge bg-warning text-dark">EN PROCESO</span>
+                </div>
+                
+                <div class="mt-4">
+                    <a href="/sifen-dashboard" class="btn btn-warning">
+                        <i class="bi bi-speedometer2 me-1"></i>Dashboard SIFEN
+                    </a>
+                    <a href="/diagnostico-sifen" class="btn btn-outline-warning ms-2">
+                        <i class="bi bi-tools me-1"></i>Diagnóstico SIFEN
+                    </a>
+                </div>
+            </div>
+        </div>
+    };
+    
+    // ========== SECCIÓN: PERMISOS ==========
+    private RenderFragment RenderPermisos() => __builder =>
+    {
+        <div class="card shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Sistema de Permisos</h4>
+            </div>
+            <div class="card-body">
+                <h5><i class="bi bi-people me-2"></i>Gestión de Accesos</h5>
+                <p>El sistema cuenta con control de acceso basado en roles y permisos:</p>
+                
+                <div class="row g-3 mt-2">
+                    <div class="col-md-4">
+                        <div class="card border-primary h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-person-badge fs-1 text-primary"></i>
+                                <h6 class="mt-2">Usuarios</h6>
+                                <p class="small">Cuentas individuales con credenciales únicas</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-success h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-people fs-1 text-success"></i>
+                                <h6 class="mt-2">Roles</h6>
+                                <p class="small">Agrupación de permisos (Admin, Vendedor, etc.)</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-warning h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-key fs-1 text-warning"></i>
+                                <h6 class="mt-2">Permisos</h6>
+                                <p class="small">Acciones específicas (Ver, Crear, Editar, Eliminar)</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr />
+                
+                <h5><i class="bi bi-lock me-2"></i>Tipos de Permisos</h5>
+                <table class="table table-sm table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Permiso</th>
+                            <th>Descripción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>VIEW</code></td><td>Permite ver/consultar información</td></tr>
+                        <tr><td><code>CREATE</code></td><td>Permite crear nuevos registros</td></tr>
+                        <tr><td><code>EDIT</code></td><td>Permite modificar registros existentes</td></tr>
+                        <tr><td><code>DELETE</code></td><td>Permite eliminar registros</td></tr>
+                    </tbody>
+                </table>
+                
+                <a href="/configuracion/usuarios" class="btn btn-danger mt-3">
+                    <i class="bi bi-people me-1"></i>Gestionar Usuarios
+                </a>
+                <a href="/configuracion/roles" class="btn btn-outline-danger ms-2">
+                    <i class="bi bi-person-gear me-1"></i>Gestionar Roles
+                </a>
+            </div>
+        </div>
+    };
+}
+
+<style>
+    /* ========== ESTILOS MANUAL DEL SISTEMA - COMPATIBLE CON TEMAS ========== */
+    
+    .manual-sistema {
+        color: var(--text-primary);
+    }
+    
+    /* Cards principales */
+    .manual-sistema .manual-card,
+    .manual-sistema .card {
+        background-color: var(--bg-surface);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .card-body {
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .card-text {
+        color: var(--text-secondary);
+    }
+    
+    /* Headers de cards con colores primarios */
+    .manual-sistema .manual-header-primary {
+        background-color: var(--bs-primary);
+        color: white;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .manual-sistema .card-header {
+        background-color: var(--bg-surface-alt, var(--bg-surface));
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    /* Navegación del sidebar */
+    .manual-sistema .manual-nav .nav-link {
+        color: var(--text-primary);
+        border-radius: 0;
+        padding: 0.75rem 1rem;
+        border-left: 3px solid transparent;
+        transition: all 0.2s ease;
+    }
+    
+    .manual-sistema .manual-nav .nav-link:hover {
+        background-color: var(--bg-hover);
+        color: var(--text-primary);
+        border-left-color: var(--bs-primary);
+    }
+    
+    .manual-sistema .manual-nav .nav-link.active {
+        background-color: var(--bs-primary);
+        color: white;
+        border-left-color: var(--bs-primary);
+    }
+    
+    /* Alertas */
+    .manual-sistema .alert-info {
+        background-color: rgba(var(--bs-info-rgb), 0.15);
+        border-color: rgba(var(--bs-info-rgb), 0.3);
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .alert-success {
+        background-color: rgba(var(--bs-success-rgb), 0.15);
+        border-color: rgba(var(--bs-success-rgb), 0.3);
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .alert-warning {
+        background-color: rgba(var(--bs-warning-rgb), 0.15);
+        border-color: rgba(var(--bs-warning-rgb), 0.3);
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .alert-light {
+        background-color: var(--bg-surface-alt, var(--bg-surface));
+        border-color: var(--border-color);
+        color: var(--text-primary);
+    }
+    
+    /* Tablas */
+    .manual-sistema .table {
+        color: var(--text-primary);
+        border-color: var(--border-color);
+    }
+    
+    .manual-sistema .table-light,
+    .manual-sistema .table thead {
+        background-color: var(--bg-surface-alt, var(--bg-hover));
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .table th,
+    .manual-sistema .table td {
+        border-color: var(--border-color);
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .table-bordered {
+        border-color: var(--border-color);
+    }
+    
+    /* Accordion */
+    .manual-sistema .accordion-item {
+        background-color: var(--bg-surface);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .accordion-button {
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+        border-color: var(--border-color);
+    }
+    
+    .manual-sistema .accordion-button:not(.collapsed) {
+        background-color: var(--bg-hover);
+        color: var(--text-primary);
+    }
+    
+    .manual-sistema .accordion-button::after {
+        filter: var(--icon-filter, none);
+    }
+    
+    .manual-sistema .accordion-body {
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+    }
+    
+    /* List groups */
+    .manual-sistema .list-group-item {
+        background-color: var(--bg-surface);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+    }
+    
+    /* Cards con bordes de colores */
+    .manual-sistema .card.border-primary,
+    .manual-sistema .card.border-success,
+    .manual-sistema .card.border-warning,
+    .manual-sistema .card.border-info,
+    .manual-sistema .card.border-danger,
+    .manual-sistema .card.border-secondary {
+        background-color: var(--bg-surface);
+    }
+    
+    .manual-sistema .card.border-primary .card-body,
+    .manual-sistema .card.border-success .card-body,
+    .manual-sistema .card.border-warning .card-body,
+    .manual-sistema .card.border-info .card-body,
+    .manual-sistema .card.border-danger .card-body,
+    .manual-sistema .card.border-secondary .card-body {
+        background-color: var(--bg-surface);
+    }
+    
+    /* Cards de prioridad en descuentos */
+    .manual-sistema .card h6.card-title {
+        color: inherit;
+    }
+    
+    /* Separadores */
+    .manual-sistema hr {
+        border-color: var(--border-color);
+        opacity: 0.5;
+    }
+    
+    /* Código */
+    .manual-sistema code {
+        background-color: var(--bg-hover);
+        color: var(--text-primary);
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.25rem;
+    }
+    
+    /* Teclado (kbd) */
+    .manual-sistema kbd {
+        background-color: var(--bg-surface-alt, #333);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+    }
+    
+    /* Texto muted */
+    .manual-sistema .text-muted {
+        color: var(--text-secondary) !important;
+    }
+    
+    /* Cards de características en inicio */
+    .manual-sistema .card.bg-light {
+        background-color: var(--bg-surface-alt, var(--bg-hover)) !important;
+        color: var(--text-primary);
+    }
+    
+    /* Headers de sección */
+    .manual-sistema h5 {
+        color: var(--text-primary);
+    }
+    
+    /* Submenu section header */
+    .manual-sistema .submenu-section-header {
+        color: var(--text-secondary);
+    }
+</style>
+
+</PageProtection>

@@ -30,8 +30,8 @@ namespace SistemIA.Models
         /// </summary>
         public static class TipoOperacion
         {
-            public const string B2B = "1"; // Business to Business
-            public const string B2C = "2"; // Business to Consumer  
+            public const string B2B = "1"; // Business to Business (Empresa/Extranjero)
+            public const string B2C = "2"; // Business to Client (Empresa a Cliente)  
             public const string B2G = "3"; // Business to Government
             public const string B2F = "4"; // Business to Foreigner
 
@@ -39,8 +39,8 @@ namespace SistemIA.Models
             {
                 return codigo switch
                 {
-                    B2B => "B2B - Empresa a Empresa",
-                    B2C => "B2C - Empresa a Consumidor Final",
+                    B2B => "B2B - Empresa a Empresa/Extranjero",
+                    B2C => "B2C - Empresa a Cliente",
                     B2G => "B2G - Empresa a Gobierno",
                     B2F => "B2F - Empresa a Extranjero",
                     _ => "Código no válido"

@@ -23,6 +23,7 @@ public partial class Ventas
     [Inject] public Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
     [Inject] public PermisosService PermisosService { get; set; } = default!;
     [Inject] public Sifen SifenService { get; set; } = default!;
+    [Inject] public DescuentoService DescuentoService { get; set; } = default!;
 
     [SupplyParameterFromQuery(Name = "presupuesto")]
     public int? PresupuestoId { get; set; }
@@ -36,6 +37,9 @@ public partial class Ventas
     // Permiso para editar precio (solo roles con permiso EDIT pueden modificar)
     protected bool PuedeEditarPrecio { get; set; } = false;
     
+    // Permiso para modificar descuento (solo roles con permiso EDIT pueden cambiar)
+    protected bool PuedeModificarDescuento { get; set; } = false;
+    
     // Permiso para cambiar caja (solo roles con permiso EDIT pueden cambiar la caja)
     protected bool PuedeCambiarCaja { get; set; } = false;
     
@@ -47,6 +51,11 @@ public partial class Ventas
     protected Venta Cab { get; set; } = new() { Fecha = DateTime.Today, TipoDocumento = "FACTURA" };
     protected List<VentaDetalle> Detalles { get; set; } = new();
     protected VentaDetalle NuevoDetalle { get; set; } = new() { Cantidad = 1, PrecioUnitario = 0 };
+    
+    // Descuento por ítem
+    protected decimal NuevoDetalleDescuentoPorcentaje { get; set; } = 0;
+    protected string? ErrorDescuento { get; set; }
+    protected decimal PrecioOriginalSinDescuento { get; set; } = 0; // Para validar vs precio de costo
 
     // Catálogos mínimos
     protected List<Cliente> Clientes { get; set; } = new();
@@ -154,6 +163,59 @@ public partial class Ventas
     protected bool MostrarCamposCredito { get; set; }
     protected bool TipoPagoEsCredito { get; set; }
     protected int NumeroCuotas { get; set; } = 1;
+
+    // ========== CONFIGURACIÓN DE DESCUENTOS ==========
+    // Configuración del sistema para descuentos
+    protected bool PermitirVenderConDescuento { get; set; } = false;
+    protected decimal? PorcentajeDescuentoMaximo { get; set; }
+    
+    /// <summary>
+    /// Determina si el producto seleccionado permite descuento.
+    /// Considera tanto la configuración del sistema como del producto.
+    /// </summary>
+    protected bool ProductoPermiteDescuento
+    {
+        get
+        {
+            if (!PermitirVenderConDescuento) return false;
+            if (NuevoDetalle?.IdProducto <= 0) return false;
+            var producto = Productos?.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            return producto?.PermiteDescuento ?? true;
+        }
+    }
+    
+    /// <summary>
+    /// Retorna el descuento máximo permitido para el producto actual.
+    /// Usa la regla configurada (producto, categoría o global).
+    /// </summary>
+    protected decimal? DescuentoMaximoActual
+    {
+        get
+        {
+            if (NuevoDetalle?.IdProducto <= 0) return PorcentajeDescuentoMaximo;
+            // Usar el máximo calculado de la regla de descuento (base + margen cajero)
+            if (ProductoTieneDescuentoConfigurado && DescuentoMaximoPermitidoProducto > 0)
+                return DescuentoMaximoPermitidoProducto;
+            return PorcentajeDescuentoMaximo;
+        }
+    }
+    
+    // ========== CONFIGURACIÓN FARMACIA ==========
+    protected bool ModoFarmaciaActivo { get; set; } = false;
+    protected bool MostrarPrecioMinisterio { get; set; } = false;
+    protected bool DescuentoBasadoEnPrecioMinisterio { get; set; } = false;
+
+    // ========== INFO DESCUENTO PRODUCTO ACTUAL ==========
+    /// <summary>Indica si el producto actual tiene descuento configurado (permite modificar)</summary>
+    protected bool ProductoTieneDescuentoConfigurado { get; set; } = false;
+    /// <summary>Descuento base configurado para el producto actual</summary>
+    protected decimal DescuentoBaseProducto { get; set; } = 0;
+    /// <summary>Margen adicional que el cajero puede aplicar</summary>
+    protected decimal MargenCajeroProducto { get; set; } = 0;
+    /// <summary>Descuento máximo total permitido (base + margen)</summary>
+    protected decimal DescuentoMaximoPermitidoProducto { get; set; } = 0;
+    /// <summary>Origen de la configuración de descuento</summary>
+    protected string OrigenDescuentoProducto { get; set; } = string.Empty;
 
     // Buscadores (con setter que aplica filtro en cada pulsación, igual que en Compras)
     private string? _buscarCliente;
@@ -423,12 +485,28 @@ public partial class Ventas
                 if (idClaim != null && int.TryParse(idClaim.Value, out int idUsu))
                 {
                     PuedeEditarPrecio = await PermisosService.TienePermisoAsync(idUsu, "/ventas", "EDIT");
-                    // El permiso de cambiar caja es el mismo que editar precios (EDIT)
+                    // El permiso de cambiar caja y modificar descuento es el mismo que editar precios (EDIT)
                     PuedeCambiarCaja = PuedeEditarPrecio;
+                    PuedeModificarDescuento = PuedeEditarPrecio;
                 }
             }
         }
-        catch { PuedeEditarPrecio = false; PuedeCambiarCaja = false; }
+        catch { PuedeEditarPrecio = false; PuedeCambiarCaja = false; PuedeModificarDescuento = false; }
+        
+        // Cargar configuración del sistema (descuentos y farmacia)
+        try
+        {
+            var configSistema = await ctx.ConfiguracionSistema.AsNoTracking().FirstOrDefaultAsync();
+            if (configSistema != null)
+            {
+                PermitirVenderConDescuento = configSistema.PermitirVenderConDescuento;
+                PorcentajeDescuentoMaximo = configSistema.PorcentajeDescuentoMaximo;
+                ModoFarmaciaActivo = configSistema.FarmaciaModoActivo;
+                MostrarPrecioMinisterio = configSistema.FarmaciaModoActivo && configSistema.FarmaciaMostrarPrecioMinisterio;
+                DescuentoBasadoEnPrecioMinisterio = configSistema.FarmaciaModoActivo && configSistema.FarmaciaDescuentoBasadoEnPrecioMinisterio;
+            }
+        }
+        catch { /* Si no existe la tabla, usa valores por defecto */ }
         
         // Cargar cajas disponibles de la sucursal
         CajasDisponibles = await ctx.Cajas.AsNoTracking()
@@ -527,6 +605,33 @@ public partial class Ventas
 
         SucursalNombreUI = SucursalProvider.GetSucursalNombre();
         await CargarNumeracionesAsync(ctx);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Registrar atajo de teclado F2 para guardar la venta o confirmar composición
+            await JS.InvokeVoidAsync("eval", @"
+                if (!window._ventasF2Handler) {
+                    window._ventasF2Handler = function(e) {
+                        if (e.key === 'F2') {
+                            e.preventDefault();
+                            // Primero intentar confirmar composición si está abierta
+                            var btnComposicion = document.querySelector('#btnConfirmarComposicion');
+                            if (btnComposicion && btnComposicion.offsetParent !== null) {
+                                btnComposicion.click();
+                                return;
+                            }
+                            // Si no hay composición, guardar venta
+                            var btnGuardar = document.querySelector('#btnGuardarVenta');
+                            if (btnGuardar) btnGuardar.click();
+                        }
+                    };
+                    document.addEventListener('keydown', window._ventasF2Handler);
+                }
+            ");
+        }
     }
 
     private async Task CargarNumeracionesAsync(AppDbContext ctx)
@@ -987,7 +1092,8 @@ public partial class Ventas
                 Estado = true,
                 IdTipoContribuyente = 2, // 2 = Persona Jurídica (típico para RUC empresarial)
                 NaturalezaReceptor = 1, // 1 = Contribuyente
-                TipoOperacion = "1", // 1 = B2B
+                // TipoOperacion según RUC: >= 50M = B2B, < 50M = B2C
+                TipoOperacion = (long.TryParse(rucSinGuion, out var rucNum) && rucNum >= 50_000_000) ? "1" : "2",
                 PermiteCredito = false,
                 FechaAlta = DateTime.Now,
                 CodigoPais = "PRY",
@@ -1263,7 +1369,11 @@ public partial class Ventas
                 Exenta = exenta,
                 Grabado10 = grab10,
                 Grabado5 = grab5,
-                CambioDelDia = Cab.CambioDelDia
+                CambioDelDia = Cab.CambioDelDia,
+                // Costo al momento de la venta (para informes)
+                CostoUnitario = p.CostoUnitarioGs,
+                // Precio Ministerio para modo farmacia
+                PrecioMinisterio = ModoFarmaciaActivo && p.PrecioMinisterio.HasValue ? p.PrecioMinisterio : null
             };
             Detalles.Add(det);
             RecalcularTotales();
@@ -1381,6 +1491,81 @@ public partial class Ventas
         // Calcular el precio respetando ClientePrecio
         NuevoDetalle.PrecioUnitario = await CalcularPrecioRespetandoClientePrecioAsync(p.IdProducto, Cab.IdCliente);
         
+        // Guardar precio original para validaciones de descuento
+        PrecioOriginalSinDescuento = NuevoDetalle.PrecioUnitario;
+        NuevoDetalleDescuentoPorcentaje = 0; // Reset descuento al seleccionar nuevo producto
+        ErrorDescuento = null;
+        
+        // ========== CARGAR INFO DE DESCUENTO DEL PRODUCTO ==========
+        // Obtener información completa de descuento configurado
+        var infoDescuento = await DescuentoService.ObtenerInfoDescuentoCompletoAsync(p);
+        ProductoTieneDescuentoConfigurado = infoDescuento.TieneDescuento;
+        DescuentoBaseProducto = infoDescuento.DescuentoBase;
+        MargenCajeroProducto = infoDescuento.MargenCajero;
+        DescuentoMaximoPermitidoProducto = infoDescuento.MaximoTotal;
+        OrigenDescuentoProducto = infoDescuento.Origen;
+        
+        Console.WriteLine($"[SeleccionarProducto] Info descuento: TieneDesc={ProductoTieneDescuentoConfigurado}, Base={DescuentoBaseProducto}%, Margen={MargenCajeroProducto}%, Max={DescuentoMaximoPermitidoProducto}%, Origen={OrigenDescuentoProducto}");
+        
+        // ========== APLICAR DESCUENTO AUTOMÁTICO ==========
+        // Si el sistema permite descuentos y el producto lo permite, obtener descuento automático
+        if (PermitirVenderConDescuento && p.PermiteDescuento && ProductoTieneDescuentoConfigurado)
+        {
+            // Modo Farmacia: calcular descuento basado en Precio Ministerio
+            if (DescuentoBasadoEnPrecioMinisterio && p.PrecioMinisterio.HasValue && p.PrecioMinisterio.Value > 0)
+            {
+                // Fórmula: ((PrecioMinisterio - PrecioVenta) / PrecioMinisterio) * 100
+                var precioMinisterio = p.PrecioMinisterio.Value;
+                var precioVenta = NuevoDetalle.PrecioUnitario;
+                
+                if (precioVenta < precioMinisterio)
+                {
+                    var descuentoCalculado = Math.Round(((precioMinisterio - precioVenta) / precioMinisterio) * 100, 2);
+                    
+                    // IMPORTANTE: Limitar al máximo permitido por la regla configurada
+                    if (descuentoCalculado > DescuentoMaximoPermitidoProducto)
+                    {
+                        NuevoDetalleDescuentoPorcentaje = DescuentoMaximoPermitidoProducto;
+                        // Recalcular precio con el descuento limitado
+                        var descuentoMultiplier = 1m - (NuevoDetalleDescuentoPorcentaje / 100m);
+                        NuevoDetalle.PrecioUnitario = Math.Round(precioMinisterio * descuentoMultiplier, 2);
+                        Console.WriteLine($"[SeleccionarProducto] Descuento Ministerio LIMITADO: {descuentoCalculado}% -> {NuevoDetalleDescuentoPorcentaje}% (Max regla: {DescuentoMaximoPermitidoProducto}%)");
+                    }
+                    else
+                    {
+                        NuevoDetalleDescuentoPorcentaje = descuentoCalculado;
+                        Console.WriteLine($"[SeleccionarProducto] Descuento Ministerio calculado: {NuevoDetalleDescuentoPorcentaje}% (Ministerio: {precioMinisterio}, Venta: {precioVenta})");
+                    }
+                    NuevoDetalle.PorcentajeDescuento = NuevoDetalleDescuentoPorcentaje;
+                }
+            }
+            else
+            {
+                // Modo normal: usar descuento base configurado
+                NuevoDetalleDescuentoPorcentaje = DescuentoBaseProducto;
+                
+                if (NuevoDetalleDescuentoPorcentaje > 0)
+                {
+                    // Aplicar el descuento al precio
+                    var descuentoMultiplier = 1m - (NuevoDetalleDescuentoPorcentaje / 100m);
+                    NuevoDetalle.PrecioUnitario = Math.Round(PrecioOriginalSinDescuento * descuentoMultiplier, 2);
+                    NuevoDetalle.PorcentajeDescuento = NuevoDetalleDescuentoPorcentaje;
+                    
+                    Console.WriteLine($"[SeleccionarProducto] Descuento automático aplicado: {DescuentoBaseProducto}% (Producto: {p.Descripcion})");
+                }
+            }
+        }
+        
+        // Guardar precio ministerio si aplica (modo farmacia)
+        if (ModoFarmaciaActivo && p.PrecioMinisterio.HasValue)
+        {
+            NuevoDetalle.PrecioMinisterio = p.PrecioMinisterio;
+        }
+        else
+        {
+            NuevoDetalle.PrecioMinisterio = null;
+        }
+        
         Console.WriteLine($"[SeleccionarProducto] Producto: {p.Descripcion}, Precio final: {NuevoDetalle.PrecioUnitario}");
         RecalcularNuevoDetalle();
     }
@@ -1470,17 +1655,25 @@ public partial class Ventas
             Exenta = NuevoDetalle.Exenta,
             Grabado10 = NuevoDetalle.Grabado10,
             Grabado5 = NuevoDetalle.Grabado5,
-            CambioDelDia = NuevoDetalle.CambioDelDia
+            CambioDelDia = NuevoDetalle.CambioDelDia,
+            // Descuento y Farmacia
+            PorcentajeDescuento = NuevoDetalle.PorcentajeDescuento,
+            PrecioMinisterio = NuevoDetalle.PrecioMinisterio
         };
         // Completar Tipo de IVA del detalle desde el producto para evitar advertencia al enviar a SIFEN
         var prodFuente = Productos.FirstOrDefault(x => x.IdProducto == det.IdProducto);
         if (prodFuente != null)
         {
             det.IdTipoIva = prodFuente.IdTipoIva;
+            // Guardar costo al momento de la venta para informes
+            det.CostoUnitario = prodFuente.CostoUnitarioGs;
         }
         Detalles.Add(det);
         RecalcularTotales();
         NuevoDetalle = new VentaDetalle { Cantidad = 1, PrecioUnitario = 0 };
+        NuevoDetalleDescuentoPorcentaje = 0; // Reset descuento
+        PrecioOriginalSinDescuento = 0;
+        ErrorDescuento = null;
         BuscarProducto = string.Empty; MostrarSugProductos = false;
         await Task.CompletedTask;
     }
@@ -1587,6 +1780,117 @@ public partial class Ventas
         {
             NuevoDetalle.Exenta = importe;
         }
+    }
+
+    /// <summary>
+    /// Obtiene el título/tooltip para el campo de descuento según el estado actual.
+    /// </summary>
+    protected string GetTituloDescuento()
+    {
+        if (NuevoDetalle?.IdProducto <= 0) return "Seleccione un producto";
+        if (!ProductoPermiteDescuento) return "Este producto no permite descuentos";
+        if (!ProductoTieneDescuentoConfigurado) 
+            return "No hay regla de descuento configurada para este producto";
+        if (ProductoTieneDescuentoConfigurado)
+            return $"Descuento permitido: {DescuentoBaseProducto:N2}% base + {MargenCajeroProducto:N2}% margen = {DescuentoMaximoPermitidoProducto:N2}% máx. ({OrigenDescuentoProducto})";
+        return "";
+    }
+
+    /// <summary>
+    /// Aplica el descuento al precio unitario del nuevo detalle.
+    /// Valida: 1) Producto permite descuento, 2) Existe config de descuento, 3) No supere el máximo permitido, 4) No quede por debajo del precio de costo
+    /// </summary>
+    protected void OnDescuentoChanged()
+    {
+        ErrorDescuento = null;
+        
+        // Si no está habilitado el descuento a nivel sistema, ignorar
+        if (!PermitirVenderConDescuento)
+        {
+            NuevoDetalleDescuentoPorcentaje = 0;
+            return;
+        }
+        
+        // Verificar si el producto permite descuento
+        var productoActual = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+        if (productoActual != null && !productoActual.PermiteDescuento)
+        {
+            ErrorDescuento = "Este producto no permite descuentos";
+            NuevoDetalleDescuentoPorcentaje = 0;
+            return;
+        }
+        
+        // Validar rango básico
+        if (NuevoDetalleDescuentoPorcentaje < 0) NuevoDetalleDescuentoPorcentaje = 0;
+        if (NuevoDetalleDescuentoPorcentaje > 100) NuevoDetalleDescuentoPorcentaje = 100;
+        
+        // ========== VALIDACIÓN DE DESCUENTO SEGÚN CONFIGURACIÓN ==========
+        // Verificar si el producto tiene descuento configurado (aplica para modo normal y farmacia)
+        if (!ProductoTieneDescuentoConfigurado)
+        {
+            // NO hay descuento configurado → el cajero NO puede modificar
+            if (NuevoDetalleDescuentoPorcentaje > 0)
+            {
+                ErrorDescuento = "Este producto no tiene descuento configurado";
+                NuevoDetalleDescuentoPorcentaje = 0;
+            }
+        }
+        else
+        {
+            // SÍ hay descuento configurado → validar que no supere el máximo (base + margen)
+            // Esto aplica TANTO para modo normal como para modo farmacia
+            if (NuevoDetalleDescuentoPorcentaje > DescuentoMaximoPermitidoProducto)
+            {
+                ErrorDescuento = $"El descuento no puede superar {DescuentoMaximoPermitidoProducto:N2}% ({OrigenDescuentoProducto}: {DescuentoBaseProducto:N2}% + Margen: {MargenCajeroProducto:N2}%)";
+                NuevoDetalleDescuentoPorcentaje = DescuentoMaximoPermitidoProducto;
+            }
+        }
+        
+        // Calcular precio con descuento
+        var descuentoMultiplier = 1m - (NuevoDetalleDescuentoPorcentaje / 100m);
+        var precioConDescuento = Math.Round(PrecioOriginalSinDescuento * descuentoMultiplier, 2);
+        
+        // ========== VALIDACIÓN DE PRECIO MÍNIMO/MÁXIMO ==========
+        if (DescuentoBasadoEnPrecioMinisterio && NuevoDetalle.PrecioMinisterio.HasValue && NuevoDetalle.PrecioMinisterio.Value > 0)
+        {
+            // MODO FARMACIA: El precio NO puede ser MAYOR al Precio Ministerio
+            var precioMinisterio = NuevoDetalle.PrecioMinisterio.Value;
+            if (precioConDescuento > precioMinisterio)
+            {
+                // Calcular el descuento mínimo necesario para no superar el Precio Ministerio
+                var descuentoMinimo = ((PrecioOriginalSinDescuento - precioMinisterio) / PrecioOriginalSinDescuento) * 100m;
+                if (descuentoMinimo < 0) descuentoMinimo = 0;
+                
+                ErrorDescuento = $"El precio no puede ser mayor al Precio Ministerio ({precioMinisterio:N0}). Descuento mínimo: {descuentoMinimo:N2}%";
+                NuevoDetalleDescuentoPorcentaje = descuentoMinimo;
+                descuentoMultiplier = 1m - (NuevoDetalleDescuentoPorcentaje / 100m);
+                precioConDescuento = Math.Round(PrecioOriginalSinDescuento * descuentoMultiplier, 2);
+            }
+        }
+        else if (productoActual != null && productoActual.CostoUnitarioGs.HasValue && productoActual.CostoUnitarioGs.Value > 0)
+        {
+            // MODO NORMAL: El precio NO puede ser MENOR al costo (salvo que el producto lo permita)
+            var costoUnitario = productoActual.CostoUnitarioGs.Value;
+            
+            // Solo validar si el producto NO permite venta bajo costo
+            if (!productoActual.PermiteVentaBajoCosto && precioConDescuento < costoUnitario)
+            {
+                // Calcular el descuento máximo posible sin bajar del costo
+                var descuentoMaxPorCosto = ((PrecioOriginalSinDescuento - costoUnitario) / PrecioOriginalSinDescuento) * 100m;
+                if (descuentoMaxPorCosto < 0) descuentoMaxPorCosto = 0;
+                
+                ErrorDescuento = $"El precio no puede ser menor al costo ({costoUnitario:N0}). Máximo descuento: {descuentoMaxPorCosto:N2}%";
+                NuevoDetalleDescuentoPorcentaje = descuentoMaxPorCosto;
+                descuentoMultiplier = 1m - (NuevoDetalleDescuentoPorcentaje / 100m);
+                precioConDescuento = Math.Round(PrecioOriginalSinDescuento * descuentoMultiplier, 2);
+            }
+        }
+        
+        // Aplicar precio con descuento
+        NuevoDetalle.PrecioUnitario = precioConDescuento;
+        NuevoDetalle.PorcentajeDescuento = NuevoDetalleDescuentoPorcentaje > 0 ? NuevoDetalleDescuentoPorcentaje : null;
+        
+        RecalcularNuevoDetalle();
     }
 
     private void RecalcularTotales()
@@ -2951,7 +3255,11 @@ public partial class Ventas
                 Grabado10 = det.Grabado10,
                 Grabado5 = det.Grabado5,
                 CambioDelDia = det.CambioDelDia,
-                IdTipoIva = det.Producto.IdTipoIva
+                IdTipoIva = det.Producto.IdTipoIva,
+                // Guardar costo al momento de la venta para informes
+                CostoUnitario = det.Producto.CostoUnitarioGs,
+                // Guardar precio ministerio si aplica
+                PrecioMinisterio = det.Producto.PrecioMinisterio
             };
             Detalles.Add(nuevoDetalle);
         }
@@ -3270,7 +3578,8 @@ public partial class Ventas
                 CodigoPais = "PRY", // Paraguay por defecto
                 NaturalezaReceptor = 1, // 1 = Contribuyente
                 IdTipoContribuyente = 1, // 1 = Persona Física o Empresa por defecto
-                TipoOperacion = "1", // 1 = B2B (Empresa a Empresa)
+                // TipoOperacion según RUC: >= 50M = B2B (empresas/extranjeros), < 50M = B2C (clientes)
+                TipoOperacion = (long.TryParse(_nuevoCliRuc.Trim(), out var rucNum) && rucNum >= 50_000_000) ? "1" : "2",
                 Saldo = 0,
                 PermiteCredito = false,
                 PrecioDiferenciado = false,

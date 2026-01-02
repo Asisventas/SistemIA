@@ -1,5 +1,21 @@
 # Guía de Migraciones EF Core - SistemIA
 
+## ⚠️ REGLA DE ORO - LEER PRIMERO
+
+> **NUNCA usar `--no-build` al crear migraciones con cambios de modelo.**
+> 
+> ```powershell
+> # ❌ INCORRECTO - Puede crear migración VACÍA
+> dotnet ef migrations add NombreMigracion --no-build
+> 
+> # ✅ CORRECTO - Siempre usar build completo
+> dotnet ef migrations add NombreMigracion
+> ```
+> 
+> **Razón:** El flag `--no-build` usa el binario existente. Si el modelo cambió pero no se compiló, EF no detecta los cambios y crea una migración vacía.
+
+---
+
 ## Índice
 1. [Errores Comunes y Soluciones](#errores-comunes-y-soluciones)
 2. [Script de Migración Automática](#script-de-migración-automática)
@@ -90,23 +106,79 @@ Luego ejecutar: `dotnet ef database update`
 
 ---
 
-### 4. Error: Migración vacía o sin cambios
+### 4. Error: Migración vacía o sin cambios ⚠️ CRÍTICO
 
 **Síntoma:**
 ```
 An operation was scaffolded that may result in the loss of data
 ```
-O la migración Up/Down están vacíos.
+O la migración Up/Down están vacíos (métodos sin contenido).
 
-**Causa:** El modelo no cambió o hay discrepancia entre el snapshot y la BD.
+**Causas posibles:**
+
+#### A) Uso de `--no-build` cuando hay cambios en el modelo
+**🚫 NUNCA usar `--no-build` al crear migraciones con cambios de modelo:**
+
+```powershell
+# ❌ INCORRECTO - Puede crear migración vacía
+dotnet ef migrations add NombreMigracion --no-build
+
+# ✅ CORRECTO - Siempre usar build completo
+dotnet ef migrations add NombreMigracion
+```
+
+**Explicación:** El flag `--no-build` evita la compilación del proyecto. Si el modelo cambió pero no se compiló, EF Core no detecta los cambios porque compara contra el binario antiguo. Resultado: migración vacía.
+
+#### B) Discrepancia entre snapshot y BD
+El `AppDbContextModelSnapshot.cs` no refleja el estado real del modelo.
+
+**Solución general para migraciones vacías:**
+
+```powershell
+# 1. Verificar contenido de la migración creada
+Get-Content "Migrations\XXXX_NombreMigracion.cs"
+
+# 2. Si está vacía, eliminarla
+dotnet ef migrations remove
+
+# 3. Recompilar el proyecto
+dotnet build
+
+# 4. Crear migración SIN --no-build
+dotnet ef migrations add NombreMigracion
+
+# 5. SIEMPRE verificar que la migración tiene contenido antes de aplicar
+Get-Content "Migrations\XXXX_NombreMigracion.cs" | Select-String -Pattern "AddColumn|DropColumn|CreateTable|CreateIndex"
+```
+
+#### C) El campo ya existe en el snapshot pero no en el modelo
+Cuando se crean migraciones múltiples veces por errores, el snapshot puede quedar desincronizado.
 
 **Solución:**
 ```powershell
-# Eliminar última migración
-dotnet ef migrations remove
-
-# Regenerar snapshot
+# Regenerar con --force para reconstruir el snapshot
 dotnet ef migrations add NombreMigracion --force
+```
+
+---
+
+### 4.1 Checklist de Verificación Pre-Aplicación
+
+**Antes de ejecutar `database update`, SIEMPRE verificar:**
+
+```powershell
+# 1. La migración aparece en la lista
+dotnet ef migrations list
+
+# 2. Verificar que no esté marcada como ya aplicada
+# La migración pendiente debe aparecer sin marca o con "(Pending)"
+
+# 3. Verificar contenido de la migración
+$ultimaMigracion = Get-ChildItem "Migrations\*.cs" | Where-Object { $_.Name -notmatch "\.Designer\.cs$|Snapshot\.cs$" } | Sort-Object Name | Select-Object -Last 1
+Get-Content $ultimaMigracion.FullName
+
+# 4. Aplicar solo si tiene contenido en Up()
+dotnet ef database update
 ```
 
 ---
@@ -353,19 +425,39 @@ Write-Host "`n"
 
 ## Buenas Prácticas
 
+### ⚠️ CRÍTICO - Crear Migraciones
+1. **NUNCA** usar `--no-build` al crear migraciones con cambios de modelo
+2. **SIEMPRE** verificar que la migración tiene contenido antes de aplicar
+3. **SIEMPRE** usar `dotnet ef migrations add NombreMigracion` (sin flags)
+
 ### Antes de crear una migración:
 1. ✅ Compilar el proyecto: `dotnet build`
-2. ✅ Verificar que no hay migraciones pendientes
+2. ✅ Verificar que no hay migraciones pendientes: `dotnet ef migrations list`
 3. ✅ Hacer commit de los cambios actuales en Git
 
 ### Al crear la migración:
 1. ✅ Usar nombres descriptivos: `Agregar_Campo_Tabla` no `Update1`
-2. ✅ Revisar el archivo generado antes de aplicar
+2. ✅ **VERIFICAR** el archivo generado antes de aplicar
 3. ✅ Hacer las operaciones idempotentes cuando sea posible
 
+```powershell
+# Crear migración (con build automático)
+dotnet ef migrations add Agregar_NuevoCampo
+
+# SIEMPRE verificar contenido antes de aplicar
+$migracion = Get-ChildItem "Migrations\*_Agregar_NuevoCampo.cs" | Where-Object { $_.Name -notmatch "Designer" }
+Get-Content $migracion.FullName | Select-String "AddColumn|CreateTable|DropColumn|CreateIndex"
+
+# Si la migración está vacía, ELIMINARLA y recrear
+dotnet ef migrations remove
+dotnet build
+dotnet ef migrations add Agregar_NuevoCampo
+```
+
 ### Al aplicar:
-1. ✅ En desarrollo: `dotnet ef database update --no-build`
+1. ✅ En desarrollo: `dotnet ef database update` (sin `--no-build` para mayor seguridad)
 2. ✅ En producción: Generar script y revisar: `dotnet ef migrations script --idempotent`
+3. ✅ Verificar que la migración se aplicó: `dotnet ef migrations list`
 
 ### Estructura recomendada para migraciones complejas:
 

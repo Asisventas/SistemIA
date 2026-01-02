@@ -1021,6 +1021,19 @@
       return;
     }
 
+    // Verificar si tiene Notas de Crédito asociadas (deben anularse/eliminarse primero)
+    var notasCreditoAsociadas = await ctx.NotasCreditoVentas
+      .Where(nc => nc.IdVentaAsociada == id && nc.Estado != "Anulada")
+      .Select(nc => new { nc.IdNotaCredito, nc.Establecimiento, nc.PuntoExpedicion, nc.NumeroNota, nc.Estado })
+      .ToListAsync();
+    
+    if (notasCreditoAsociadas.Any())
+    {
+      var ncList = string.Join("\n", notasCreditoAsociadas.Select(nc => $"  • NC #{nc.Establecimiento}-{nc.PuntoExpedicion}-{nc.NumeroNota.ToString().PadLeft(7, '0')} ({nc.Estado})"));
+      await JS.InvokeVoidAsync("alert", $"❌ No se puede eliminar esta venta.\n\nTiene {notasCreditoAsociadas.Count} Nota(s) de Crédito asociada(s):\n{ncList}\n\nDebe anular o eliminar las NC primero.");
+      return;
+    }
+    
     // Verificar si tiene cobros CONFIRMADOS de cuotas (ventas a crédito)
     var cuentaPorCobrar = await ctx.CuentasPorCobrar
       .FirstOrDefaultAsync(c => c.IdVenta == id && c.Estado != "CANCELADO");
