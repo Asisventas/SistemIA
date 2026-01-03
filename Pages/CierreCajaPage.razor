@@ -10,6 +10,8 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject ICorreoService CorreoService
+@inject PermisosService PermisosService
 
 <PageProtection Modulo="/ventas" Permiso="VIEW">
 
@@ -48,6 +50,90 @@ else if (caja == null)
 }
 else
 {
+    <!-- Alerta si ya existe un cierre para este período -->
+    @if (cierreExistente != null)
+    {
+        <div class="alert alert-warning alert-dismissible fade show mb-4">
+            <div class="d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <h5 class="alert-heading mb-1">
+                        <i class="bi bi-exclamation-triangle me-2"></i>Ya existe un cierre para este período
+                    </h5>
+                    <p class="mb-2">
+                        <strong>Cierre #@cierreExistente.IdCierreCaja</strong> realizado el 
+                        <strong>@cierreExistente.FechaCierre.ToString("dd/MM/yyyy HH:mm")</strong> 
+                        por <strong>@cierreExistente.UsuarioCierre</strong>
+                    </p>
+                    <p class="mb-0 small">
+                        Si hubo cambios (facturas anuladas, correcciones, etc.), puede eliminar este cierre y generar uno nuevo con los datos actualizados.
+                    </p>
+                </div>
+                <div class="ms-3">
+                    @if (puedeEliminarCierre)
+                    {
+                        <button class="btn btn-danger" @onclick="AbrirModalEliminar" disabled="@eliminando">
+                            <i class="bi bi-trash me-1"></i>
+                            Eliminar y Regenerar
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary p-2" title="Se requiere permiso EDIT y DELETE en el módulo de cierre de caja">
+                            <i class="bi bi-lock me-1"></i>Sin permiso para eliminar
+                        </span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Modal para confirmar eliminación con contraseña -->
+    @if (mostrarModalEliminar)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Confirmar Eliminación</h5>
+                        <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalEliminar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-warning">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Está a punto de eliminar el <strong>Cierre #@cierreExistente?.IdCierreCaja</strong>.
+                            Esta acción no se puede deshacer.
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Ingrese su contraseña para confirmar:</label>
+                            <input type="password" class="form-control" @bind="passwordConfirmacion" 
+                                   placeholder="Contraseña" autocomplete="off" />
+                        </div>
+                        
+                        @if (!string.IsNullOrEmpty(errorModal))
+                        {
+                            <div class="alert alert-danger small py-2">@errorModal</div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarModalEliminar">Cancelar</button>
+                        <button type="button" class="btn btn-danger" @onclick="ConfirmarEliminarCierre" disabled="@eliminando">
+                            @if (eliminando)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-trash me-1"></i>
+                            }
+                            Eliminar Cierre
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
     <!-- Información de la Caja Actual -->
     <div class="card mb-4">
         <div class="card-header bg-primary text-white">
@@ -129,7 +215,7 @@ else
                 </div>
             </div>
             
-            @if (resumen.CantNotasCredito > 0 || resumen.CantComprasEfectivo > 0)
+            @if (resumen.CantNotasCredito > 0 || resumen.CantComprasEfectivo > 0 || resumen.CantNCCompras > 0)
             {
                 <hr class="my-3" />
                 <div class="row g-3">
@@ -138,9 +224,9 @@ else
                         <div class="col-md-3">
                             <div class="card border-warning h-100">
                                 <div class="card-body text-center">
-                                    <h6 class="card-title text-warning"><i class="bi bi-receipt-cutoff me-1"></i>Notas de Crédito</h6>
+                                    <h6 class="card-title text-warning"><i class="bi bi-receipt-cutoff me-1"></i>NC Ventas</h6>
                                     <h4 class="mb-0 text-warning">-@resumen.TotalNotasCredito.ToString("N0") ₲</h4>
-                                    <small class="text-muted">@resumen.CantNotasCredito NC emitidas (devoluciones/descuentos)</small>
+                                    <small class="text-muted">@resumen.CantNotasCredito NC (devoluciones)</small>
                                 </div>
                             </div>
                         </div>
@@ -152,26 +238,29 @@ else
                                 <div class="card-body text-center">
                                     <h6 class="card-title text-danger"><i class="bi bi-bag-dash me-1"></i>Compras Efectivo</h6>
                                     <h4 class="mb-0 text-danger">-@resumen.TotalComprasEfectivo.ToString("N0") ₲</h4>
-                                    <small class="text-muted">@resumen.CantComprasEfectivo compras (egresos de caja)</small>
+                                    <small class="text-muted">@resumen.CantComprasEfectivo compras (egresos)</small>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    @if (resumen.CantNCCompras > 0)
+                    {
+                        <div class="col-md-3">
+                            <div class="card border-success h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title text-success"><i class="bi bi-receipt me-1"></i>NC Compras</h6>
+                                    <h4 class="mb-0 text-success">+@resumen.TotalNCCompras.ToString("N0") ₲</h4>
+                                    <small class="text-muted">@resumen.CantNCCompras NC (crédito proveedor)</small>
                                 </div>
                             </div>
                         </div>
                     }
                     <div class="col-md-3">
-                        <div class="card border-secondary h-100">
-                            <div class="card-body text-center">
-                                <h6 class="card-title text-secondary">Ingresos Brutos</h6>
-                                <h4 class="mb-0 text-secondary">@((resumen.TotalVentasContado + resumen.TotalCobrosCredito).ToString("N0")) ₲</h4>
-                                <small class="text-muted">Ventas contado + Cobros</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
                         <div class="card bg-dark text-white h-100">
                             <div class="card-body text-center">
                                 <h6 class="card-title"><i class="bi bi-calculator me-1"></i>Neto en Caja</h6>
-                                <h4 class="mb-0">@((resumen.TotalVentasContado + resumen.TotalCobrosCredito - resumen.TotalNotasCredito - resumen.TotalComprasEfectivo).ToString("N0")) ₲</h4>
-                                <small>Ingresos - NC - Compras</small>
+                                <h4 class="mb-0">@((resumen.TotalVentasContado + resumen.TotalCobrosCredito - resumen.TotalNotasCredito - resumen.TotalComprasEfectivo + resumen.TotalNCCompras).ToString("N0")) ₲</h4>
+                                <small>Ing - NC - Comp + NCComp</small>
                             </div>
                         </div>
                     </div>
@@ -308,28 +397,83 @@ else
     private Caja? caja;
     private bool cargando = true;
     private bool cerrando = false;
+    private bool eliminando = false;
     private string? error;
     private string? mensaje;
     private string? observacionesCierre;
     private decimal diferenciaTotal = 0;
+    private CierreCaja? cierreExistente;  // Para detectar si ya hay un cierre
+    
+    // Variables para modal de eliminación con seguridad
+    private bool mostrarModalEliminar = false;
+    private string passwordConfirmacion = "";
+    private string? errorModal;
+    private bool puedeEliminarCierre = false;  // Permisos EDIT + DELETE
+    private int? usuarioIdActual;
+    private string? usuarioNombreActual;
 
     private ResumenTurno resumen = new();
     private List<Models.EntregaCaja> entregas = new();
 
     protected override async Task OnInitializedAsync()
     {
+        // Obtener usuario actual para permisos
+        await ObtenerUsuarioYPermisos();
         await CargarDatos();
+    }
+    
+    private async Task ObtenerUsuarioYPermisos()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var nombreUsuario = user?.Identity?.Name;
+            
+            if (!string.IsNullOrEmpty(nombreUsuario))
+            {
+                await using var ctx = await DbFactory.CreateDbContextAsync();
+                var usuario = await ctx.Usuarios
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.UsuarioNombre == nombreUsuario);
+                
+                if (usuario != null)
+                {
+                    usuarioIdActual = usuario.Id_Usu;
+                    usuarioNombreActual = nombreUsuario;
+                    
+                    // Verificar permisos EDIT y DELETE para el módulo de cierre de caja
+                    var tieneEdit = await PermisosService.TienePermisoAsync(usuario.Id_Usu, "/caja/cierre", "EDIT");
+                    var tieneDelete = await PermisosService.TienePermisoAsync(usuario.Id_Usu, "/caja/cierre", "DELETE");
+                    
+                    puedeEliminarCierre = tieneEdit && tieneDelete;
+                }
+            }
+        }
+        catch
+        {
+            puedeEliminarCierre = false;
+        }
     }
 
     private async Task CargarDatos()
     {
         cargando = true;
         error = null;
+        cierreExistente = null;
         try
         {
             caja = await CajaService.ObtenerCajaActualAsync();
             if (caja != null)
             {
+                // Verificar si ya existe un cierre para este período
+                await using var ctx = await DbFactory.CreateDbContextAsync();
+                cierreExistente = await ctx.CierresCaja
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.IdCaja == caja.IdCaja 
+                                           && c.FechaCaja == (caja.FechaActualCaja ?? DateTime.Today)
+                                           && c.Turno == (caja.TurnoActual ?? 1));
+                
                 await CargarResumenTurno();
                 PrepararEntregas();
             }
@@ -403,6 +547,18 @@ else
         resumen.CantNotasCredito = notasCredito.Count;
         resumen.TotalNotasCredito = notasCredito.Sum(nc => nc.Total);
 
+        // Notas de Crédito de Compras del turno (crédito del proveedor - reduce egresos)
+        var ncCompras = await ctx.NotasCreditoCompras
+            .AsNoTracking()
+            .Where(nc => nc.Fecha.Date == fechaCaja.Date 
+                      && nc.IdCaja == idCaja 
+                      && nc.Turno == turnoActual
+                      && nc.Estado == "Confirmada")
+            .ToListAsync();
+        
+        resumen.CantNCCompras = ncCompras.Count;
+        resumen.TotalNCCompras = ncCompras.Sum(nc => nc.Total);
+
         // Compras en efectivo del turno (egresos de caja)
         // Filtrar por MedioPago = EFECTIVO (campo del selector en pantalla de compras)
         var comprasEfectivo = await ctx.Compras
@@ -430,10 +586,11 @@ else
         // Calcular vuelto total entregado
         var vueltoTotal = composiciones.Sum(c => c.Vuelto);
         
-        // Efectivo recibido menos el vuelto entregado, menos devoluciones por NC, menos compras en efectivo
+        // Efectivo recibido menos el vuelto entregado, menos devoluciones por NC Ventas, menos compras en efectivo, más crédito de NC Compras
         var efectivoRecibido = detalles.Where(d => d.Medio == MedioPago.Efectivo).Sum(d => d.MontoGs);
-        // Las NC y compras en efectivo se restan del efectivo (devoluciones y egresos salen de caja)
-        resumen.TotalEfectivo = efectivoRecibido - vueltoTotal - resumen.TotalNotasCredito - resumen.TotalComprasEfectivo;
+        // Las NC Ventas y compras en efectivo se restan del efectivo (devoluciones y egresos salen de caja)
+        // Las NC Compras se suman (crédito del proveedor reduce egresos / aumenta efectivo disponible)
+        resumen.TotalEfectivo = efectivoRecibido - vueltoTotal - resumen.TotalNotasCredito - resumen.TotalComprasEfectivo + resumen.TotalNCCompras;
         
         resumen.TotalTarjetas = detalles.Where(d => d.Medio == MedioPago.Tarjeta).Sum(d => d.MontoGs);
         resumen.TotalCheques = detalles.Where(d => d.Medio == MedioPago.Cheque || d.Medio == MedioPago.ChequeDia || d.Medio == MedioPago.ChequeDiferido).Sum(d => d.MontoGs);
@@ -558,24 +715,122 @@ else
         diferenciaTotal = entregas.Sum(e => e.Diferencia);
     }
 
+    // ========== MÉTODOS PARA MODAL DE ELIMINACIÓN CON SEGURIDAD ==========
+    
+    private void AbrirModalEliminar()
+    {
+        passwordConfirmacion = "";
+        errorModal = null;
+        mostrarModalEliminar = true;
+    }
+    
+    private void CerrarModalEliminar()
+    {
+        mostrarModalEliminar = false;
+        passwordConfirmacion = "";
+        errorModal = null;
+    }
+    
+    private async Task ConfirmarEliminarCierre()
+    {
+        if (cierreExistente == null || caja == null) return;
+        
+        // Validar que ingresó contraseña
+        if (string.IsNullOrWhiteSpace(passwordConfirmacion))
+        {
+            errorModal = "Debe ingresar su contraseña para confirmar.";
+            return;
+        }
+        
+        eliminando = true;
+        errorModal = null;
+        StateHasChanged();
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Verificar contraseña del usuario actual
+            if (!usuarioIdActual.HasValue || string.IsNullOrEmpty(usuarioNombreActual))
+            {
+                errorModal = "No se pudo identificar al usuario actual.";
+                eliminando = false;
+                return;
+            }
+            
+            var usuario = await ctx.Usuarios
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id_Usu == usuarioIdActual.Value);
+            
+            if (usuario == null)
+            {
+                errorModal = "Usuario no encontrado.";
+                eliminando = false;
+                return;
+            }
+            
+            // Verificar contraseña usando SHA256 (mismo patrón que Index.razor)
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var passwordBytes = System.Text.Encoding.UTF8.GetBytes(passwordConfirmacion);
+            var passwordHashBytes = sha.ComputeHash(passwordBytes);
+            
+            if (usuario.ContrasenaHash == null || !passwordHashBytes.SequenceEqual(usuario.ContrasenaHash))
+            {
+                errorModal = "Contraseña incorrecta.";
+                eliminando = false;
+                return;
+            }
+            
+            // Contraseña correcta - proceder a eliminar
+            
+            // Eliminar entregas asociadas primero
+            var entregasExistentes = await ctx.EntregasCaja
+                .Where(e => e.IdCierreCaja == cierreExistente.IdCierreCaja)
+                .ToListAsync();
+            
+            if (entregasExistentes.Any())
+            {
+                ctx.EntregasCaja.RemoveRange(entregasExistentes);
+            }
+
+            // Eliminar el cierre
+            var cierreEliminar = await ctx.CierresCaja.FindAsync(cierreExistente.IdCierreCaja);
+            if (cierreEliminar != null)
+            {
+                ctx.CierresCaja.Remove(cierreEliminar);
+            }
+
+            await ctx.SaveChangesAsync();
+
+            mensaje = $"✓ Cierre #{cierreExistente.IdCierreCaja} eliminado correctamente por {usuarioNombreActual}. Ahora puede generar un nuevo cierre.";
+            cierreExistente = null;
+            
+            // Cerrar modal
+            CerrarModalEliminar();
+            
+            // Recargar datos
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            errorModal = $"Error al eliminar cierre: {ex.Message}";
+        }
+        finally
+        {
+            eliminando = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task CerrarCaja()
     {
         if (caja == null) return;
 
-        // Verificar que no exista un cierre para este turno/fecha/caja
-        await using var ctxCheck = await DbFactory.CreateDbContextAsync();
-        var cierreExistente = await ctxCheck.CierresCaja.AsNoTracking()
-            .AnyAsync(c => c.IdCaja == caja.IdCaja 
-                        && c.FechaCaja == (caja.FechaActualCaja ?? DateTime.Today)
-                        && c.Turno == (caja.TurnoActual ?? 1));
-        
-        if (cierreExistente)
+        // Si ya existe un cierre, mostrar mensaje (ya se detectó al cargar)
+        if (cierreExistente != null)
         {
-            error = $"Ya existe un cierre para la Caja #{caja.IdCaja}, Fecha {caja.FechaActualCaja:dd/MM/yyyy}, Turno {caja.TurnoActual}. " +
-                    "Recargue la página para ver el estado actualizado.";
-            // Recargar datos para mostrar el estado correcto
-            CajaService.LimpiarCache();
-            await CargarDatos();
+            error = $"⚠️ Ya existe un cierre para este período. Use el botón 'Eliminar y Regenerar' si desea crear uno nuevo.";
+            StateHasChanged();
             return;
         }
 
@@ -613,6 +868,8 @@ else
                 TotalAnulaciones = resumen.TotalAnulaciones,
                 TotalNotasCredito = resumen.TotalNotasCredito,
                 CantNotasCredito = resumen.CantNotasCredito,
+                TotalNotasCreditoCompras = resumen.TotalNCCompras,
+                CantNotasCreditoCompras = resumen.CantNCCompras,
                 TotalComprasEfectivo = resumen.TotalComprasEfectivo,
                 CantComprasEfectivo = resumen.CantComprasEfectivo,
                 TotalEfectivo = resumen.TotalEfectivo,
@@ -675,6 +932,22 @@ else
             
             // Imprimir reporte de cierre automáticamente
             await ImprimirCierreA4(cierre, entregas.ToList());
+            
+            // Enviar correo de cierre a destinatarios configurados
+            try
+            {
+                var resultadoCorreo = await CorreoService.EnviarResumenCierreCajaAsync(cierre, entregas.ToList(), sucursalId ?? 1);
+                if (resultadoCorreo.Exito)
+                {
+                    mensaje += $" | Correo enviado: {resultadoCorreo.Mensaje}";
+                }
+                // Si falla, no mostrar error (el cierre ya fue exitoso)
+            }
+            catch (Exception exCorreo)
+            {
+                // Log del error pero no afecta el cierre
+                Console.WriteLine($"Error al enviar correo de cierre: {exCorreo.Message}");
+            }
             
             // Limpiar cache y recargar datos para el nuevo turno
             CajaService.LimpiarCache();
@@ -750,9 +1023,13 @@ else
         public int CantAnulaciones { get; set; }
         public decimal TotalAnulaciones { get; set; }
         
-        // Notas de Crédito (devoluciones/descuentos)
+        // Notas de Crédito Ventas (devoluciones/descuentos - reduce ingresos)
         public int CantNotasCredito { get; set; }
         public decimal TotalNotasCredito { get; set; }
+        
+        // Notas de Crédito Compras (crédito del proveedor - reduce egresos)
+        public int CantNCCompras { get; set; }
+        public decimal TotalNCCompras { get; set; }
         
         // Compras (egresos de caja)
         public int CantComprasEfectivo { get; set; }
@@ -825,19 +1102,23 @@ else
         sb.AppendLine("</div>");
         
         // Notas de Crédito y Compras (si hay)
-        if (cierre.CantNotasCredito > 0 || cierre.CantComprasEfectivo > 0)
+        if (cierre.CantNotasCredito > 0 || cierre.CantComprasEfectivo > 0 || cierre.CantNotasCreditoCompras > 0)
         {
             sb.AppendLine("<div class='row mb-3'>");
             if (cierre.CantNotasCredito > 0)
             {
-                sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center border border-warning'><div class='small text-muted'>Notas de Crédito</div><div class='fw-bold text-warning fs-5'>-{cierre.TotalNotasCredito:N0} ₲</div><div class='small'>{cierre.CantNotasCredito} NC</div></div></div>");
+                sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center border border-warning'><div class='small text-muted'>NC Ventas</div><div class='fw-bold text-warning fs-5'>-{cierre.TotalNotasCredito:N0} ₲</div><div class='small'>{cierre.CantNotasCredito} NC (devoluciones)</div></div></div>");
             }
             if (cierre.CantComprasEfectivo > 0)
             {
                 sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center border border-danger'><div class='small text-muted'>Compras Efectivo</div><div class='fw-bold text-danger fs-5'>-{cierre.TotalComprasEfectivo:N0} ₲</div><div class='small'>{cierre.CantComprasEfectivo} compras</div></div></div>");
             }
+            if (cierre.CantNotasCreditoCompras > 0)
+            {
+                sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center border border-success'><div class='small text-muted'>NC Compras</div><div class='fw-bold text-success fs-5'>+{cierre.TotalNotasCreditoCompras:N0} ₲</div><div class='small'>{cierre.CantNotasCreditoCompras} NC (crédito prov.)</div></div></div>");
+            }
             sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center'><div class='small text-muted'>Ingresos Brutos</div><div class='fw-bold fs-5'>{(cierre.TotalVentasContado + cierre.TotalCobrosCredito):N0} ₲</div></div></div>");
-            sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center bg-dark text-white'><div class='small'>Neto en Caja</div><div class='fw-bold fs-5'>{(cierre.TotalVentasContado + cierre.TotalCobrosCredito - cierre.TotalNotasCredito - cierre.TotalComprasEfectivo):N0} ₲</div></div></div>");
+            sb.AppendLine($"<div class='col-3'><div class='resumen-card text-center bg-dark text-white'><div class='small'>Neto en Caja</div><div class='fw-bold fs-5'>{(cierre.TotalVentasContado + cierre.TotalCobrosCredito - cierre.TotalNotasCredito - cierre.TotalComprasEfectivo + cierre.TotalNotasCreditoCompras):N0} ₲</div></div></div>");
             sb.AppendLine("</div>");
         }
 
@@ -918,18 +1199,22 @@ else
         sb.AppendLine($"<tr><td>Anulaciones:</td><td class='right'>{cierre.TotalAnulaciones:N0}</td></tr>");
         if (cierre.CantNotasCredito > 0)
         {
-            sb.AppendLine($"<tr><td>Notas Crédito ({cierre.CantNotasCredito}):</td><td class='right'>-{cierre.TotalNotasCredito:N0}</td></tr>");
+            sb.AppendLine($"<tr><td>NC Ventas ({cierre.CantNotasCredito}):</td><td class='right'>-{cierre.TotalNotasCredito:N0}</td></tr>");
         }
         if (cierre.CantComprasEfectivo > 0)
         {
-            sb.AppendLine($"<tr><td>Compras Efectivo ({cierre.CantComprasEfectivo}):</td><td class='right'>-{cierre.TotalComprasEfectivo:N0}</td></tr>");
+            sb.AppendLine($"<tr><td>Compras Efect. ({cierre.CantComprasEfectivo}):</td><td class='right'>-{cierre.TotalComprasEfectivo:N0}</td></tr>");
+        }
+        if (cierre.CantNotasCreditoCompras > 0)
+        {
+            sb.AppendLine($"<tr><td>NC Compras ({cierre.CantNotasCreditoCompras}):</td><td class='right'>+{cierre.TotalNotasCreditoCompras:N0}</td></tr>");
         }
         sb.AppendLine("</table>");
-        if (cierre.CantNotasCredito > 0 || cierre.CantComprasEfectivo > 0)
+        if (cierre.CantNotasCredito > 0 || cierre.CantComprasEfectivo > 0 || cierre.CantNotasCreditoCompras > 0)
         {
             sb.AppendLine("<div class='line'></div>");
             sb.AppendLine("<table>");
-            sb.AppendLine($"<tr class='bold'><td>NETO EN CAJA:</td><td class='right'>{(cierre.TotalVentasContado + cierre.TotalCobrosCredito - cierre.TotalNotasCredito - cierre.TotalComprasEfectivo):N0}</td></tr>");
+            sb.AppendLine($"<tr class='bold'><td>NETO EN CAJA:</td><td class='right'>{(cierre.TotalVentasContado + cierre.TotalCobrosCredito - cierre.TotalNotasCredito - cierre.TotalComprasEfectivo + cierre.TotalNotasCreditoCompras):N0}</td></tr>");
             sb.AppendLine("</table>");
         }
         sb.AppendLine("<div class='line'></div>");

@@ -412,6 +412,21 @@ namespace SistemIA.Data
                     });
                 }
 
+                // Módulo Configuración de Correo Electrónico
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/configuracion/correo"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Correo Electrónico",
+                        Descripcion = "Configuración de correo para envío de informes y notificaciones",
+                        Icono = "bi-envelope-at",
+                        Orden = 8,
+                        IdModuloPadre = configuracion.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/configuracion/correo"
+                    });
+                }
+
                 if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/generar-paquete-actualizacion"))
                 {
                     nuevosModulos.Add(new Modulo
@@ -419,7 +434,7 @@ namespace SistemIA.Data
                         Nombre = "Generar Paquete",
                         Descripcion = "Generar paquete de actualización del sistema",
                         Icono = "bi-box-seam",
-                        Orden = 8,
+                        Orden = 9,
                         IdModuloPadre = configuracion.IdModulo,
                         Activo = true,
                         RutaPagina = "/generar-paquete-actualizacion"
@@ -434,7 +449,7 @@ namespace SistemIA.Data
                         Nombre = "Manual del Sistema",
                         Descripcion = "Documentación y ayuda del sistema",
                         Icono = "bi-book",
-                        Orden = 9,
+                        Orden = 10,
                         IdModuloPadre = configuracion.IdModulo,
                         Activo = true,
                         RutaPagina = "/manual-sistema"
@@ -1341,10 +1356,21 @@ namespace SistemIA.Data
 
             submodulos.Add(new Modulo
             {
+                Nombre = "Correo Electrónico",
+                Descripcion = "Configuración de correo para envío de informes y notificaciones",
+                Icono = "bi-envelope-at",
+                Orden = 8,
+                IdModuloPadre = configuracion.IdModulo,
+                Activo = true,
+                RutaPagina = "/configuracion/correo"
+            });
+
+            submodulos.Add(new Modulo
+            {
                 Nombre = "Auditoría",
                 Descripcion = "Registro de acciones del sistema",
                 Icono = "bi-journal-text",
-                Orden = 8,
+                Orden = 9,
                 IdModuloPadre = configuracion.IdModulo,
                 Activo = true,
                 RutaPagina = "/configuracion/auditoria"

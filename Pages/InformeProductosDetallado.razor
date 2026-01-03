@@ -106,6 +106,10 @@
         <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
         <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
         <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+        <EnviarInformeCorreo 
+          TituloInforme="Stock Detallado" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
       </div>
     </div>
   </div>
@@ -571,5 +575,69 @@
     public decimal Stock { get; set; }
     public decimal StockMinimo { get; set; }
     public bool Activo { get; set; }
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var filtros = new List<string>();
+    if (!string.IsNullOrWhiteSpace(fCodigo)) filtros.Add($"Código: {fCodigo}");
+    if (!string.IsNullOrWhiteSpace(fDescripcion)) filtros.Add($"Descripción: {fDescripcion}");
+    if (!string.IsNullOrWhiteSpace(fCodigoBarras)) filtros.Add($"Cód. Barras: {fCodigoBarras}");
+    if (fIdMarca != 0) filtros.Add($"Marca: {marcas.FirstOrDefault(m => m.IdMarca == fIdMarca)?.NombreMarca}");
+    if (fIdClasificacion != 0) filtros.Add($"Clasificación: {clasificaciones.FirstOrDefault(c => c.IdClasificacion == fIdClasificacion)?.Nombre}");
+    if (fIdDeposito != 0) filtros.Add($"Depósito: {depositos.FirstOrDefault(d => d.IdDeposito == fIdDeposito)?.Nombre}");
+    else filtros.Add("Depósito: Todos (suma)");
+    if (fIdTipoIva != 0) filtros.Add($"IVA: {tiposIva.FirstOrDefault(i => i.IdTipoIva == fIdTipoIva)?.DescripcionCompleta}");
+    if (fTipoItem != 0) filtros.Add($"Tipo: {(fTipoItem == 1 ? "Productos" : "Servicios")}");
+    if (fActivo != -1) filtros.Add($"Estado: {(fActivo == 1 ? "Activos" : "Inactivos")}");
+    if (fSoloBajoStock) filtros.Add("Solo bajo stock mínimo");
+    return string.Join(" | ", filtros);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    if (!filas.Any()) return Task.FromResult("<p>Sin datos para mostrar.</p>");
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<table style='width:100%;border-collapse:collapse;font-size:11px;'>");
+    sb.AppendLine("<thead><tr style='background:#f0f0f0;'>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>#</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Código</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Descripción</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Marca</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Clasif.</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>IVA</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Costo Gs</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Precio Gs</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Stock</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Stock Mín.</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Estado</th>");
+    sb.AppendLine("</tr></thead><tbody>");
+    int n = 0;
+    foreach (var r in filas)
+    {
+      var rowStyle = (r.Stock < r.StockMinimo && r.StockMinimo > 0) ? "background:#fff3cd;" : "";
+      sb.AppendLine($"<tr style='{rowStyle}'>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{++n}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.TipoIva)}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(r.CostoGs.HasValue ? r.CostoGs.Value.ToString("N0") : "-")}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.PrecioGs:N0}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.Stock:N2}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.StockMinimo:N2}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{(r.Activo ? "Activo" : "Inactivo")}</td>");
+      sb.AppendLine("</tr>");
+    }
+    sb.AppendLine("</tbody><tfoot>");
+    sb.AppendLine($"<tr style='background:#f0f0f0;font-weight:bold;'>");
+    sb.AppendLine($"<td colspan='6' style='border:1px solid #ddd;padding:4px;text-align:right;'>Totales</td>");
+    sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{filas.Sum(x => x.CostoGs ?? 0):N0}</td>");
+    sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{filas.Sum(x => x.PrecioGs):N0}</td>");
+    sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{filas.Sum(x => x.Stock):N2}</td>");
+    sb.AppendLine($"<td colspan='2' style='border:1px solid #ddd;padding:4px;'></td>");
+    sb.AppendLine("</tr></tfoot></table>");
+    return Task.FromResult(sb.ToString());
   }
 }

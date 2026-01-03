@@ -80,6 +80,16 @@
     white-space: nowrap;
 }
 
+/* Permitir que textos hagan wrap en móviles pequeños */
+@media (max-width: 480px) {
+    .nav-link,
+    .link-text,
+    .submenu-button {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+    }
+}
+
 .nav-link:hover {
     background-color: rgba(255, 255, 255, 0.1);
     color: #ffffff;

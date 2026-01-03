@@ -42,6 +42,10 @@
         <button class="btn btn-secondary" @onclick="Limpiar">Limpiar</button>
         <button class="btn btn-outline-secondary" title="Imprimir" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir</button>
         <button class="btn btn-outline-success" title="Exportar a Excel" @onclick="Exportar"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+        <EnviarInformeCorreo 
+          TituloInforme="Cuentas por Cobrar" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
       </div>
     </div>
   </div>
@@ -468,6 +472,51 @@
     var b64 = Convert.ToBase64String(bytes);
     var file = $"ClientesPendientesCobro_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
     await JS.InvokeVoidAsync("downloadFile", b64, file, "text/csv;charset=utf-8");
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var partes = new List<string>();
+    partes.Add($"Desde: {filtroDesde:dd/MM/yyyy}");
+    partes.Add($"Hasta: {filtroHasta:dd/MM/yyyy}");
+    if (!string.IsNullOrWhiteSpace(filtroTexto)) partes.Add($"Cliente: {filtroTexto}");
+    partes.Add($"Estado: {(string.IsNullOrEmpty(filtroEstado) ? "Todos" : filtroEstado)}");
+    return string.Join(" | ", partes);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    var sb = new System.Text.StringBuilder();
+    // Resumen
+    sb.AppendLine("<div style='margin-bottom:15px; display:flex; gap:20px;'>");
+    sb.AppendLine($"<div style='padding:8px 16px; background:#0d6efd; color:white; border-radius:4px;'><strong>Total por Cobrar:</strong> {totalPorCobrar:N0} Gs</div>");
+    sb.AppendLine($"<div style='padding:8px 16px; background:#dc3545; color:white; border-radius:4px;'><strong>Vencido:</strong> {totalVencido:N0} Gs</div>");
+    sb.AppendLine($"<div style='padding:8px 16px; background:#ffc107; color:#000; border-radius:4px;'><strong>Por Vencer:</strong> {totalPorVencer:N0} Gs</div>");
+    sb.AppendLine($"<div style='padding:8px 16px; background:#198754; color:white; border-radius:4px;'><strong>Al Día:</strong> {totalAlDia:N0} Gs</div>");
+    sb.AppendLine("</div>");
+    
+    sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:11px;'>");
+    sb.AppendLine("<thead><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine("<th>#</th><th>Cliente</th><th>RUC</th><th>Venta</th><th>Fecha Crédito</th><th>Vencimiento</th><th style='text-align:right'>Monto Total</th><th style='text-align:right'>Saldo Pendiente</th><th>Cuotas</th><th>Estado</th>");
+    sb.AppendLine("</tr></thead>");
+    sb.AppendLine("<tbody>");
+    int n = 0;
+    foreach (var item in items)
+    {
+      var diasVencido = (DateTime.Today - (item.FechaVencimiento ?? DateTime.Today)).Days;
+      var vencStyle = diasVencido > 0 ? "color:#dc3545; font-weight:bold;" : (diasVencido >= -7 ? "color:#ffc107;" : "");
+      var estado = (item.Estado == "PENDIENTE" || item.Estado == "Abierta") && diasVencido > 0 ? "Vencido" : (item.Estado == "PAGADO" ? "Cobrado" : item.Estado);
+      sb.AppendLine("<tr>");
+      sb.AppendLine($"<td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(item.ClienteNombre)}</td><td>{System.Net.WebUtility.HtmlEncode(item.ClienteRuc)}</td><td>{item.NumeroVenta}</td><td>{item.FechaCredito:dd/MM/yyyy}</td><td style='{vencStyle}'>{item.FechaVencimiento:dd/MM/yyyy}</td><td style='text-align:right'>{item.MontoTotal:N0}</td><td style='text-align:right; font-weight:bold'>{item.SaldoPendiente:N0}</td><td>{item.NumeroCuotas}</td><td>{estado}</td>");
+      sb.AppendLine("</tr>");
+    }
+    sb.AppendLine("</tbody>");
+    sb.AppendLine("<tfoot><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine($"<td colspan='7' style='text-align:right'>Total</td><td style='text-align:right'>{items.Sum(x => x.SaldoPendiente):N0}</td><td colspan='2'></td>");
+    sb.AppendLine("</tr></tfoot>");
+    sb.AppendLine("</table>");
+    sb.AppendLine($"<div style='margin-top:10px; color:#666; font-size:10px;'>Total: {items.Count} registros</div>");
+    return Task.FromResult(sb.ToString());
   }
 
   private class ItemCuentaPorCobrar

@@ -87,6 +87,10 @@
           <button class="btn btn-outline-secondary" @onclick="ExportarCsv" disabled="@(!filas.Any())"><i class="bi bi-filetype-csv me-1"></i>CSV</button>
           <button class="btn btn-outline-success" @onclick="ExportarXlsx" disabled="@(!filas.Any())"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
           <button class="btn btn-outline-dark" @onclick="Imprimir" disabled="@(!filas.Any())"><i class="bi bi-printer me-1"></i>Imprimir</button>
+          <EnviarInformeCorreo 
+            TituloInforme="Stock Valorizado" 
+            OnGenerarHtml="GenerarTablaHtml" 
+            FiltrosAplicados="@ObtenerFiltrosTexto()" />
         </div>
       </div>
     </div>
@@ -571,6 +575,48 @@
     var b64 = Convert.ToBase64String(ms.ToArray());
     var file = $"InventarioValorizado_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
     await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var partes = new List<string>();
+    if (!string.IsNullOrWhiteSpace(fCodigo)) partes.Add($"Código: {fCodigo}");
+    if (!string.IsNullOrWhiteSpace(fDescripcion)) partes.Add($"Descripción: {fDescripcion}");
+    if (fIdMarca != 0) partes.Add($"Marca: {marcas.FirstOrDefault(m=>m.IdMarca==fIdMarca)?.NombreMarca}");
+    if (fIdClasificacion != 0) partes.Add($"Categoría: {clasificaciones.FirstOrDefault(c=>c.IdClasificacion==fIdClasificacion)?.Nombre}");
+    if (fIdDeposito != 0) partes.Add($"Depósito: {depositos.FirstOrDefault(d=>d.IdDeposito==fIdDeposito)?.Nombre}");
+    partes.Add($"Estado: {(fActivo == 1 ? "Activos" : fActivo == 0 ? "Inactivos" : "Todos")}");
+    if (fSoloConStock) partes.Add("Solo con stock");
+    return string.Join(" | ", partes);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    var sb = new System.Text.StringBuilder();
+    // Resumen
+    sb.AppendLine("<div style='margin-bottom:15px; padding:10px; background:#f8f9fa; border-radius:8px;'>");
+    sb.AppendLine($"<strong>Resumen:</strong> Valor Costo: {totalCostoValorizado:N0} Gs | Valor Venta: {totalVentaValorizado:N0} Gs | Utilidad: {utilidadBruta:N0} Gs | Margen: {margenPromedio:N2}% | Unidades: {totalUnidades:N0}");
+    sb.AppendLine("</div>");
+    
+    sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:10px;'>");
+    sb.AppendLine("<thead><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine("<th>#</th><th>Código</th><th>Descripción</th><th>Categoría</th><th>Marca</th><th style='text-align:right'>Cantidad</th><th style='text-align:right'>Costo Unit.</th><th style='text-align:right'>Precio Unit.</th><th style='text-align:right'>Costo Total</th><th style='text-align:right'>Venta Total</th><th style='text-align:right'>Utilidad</th><th style='text-align:right'>Margen %</th>");
+    sb.AppendLine("</tr></thead>");
+    sb.AppendLine("<tbody>");
+    int n = 0;
+    foreach (var r in filas)
+    {
+      var utilColor = r.Utilidad >= 0 ? "color:#198754" : "color:#dc3545";
+      sb.AppendLine("<tr>");
+      sb.AppendLine($"<td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td><td style='text-align:right'>{r.Cantidad:N2}</td><td style='text-align:right'>{r.CostoUnitario:N0}</td><td style='text-align:right'>{r.PrecioUnitario:N0}</td><td style='text-align:right'>{r.CostoTotal:N0}</td><td style='text-align:right'>{r.VentaTotal:N0}</td><td style='text-align:right; {utilColor}'>{r.Utilidad:N0}</td><td style='text-align:right'>{r.MargenPorcentaje:N1}%</td>");
+      sb.AppendLine("</tr>");
+    }
+    sb.AppendLine("</tbody>");
+    sb.AppendLine("<tfoot><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine($"<td colspan='5' style='text-align:right'>TOTALES</td><td style='text-align:right'>{totalUnidades:N2}</td><td></td><td></td><td style='text-align:right'>{totalCostoValorizado:N0}</td><td style='text-align:right'>{totalVentaValorizado:N0}</td><td style='text-align:right; color:#198754'>{utilidadBruta:N0}</td><td style='text-align:right'>{margenPromedio:N2}%</td>");
+    sb.AppendLine("</tr></tfoot>");
+    sb.AppendLine("</table>");
+    return Task.FromResult(sb.ToString());
   }
 
   // ========== CLASE AUXILIAR ==========

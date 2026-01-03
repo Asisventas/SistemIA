@@ -91,6 +91,13 @@ namespace SistemIA.Models
 
         public int? PlazoDiasCredito { get; set; }
 
+        /// <summary>
+        /// Indica si se debe enviar automáticamente la factura por correo electrónico al confirmar la venta
+        /// Requiere que el cliente tenga un correo electrónico válido configurado
+        /// </summary>
+        [Display(Name = "Enviar Factura por Correo")]
+        public bool EnviarFacturaPorCorreo { get; set; } = false;
+
         [Required]
         [StringLength(3)]
         public string CodigoPais { get; set; } = "";

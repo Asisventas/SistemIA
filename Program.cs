@@ -76,6 +76,9 @@ builder.Services.AddScoped<AuditoriaService>();
 builder.Services.AddScoped<PermisosService>();
 builder.Services.AddScoped<ActualizacionService>();
 builder.Services.AddScoped<DescuentoService>();
+builder.Services.AddScoped<ICorreoService, CorreoService>();
+builder.Services.AddScoped<IInformeCorreoService, InformeCorreoService>();
+builder.Services.AddScoped<IHtmlToPdfService, HtmlToPdfService>();
 // Impresión directa sin diálogo (solo Windows)
 if (OperatingSystem.IsWindows())
 {

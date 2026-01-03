@@ -1,4 +1,4 @@
-```css
+
 .page {
     position: relative;
     display: flex;
@@ -125,7 +125,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: transparent;
     z-index: 999;
 }
 
@@ -156,8 +156,9 @@ article.content {
 /* Media queries para celulares y tablets pequeñas */
 @media (max-width: 767.98px) {
     .sidebar {
-        width: 100vw;
-        max-width: 280px;
+        width: 85vw;
+        max-width: 300px;
+        min-width: 260px;
     }
     
     .top-row {
@@ -185,9 +186,21 @@ article.content {
     .nav-toggle-button {
         display: flex;
     }
+    
+    /* Centrar texto en barra superior en móvil */
+    .top-row .d-none {
+        text-align: center;
+        flex: 1;
+    }
 }
 
 @media (max-width: 480px) {
+    .sidebar {
+        width: 90vw;
+        max-width: 320px;
+        min-width: 280px;
+    }
+    
     article.content {
         padding: 1rem 1rem;
         max-width: 100%;
@@ -201,6 +214,7 @@ article.content {
     
     .top-row .d-none {
         font-size: 0.85rem;
+        text-align: center;
     }
 }
-```
+

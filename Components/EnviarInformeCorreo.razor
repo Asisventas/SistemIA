@@ -1,0 +1,461 @@
+@* 
+    Componente reutilizable para enviar informes por correo electrónico.
+    Uso: <EnviarInformeCorreo TituloInforme="Ventas Detallado" OnGenerarHtml="GenerarTablaHtml" />
+    
+    El callback OnGenerarHtml debe retornar el HTML de la tabla del informe.
+    El componente convierte automáticamente el HTML a PDF para el envío.
+*@
+
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject SistemIA.Services.ICorreoService CorreoService
+@inject SistemIA.Services.IHtmlToPdfService PdfService
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+<!-- Botón para abrir modal -->
+<button class="btn @ClaseBoton" title="Enviar por correo" @onclick="AbrirModal" disabled="@enviando">
+    @if (enviando)
+    {
+        <span class="spinner-border spinner-border-sm"></span>
+    }
+    else
+    {
+        <i class="bi bi-envelope"></i>
+    }
+    @if (!string.IsNullOrEmpty(TextoBoton))
+    {
+        <span class="ms-1">@TextoBoton</span>
+    }
+</button>
+
+<!-- Modal para enviar correo -->
+@if (mostrarModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-envelope me-2"></i>Enviar Informe por Correo
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Informe:</label>
+                        <p class="text-muted mb-0">@TituloInforme</p>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tipo de destinatario:</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="tipoDestinatario" id="tipoConfigurados" 
+                                   checked="@(!usarCorreoManual)" @onchange="() => usarCorreoManual = false" />
+                            <label class="form-check-label" for="tipoConfigurados">
+                                Destinatarios configurados
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="tipoDestinatario" id="tipoManual"
+                                   checked="@usarCorreoManual" @onchange="() => usarCorreoManual = true" />
+                            <label class="form-check-label" for="tipoManual">
+                                Correo específico
+                            </label>
+                        </div>
+                    </div>
+
+                    @if (usarCorreoManual)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Correo electrónico:</label>
+                            <input type="email" class="form-control" @bind="correoManual" 
+                                   placeholder="ejemplo@correo.com" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Destinatarios configurados:</label>
+                            @if (destinatariosDisponibles.Any())
+                            {
+                                <div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">
+                                    @foreach (var dest in destinatariosDisponibles)
+                                    {
+                                        <label class="list-group-item list-group-item-action">
+                                            <input class="form-check-input me-2" type="checkbox" 
+                                                   checked="@destinatariosSeleccionados.Contains(dest.Correo)"
+                                                   @onchange="e => ToggleDestinatario(dest.Correo, (bool)e.Value!)" />
+                                            <span>@dest.Nombre</span>
+                                            <small class="text-muted d-block">@dest.Correo</small>
+                                        </label>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-warning py-2 small">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    No hay destinatarios configurados. Configure destinatarios en 
+                                    <a href="/configuracion/correo">Configuración de Correo</a>.
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Asunto (opcional):</label>
+                        <input type="text" class="form-control" @bind="asuntoPersonalizado" 
+                               placeholder="@GetAsuntoPredeterminado()" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Mensaje adicional (opcional):</label>
+                        <textarea class="form-control" rows="2" @bind="mensajeAdicional" 
+                                  placeholder="Agregar un mensaje personalizado..."></textarea>
+                    </div>
+
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="bi bi-file-earmark-pdf me-1"></i>
+                        El informe se enviará como archivo PDF adjunto para mayor seguridad.
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(mensaje))
+                    {
+                        <div class="alert @(exito ? "alert-success" : "alert-danger") py-2 small">
+                            @mensaje
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="EnviarCorreo" disabled="@enviando">
+                        @if (enviando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Generando PDF...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-send me-1"></i>
+                            <span>Enviar PDF</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Título del informe que se mostrará en el modal y en el asunto del correo
+    /// </summary>
+    [Parameter]
+    public string TituloInforme { get; set; } = "Informe";
+
+    /// <summary>
+    /// Clase CSS para el botón (default: btn-outline-primary)
+    /// </summary>
+    [Parameter]
+    public string ClaseBoton { get; set; } = "btn-outline-primary";
+
+    /// <summary>
+    /// Texto adicional para el botón (opcional)
+    /// </summary>
+    [Parameter]
+    public string? TextoBoton { get; set; }
+
+    /// <summary>
+    /// Callback que genera el HTML de la tabla del informe.
+    /// El componente lo convierte automáticamente a PDF.
+    /// </summary>
+    [Parameter]
+    public Func<Task<string>>? OnGenerarHtml { get; set; }
+
+    /// <summary>
+    /// Filtros adicionales para mostrar en el correo (ej: "Desde: 01/01/2025 - Hasta: 31/01/2025")
+    /// </summary>
+    [Parameter]
+    public string? FiltrosAplicados { get; set; }
+
+    // Variables internas
+    private bool mostrarModal = false;
+    private bool enviando = false;
+    private bool exito = false;
+    private string? mensaje;
+    private bool usarCorreoManual = false;
+    private string correoManual = "";
+    private string asuntoPersonalizado = "";
+    private string mensajeAdicional = "";
+    private string? nombreEmpresa;
+    private string? nombreSucursal;
+    private List<DestinatarioInfo> destinatariosDisponibles = new();
+    private HashSet<string> destinatariosSeleccionados = new();
+
+    private class DestinatarioInfo
+    {
+        public string Correo { get; set; } = "";
+        public string Nombre { get; set; } = "";
+    }
+
+    private async Task AbrirModal()
+    {
+        mensaje = null;
+        asuntoPersonalizado = "";
+        mensajeAdicional = "";
+        destinatariosSeleccionados.Clear();
+        
+        await CargarDestinatarios();
+        await CargarInfoSucursal();
+        
+        // Si hay destinatarios, seleccionar todos por defecto
+        if (destinatariosDisponibles.Any())
+        {
+            foreach (var d in destinatariosDisponibles)
+                destinatariosSeleccionados.Add(d.Correo);
+        }
+        
+        mostrarModal = true;
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+    }
+
+    private async Task CargarInfoSucursal()
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var sucursalId = SucursalProvider.GetSucursalId();
+            
+            if (sucursalId.HasValue)
+            {
+                var sucursal = await ctx.Sucursal
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == sucursalId.Value);
+                
+                if (sucursal != null)
+                {
+                    nombreEmpresa = sucursal.NombreEmpresa;
+                    nombreSucursal = sucursal.NombreSucursal;
+                }
+            }
+        }
+        catch
+        {
+            // Ignorar errores
+        }
+    }
+
+    private async Task CargarDestinatarios()
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var sucursalId = SucursalProvider.GetSucursalId();
+            
+            // Cargar destinatarios activos de la sucursal
+            var destinatarios = await ctx.DestinatariosInforme
+                .AsNoTracking()
+                .Where(d => d.Activo && (d.IdSucursal == sucursalId || d.IdSucursal == null))
+                .Select(d => new DestinatarioInfo 
+                { 
+                    Correo = d.Correo, 
+                    Nombre = d.Nombre ?? d.Correo 
+                })
+                .Distinct()
+                .ToListAsync();
+            
+            destinatariosDisponibles = destinatarios;
+        }
+        catch
+        {
+            destinatariosDisponibles = new();
+        }
+    }
+
+    private void ToggleDestinatario(string correo, bool seleccionado)
+    {
+        if (seleccionado)
+            destinatariosSeleccionados.Add(correo);
+        else
+            destinatariosSeleccionados.Remove(correo);
+    }
+
+    private string GetAsuntoPredeterminado()
+    {
+        return $"{TituloInforme} - {DateTime.Now:dd/MM/yyyy}";
+    }
+
+    private async Task EnviarCorreo()
+    {
+        mensaje = null;
+        
+        // Validar destinatarios
+        var destinatarios = usarCorreoManual 
+            ? (string.IsNullOrWhiteSpace(correoManual) ? new List<string>() : new List<string> { correoManual.Trim() })
+            : destinatariosSeleccionados.ToList();
+        
+        if (!destinatarios.Any())
+        {
+            mensaje = "Debe seleccionar al menos un destinatario";
+            exito = false;
+            return;
+        }
+
+        if (OnGenerarHtml == null)
+        {
+            mensaje = "No se ha configurado el generador de contenido";
+            exito = false;
+            return;
+        }
+
+        enviando = true;
+        StateHasChanged();
+
+        try
+        {
+            // Generar HTML del informe
+            var htmlTabla = await OnGenerarHtml();
+            
+            // Convertir HTML a PDF
+            var pdfBytes = PdfService.ConvertirHtmlAPdf(
+                htmlTabla, 
+                TituloInforme, 
+                FiltrosAplicados,
+                nombreEmpresa,
+                nombreSucursal);
+
+            // Asunto
+            var asunto = string.IsNullOrWhiteSpace(asuntoPersonalizado) 
+                ? GetAsuntoPredeterminado() 
+                : asuntoPersonalizado;
+
+            // Nombre del archivo PDF
+            var nombreArchivo = $"{TituloInforme.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+
+            // Construir HTML del cuerpo del correo (resumen breve)
+            var htmlCorreo = ConstruirHtmlCorreo();
+
+            // Enviar a cada destinatario
+            int enviados = 0;
+            int fallidos = 0;
+            
+            foreach (var destino in destinatarios)
+            {
+                // Crear nuevo stream para cada envío
+                using var stream = new MemoryStream(pdfBytes);
+                var attachment = new System.Net.Mail.Attachment(stream, nombreArchivo, "application/pdf");
+                var adjuntos = new List<System.Net.Mail.Attachment> { attachment };
+                
+                var (ok, msg) = await CorreoService.EnviarCorreoAsync(destino, asunto, htmlCorreo, adjuntos);
+                if (ok)
+                    enviados++;
+                else
+                    fallidos++;
+            }
+
+            if (enviados > 0 && fallidos == 0)
+            {
+                mensaje = $"✓ PDF enviado correctamente a {enviados} destinatario(s)";
+                exito = true;
+            }
+            else if (enviados > 0 && fallidos > 0)
+            {
+                mensaje = $"⚠️ PDF enviado a {enviados} de {destinatarios.Count} destinatarios";
+                exito = true;
+            }
+            else
+            {
+                mensaje = "❌ No se pudo enviar el informe. Verifique la configuración de correo.";
+                exito = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"❌ Error: {ex.Message}";
+            exito = false;
+        }
+        finally
+        {
+            enviando = false;
+            StateHasChanged();
+        }
+    }
+
+    private string ConstruirHtmlCorreo()
+    {
+        var sb = new System.Text.StringBuilder();
+        
+        sb.AppendLine("<!DOCTYPE html>");
+        sb.AppendLine("<html><head>");
+        sb.AppendLine("<meta charset='utf-8'>");
+        sb.AppendLine("<style>");
+        sb.AppendLine("body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }");
+        sb.AppendLine(".container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }");
+        sb.AppendLine(".header { background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%); color: white; padding: 25px; border-radius: 8px 8px 0 0; text-align: center; }");
+        sb.AppendLine(".header h1 { margin: 0; font-size: 22px; }");
+        sb.AppendLine(".header p { margin: 8px 0 0; opacity: 0.9; font-size: 14px; }");
+        sb.AppendLine(".content { padding: 25px; }");
+        sb.AppendLine(".info-box { background: #e7f1ff; border-left: 4px solid #0d6efd; padding: 15px; margin-bottom: 20px; border-radius: 0 4px 4px 0; }");
+        sb.AppendLine(".info-box p { margin: 0; }");
+        sb.AppendLine(".mensaje-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-bottom: 20px; border-radius: 0 4px 4px 0; }");
+        sb.AppendLine(".pdf-notice { background: #d4edda; border: 1px solid #c3e6cb; padding: 25px; border-radius: 8px; text-align: center; margin: 20px 0; }");
+        sb.AppendLine(".footer { text-align: center; padding: 20px; color: #6c757d; font-size: 12px; border-top: 1px solid #eee; }");
+        sb.AppendLine("</style>");
+        sb.AppendLine("</head><body>");
+        
+        sb.AppendLine("<div class='container'>");
+        
+        // Header
+        sb.AppendLine("<div class='header'>");
+        if (!string.IsNullOrEmpty(nombreEmpresa))
+        {
+            sb.AppendLine($"<p style='font-size:12px; margin-bottom:5px;'>{nombreEmpresa}</p>");
+        }
+        sb.AppendLine($"<h1>📊 {TituloInforme}</h1>");
+        sb.AppendLine($"<p>Generado el {DateTime.Now:dd/MM/yyyy HH:mm}</p>");
+        sb.AppendLine("</div>");
+        
+        sb.AppendLine("<div class='content'>");
+        
+        // Filtros aplicados
+        if (!string.IsNullOrEmpty(FiltrosAplicados))
+        {
+            sb.AppendLine("<div class='info-box'>");
+            sb.AppendLine($"<p><strong>📋 Filtros aplicados:</strong> {FiltrosAplicados}</p>");
+            sb.AppendLine("</div>");
+        }
+        
+        // Mensaje adicional
+        if (!string.IsNullOrEmpty(mensajeAdicional))
+        {
+            sb.AppendLine("<div class='mensaje-box'>");
+            sb.AppendLine($"<p><strong>💬 Mensaje:</strong> {mensajeAdicional}</p>");
+            sb.AppendLine("</div>");
+        }
+        
+        // Aviso del PDF adjunto
+        sb.AppendLine("<div class='pdf-notice'>");
+        sb.AppendLine("<span style='font-size:48px;'>📄</span>");
+        sb.AppendLine("<h3 style='margin: 10px 0 5px; color: #155724;'>Informe PDF Adjunto</h3>");
+        sb.AppendLine("<p style='margin:0; color:#666;'>El informe completo se encuentra en el archivo PDF adjunto a este correo.</p>");
+        sb.AppendLine("</div>");
+        
+        sb.AppendLine("</div>"); // content
+        
+        // Footer
+        sb.AppendLine("<div class='footer'>");
+        sb.AppendLine($"<p>Este informe fue generado automáticamente por SistemIA<br/>");
+        sb.AppendLine($"<small>Por seguridad, los datos se envían únicamente como archivo PDF adjunto.</small></p>");
+        sb.AppendLine("</div>");
+        
+        sb.AppendLine("</div>"); // container
+        sb.AppendLine("</body></html>");
+        
+        return sb.ToString();
+    }
+}

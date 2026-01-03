@@ -77,6 +77,10 @@
         <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
         <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
         <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+        <EnviarInformeCorreo 
+          TituloInforme="Ajustes de Stock" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
       </div>
     </div>
   </div>
@@ -462,5 +466,38 @@
     public string Usuario { get; set; } = string.Empty;
     public int? IdCaja { get; set; }
     public int? Turno { get; set; }
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var filtros = new List<string>();
+    if (fDesde.HasValue) filtros.Add($"Desde: {fDesde:dd/MM/yyyy}");
+    if (fHasta.HasValue) filtros.Add($"Hasta: {fHasta:dd/MM/yyyy}");
+    if (fIdDeposito > 0) filtros.Add($"Depósito: {depositos.FirstOrDefault(d => d.IdDeposito == fIdDeposito)?.Nombre}");
+    if (!string.IsNullOrWhiteSpace(fProducto)) filtros.Add($"Producto: {fProducto}");
+    if (!string.IsNullOrWhiteSpace(fUsuario)) filtros.Add($"Usuario: {fUsuario}");
+    if (fTipoDiferencia != 0) filtros.Add($"Tipo: {(fTipoDiferencia == 1 ? "Sobrantes" : "Faltantes")}");
+    return string.Join(" | ", filtros);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    if (!filas.Any()) return Task.FromResult("<p>Sin datos para mostrar</p>");
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:12px;'>");
+    sb.AppendLine("<thead><tr style='background:#f0f0f0;'><th>#</th><th>Fecha</th><th>Producto</th><th>Código</th><th>Depósito</th><th style='text-align:right'>Stock Sistema</th><th style='text-align:right'>Stock Ajuste</th><th style='text-align:right'>Diferencia</th><th style='text-align:right'>Monto</th><th>Usuario</th></tr></thead>");
+    sb.AppendLine("<tbody>");
+    int n = 0;
+    foreach (var r in filas)
+    {
+      var colorDif = r.Diferencia > 0 ? "color:green" : (r.Diferencia < 0 ? "color:red" : "");
+      sb.AppendLine($"<tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy HH:mm}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td>{r.Codigo}</td><td>{System.Net.WebUtility.HtmlEncode(r.Deposito)}</td><td style='text-align:right'>{r.StockSistema:N2}</td><td style='text-align:right'>{r.StockAjuste:N2}</td><td style='text-align:right;{colorDif}'>{r.Diferencia:N2}</td><td style='text-align:right;{colorDif}'>{r.Monto:N0}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td></tr>");
+    }
+    sb.AppendLine("</tbody>");
+    var totalColor = filas.Sum(x => x.Diferencia) >= 0 ? "color:green" : "color:red";
+    sb.AppendLine($"<tfoot><tr style='background:#e0e0e0;font-weight:bold;'><td colspan='5'>Totales</td><td style='text-align:right'>{filas.Sum(x => x.StockSistema):N2}</td><td style='text-align:right'>{filas.Sum(x => x.StockAjuste):N2}</td><td style='text-align:right;{totalColor}'>{filas.Sum(x => x.Diferencia):N2}</td><td style='text-align:right;{totalColor}'>{filas.Sum(x => x.Monto):N0}</td><td></td></tr></tfoot>");
+    sb.AppendLine("</table>");
+    sb.AppendLine($"<p style='margin-top:10px;font-size:11px;'>Sobrantes: {filas.Where(x => x.Diferencia > 0).Sum(x => x.Diferencia):N2} uds | Faltantes: {filas.Where(x => x.Diferencia < 0).Sum(x => x.Diferencia):N2} uds</p>");
+    return Task.FromResult(sb.ToString());
   }
 }

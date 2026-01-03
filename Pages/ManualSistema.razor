@@ -33,6 +33,15 @@
                         <a class="nav-link @(seccionActiva == "permisos" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("permisos")'>
                             <i class="bi bi-shield-lock me-2"></i>Permisos
                         </a>
+                        <a class="nav-link @(seccionActiva == "productos" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("productos")'>
+                            <i class="bi bi-box-seam me-2"></i>Productos
+                        </a>
+                        <a class="nav-link @(seccionActiva == "compras" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("compras")'>
+                            <i class="bi bi-bag me-2"></i>Compras
+                        </a>
+                        <a class="nav-link @(seccionActiva == "correo" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("correo")'>
+                            <i class="bi bi-envelope-at me-2"></i>Correo Electrónico
+                        </a>
                     </nav>
                 </div>
             </div>
@@ -59,6 +68,15 @@
                     break;
                 case "permisos":
                     @RenderPermisos()
+                    break;
+                case "productos":
+                    @RenderProductos()
+                    break;
+                case "compras":
+                    @RenderCompras()
+                    break;
+                case "correo":
+                    @RenderCorreo()
                     break;
             }
         </div>
@@ -373,12 +391,26 @@
                 <h5><i class="bi bi-info-circle me-2"></i>Descripción General</h5>
                 <p>El módulo de ventas permite registrar transacciones comerciales con soporte para:</p>
                 <ul>
-                    <li>Múltiples tipos de documento (Factura, Boleta, Ticket)</li>
-                    <li>Descuentos automáticos y manuales</li>
-                    <li>Múltiples formas de pago</li>
+                    <li>Múltiples tipos de documento (Factura Electrónica, Ticket, Contado)</li>
+                    <li>Descuentos automáticos por categoría, marca o producto</li>
+                    <li>Múltiples formas de pago (Efectivo, Tarjeta, Transferencia, Cheque)</li>
                     <li>Integración con SIFEN (Facturación Electrónica)</li>
-                    <li>Control de stock en tiempo real</li>
+                    <li>Control de stock en tiempo real por depósito</li>
+                    <li>Precios diferenciados por tipo de cliente</li>
                 </ul>
+                
+                <hr />
+                
+                <h5><i class="bi bi-diagram-3 me-2"></i>Flujo de Venta</h5>
+                <div class="d-flex align-items-center justify-content-center gap-2 flex-wrap my-4">
+                    <span class="badge bg-secondary fs-6 p-2">1. Seleccionar Cliente</span>
+                    <i class="bi bi-arrow-right text-muted"></i>
+                    <span class="badge bg-info fs-6 p-2">2. Agregar Productos</span>
+                    <i class="bi bi-arrow-right text-muted"></i>
+                    <span class="badge bg-warning text-dark fs-6 p-2">3. Forma de Pago</span>
+                    <i class="bi bi-arrow-right text-muted"></i>
+                    <span class="badge bg-success fs-6 p-2">4. Confirmar/SIFEN</span>
+                </div>
                 
                 <hr />
                 
@@ -387,32 +419,123 @@
                     <table class="table table-sm table-bordered">
                         <thead class="table-light">
                             <tr>
-                                <th>Atajo</th>
+                                <th style="width: 20%">Atajo</th>
                                 <th>Acción</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td><kbd>F2</kbd></td><td>Buscar producto</td></tr>
-                            <tr><td><kbd>F4</kbd></td><td>Buscar cliente</td></tr>
-                            <tr><td><kbd>F8</kbd></td><td>Guardar venta</td></tr>
-                            <tr><td><kbd>Enter</kbd></td><td>Agregar producto seleccionado</td></tr>
-                            <tr><td><kbd>Esc</kbd></td><td>Cerrar modal / Cancelar</td></tr>
+                            <tr><td><kbd>F2</kbd></td><td><strong>Guardado rápido</strong> - Guarda la venta o confirma composición de caja</td></tr>
+                            <tr><td><kbd>F4</kbd></td><td>Abrir búsqueda de cliente</td></tr>
+                            <tr><td><kbd>F8</kbd></td><td>Guardar venta (confirmar)</td></tr>
+                            <tr><td><kbd>F9</kbd></td><td>Abrir panel de formas de pago</td></tr>
+                            <tr><td><kbd>Enter</kbd></td><td>Agregar producto seleccionado al detalle</td></tr>
+                            <tr><td><kbd>Esc</kbd></td><td>Cerrar modal activo / Cancelar operación</td></tr>
+                            <tr><td><kbd>+</kbd> / <kbd>-</kbd></td><td>Aumentar / Disminuir cantidad (en línea seleccionada)</td></tr>
                         </tbody>
                     </table>
                 </div>
                 
+                <div class="alert alert-success mt-3">
+                    <i class="bi bi-lightning me-2"></i>
+                    <strong>Tip:</strong> Use <kbd>F2</kbd> para guardar rápidamente. Si está en la pantalla de composición de caja, F2 confirma la composición; si está en la venta, guarda directamente.
+                </div>
+                
+                <hr />
+                
+                <h5><i class="bi bi-currency-dollar me-2"></i>Precios y Descuentos</h5>
+                <p>El sistema aplica precios según la configuración del cliente:</p>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <div class="card border-primary h-100">
+                            <div class="card-body">
+                                <h6 class="text-primary"><i class="bi bi-person me-2"></i>Por Tipo de Cliente</h6>
+                                <ul class="small mb-0">
+                                    <li><strong>Minorista:</strong> Precio de venta regular</li>
+                                    <li><strong>Mayorista:</strong> Precio mayorista del producto</li>
+                                    <li><strong>Distribuidor:</strong> Precio distribuidor</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-success h-100">
+                            <div class="card-body">
+                                <h6 class="text-success"><i class="bi bi-tag me-2"></i>Por Lista de Precios</h6>
+                                <p class="small mb-0">Si el cliente tiene una lista asignada, se aplica el factor de la lista sobre el precio base.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr />
+                
+                <h5><i class="bi bi-credit-card me-2"></i>Formas de Pago</h5>
+                <div class="row g-2 mt-2">
+                    <div class="col-6 col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body py-2">
+                                <i class="bi bi-cash-stack fs-4 text-success"></i>
+                                <p class="small mb-0">Efectivo</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body py-2">
+                                <i class="bi bi-credit-card fs-4 text-primary"></i>
+                                <p class="small mb-0">Tarjeta</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body py-2">
+                                <i class="bi bi-bank fs-4 text-info"></i>
+                                <p class="small mb-0">Transferencia</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body py-2">
+                                <i class="bi bi-file-text fs-4 text-warning"></i>
+                                <p class="small mb-0">Cheque</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p class="small text-muted mt-2">Puede combinar múltiples formas de pago en una misma venta (pago mixto).</p>
+                
                 <hr />
                 
                 <h5><i class="bi bi-gear me-2"></i>Configuraciones Relacionadas</h5>
-                <ul>
-                    <li><strong>Permitir Vender con Descuento:</strong> Habilita/deshabilita descuentos en ventas</li>
-                    <li><strong>Descuento Máximo:</strong> Límite de descuento aplicable</li>
-                    <li><strong>Modo Farmacia:</strong> Activa funciones especiales para farmacias</li>
-                </ul>
+                <div class="list-group">
+                    <div class="list-group-item">
+                        <strong>Permitir Vender con Descuento:</strong> 
+                        <span class="text-muted">Habilita/deshabilita la posibilidad de aplicar descuentos en ventas</span>
+                    </div>
+                    <div class="list-group-item">
+                        <strong>Descuento Máximo:</strong> 
+                        <span class="text-muted">Porcentaje máximo de descuento permitido por defecto</span>
+                    </div>
+                    <div class="list-group-item">
+                        <strong>Modo Farmacia:</strong> 
+                        <span class="text-muted">Activa funciones especiales para farmacias (precio ministerio, recetas)</span>
+                    </div>
+                    <div class="list-group-item">
+                        <strong>Descontar Stock al Confirmar:</strong> 
+                        <span class="text-muted">El stock se reduce automáticamente al confirmar la venta</span>
+                    </div>
+                </div>
                 
-                <a href="/ventas" class="btn btn-success mt-3">
-                    <i class="bi bi-cart me-1"></i>Ir a Ventas
-                </a>
+                <div class="mt-4">
+                    <a href="/ventas" class="btn btn-success">
+                        <i class="bi bi-cart me-1"></i>Nueva Venta
+                    </a>
+                    <a href="/ventas/explorar" class="btn btn-outline-success ms-2">
+                        <i class="bi bi-search me-1"></i>Explorador de Ventas
+                    </a>
+                </div>
             </div>
         </div>
     };
@@ -604,6 +727,466 @@
                 <a href="/configuracion/roles" class="btn btn-outline-danger ms-2">
                     <i class="bi bi-person-gear me-1"></i>Gestionar Roles
                 </a>
+            </div>
+        </div>
+    };
+    
+    // ========== SECCIÓN: PRODUCTOS ==========
+    private RenderFragment RenderProductos() => __builder =>
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0"><i class="bi bi-box-seam me-2"></i>Gestión de Productos</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    El módulo de productos permite gestionar el catálogo completo de artículos, precios, stock y configuraciones especiales.
+                </div>
+                
+                <h5><i class="bi bi-stars me-2"></i>Características Principales</h5>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-4">
+                        <div class="card border-primary h-100">
+                            <div class="card-body">
+                                <h6 class="text-primary"><i class="bi bi-tags me-2"></i>Múltiples Precios</h6>
+                                <p class="small">Configura diferentes precios: costo, venta, mayorista, distribuidor y precio ministerio (farmacias).</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-success h-100">
+                            <div class="card-body">
+                                <h6 class="text-success"><i class="bi bi-boxes me-2"></i>Control de Stock</h6>
+                                <p class="small">Stock por depósito, stock mínimo, alertas automáticas y control de inventario en tiempo real.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-warning h-100">
+                            <div class="card-body">
+                                <h6 class="text-warning"><i class="bi bi-percent me-2"></i>Descuentos</h6>
+                                <p class="small">Descuento específico por producto, descuento máximo permitido y control de rentabilidad.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-currency-dollar me-2"></i>Sistema de Precios</h5>
+                <table class="table table-bordered table-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tipo de Precio</th>
+                            <th>Descripción</th>
+                            <th>Uso</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Precio Costo</strong></td>
+                            <td>Costo de adquisición del producto</td>
+                            <td>Cálculo de rentabilidad, no se muestra al cliente</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Precio Venta</strong></td>
+                            <td>Precio regular al público</td>
+                            <td>Ventas minoristas, clientes ocasionales</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Precio Mayorista</strong></td>
+                            <td>Precio para compras en cantidad</td>
+                            <td>Clientes con categoría "Mayorista"</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Precio Distribuidor</strong></td>
+                            <td>Precio especial para distribuidores</td>
+                            <td>Clientes con categoría "Distribuidor"</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Precio Ministerio</strong></td>
+                            <td>Precio regulado (farmacias)</td>
+                            <td>Se imprime en tickets cuando está activo el modo farmacia</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-person-lines-fill me-2"></i>Listas de Precios por Cliente</h5>
+                <p>Además de los precios base, puede asignar listas de precios específicas a clientes:</p>
+                <ol>
+                    <li>Crear una <strong>Lista de Precios</strong> en Configuración → Listas de Precios</li>
+                    <li>Definir el <strong>factor de ajuste</strong> (multiplicador sobre el precio base)</li>
+                    <li>Asignar la lista al <strong>cliente</strong> en su ficha</li>
+                    <li>En ventas, el precio se calculará automáticamente con el factor de la lista</li>
+                </ol>
+                
+                <div class="alert alert-success">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    <strong>Ejemplo:</strong> Lista "Preferencial" con factor 0.90 aplicará automáticamente 10% de descuento sobre precio venta.
+                </div>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-sliders me-2"></i>Configuraciones del Producto</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="list-group">
+                            <div class="list-group-item">
+                                <strong>Permite Decimal</strong>
+                                <p class="mb-0 small text-muted">Permite vender fracciones (ej: 1.5 kg)</p>
+                            </div>
+                            <div class="list-group-item">
+                                <strong>Permite Descuento</strong>
+                                <p class="mb-0 small text-muted">Habilita descuentos en este producto</p>
+                            </div>
+                            <div class="list-group-item">
+                                <strong>Usar Descuento Específico</strong>
+                                <p class="mb-0 small text-muted">Ignora descuentos por categoría/marca</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="list-group">
+                            <div class="list-group-item">
+                                <strong>Es Servicio</strong>
+                                <p class="mb-0 small text-muted">No descuenta stock al vender</p>
+                            </div>
+                            <div class="list-group-item">
+                                <strong>Requiere Receta</strong>
+                                <p class="mb-0 small text-muted">Solicita datos de receta médica (modo farmacia)</p>
+                            </div>
+                            <div class="list-group-item">
+                                <strong>Activo</strong>
+                                <p class="mb-0 small text-muted">Permite vender el producto</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <a href="/productos" class="btn btn-info">
+                        <i class="bi bi-box me-1"></i>Ir a Productos
+                    </a>
+                    <a href="/configuracion/listas-precios" class="btn btn-outline-info ms-2">
+                        <i class="bi bi-tag me-1"></i>Listas de Precios
+                    </a>
+                </div>
+            </div>
+        </div>
+    };
+    
+    // ========== SECCIÓN: COMPRAS ==========
+    private RenderFragment RenderCompras() => __builder =>
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-secondary text-white">
+                <h4 class="mb-0"><i class="bi bi-bag me-2"></i>Módulo de Compras</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-secondary">
+                    <i class="bi bi-info-circle me-2"></i>
+                    El módulo de compras permite registrar adquisiciones a proveedores, actualizar costos y controlar el inventario.
+                </div>
+                
+                <h5><i class="bi bi-diagram-3 me-2"></i>Flujo de Compras</h5>
+                <div class="d-flex align-items-center justify-content-center gap-2 flex-wrap my-4">
+                    <span class="badge bg-secondary fs-6 p-2">1. Crear Compra</span>
+                    <i class="bi bi-arrow-right text-muted"></i>
+                    <span class="badge bg-info fs-6 p-2">2. Agregar Productos</span>
+                    <i class="bi bi-arrow-right text-muted"></i>
+                    <span class="badge bg-warning text-dark fs-6 p-2">3. Confirmar</span>
+                    <i class="bi bi-arrow-right text-muted"></i>
+                    <span class="badge bg-success fs-6 p-2">4. Stock Actualizado</span>
+                </div>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-list-check me-2"></i>Características</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-arrow-repeat text-primary me-2"></i>Actualización de Costos</h6>
+                                <p class="small">Al confirmar la compra, puede actualizar automáticamente el precio de costo de los productos.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-boxes text-success me-2"></i>Entrada de Stock</h6>
+                                <p class="small">El stock se incrementa automáticamente en el depósito seleccionado al confirmar.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-receipt text-info me-2"></i>Notas de Crédito</h6>
+                                <p class="small">Genere notas de crédito de compras para devoluciones a proveedores.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-file-earmark-text text-warning me-2"></i>Comprobantes</h6>
+                                <p class="small">Registre el número de factura del proveedor y datos del documento de compra.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-gear me-2"></i>Crear una Compra</h5>
+                <ol>
+                    <li>Ir a <strong>Compras → Nueva Compra</strong></li>
+                    <li>Seleccionar el <strong>proveedor</strong></li>
+                    <li>Ingresar <strong>número de factura</strong> del proveedor</li>
+                    <li>Seleccionar el <strong>depósito</strong> de destino</li>
+                    <li>Agregar los <strong>productos</strong> con cantidad y precio de compra</li>
+                    <li><strong>Confirmar</strong> la compra para actualizar el stock</li>
+                </ol>
+                
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Importante:</strong> Una vez confirmada la compra, no puede ser modificada. Para corregir errores, utilice una Nota de Crédito de Compra.
+                </div>
+                
+                <div class="mt-4">
+                    <a href="/compras" class="btn btn-secondary">
+                        <i class="bi bi-bag me-1"></i>Nueva Compra
+                    </a>
+                    <a href="/compras/explorar" class="btn btn-outline-secondary ms-2">
+                        <i class="bi bi-search me-1"></i>Explorador de Compras
+                    </a>
+                </div>
+            </div>
+        </div>
+    };
+    
+    // ========== SECCIÓN: CORREO ELECTRÓNICO ==========
+    private RenderFragment RenderCorreo() => __builder =>
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-purple text-white" style="background-color: #6f42c1 !important;">
+                <h4 class="mb-0"><i class="bi bi-envelope-at me-2"></i>Configuración de Correo Electrónico</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Configure el servidor de correo para enviar notificaciones, informes automáticos y copias de facturas a clientes.
+                </div>
+                
+                <h5><i class="bi bi-server me-2"></i>Configuración del Servidor SMTP</h5>
+                <p>Para enviar correos, debe configurar los datos del servidor SMTP:</p>
+                
+                <table class="table table-bordered table-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Campo</th>
+                            <th>Descripción</th>
+                            <th>Ejemplo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Servidor SMTP</strong></td>
+                            <td>Dirección del servidor de correo saliente</td>
+                            <td>smtp.gmail.com, smtp.office365.com</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Puerto</strong></td>
+                            <td>Puerto del servidor SMTP</td>
+                            <td>587 (TLS), 465 (SSL), 25 (sin cifrado)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Usar SSL/TLS</strong></td>
+                            <td>Conexión segura</td>
+                            <td>Recomendado: Activado</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Usuario</strong></td>
+                            <td>Cuenta de correo para autenticación</td>
+                            <td>sistema@miempresa.com</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Contraseña</strong></td>
+                            <td>Contraseña o token de aplicación</td>
+                            <td>Usar contraseña de aplicación si tiene 2FA</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-send me-2"></i>Datos del Remitente</h5>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-person-badge text-primary me-2"></i>Nombre del Remitente</h6>
+                                <p class="small mb-0">Nombre que aparecerá como remitente del correo (ej: "Mi Empresa S.A.")</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-envelope text-success me-2"></i>Correo Remitente</h6>
+                                <p class="small mb-0">Dirección que aparece en el campo "De:" de los correos enviados</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6><i class="bi bi-reply text-info me-2"></i>Responder A</h6>
+                                <p class="small mb-0">Dirección a la que llegarán las respuestas de los clientes</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-gear me-2"></i>Opciones de Envío Automático</h5>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <div class="card border-primary h-100">
+                            <div class="card-body">
+                                <h6 class="text-primary"><i class="bi bi-power me-2"></i>Enviar al Cierre del Sistema</h6>
+                                <p class="small mb-0">Si está activado, al cerrar el sistema se enviarán automáticamente todos los informes configurados a los destinatarios.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-success h-100">
+                            <div class="card-body">
+                                <h6 class="text-success"><i class="bi bi-clock me-2"></i>Enviar Resumen Diario</h6>
+                                <p class="small mb-0">Configure una hora específica para enviar automáticamente el resumen diario de ventas.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-people me-2"></i>Destinatarios de Informes</h5>
+                <p>Cada destinatario puede seleccionar qué informes desea recibir. Los informes disponibles son:</p>
+                
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-success text-white py-2">
+                                <i class="bi bi-cart me-2"></i>Ventas
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item small"><i class="bi bi-check2 text-success me-2"></i>Resumen de Cierre</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-success me-2"></i>Ventas Detallado</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-success me-2"></i>Ventas Agrupado</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-success me-2"></i>Ventas por Clasificación</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-primary text-white py-2">
+                                <i class="bi bi-bag me-2"></i>Compras y NC
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item small"><i class="bi bi-check2 text-primary me-2"></i>Compras Detallado</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-primary me-2"></i>Notas de Crédito</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-primary me-2"></i>NC Detallado</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-primary me-2"></i>NC de Compras</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-warning text-dark py-2">
+                                <i class="bi bi-box-seam me-2"></i>Inventario
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item small"><i class="bi bi-check2 text-warning me-2"></i>Stock Valorizado</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-warning me-2"></i>Stock Detallado</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-warning me-2"></i>Movimientos de Stock</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-warning me-2"></i>Ajustes de Stock</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-warning me-2"></i>Alerta Stock Bajo</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-info text-white py-2">
+                                <i class="bi bi-cash-coin me-2"></i>Financieros
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item small"><i class="bi bi-check2 text-info me-2"></i>Resumen de Caja</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-info me-2"></i>Cuentas por Cobrar</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-info me-2"></i>Cuentas por Pagar</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-danger text-white py-2">
+                                <i class="bi bi-file-earmark-code me-2"></i>SIFEN y Sistema
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Resumen SIFEN</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Resumen Cierre Sistema</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white py-2">
+                                <i class="bi bi-people me-2"></i>RRHH
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item small"><i class="bi bi-check2 text-secondary me-2"></i>Control de Asistencia</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4" />
+
+                <h5><i class="bi bi-receipt me-2"></i>Envío Automático de Facturas a Clientes</h5>
+                <div class="alert alert-success">
+                    <i class="bi bi-envelope-paper me-2"></i>
+                    En la ficha de cada <strong>Cliente</strong> puede activar la opción <strong>"Enviar Factura por Correo"</strong>. 
+                    Si está activada, al confirmar una venta se enviará automáticamente el PDF de la factura al correo del cliente.
+                </div>
+                
+                <hr class="my-4" />
+                
+                <h5><i class="bi bi-tools me-2"></i>Diagnóstico de Conexión</h5>
+                <p>Utilice el panel de diagnóstico para verificar la configuración antes de enviar correos:</p>
+                <ol>
+                    <li><strong>Verificación de Configuración:</strong> Valida que todos los campos estén completos</li>
+                    <li><strong>Resolución DNS:</strong> Verifica que el servidor SMTP sea accesible</li>
+                    <li><strong>Conexión TCP:</strong> Prueba la conexión al puerto configurado</li>
+                    <li><strong>Handshake TLS/SSL:</strong> Verifica el certificado de seguridad</li>
+                    <li><strong>Autenticación:</strong> Valida las credenciales de acceso</li>
+                    <li><strong>Envío de Prueba:</strong> Envía un correo de prueba al destinatario configurado</li>
+                </ol>
+                
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Configuración de Gmail:</strong> Si usa Gmail, debe crear una "Contraseña de aplicación" en <a href="https://myaccount.google.com/security" target="_blank">Seguridad de Google</a> → Verificación en 2 pasos → Contraseñas de aplicaciones. Las contraseñas normales no funcionan.
+                </div>
+                
+                <div class="mt-4">
+                    <a href="/configuracion/correo" class="btn btn-primary" style="background-color: #6f42c1; border-color: #6f42c1;">
+                        <i class="bi bi-envelope-at me-1"></i>Configurar Correo
+                    </a>
+                </div>
             </div>
         </div>
     };

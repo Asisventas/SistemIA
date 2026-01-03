@@ -401,7 +401,10 @@
                 <tr>
                     <th>Producto</th>
                     <th>Depósito</th>
-                    <th>Vencimiento</th>
+                    @if (AlgunDetalleConVencimiento)
+                    {
+                        <th>Vencimiento</th>
+                    }
                     <th class="text-end">Cantidad</th>
                     <th class="text-end">Pre. Unit. Compra</th>
                     <th class="text-end">Importe Compra</th>
@@ -435,18 +438,21 @@
                         <span class="text-muted small">(Sin depósito)</span>
                     }
                 </td>
-                <td>
-                    @if (d.FechaVencimientoItem.HasValue)
-                    {
-                        var diasRestantes = (d.FechaVencimientoItem.Value - DateTime.Now).Days;
-                        var claseColor = diasRestantes < 0 ? "text-danger" : diasRestantes <= 30 ? "text-warning" : "text-success";
-                        <span class="@claseColor small">@d.FechaVencimientoItem.Value.ToString("dd/MM/yyyy")</span>
-                    }
-                    else
-                    {
-                        <span class="text-muted small">-</span>
-                    }
-                </td>
+                @if (AlgunDetalleConVencimiento)
+                {
+                    <td>
+                        @if (d.FechaVencimientoItem.HasValue)
+                        {
+                            var diasRestantes = (d.FechaVencimientoItem.Value - DateTime.Now).Days;
+                            var claseColor = diasRestantes < 0 ? "text-danger" : diasRestantes <= 30 ? "text-warning" : "text-success";
+                            <span class="@claseColor small">@d.FechaVencimientoItem.Value.ToString("dd/MM/yyyy")</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">-</span>
+                        }
+                    </td>
+                }
                 <td class="text-end"><strong>@d.Cantidad</strong></td>
                 <td class="text-end text-primary fw-semibold">@FormatearPrecio(d.PrecioUnitario)</td>
                 <td class="text-end text-success fw-bold">@FormatearPrecio(d.Importe)</td>
@@ -1003,6 +1009,10 @@
     
     // Control para prevenir el comportamiento por defecto de Tab en el botón Agregar
     private bool _prevenirTabEnAgregar = false;
+    
+    // Indica si algún detalle tiene producto con control de vencimiento
+    private bool AlgunDetalleConVencimiento => Detalles.Any(d => 
+        Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto)?.ControlarVencimiento == true);
     
     // Diccionario para guardar el factor aplicado a cada producto (para actualizar al guardar)
     private Dictionary<int, decimal> _factoresPorProducto = new();
@@ -2694,6 +2704,21 @@ END
     {
         if (firstRender)
         {
+            // Prevenir submit al presionar Enter en cualquier campo (evitar errores accidentales)
+            await JS.InvokeVoidAsync("eval", @"
+                if (!window._comprasEnterHandler) {
+                    window._comprasEnterHandler = function(e) {
+                        if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && !e.target.classList.contains('allow-enter')) {
+                            var form = e.target.closest('form');
+                            if (form) {
+                                e.preventDefault();
+                            }
+                        }
+                    };
+                    document.addEventListener('keydown', window._comprasEnterHandler, true);
+                }
+            ");
+            
             // Registrar atajo de teclado F2 para guardar la compra
             await JS.InvokeVoidAsync("eval", @"
                 if (!window._comprasF2Handler) {

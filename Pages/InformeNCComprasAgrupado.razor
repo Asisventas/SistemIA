@@ -84,6 +84,10 @@
         <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
         <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
         <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+        <EnviarInformeCorreo 
+          TituloInforme="NC Compras Agrupado" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
       </div>
     </div>
   </div>
@@ -512,6 +516,64 @@
     public decimal TotalUsd { get; set; }
     public string Usuario { get; set; } = string.Empty;
     public int? IdCaja { get; set; }
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var filtros = new List<string>();
+    if (fDesde.HasValue) filtros.Add($"Desde: {fDesde:dd/MM/yyyy}");
+    if (fHasta.HasValue) filtros.Add($"Hasta: {fHasta:dd/MM/yyyy}");
+    if (fIdMoneda != 0) filtros.Add($"Moneda: {monedas.FirstOrDefault(m => m.IdMoneda == fIdMoneda)?.CodigoISO}");
+    if (!string.IsNullOrWhiteSpace(fNumero)) filtros.Add($"Nº: {fNumero}");
+    if (!string.IsNullOrWhiteSpace(fProveedor)) filtros.Add($"Proveedor: {fProveedor}");
+    if (!string.IsNullOrWhiteSpace(fEstado)) filtros.Add($"Estado: {fEstado}");
+    if (!string.IsNullOrWhiteSpace(fMotivo)) filtros.Add($"Motivo: {fMotivo}");
+    if (!string.IsNullOrWhiteSpace(fUsuario)) filtros.Add($"Usuario: {fUsuario}");
+    if (fCajaDesde.HasValue) filtros.Add($"Caja desde: {fCajaDesde}");
+    if (fCajaHasta.HasValue) filtros.Add($"Caja hasta: {fCajaHasta}");
+    return string.Join(" | ", filtros);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    if (!filas.Any()) return Task.FromResult("<p>Sin datos para mostrar.</p>");
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<table style='width:100%;border-collapse:collapse;font-size:12px;'>");
+    sb.AppendLine("<thead><tr style='background:#f0f0f0;'>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;'>ID</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;'>Fecha</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;'>Nº NC</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;'>Proveedor</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;'>Motivo</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;'>Estado</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;'>Mon</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;text-align:right;'>Total</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;text-align:right;'>Total Gs</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:6px;text-align:right;'>Total $</th>");
+    sb.AppendLine("</tr></thead><tbody>");
+    foreach (var r in filas)
+    {
+      var rowStyle = r.Estado == "Anulada" ? "background:#fecaca;" : "";
+      sb.AppendLine($"<tr style='{rowStyle}'>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{r.IdNotaCreditoCompra}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{r.Fecha:dd/MM/yyyy}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.Motivo)}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{r.Estado}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{r.Moneda}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.Total.ToString(r.Formato)}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.TotalGs:N0}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.TotalUsd:N2}</td>");
+      sb.AppendLine("</tr>");
+    }
+    sb.AppendLine("</tbody><tfoot>");
+    sb.AppendLine($"<tr style='background:#f0f0f0;font-weight:bold;'>");
+    sb.AppendLine($"<td colspan='8' style='border:1px solid #ddd;padding:4px;text-align:right;'>Totales</td>");
+    sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{filas.Sum(x=>x.TotalGs):N0}</td>");
+    sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{filas.Sum(x=>x.TotalUsd):N2}</td>");
+    sb.AppendLine("</tr></tfoot></table>");
+    return Task.FromResult(sb.ToString());
   }
 }
 

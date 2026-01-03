@@ -42,6 +42,10 @@
         <button class="btn btn-secondary" @onclick="Limpiar">Limpiar</button>
         <button class="btn btn-outline-secondary" title="Imprimir" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir</button>
         <button class="btn btn-outline-success" title="Exportar a Excel" @onclick="Exportar"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+        <EnviarInformeCorreo 
+          TituloInforme="Cuentas por Pagar" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
       </div>
     </div>
   </div>
@@ -484,5 +488,40 @@
     public decimal SaldoPendiente { get; set; }
     public int NumeroCuotas { get; set; }
     public string Estado { get; set; } = string.Empty;
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var filtros = new List<string>();
+    filtros.Add($"Desde: {filtroDesde:dd/MM/yyyy}");
+    filtros.Add($"Hasta: {filtroHasta:dd/MM/yyyy}");
+    if (!string.IsNullOrWhiteSpace(filtroTexto)) filtros.Add($"Proveedor: {filtroTexto}");
+    if (!string.IsNullOrWhiteSpace(filtroEstado)) filtros.Add($"Estado: {filtroEstado}");
+    return string.Join(" | ", filtros);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    if (!items.Any()) return Task.FromResult("<p>Sin datos para mostrar</p>");
+    var sb = new System.Text.StringBuilder();
+    // Resumen
+    sb.AppendLine("<div style='margin-bottom:15px;'>");
+    sb.AppendLine($"<strong>Total Deuda:</strong> {totalDeuda:N0} Gs | <strong>Vencido:</strong> <span style='color:red'>{totalVencido:N0} Gs</span> | <strong>Por Vencer:</strong> <span style='color:orange'>{totalPorVencer:N0} Gs</span> | <strong>Al Día:</strong> <span style='color:green'>{totalAlDia:N0} Gs</span>");
+    sb.AppendLine("</div>");
+    sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:12px;'>");
+    sb.AppendLine("<thead><tr style='background:#f0f0f0;'><th>#</th><th>Proveedor</th><th>RUC</th><th>Compra</th><th>Fecha</th><th>Vencimiento</th><th style='text-align:right'>Monto</th><th style='text-align:right'>Saldo</th><th>Estado</th></tr></thead>");
+    sb.AppendLine("<tbody>");
+    int n = 0;
+    foreach (var item in items)
+    {
+      var diasVencido = (DateTime.Today - (item.FechaVencimiento ?? DateTime.Today)).Days;
+      var estado = item.Estado == "Abierta" && diasVencido > 0 ? "Vencida" : item.Estado;
+      var colorVenc = diasVencido > 0 ? "color:red" : (diasVencido >= -7 ? "color:orange" : "");
+      sb.AppendLine($"<tr><td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(item.ProveedorNombre)}</td><td>{item.ProveedorRuc}</td><td>{item.NumeroCompra}</td><td>{item.FechaCredito:dd/MM/yyyy}</td><td style='{colorVenc}'>{item.FechaVencimiento:dd/MM/yyyy}</td><td style='text-align:right'>{item.MontoTotal:N0}</td><td style='text-align:right;font-weight:bold'>{item.SaldoPendiente:N0}</td><td>{estado}</td></tr>");
+    }
+    sb.AppendLine("</tbody>");
+    sb.AppendLine($"<tfoot><tr style='background:#e0e0e0;font-weight:bold;'><td colspan='7'>Total</td><td style='text-align:right'>{items.Sum(x => x.SaldoPendiente):N0}</td><td></td></tr></tfoot>");
+    sb.AppendLine("</table>");
+    return Task.FromResult(sb.ToString());
   }
 }

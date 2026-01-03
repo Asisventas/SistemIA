@@ -2,6 +2,7 @@
 @inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject SistemIA.Services.BackupService BackupService
 @inject SistemIA.Services.PermisosService PermisosService
+@inject SistemIA.Services.ICajaService CajaService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @using Microsoft.EntityFrameworkCore
@@ -411,6 +412,9 @@
                 caja.FechaActualCaja = nuevaFechaCaja;
                 caja.TurnoActual = nuevoTurno;
                 await dbContext.SaveChangesAsync();
+                
+                // IMPORTANTE: Limpiar caché del CajaService para que otras páginas vean el cambio
+                CajaService.LimpiarCache();
                 
                 // Si la caja actualizada es la caja activa del usuario, actualizar el panel
                 if (cajaSeleccionadaId == CajaIdActiva)

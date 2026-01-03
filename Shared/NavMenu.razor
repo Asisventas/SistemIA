@@ -591,6 +591,10 @@
                         <i class="bi bi-sliders me-2"></i>
                         <span class="link-text">Config. General</span>
                     </NavLink>
+                    <NavLink class="nav-link submenu-item" href="/configuracion/correo" title="Configuración de Correo Electrónico" @onclick="OnAnyNavigate">
+                        <i class="bi bi-envelope-at me-2"></i>
+                        <span class="link-text">Correo Electrónico</span>
+                    </NavLink>
                     <NavLink class="nav-link submenu-item" href="/configuracion/tema" title="Configuración de Tema" @onclick="OnAnyNavigate">
                         <i class="bi bi-palette me-2"></i>
                         <span class="link-text">Tema</span>
@@ -869,16 +873,9 @@
     .submenu-section-header { 
         padding: .25rem .4rem .1rem .4rem; 
         margin-top: .15rem;
-        opacity: 0.95;
+        opacity: 0.85;
     }
-    .submenu-section-header .small { 
-        font-size: .7rem; 
-        letter-spacing: 0.3px;
-        color: rgba(255, 255, 255, 0.7) !important; /* Visible en sidebar oscuro */
-    }
-    .submenu-section-header i {
-        color: rgba(255, 255, 255, 0.6) !important;
-    }
+    .submenu-section-header .small { font-size: .65rem; letter-spacing: 0.3px; }
     
     /* Submenú de informes más compacto */
     .submenu-items .nav-link { padding-left: .4rem !important; }

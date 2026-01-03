@@ -364,6 +364,61 @@ Sociedad (empresa)
 
 ---
 
+## 🏪 Estructura de Cajas - LÓGICA CRÍTICA
+
+### Concepto Fundamental
+El sistema maneja **múltiples cajas por sucursal**, cada una con un propósito específico:
+
+| IdCaja | Nombre | Uso |
+|--------|--------|-----|
+| 1 | Caja Tienda | Ventas al público, cobros, pagos operativos |
+| 2 | Caja Administración | Pagos a proveedores, operaciones administrativas |
+| N | Caja N | Según necesidad del negocio |
+
+### Filtros Obligatorios para Reportes/Cierres
+**SIEMPRE** filtrar por estos 4 criterios:
+1. **IdSucursal** - Sucursal donde ocurrió la operación
+2. **IdCaja** - Caja específica (Tienda, Administración, etc.)
+3. **Fecha / FechaCaja** - Fecha de la operación
+4. **Turno** - Turno de trabajo (1, 2, 3...)
+
+### Regla de Afectación de Caja
+> **Si una operación tiene `IdCaja` asignada, afecta ESA caja.**
+> 
+> No se necesitan campos adicionales como "AfectaCaja". La lógica es simple:
+> - Pago desde Caja #1 (Tienda) → Afecta Caja Tienda
+> - Pago desde Caja #2 (Admin) → Afecta Caja Administración
+> - NC de Compra con IdCaja = 1 → Aparece en cierre de Caja Tienda
+
+### Ejemplo de Consulta Correcta
+```csharp
+// ✅ CORRECTO - Filtrar por Caja, Fecha, Turno
+var notasCredito = await ctx.NotasCreditoVentas
+    .Where(nc => nc.Fecha.Date == fechaCaja.Date 
+              && nc.IdCaja == idCaja 
+              && nc.Turno == turnoActual.ToString()
+              && nc.Estado == "Confirmada")
+    .ToListAsync();
+
+// ✅ También para NC de Compras
+var ncCompras = await ctx.NotasCreditoCompras
+    .Where(nc => nc.Fecha.Date == fechaCaja.Date 
+              && nc.IdCaja == idCaja 
+              && nc.Turno == turnoActual
+              && nc.Estado == "Confirmada")
+    .ToListAsync();
+```
+
+### Operaciones que Afectan Caja (con IdCaja)
+- Ventas contado/crédito
+- Cobros de crédito (CobrosCuotas)
+- Compras contado (en efectivo)
+- Pagos a proveedores (PagosProveedores)
+- Notas de Crédito Ventas (devoluciones al cliente = EGRESO)
+- Notas de Crédito Compras (crédito del proveedor = INGRESO)
+
+---
+
 ## 🐛 Errores Comunes y Soluciones
 
 | Error | Causa | Solución |
@@ -581,7 +636,160 @@ monto.ToString(CultureInfo.InvariantCulture)
 
 ---
 
-## 🚀 Tareas Disponibles (tasks.json)
+## � Sistema de Correo Electrónico
+
+### Modelos Principales
+```
+Models/
+├── ConfiguracionCorreo.cs     # Configuración SMTP por sucursal
+├── DestinatarioInforme.cs     # Destinatarios y qué informes reciben
+└── TipoInforme.cs             # Enum de tipos de informe
+```
+
+### Servicios
+```
+Services/
+├── CorreoService.cs           # Envío de correos (ICorreoService)
+└── InformeCorreoService.cs    # Generación y envío de informes (IInformeCorreoService)
+```
+
+### ConfiguracionCorreo - Campos Principales
+```csharp
+public int IdConfiguracionCorreo { get; set; }
+public int IdSucursal { get; set; }
+
+// ========== SERVIDOR SMTP ==========
+public string ServidorSmtp { get; set; }     // smtp.gmail.com
+public int PuertoSmtp { get; set; }          // 587
+public bool UsarSsl { get; set; }            // true
+public string UsuarioSmtp { get; set; }      // correo@empresa.com
+public string ContrasenaSmtp { get; set; }   // contraseña/app password
+
+// ========== REMITENTE ==========
+public string CorreoRemitente { get; set; }  // correo@empresa.com
+public string NombreRemitente { get; set; }  // "Mi Empresa S.A."
+
+// ========== ENVÍO AUTOMÁTICO ==========
+public bool EnviarAlCierreSistema { get; set; }
+public bool EnviarResumenDiario { get; set; }
+public TimeSpan? HoraEnvioDiario { get; set; }
+public bool Activo { get; set; }
+```
+
+### DestinatarioInforme - Configurar qué informes recibe
+```csharp
+public int IdDestinatarioInforme { get; set; }
+public int IdConfiguracionCorreo { get; set; }
+public string Email { get; set; }
+public string? NombreDestinatario { get; set; }
+
+// ========== INFORMES QUE RECIBE ==========
+public bool RecibeResumenCierre { get; set; }      // Resumen al cierre
+public bool RecibeVentasDetallado { get; set; }    // Informe ventas detallado
+public bool RecibeVentasAgrupado { get; set; }     // Informe ventas agrupado
+public bool RecibeComprasDetallado { get; set; }   // Informe compras
+public bool RecibeNotasCredito { get; set; }       // NC de ventas
+public bool RecibeNCDetallado { get; set; }        // NC detallado
+public bool RecibeNCCompras { get; set; }          // NC de compras
+public bool RecibeProductosValorizado { get; set; } // Stock valorizado
+public bool RecibeMovimientosStock { get; set; }   // Movimientos de stock
+public bool RecibeCuentasPorCobrar { get; set; }   // CxC pendientes
+public bool RecibeCuentasPorPagar { get; set; }    // CxP pendientes
+public bool RecibeResumenCaja { get; set; }        // Resumen de caja
+public bool RecibeAsistencia { get; set; }         // Control asistencia
+public bool Activo { get; set; }
+```
+
+### TipoInformeEnum - Tipos de Informes Disponibles
+```csharp
+public enum TipoInformeEnum
+{
+    // Ventas
+    VentasDiarias = 1,
+    VentasDetallado = 2,
+    VentasAgrupado = 3,
+    VentasPorClasificacion = 4,
+    
+    // Compras
+    ComprasGeneral = 10,
+    ComprasDetallado = 11,
+    
+    // Notas de Crédito
+    NotasCreditoVentas = 20,
+    NotasCreditoDetallado = 21,
+    NotasCreditoCompras = 22,
+    
+    // Inventario
+    StockValorizado = 30,
+    StockDetallado = 31,
+    MovimientosStock = 32,
+    AjustesStock = 33,
+    AlertaStockBajo = 34,
+    
+    // Caja
+    CierreCaja = 40,
+    ResumenCaja = 41,
+    
+    // Financieros
+    CuentasPorCobrar = 50,
+    CuentasPorPagar = 51,
+    
+    // RRHH
+    ControlAsistencia = 60,
+    
+    // SIFEN
+    ResumenSifen = 70,
+    
+    // Sistema
+    ResumenCierreSistema = 100
+}
+```
+
+### Uso del Servicio de Informes
+```csharp
+@inject IInformeCorreoService _informeCorreoService
+
+// Enviar informe específico
+await _informeCorreoService.EnviarInformeAsync(
+    TipoInformeEnum.VentasDiarias, 
+    sucursalId, 
+    fechaDesde, 
+    fechaHasta);
+
+// Enviar todos los informes al cierre
+var (exito, mensaje, cantidad) = await _informeCorreoService
+    .EnviarInformesCierreAsync(sucursalId);
+
+// Enviar resumen diario/semanal/mensual
+await _informeCorreoService.EnviarResumenDiarioAsync(sucursalId, DateTime.Today);
+```
+
+### Envío de Factura por Correo a Cliente
+```csharp
+// En Cliente.cs
+public bool EnviarFacturaPorCorreo { get; set; }  // Si true, envía PDF automático
+
+// En Ventas.razor.cs después de confirmar venta
+await EnviarFacturaCorreoSiCorrespondeAsync(venta, sucursalId);
+```
+
+### Configuración Gmail (App Password)
+1. Ir a cuenta Google → Seguridad → Verificación en 2 pasos (activar)
+2. Ir a Contraseñas de aplicaciones
+3. Crear nueva contraseña para "Correo"
+4. Usar esa contraseña (16 caracteres sin espacios) en `ContrasenaSmtp`
+
+```
+ServidorSmtp: smtp.gmail.com
+PuertoSmtp: 587
+UsarSsl: true
+UsuarioSmtp: tucorreo@gmail.com
+ContrasenaSmtp: xxxx xxxx xxxx xxxx (app password)
+```
+
+---
+
+## �🚀 Tareas Disponibles (tasks.json)
 - `build` - Compilar proyecto
 - `watch` - Ejecutar con hot reload
 - `Run Blazor Server (watch)` - Ejecutar en modo desarrollo

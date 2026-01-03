@@ -150,6 +150,10 @@
         <button class="btn btn-outline-success" @onclick="ExportarExcel" disabled="@(movimientos is null || !movimientos.Any())">
             <i class="bi bi-file-earmark-excel me-1"></i>Excel
         </button>
+        <EnviarInformeCorreo 
+          TituloInforme="Movimientos de Stock" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
     </div>
 </div>
 
@@ -634,4 +638,70 @@
 
     private static string Escape(string? s) => System.Net.WebUtility.HtmlEncode(s ?? string.Empty);
     private static string EscapeCsv(string? s) => (s ?? string.Empty).Replace("\"", "\"\"");
+
+    private string ObtenerFiltrosTexto()
+    {
+        var filtros = new List<string>();
+        if (filtroFechaDesde.HasValue) filtros.Add($"Desde: {filtroFechaDesde:dd/MM/yyyy}");
+        if (filtroFechaHasta.HasValue) filtros.Add($"Hasta: {filtroFechaHasta:dd/MM/yyyy}");
+        if (filtroIdSucursal > 0) filtros.Add($"Sucursal: {sucursales.FirstOrDefault(s => s.Id == filtroIdSucursal)?.NombreSucursal}");
+        if (filtroIdDeposito > 0) filtros.Add($"Depósito: {depositos.FirstOrDefault(d => d.IdDeposito == filtroIdDeposito)?.Nombre}");
+        if (filtroTipo > 0) filtros.Add($"Tipo: {(filtroTipo == 1 ? "Entrada" : "Salida")}");
+        if (!string.IsNullOrWhiteSpace(filtroProducto)) filtros.Add($"Producto: {filtroProducto}");
+        if (!string.IsNullOrWhiteSpace(filtroMotivo)) filtros.Add($"Motivo: {filtroMotivo}");
+        if (!string.IsNullOrWhiteSpace(filtroUsuario)) filtros.Add($"Usuario: {filtroUsuario}");
+        if (filtroTurno > 0) filtros.Add($"Turno: {filtroTurno}");
+        if (filtroIdCaja > 0) filtros.Add($"Caja: {filtroIdCaja}");
+        return string.Join(" | ", filtros);
+    }
+
+    private Task<string> GenerarTablaHtml()
+    {
+        if (movimientos is null || !movimientos.Any()) return Task.FromResult("<p>Sin datos para mostrar.</p>");
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<table style='width:100%;border-collapse:collapse;font-size:11px;'>");
+        sb.AppendLine("<thead><tr style='background:#f0f0f0;'>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Fecha</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>F.Caja</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Sucursal</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Producto</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Depósito</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:center;'>Tipo</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Cantidad</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Saldo</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Costo Gs</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Venta Gs</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Motivo</th>");
+        sb.AppendLine("</tr></thead><tbody>");
+        foreach (var m in movimientos)
+        {
+            var esEntrada = m.Tipo == 1;
+            var colorCant = esEntrada ? "color:#198754;" : "color:#dc3545;";
+            sb.AppendLine("<tr>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{m.Fecha:dd/MM/yyyy HH:mm}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{(m.FechaCaja?.ToString("dd/MM") ?? "—")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{Escape(m.Sucursal?.NombreSucursal ?? "")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{Escape(m.Producto?.Descripcion ?? $"#{m.IdProducto}")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{Escape(m.Deposito?.Nombre ?? "")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:center;'>{(esEntrada ? "Entrada" : "Salida")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;{colorCant}'>{(esEntrada ? "+" : "-")}{m.Cantidad:N2}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(m.SaldoPosterior?.ToString("N2") ?? "—")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(m.PrecioCostoGs?.ToString("N0") ?? "—")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(m.PrecioVentaGs?.ToString("N0") ?? "—")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{Escape(m.Motivo ?? "")}</td>");
+            sb.AppendLine("</tr>");
+        }
+        sb.AppendLine("</tbody><tfoot>");
+        var entradas = movimientos.Where(x => x.Tipo == 1);
+        var salidas = movimientos.Where(x => x.Tipo == 2);
+        sb.AppendLine($"<tr style='background:#f0f0f0;font-weight:bold;'>");
+        sb.AppendLine($"<td colspan='6' style='border:1px solid #ddd;padding:4px;text-align:right;'>Totales</td>");
+        sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'><span style='color:#198754;'>+{entradas.Sum(x => x.Cantidad):N2}</span> / <span style='color:#dc3545;'>-{salidas.Sum(x => x.Cantidad):N2}</span></td>");
+        sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'></td>");
+        sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(entradas.Sum(x => x.PrecioCostoGs * x.Cantidad ?? 0) - salidas.Sum(x => x.PrecioCostoGs * x.Cantidad ?? 0)):N0}</td>");
+        sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(entradas.Sum(x => x.PrecioVentaGs * x.Cantidad ?? 0) - salidas.Sum(x => x.PrecioVentaGs * x.Cantidad ?? 0)):N0}</td>");
+        sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'></td>");
+        sb.AppendLine("</tr></tfoot></table>");
+        return Task.FromResult(sb.ToString());
+    }
 }

@@ -230,6 +230,29 @@ else if (cliente is not null)
                                 </button>
                             </div>
                         </div>
+
+                        <!-- Envío de factura por correo -->
+                        <div class="mt-3">
+                            <label class="form-label">Envío de Factura por Correo</label>
+                            <div class="d-flex align-items-center">
+                                <div class="form-check form-switch">
+                                    <InputCheckbox class="form-check-input" id="enviarFacturaCorreo" 
+                                                   @bind-Value="cliente.EnviarFacturaPorCorreo"
+                                                   disabled="@(string.IsNullOrWhiteSpace(cliente.Email))" />
+                                    <label class="form-check-label" for="enviarFacturaCorreo">
+                                        <i class="bi bi-envelope-paper me-1"></i>Enviar factura PDF al confirmar venta
+                                    </label>
+                                </div>
+                            </div>
+                            @if (string.IsNullOrWhiteSpace(cliente.Email))
+                            {
+                                <small class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Debe configurar un correo electrónico para habilitar esta opción</small>
+                            }
+                            else if (cliente.EnviarFacturaPorCorreo)
+                            {
+                                <small class="text-success"><i class="bi bi-check-circle me-1"></i>Se enviará factura a: @cliente.Email</small>
+                            }
+                        </div>
                     </div>
                 </div>
 

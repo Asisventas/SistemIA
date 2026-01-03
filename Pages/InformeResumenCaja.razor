@@ -62,6 +62,10 @@
                 <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
                 <button class="btn btn-outline-primary" title="Imprimir Ticket" @onclick="ImprimirTicket"><i class="bi bi-receipt"></i></button>
                 <button class="btn btn-outline-secondary" title="Imprimir A4" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+                <EnviarInformeCorreo 
+                  TituloInforme="Resumen de Caja" 
+                  OnGenerarHtml="GenerarTablaHtml" 
+                  FiltrosAplicados="@ObtenerFiltrosTexto()" />
             </div>
         </div>
     </div>
@@ -151,7 +155,7 @@ else
     }
     
     <!-- Resumen General EGRESOS (Compras y Pagos) -->
-    @if (resumen.ComprasContado > 0 || resumen.PagosProveedores > 0)
+    @if (resumen.ComprasContado > 0 || resumen.PagosProveedores > 0 || resumen.NotasCreditoCompras > 0)
     {
         <div class="row g-3 mb-4">
             <div class="col-md-3">
@@ -185,8 +189,42 @@ else
                 <div class="card border-danger text-danger h-100">
                     <div class="card-body text-center">
                         <h6 class="card-title mb-1"><i class="bi bi-arrow-down-circle me-1"></i>Total Egresos</h6>
-                        <h3 class="mb-0">@resumen.TotalEgresos.ToString("N0") ₲</h3>
-                        <small>salidas de caja</small>
+                        <h3 class="mb-0">@((resumen.TotalEgresos - resumen.NotasCreditoCompras).ToString("N0")) ₲</h3>
+                        <small>salidas de caja (neto)</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    
+    @* Notas de Crédito de Compras (si hay) - Crédito del proveedor *@
+    @if (resumen.CantNotasCreditoCompras > 0)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card border-success h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1 text-success"><i class="bi bi-receipt me-1"></i>NC Compras (Crédito Proveedor)</h6>
+                        <h3 class="mb-0 text-success">+@resumen.NotasCreditoCompras.ToString("N0") ₲</h3>
+                        <small class="text-muted">@resumen.CantNotasCreditoCompras NC (devoluciones/descuentos)</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-secondary h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1 text-secondary"><i class="bi bi-dash-circle me-1"></i>Egresos Brutos</h6>
+                        <h3 class="mb-0 text-secondary">@resumen.TotalEgresos.ToString("N0") ₲</h3>
+                        <small class="text-muted">Compras + Pagos Proveedores</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-dark text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1"><i class="bi bi-calculator me-1"></i>Neto Egresos</h6>
+                        <h3 class="mb-0">@((resumen.TotalEgresos - resumen.NotasCreditoCompras).ToString("N0")) ₲</h3>
+                        <small>Egresos - Créditos NC</small>
                     </div>
                 </div>
             </div>
@@ -232,8 +270,15 @@ else
                             @if (resumen.NotasCredito > 0)
                             {
                                 <tr class="text-warning">
-                                    <td>Devoluciones (NC)</td>
+                                    <td>Devoluciones (NC Ventas)</td>
                                     <td class="text-end fw-bold">- @resumen.NotasCredito.ToString("N0") ₲</td>
+                                </tr>
+                            }
+                            @if (resumen.NotasCreditoCompras > 0)
+                            {
+                                <tr class="text-success">
+                                    <td>Crédito Proveedor (NC Compras)</td>
+                                    <td class="text-end fw-bold">+ @resumen.NotasCreditoCompras.ToString("N0") ₲</td>
                                 </tr>
                             }
                             <tr class="table-primary">
@@ -790,7 +835,7 @@ else
                 .Where(p => p.IdCaja.HasValue) // Solo los que afectan caja
                 .ToListAsync();
 
-            // Obtener Notas de Crédito del período
+            // Obtener Notas de Crédito de Ventas del período (reduce ingresos - devoluciones)
             var notasCreditoQuery = ctx.NotasCreditoVentas.AsNoTracking()
                 .Where(nc => nc.Fecha >= fechaDesde && nc.Fecha < fechaHasta && nc.Estado == "Confirmada");
             
@@ -804,6 +849,22 @@ else
             var notasCredito = await notasCreditoQuery.ToListAsync();
             var totalNotasCredito = notasCredito.Sum(nc => nc.Total);
             var cantNotasCredito = notasCredito.Count;
+            
+            // Obtener Notas de Crédito de Compras del período (crédito del proveedor - reduce egresos)
+            var ncComprasQuery = ctx.NotasCreditoCompras.AsNoTracking()
+                .Include(nc => nc.Proveedor)
+                .Where(nc => nc.Fecha >= fechaDesde && nc.Fecha < fechaHasta && nc.Estado == "Confirmada");
+            
+            if (sucId.HasValue)
+                ncComprasQuery = ncComprasQuery.Where(nc => nc.IdSucursal == sucId.Value);
+            if (fIdCaja > 0)
+                ncComprasQuery = ncComprasQuery.Where(nc => nc.IdCaja == fIdCaja);
+            if (fTurno > 0)
+                ncComprasQuery = ncComprasQuery.Where(nc => nc.Turno == fTurno);
+            
+            var notasCreditoCompras = await ncComprasQuery.ToListAsync();
+            var totalNCCompras = notasCreditoCompras.Sum(nc => nc.Total);
+            var cantNCCompras = notasCreditoCompras.Count;
             
             // Calcular resumen
             var ventasActivas = ventas.Where(v => v.Estado != "Anulada").ToList();
@@ -891,9 +952,13 @@ else
                 Anulaciones = ventasAnuladas.Sum(v => v.Total),
                 CantAnulaciones = ventasAnuladas.Count,
                 
-                // Notas de Crédito (devoluciones que salen de caja)
+                // Notas de Crédito Ventas (devoluciones que salen de caja)
                 NotasCredito = totalNotasCredito,
                 CantNotasCredito = cantNotasCredito,
+                
+                // Notas de Crédito Compras (crédito del proveedor - reduce egresos)
+                NotasCreditoCompras = totalNCCompras,
+                CantNotasCreditoCompras = cantNCCompras,
                 
                 // Compras y Pagos (EGRESOS)
                 ComprasContado = comprasContado.Sum(c => c.Total),
@@ -911,8 +976,8 @@ else
                 // Efectivo desde ComposicionCajaDetalle
                 EfectivoRecibidoVentas = efectivoRecibidoVentas,
                 VueltoEntregado = vueltoTotal,
-                // Efectivo neto = Ingresos - Vuelto - Egresos - Notas Crédito
-                EfectivoNetoCaja = efectivoRecibidoVentas - vueltoTotal + cobrosEfectivo - efectivoEgresosCompras - efectivoEgresosPagos - totalNotasCredito,
+                // Efectivo neto = Ingresos - Vuelto - Egresos - NC Ventas + NC Compras (crédito del proveedor)
+                EfectivoNetoCaja = efectivoRecibidoVentas - vueltoTotal + cobrosEfectivo - efectivoEgresosCompras - efectivoEgresosPagos - totalNotasCredito + totalNCCompras,
                 VentasEfectivo = efectivoRecibidoVentas - vueltoTotal, // Neto de efectivo en ventas
                 CobrosEfectivo = cobrosEfectivo,
                 
@@ -1032,6 +1097,22 @@ else
                     Turno = pago.Turno ?? 0
                 });
             }
+            
+            // Agregar Notas de Crédito de Compras (crédito del proveedor - reduce egresos)
+            foreach (var nc in notasCreditoCompras)
+            {
+                operaciones.Add(new OperacionCaja
+                {
+                    Fecha = nc.Fecha,
+                    Tipo = "NC Compra",
+                    Documento = $"{nc.Establecimiento}-{nc.PuntoExpedicion}-{nc.NumeroNota}",
+                    Cliente = nc.Proveedor?.RazonSocial ?? nc.NombreProveedor ?? "Proveedor",
+                    MedioPago = "CRÉDITO",
+                    Monto = nc.Total, // Positivo porque reduce egresos (es a favor nuestro)
+                    IdCaja = nc.IdCaja ?? 0,
+                    Turno = nc.Turno ?? 0
+                });
+            }
         }
         finally
         {
@@ -1090,6 +1171,7 @@ else
             "Anulación" => "bg-danger",
             "Compra Contado" => "bg-danger bg-opacity-75",
             "Pago Proveedor" => "bg-secondary",
+            "NC Compra" => "bg-success bg-opacity-75", // Crédito del proveedor
             _ => "bg-secondary"
         };
     }
@@ -1101,12 +1183,27 @@ else
         head.AppendLine("<title>Resumen de Caja</title>");
         head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
         head.AppendLine("<style>");
-        head.AppendLine("@media print { @page { size: A4; margin: 10mm; } }");
-        head.AppendLine("body{font-size:11px;color:#111;}");
-        head.AppendLine(".header{border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
-        head.AppendLine(".tabla th,.tabla td{padding:.25rem;border-bottom:1px solid #e5e7eb;}");
-        head.AppendLine(".right{text-align:right} .bold{font-weight:bold}");
-        head.AppendLine(".logo{max-width:120px;max-height:70px;object-fit:contain;}");
+        head.AppendLine("@media print { @page { size: A4; margin: 5mm 8mm; } }");
+        head.AppendLine("body{font-family:'Segoe UI',Arial,sans-serif;font-size:10px;color:#111;line-height:1.2;}");
+        head.AppendLine(".header{border-bottom:2px solid #1a5f7a;padding-bottom:5px;margin-bottom:8px;}");
+        head.AppendLine(".logo{max-width:70px;max-height:45px;object-fit:contain;}");
+        head.AppendLine(".titulo-reporte{background:linear-gradient(135deg,#1a5f7a,#2d8f8f);color:#fff;padding:4px 10px;border-radius:4px;font-size:12px;}");
+        head.AppendLine(".seccion{background:#f8f9fa;border-radius:5px;padding:6px 8px;margin-bottom:6px;border-left:3px solid #1a5f7a;}");
+        head.AppendLine(".seccion-titulo{font-weight:bold;color:#1a5f7a;margin-bottom:4px;font-size:10px;border-bottom:1px solid #dee2e6;padding-bottom:2px;}");
+        head.AppendLine(".card-valor{background:#fff;border-radius:4px;padding:5px;text-align:center;border:1px solid #e9ecef;}");
+        head.AppendLine(".card-valor .etiqueta{font-size:8px;color:#6c757d;margin-bottom:1px;}");
+        head.AppendLine(".card-valor .monto{font-size:11px;font-weight:bold;}");
+        head.AppendLine(".ingreso{color:#198754;} .egreso{color:#dc3545;} .neutro{color:#0d6efd;} .warning{color:#ffc107;}");
+        head.AppendLine(".tabla{width:100%;border-collapse:collapse;font-size:9px;}");
+        head.AppendLine(".tabla th{background:#1a5f7a;color:#fff;padding:3px 5px;text-align:left;}");
+        head.AppendLine(".tabla td{padding:2px 5px;border-bottom:1px solid #e9ecef;}");
+        head.AppendLine(".tabla tr:nth-child(even){background:#f8f9fa;}");
+        head.AppendLine(".tabla .right{text-align:right;}");
+        head.AppendLine(".resumen-final{background:#1a5f7a;color:#fff;padding:8px;border-radius:5px;}");
+        head.AppendLine(".resumen-final h5{margin:0 0 5px 0;font-size:11px;}");
+        head.AppendLine(".linea-total{border-top:1px solid #fff;padding-top:5px;margin-top:5px;}");
+        head.AppendLine(".badge-cant{background:#6c757d;color:#fff;padding:1px 4px;border-radius:8px;font-size:7px;margin-left:3px;}");
+        head.AppendLine(".row{margin-left:-3px;margin-right:-3px;} .row>[class*=col-]{padding-left:3px;padding-right:3px;}");
         head.AppendLine("</style>");
 
         await using var ctx = await DbFactory.CreateDbContextAsync();
@@ -1122,67 +1219,130 @@ else
             logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
 
         // Info de caja/turno filtrada
-        string infoCaja = fIdCaja > 0 ? $"Caja: {fIdCaja}" : "Todas las Cajas";
-        string infoTurno = fTurno > 0 ? $"Turno: {fTurno}" : "Todos los Turnos";
-        string infoUsuario = !string.IsNullOrEmpty(fUsuario) ? $"Usuario: {fUsuario}" : "";
+        string infoCaja = fIdCaja > 0 ? $"Caja #{fIdCaja}" : "Todas las Cajas";
+        string infoTurno = fTurno > 0 ? $"Turno {fTurno}" : "Todos los Turnos";
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("<div class='container-fluid'>");
-        sb.AppendLine("<div class='header d-flex justify-content-between align-items-center'>");
-        sb.AppendLine("<div class='d-flex align-items-center gap-3'>");
+        
+        // ========== ENCABEZADO ==========
+        sb.AppendLine("<div class='header d-flex justify-content-between align-items-start'>");
+        sb.AppendLine("<div class='d-flex align-items-center gap-2'>");
         if (!string.IsNullOrEmpty(logoDataUri))
             sb.AppendLine($"<img class='logo' src='{logoDataUri}' alt='Logo' />");
-        sb.AppendLine($"<div><h4 class='mb-0'>{empresa}</h4><div class='small'>RUC: {ruc}</div><div class='small'>{sucursal}</div>");
-        if (!string.IsNullOrEmpty(direccion)) sb.AppendLine($"<div class='small'>{direccion}</div>");
-        if (!string.IsNullOrEmpty(telefono)) sb.AppendLine($"<div class='small'>Tel: {telefono}</div>");
+        sb.AppendLine($"<div><h5 class='mb-0' style='color:#1a5f7a;font-size:13px;'>{empresa}</h5>");
+        sb.AppendLine($"<div style='font-size:9px;' class='text-muted'>RUC: {ruc} | {sucursal}</div>");
+        if (!string.IsNullOrEmpty(direccion)) sb.AppendLine($"<div style='font-size:8px;' class='text-muted'>{direccion}{(!string.IsNullOrEmpty(telefono) ? $" | Tel: {telefono}" : "")}</div>");
         sb.AppendLine("</div></div>");
-        sb.AppendLine($"<div class='text-end'><h5>Resumen de Caja</h5><div>Desde: {fDesde:dd/MM/yyyy} - Hasta: {fHasta:dd/MM/yyyy}</div>");
-        sb.AppendLine($"<div class='small'>{infoCaja} | {infoTurno}</div>");
-        if (!string.IsNullOrEmpty(infoUsuario)) sb.AppendLine($"<div class='small'>{infoUsuario}</div>");
+        sb.AppendLine("<div class='text-end'>");
+        sb.AppendLine("<div class='titulo-reporte'><span style='font-size:11px;'>📊 RESUMEN DE CAJA</span></div>");
+        sb.AppendLine($"<div style='font-size:9px;'><strong>Período:</strong> {fDesde:dd/MM/yyyy} - {fHasta:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div style='font-size:8px;'>{infoCaja} | {infoTurno}" + (!string.IsNullOrEmpty(fUsuario) ? $" | {fUsuario}" : "") + $"</div>");
+        sb.AppendLine($"<div style='font-size:7px;' class='text-muted'>Generado: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
         sb.AppendLine("</div></div>");
 
-        // Resumen
-        sb.AppendLine("<div class='row mb-3'>");
-        sb.AppendLine($"<div class='col-3'><strong>Ventas Contado:</strong> {resumen.VentasContado:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-3'><strong>Ventas Crédito:</strong> {resumen.VentasCredito:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-3'><strong>Cobros:</strong> {resumen.CobrosCredito:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-3'><strong>Anulaciones:</strong> {resumen.Anulaciones:N0} ₲</div>");
+        // ========== SECCIÓN INGRESOS ==========
+        sb.AppendLine("<div class='seccion'>");
+        sb.AppendLine("<div class='seccion-titulo'>💰 INGRESOS</div>");
+        sb.AppendLine("<div class='row g-1'>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Ventas Contado</div><div class='monto ingreso'>{resumen.VentasContado:N0}</div><span class='badge-cant'>{resumen.CantVentasContado}</span></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Ventas Crédito</div><div class='monto neutro'>{resumen.VentasCredito:N0}</div><span class='badge-cant'>{resumen.CantVentasCredito}</span></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Cobros Crédito</div><div class='monto ingreso'>{resumen.CobrosCredito:N0}</div><span class='badge-cant'>{resumen.CantCobros}</span></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Anulaciones</div><div class='monto egreso'>{resumen.Anulaciones:N0}</div><span class='badge-cant'>{resumen.CantAnulaciones}</span></div></div>");
         sb.AppendLine("</div>");
         
-        if (resumen.NotasCredito > 0)
+        // NC Ventas (si hay)
+        if (resumen.CantNotasCredito > 0)
         {
-            sb.AppendLine("<div class='row mb-3'>");
-            sb.AppendLine($"<div class='col-4'><span class='text-warning'><strong>Notas de Crédito:</strong> -{resumen.NotasCredito:N0} ₲</span> ({resumen.CantNotasCredito} NC)</div>");
-            sb.AppendLine($"<div class='col-4'><strong>Ingresos Brutos:</strong> {(resumen.VentasContado + resumen.CobrosCredito):N0} ₲</div>");
-            sb.AppendLine($"<div class='col-4'><strong>Neto Ingresos:</strong> {(resumen.VentasContado + resumen.CobrosCredito - resumen.NotasCredito):N0} ₲</div>");
+            sb.AppendLine("<div class='row g-1 mt-1'>");
+            sb.AppendLine($"<div class='col-4'><div class='card-valor' style='border-color:#ffc107;'><div class='etiqueta'>NC Ventas</div><div class='monto warning'>-{resumen.NotasCredito:N0}</div><span class='badge-cant'>{resumen.CantNotasCredito}</span></div></div>");
+            sb.AppendLine($"<div class='col-4'><div class='card-valor'><div class='etiqueta'>Ingresos Brutos</div><div class='monto'>{(resumen.VentasContado + resumen.CobrosCredito):N0}</div></div></div>");
+            sb.AppendLine($"<div class='col-4'><div class='card-valor' style='background:#e8f5e9;'><div class='etiqueta'>Neto Ingresos</div><div class='monto ingreso'>{(resumen.VentasContado + resumen.CobrosCredito - resumen.NotasCredito):N0}</div></div></div>");
+            sb.AppendLine("</div>");
+        }
+        sb.AppendLine("</div>");
+
+        // ========== SECCIÓN EGRESOS (si hay) ==========
+        if (resumen.ComprasContado > 0 || resumen.PagosProveedores > 0 || resumen.CantNotasCreditoCompras > 0)
+        {
+            sb.AppendLine("<div class='seccion' style='border-left-color:#dc3545;'>");
+            sb.AppendLine("<div class='seccion-titulo' style='color:#dc3545;'>📤 EGRESOS</div>");
+            sb.AppendLine("<div class='row g-1'>");
+            if (resumen.ComprasContado > 0)
+                sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Compras Contado</div><div class='monto egreso'>-{resumen.ComprasContado:N0}</div><span class='badge-cant'>{resumen.CantComprasContado}</span></div></div>");
+            if (resumen.PagosProveedores > 0)
+                sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Pagos Proveedores</div><div class='monto egreso'>-{resumen.PagosProveedores:N0}</div><span class='badge-cant'>{resumen.CantPagosProveedores}</span></div></div>");
+            if (resumen.CantNotasCreditoCompras > 0)
+                sb.AppendLine($"<div class='col-3'><div class='card-valor' style='border-color:#198754;'><div class='etiqueta'>NC Compras</div><div class='monto ingreso'>+{resumen.NotasCreditoCompras:N0}</div><span class='badge-cant'>{resumen.CantNotasCreditoCompras}</span></div></div>");
+            var netoEgresos = resumen.TotalEgresos - resumen.NotasCreditoCompras;
+            sb.AppendLine($"<div class='col-3'><div class='card-valor' style='background:#ffebee;'><div class='etiqueta'>Neto Egresos</div><div class='monto egreso'>{netoEgresos:N0}</div></div></div>");
+            sb.AppendLine("</div>");
             sb.AppendLine("</div>");
         }
 
-        sb.AppendLine($"<div class='row mb-3 bg-light p-2'>");
-        sb.AppendLine($"<div class='col-4'><strong>Efectivo Recibido:</strong> +{resumen.EfectivoRecibidoVentas:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-4 text-danger'><strong>Vuelto Entregado:</strong> -{resumen.VueltoEntregado:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-4'><strong>Efectivo Cobros:</strong> +{resumen.CobrosEfectivo:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-12 mt-2'><h5>EFECTIVO NETO ESPERADO: {resumen.EfectivoNetoCaja:N0} ₲</h5></div>");
+        // ========== SECCIÓN EFECTIVO EN CAJA ==========
+        sb.AppendLine("<div class='seccion' style='border-left-color:#198754;'>");
+        sb.AppendLine("<div class='seccion-titulo' style='color:#198754;'>💵 EFECTIVO EN CAJA</div>");
+        sb.AppendLine("<div class='row g-1'>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Efectivo Ventas</div><div class='monto ingreso'>+{resumen.EfectivoRecibidoVentas:N0}</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Vuelto</div><div class='monto egreso'>-{resumen.VueltoEntregado:N0}</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Efectivo Cobros</div><div class='monto ingreso'>+{resumen.CobrosEfectivo:N0}</div></div></div>");
+        var egresosEfectivo = resumen.ComprasContado + resumen.PagosProveedores;
+        if (egresosEfectivo > 0)
+            sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Egresos Efect.</div><div class='monto egreso'>-{egresosEfectivo:N0}</div></div></div>");
         sb.AppendLine("</div>");
-        
-        // Otros medios de pago
-        sb.AppendLine($"<div class='row mb-3'>");
-        sb.AppendLine($"<div class='col-3'><strong>Tarjetas:</strong> {resumen.TotalTarjetas:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-3'><strong>Cheques:</strong> {(resumen.TotalCheques + resumen.TotalChequesDiferidos):N0} ₲</div>");
-        sb.AppendLine($"<div class='col-3'><strong>Transferencias:</strong> {resumen.TotalTransferencias:N0} ₲</div>");
-        sb.AppendLine($"<div class='col-3'><strong>QR/Otros:</strong> {(resumen.TotalQR + resumen.TotalOtros):N0} ₲</div>");
+        sb.AppendLine("<div class='row mt-1'>");
+        sb.AppendLine($"<div class='col-12'><div class='card-valor' style='background:#198754;color:#fff;padding:3px;'><div class='etiqueta' style='color:#c8e6c9;font-size:7px;'>EFECTIVO NETO ESPERADO</div><div class='monto' style='font-size:14px;color:#fff;'>{resumen.EfectivoNetoCaja:N0} ₲</div></div></div>");
+        sb.AppendLine("</div>");
         sb.AppendLine("</div>");
 
-        // Desglose medios pago
-        sb.AppendLine("<h6>Desglose por Medio de Pago</h6>");
-        sb.AppendLine("<table class='table table-sm tabla'>");
-        sb.AppendLine("<thead><tr><th>Medio</th><th class='right'>Monto</th><th class='right'>%</th></tr></thead><tbody>");
-        foreach (var d in desgloseMedioPago.OrderByDescending(x => x.Total))
+        // ========== SECCIÓN OTROS MEDIOS DE PAGO ==========
+        sb.AppendLine("<div class='seccion' style='border-left-color:#6f42c1;'>");
+        sb.AppendLine("<div class='seccion-titulo' style='color:#6f42c1;'>💳 OTROS MEDIOS DE PAGO</div>");
+        sb.AppendLine("<div class='row g-1'>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Tarjetas</div><div class='monto'>{resumen.TotalTarjetas:N0}</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Cheques</div><div class='monto'>{(resumen.TotalCheques + resumen.TotalChequesDiferidos):N0}</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Transferencias</div><div class='monto'>{resumen.TotalTransferencias:N0}</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>QR / Otros</div><div class='monto'>{(resumen.TotalQR + resumen.TotalOtros):N0}</div></div></div>");
+        sb.AppendLine("</div>");
+        sb.AppendLine("</div>");
+
+        // ========== DESGLOSE + RESUMEN FINAL (lado a lado) ==========
+        sb.AppendLine("<div class='row g-1'>");
+        if (desgloseMedioPago.Any())
         {
-            var pct = resumen.TotalIngresos > 0 ? (d.Total / resumen.TotalIngresos * 100) : 0;
-            sb.AppendLine($"<tr><td>{d.MedioPago}</td><td class='right'>{d.Total:N0}</td><td class='right'>{pct:F1}%</td></tr>");
+            sb.AppendLine("<div class='col-6'>");
+            sb.AppendLine("<div class='seccion-titulo'>📋 Desglose por Medio de Pago</div>");
+            sb.AppendLine("<table class='tabla'>");
+            sb.AppendLine("<thead><tr><th>Medio</th><th class='right'>Monto</th><th class='right'>%</th></tr></thead><tbody>");
+            foreach (var d in desgloseMedioPago.OrderByDescending(x => x.Total))
+            {
+                var pct = resumen.TotalIngresos > 0 ? (d.Total / resumen.TotalIngresos * 100) : 0;
+                sb.AppendLine($"<tr><td>{d.MedioPago}</td><td class='right'>{d.Total:N0}</td><td class='right'>{pct:F1}%</td></tr>");
+            }
+            sb.AppendLine($"<tr style='background:#1a5f7a;color:#fff;font-weight:bold;'><td>TOTAL</td><td class='right'>{desgloseMedioPago.Sum(d => d.Total):N0}</td><td class='right'>100%</td></tr>");
+            sb.AppendLine("</tbody></table>");
+            sb.AppendLine("</div>");
         }
-        sb.AppendLine("</tbody></table>");
+
+        // ========== RESUMEN FINAL ==========
+        sb.AppendLine("<div class='col-6'>");
+        sb.AppendLine("<div class='resumen-final'>");
+        sb.AppendLine("<h5>📊 RESUMEN FINAL</h5>");
+        sb.AppendLine("<table style='width:100%;color:#fff;font-size:9px;'>");
+        sb.AppendLine($"<tr><td>Total Ventas:</td><td style='text-align:right;font-weight:bold;'>{(resumen.VentasContado + resumen.VentasCredito):N0} ₲</td></tr>");
+        sb.AppendLine($"<tr><td>Total Cobros:</td><td style='text-align:right;'>{resumen.CobrosCredito:N0} ₲</td></tr>");
+        if (resumen.NotasCredito > 0)
+            sb.AppendLine($"<tr><td>(-) NC Ventas:</td><td style='text-align:right;color:#ffc107;'>-{resumen.NotasCredito:N0} ₲</td></tr>");
+        if (resumen.TotalEgresos > 0)
+            sb.AppendLine($"<tr><td>(-) Egresos:</td><td style='text-align:right;color:#ff8a80;'>-{resumen.TotalEgresos:N0} ₲</td></tr>");
+        if (resumen.NotasCreditoCompras > 0)
+            sb.AppendLine($"<tr><td>(+) NC Compras:</td><td style='text-align:right;color:#69f0ae;'>+{resumen.NotasCreditoCompras:N0} ₲</td></tr>");
+        sb.AppendLine("<tr class='linea-total'><td><strong>EFECTIVO NETO:</strong></td><td style='text-align:right;font-size:13px;font-weight:bold;'>" + resumen.EfectivoNetoCaja.ToString("N0") + " ₲</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("</div>");
+        sb.AppendLine("</div>");
+        sb.AppendLine("</div>");
 
         sb.AppendLine("</div>");
         await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
@@ -1450,9 +1610,13 @@ else
         public decimal Anulaciones { get; set; }
         public int CantAnulaciones { get; set; }
         
-        // Notas de Crédito (devoluciones/descuentos)
+        // Notas de Crédito Ventas (devoluciones/descuentos - reduce ingresos)
         public decimal NotasCredito { get; set; }
         public int CantNotasCredito { get; set; }
+        
+        // Notas de Crédito Compras (crédito del proveedor - aumenta ingresos/reduce egresos)
+        public decimal NotasCreditoCompras { get; set; }
+        public int CantNotasCreditoCompras { get; set; }
         
         public decimal VentasEfectivo { get; set; }
         public decimal CobrosEfectivo { get; set; }
@@ -1506,5 +1670,53 @@ else
         public decimal Monto { get; set; }
         public int IdCaja { get; set; }
         public int Turno { get; set; }
+    }
+
+    private string ObtenerFiltrosTexto()
+    {
+        var filtros = new List<string>();
+        if (fDesde.HasValue) filtros.Add($"Desde: {fDesde:dd/MM/yyyy}");
+        if (fHasta.HasValue) filtros.Add($"Hasta: {fHasta:dd/MM/yyyy}");
+        if (fIdCaja > 0) filtros.Add($"Caja: {fIdCaja}");
+        if (fTurno > 0) filtros.Add($"Turno: {fTurno}");
+        if (!string.IsNullOrWhiteSpace(fUsuario)) filtros.Add($"Usuario: {fUsuario}");
+        return string.Join(" | ", filtros);
+    }
+
+    private Task<string> GenerarTablaHtml()
+    {
+        var sb = new System.Text.StringBuilder();
+        // Resumen de ingresos
+        sb.AppendLine("<h3 style='color:#333;margin-bottom:10px;'>Resumen de Caja</h3>");
+        sb.AppendLine("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:12px;margin-bottom:20px;'>");
+        sb.AppendLine("<tr style='background:#28a745;color:white;'><td colspan='2'><strong>INGRESOS</strong></td></tr>");
+        sb.AppendLine($"<tr><td>Ventas Contado ({resumen.CantVentasContado})</td><td style='text-align:right'>{resumen.VentasContado:N0} ₲</td></tr>");
+        sb.AppendLine($"<tr><td>Ventas Crédito ({resumen.CantVentasCredito})</td><td style='text-align:right'>{resumen.VentasCredito:N0} ₲</td></tr>");
+        sb.AppendLine($"<tr><td>Cobros Crédito ({resumen.CantCobros})</td><td style='text-align:right'>{resumen.CobrosCredito:N0} ₲</td></tr>");
+        if (resumen.CantNotasCredito > 0)
+            sb.AppendLine($"<tr><td>NC Ventas ({resumen.CantNotasCredito})</td><td style='text-align:right;color:red'>-{resumen.NotasCredito:N0} ₲</td></tr>");
+        sb.AppendLine($"<tr style='background:#e0e0e0;font-weight:bold;'><td>Neto Ingresos</td><td style='text-align:right'>{(resumen.VentasContado + resumen.CobrosCredito - resumen.NotasCredito):N0} ₲</td></tr>");
+        sb.AppendLine("</table>");
+        // Resumen de egresos
+        if (resumen.ComprasContado > 0 || resumen.PagosProveedores > 0)
+        {
+            sb.AppendLine("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:12px;margin-bottom:20px;'>");
+            sb.AppendLine("<tr style='background:#dc3545;color:white;'><td colspan='2'><strong>EGRESOS</strong></td></tr>");
+            sb.AppendLine($"<tr><td>Compras Contado ({resumen.CantComprasContado})</td><td style='text-align:right'>{resumen.ComprasContado:N0} ₲</td></tr>");
+            sb.AppendLine($"<tr><td>Pagos Proveedores ({resumen.CantPagosProveedores})</td><td style='text-align:right'>{resumen.PagosProveedores:N0} ₲</td></tr>");
+            if (resumen.CantNotasCreditoCompras > 0)
+                sb.AppendLine($"<tr><td>NC Compras ({resumen.CantNotasCreditoCompras})</td><td style='text-align:right;color:green'>+{resumen.NotasCreditoCompras:N0} ₲</td></tr>");
+            sb.AppendLine($"<tr style='background:#e0e0e0;font-weight:bold;'><td>Neto Egresos</td><td style='text-align:right'>{(resumen.TotalEgresos - resumen.NotasCreditoCompras):N0} ₲</td></tr>");
+            sb.AppendLine("</table>");
+        }
+        // Efectivo en caja
+        sb.AppendLine("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:12px;'>");
+        sb.AppendLine("<tr style='background:#0d6efd;color:white;'><td colspan='2'><strong>EFECTIVO EN CAJA</strong></td></tr>");
+        sb.AppendLine($"<tr><td>Efectivo Recibido</td><td style='text-align:right;color:green'>+{resumen.EfectivoRecibidoVentas:N0} ₲</td></tr>");
+        sb.AppendLine($"<tr><td>Vuelto Entregado</td><td style='text-align:right;color:red'>-{resumen.VueltoEntregado:N0} ₲</td></tr>");
+        sb.AppendLine($"<tr><td>Cobros Efectivo</td><td style='text-align:right;color:green'>+{resumen.CobrosEfectivo:N0} ₲</td></tr>");
+        sb.AppendLine($"<tr style='background:#e0e0e0;font-weight:bold;'><td>Efectivo Neto Caja</td><td style='text-align:right'>{resumen.EfectivoNetoCaja:N0} ₲</td></tr>");
+        sb.AppendLine("</table>");
+        return Task.FromResult(sb.ToString());
     }
 }

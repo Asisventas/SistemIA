@@ -79,6 +79,10 @@
         <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
         <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
         <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+        <EnviarInformeCorreo 
+          TituloInforme="Notas de Crédito Detallado" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
       </div>
     </div>
   </div>
@@ -475,6 +479,42 @@
     var b64 = Convert.ToBase64String(ms.ToArray());
     var file = $"NCDetallado_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
     await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var partes = new List<string>();
+    if (fDesde.HasValue) partes.Add($"Desde: {fDesde:dd/MM/yyyy}");
+    if (fHasta.HasValue) partes.Add($"Hasta: {fHasta:dd/MM/yyyy}");
+    if (fIdMoneda != 0) partes.Add($"Moneda: {monedas.FirstOrDefault(m=>m.IdMoneda==fIdMoneda)?.CodigoISO}");
+    if (!string.IsNullOrWhiteSpace(fCliente)) partes.Add($"Cliente: {fCliente}");
+    if (!string.IsNullOrWhiteSpace(fProducto)) partes.Add($"Producto: {fProducto}");
+    if (!string.IsNullOrWhiteSpace(fMotivo)) partes.Add($"Motivo: {fMotivo}");
+    if (!string.IsNullOrWhiteSpace(fUsuario)) partes.Add($"Usuario: {fUsuario}");
+    if (fCajaDesde.HasValue || fCajaHasta.HasValue) partes.Add($"Caja: {fCajaDesde}-{fCajaHasta}");
+    return string.Join(" | ", partes);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:11px;'>");
+    sb.AppendLine("<thead><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine("<th>ID</th><th>Fecha</th><th>Nº NC</th><th>Cliente</th><th>Producto</th><th style='text-align:right'>Cant.</th><th style='text-align:right'>Precio</th><th>Mon</th><th style='text-align:right'>Cambio</th><th style='text-align:right'>Importe</th><th style='text-align:right'>Importe Gs</th><th style='text-align:right'>Importe $</th><th>Motivo</th><th>Usu</th><th>Caja</th>");
+    sb.AppendLine("</tr></thead>");
+    sb.AppendLine("<tbody>");
+    foreach (var r in filas)
+    {
+      sb.AppendLine("<tr>");
+      sb.AppendLine($"<td>{r.IdNotaCredito}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Cliente)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td style='text-align:right'>{r.Cantidad:N2}</td><td style='text-align:right'>{r.Precio.ToString(r.Formato)}</td><td>{r.Moneda}</td><td style='text-align:right'>{(r.Cambio ?? 0):N2}</td><td style='text-align:right'>{r.Importe.ToString(r.Formato)}</td><td style='text-align:right'>{r.ImporteGs:N0}</td><td style='text-align:right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Motivo)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td>");
+      sb.AppendLine("</tr>");
+    }
+    sb.AppendLine("</tbody>");
+    sb.AppendLine("<tfoot><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine($"<td colspan='10' style='text-align:right'>Totales</td><td style='text-align:right'>{filas.Sum(x=>x.ImporteGs):N0}</td><td style='text-align:right'>{filas.Sum(x=>x.ImporteUsd):N2}</td><td></td><td></td><td></td>");
+    sb.AppendLine("</tr></tfoot>");
+    sb.AppendLine("</table>");
+    return Task.FromResult(sb.ToString());
   }
 
   private class Fila

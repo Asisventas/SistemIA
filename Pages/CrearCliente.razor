@@ -207,6 +207,23 @@
                                 }
                             </div>
                         </div>
+                        
+                        <!-- Envío de factura por correo -->
+                        <div class="row mt-2">
+                            <div class="col-12">
+                                <div class="form-check form-switch">
+                                    <InputCheckbox @bind-Value="cliente.EnviarFacturaPorCorreo" class="form-check-input" id="chkEnviarFactura"
+                                                   disabled="@(string.IsNullOrWhiteSpace(cliente.Email))" />
+                                    <label class="form-check-label" for="chkEnviarFactura">
+                                        <i class="bi bi-envelope-paper me-1"></i>Enviar factura PDF por correo al confirmar venta
+                                    </label>
+                                </div>
+                                @if (string.IsNullOrWhiteSpace(cliente.Email))
+                                {
+                                    <small class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Configure un correo para habilitar</small>
+                                }
+                            </div>
+                        </div>
 
                         <!-- Botón colapsable para SIFEN -->
                         <div class="mt-3">

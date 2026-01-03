@@ -625,6 +625,9 @@ namespace SistemIA.Migrations
                     b.Property<int>("CantNotasCredito")
                         .HasColumnType("int");
 
+                    b.Property<int>("CantNotasCreditoCompras")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("Diferencia")
                         .HasColumnType("decimal(18,2)");
 
@@ -671,6 +674,9 @@ namespace SistemIA.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("TotalNotasCredito")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalNotasCreditoCompras")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("TotalOtros")
@@ -822,6 +828,9 @@ namespace SistemIA.Migrations
                     b.Property<string>("Email")
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
+
+                    b.Property<bool>("EnviarFacturaPorCorreo")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("EsExtranjero")
                         .HasColumnType("bit");
@@ -1487,6 +1496,165 @@ namespace SistemIA.Migrations
                     b.ToTable("ComprasDetalles", (string)null);
                 });
 
+            modelBuilder.Entity("SistemIA.Models.ConfiguracionCorreo", b =>
+                {
+                    b.Property<int>("IdConfiguracionCorreo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdConfiguracionCorreo"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ApiKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ContrasenaSmtp")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CorreoBccAuditoria")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CorreoRemitente")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CorreoReplyTo")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("DiaEnvioMensual")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DiaEnvioSemanal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DominioApi")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("EnviarAlCierreSistema")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FirmaHtml")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("HabilitarLogDetallado")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("HoraEnvioDiario")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<int?>("IdSociedad")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IgnorarErroresCertificado")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxReintentos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("NombreRemitente")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("OAuth2AccessToken")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("OAuth2ClientId")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("OAuth2ClientSecret")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OAuth2RefreshToken")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("OAuth2Scopes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("OAuth2TokenExpira")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Puerto")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ServidorSmtp")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("TimeoutSegundos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TipoProveedor")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TipoSeguridad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("UltimaPruebaFecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UltimaPruebaResultado")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("UsarHtmlPorDefecto")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("UsarOAuth2")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("UsuarioCreacion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("UsuarioModificacion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("UsuarioSmtp")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("IdConfiguracionCorreo");
+
+                    b.HasIndex("IdSociedad");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.ToTable("ConfiguracionCorreo");
+                });
+
             modelBuilder.Entity("SistemIA.Models.ConfiguracionSistema", b =>
                 {
                     b.Property<int>("IdConfiguracion")
@@ -1866,6 +2034,136 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdMarca");
 
                     b.ToTable("DescuentosCategorias");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.DestinatarioInforme", b =>
+                {
+                    b.Property<int>("IdDestinatarioInforme")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdDestinatarioInforme"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Correo")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdConfiguracionCorreo")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("RecibeAjustesStock")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeAlertaStock")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeAlertaVencimientos")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeAsistencia")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeCierreCaja")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeComprasDetallado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeCopiaFacturas")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeCuentasPorCobrar")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeCuentasPorPagar")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeInformeCompras")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeMovimientosStock")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeNCCompras")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeNCDetallado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeNotasCredito")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeProductosDetallado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeProductosValorizado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeResumenCaja")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeResumenCierre")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeResumenMensual")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeResumenSemanal")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeResumenSifen")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeVentasAgrupado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeVentasClasificacion")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeVentasDetallado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeVentasDiarias")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TipoCopia")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<string>("UsuarioCreacion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("IdDestinatarioInforme");
+
+                    b.HasIndex("IdConfiguracionCorreo");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.ToTable("DestinatariosInforme");
                 });
 
             modelBuilder.Entity("SistemIA.Models.DistritoCatalogo", b =>
@@ -5425,6 +5723,21 @@ namespace SistemIA.Migrations
                     b.Navigation("Producto");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.ConfiguracionCorreo", b =>
+                {
+                    b.HasOne("SistemIA.Models.Sociedad", "Sociedad")
+                        .WithMany()
+                        .HasForeignKey("IdSociedad");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal");
+
+                    b.Navigation("Sociedad");
+
+                    b.Navigation("Sucursal");
+                });
+
             modelBuilder.Entity("SistemIA.Models.CuentaPorCobrar", b =>
                 {
                     b.HasOne("SistemIA.Models.Cliente", "Cliente")
@@ -5542,6 +5855,21 @@ namespace SistemIA.Migrations
                     b.Navigation("Clasificacion");
 
                     b.Navigation("Marca");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.DestinatarioInforme", b =>
+                {
+                    b.HasOne("SistemIA.Models.ConfiguracionCorreo", "ConfiguracionCorreo")
+                        .WithMany()
+                        .HasForeignKey("IdConfiguracionCorreo");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal");
+
+                    b.Navigation("ConfiguracionCorreo");
+
+                    b.Navigation("Sucursal");
                 });
 
             modelBuilder.Entity("SistemIA.Models.DistritoCatalogo", b =>

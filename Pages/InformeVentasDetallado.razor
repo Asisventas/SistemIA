@@ -77,6 +77,10 @@
         <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
         <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
         <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+        <EnviarInformeCorreo 
+          TituloInforme="Ventas Detallado" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
       </div>
     </div>
   </div>
@@ -220,6 +224,8 @@
             from cli in cliJoin.DefaultIfEmpty()
             join m in ctx.Monedas.AsNoTracking() on v.IdMoneda equals m.IdMoneda into monJoin
             from m in monJoin.DefaultIfEmpty()
+            join u in ctx.Usuarios.AsNoTracking() on v.IdUsuario equals u.Id_Usu into usuJoin
+            from u in usuJoin.DefaultIfEmpty()
             select new {
               v.IdVenta, v.Fecha, v.IdCaja, v.Turno, v.IdSucursal,
               v.Establecimiento, v.PuntoExpedicion, v.NumeroFactura,
@@ -236,7 +242,7 @@
               // Precio Ministerio del detalle
               PrecioMinisterio = d.PrecioMinisterio,
               p.Descripcion, p.CodigoInterno,
-              Usuario = (v.Usuario != null ? v.Usuario.UsuarioNombre : (v.Vendedor ?? ""))
+              Usuario = (u != null ? u.UsuarioNombre : (v.Vendedor ?? ""))
             };
 
     // Filtrar por sucursal seleccionada
@@ -521,6 +527,80 @@
     public string Usuario { get; set; } = string.Empty;
     public int? IdCaja { get; set; }
     public int? Turno { get; set; }
+  }
+
+  // ========== MÉTODOS PARA ENVÍO POR CORREO (PDF) ==========
+  
+  private string ObtenerFiltrosTexto()
+  {
+    var filtros = new List<string>();
+    if (fDesde.HasValue) filtros.Add($"Desde: {fDesde.Value:dd/MM/yyyy}");
+    if (fHasta.HasValue) filtros.Add($"Hasta: {fHasta.Value:dd/MM/yyyy}");
+    if (fIdMoneda > 0 && monedas.Any())
+    {
+      var mon = monedas.FirstOrDefault(m => m.IdMoneda == fIdMoneda);
+      if (mon != null) filtros.Add($"Moneda: {mon.CodigoISO}");
+    }
+    if (!string.IsNullOrEmpty(fCliente)) filtros.Add($"Cliente: {fCliente}");
+    if (!string.IsNullOrEmpty(fProducto)) filtros.Add($"Producto: {fProducto}");
+    if (!string.IsNullOrEmpty(fUsuario)) filtros.Add($"Usuario: {fUsuario}");
+    if (fCajaDesde.HasValue) filtros.Add($"Caja desde: {fCajaDesde}");
+    if (fCajaHasta.HasValue) filtros.Add($"Caja hasta: {fCajaHasta}");
+    if (fTurnoDesde.HasValue) filtros.Add($"Turno desde: {fTurnoDesde}");
+    if (fTurnoHasta.HasValue) filtros.Add($"Turno hasta: {fTurnoHasta}");
+    return string.Join(" | ", filtros);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:11px;'>");
+    
+    // Encabezados
+    sb.AppendLine("<thead><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine("<th>ID</th><th>Fecha</th><th>Doc.</th><th>Cliente</th><th>Producto</th>");
+    sb.AppendLine("<th style='text-align:right;'>Cant.</th><th style='text-align:right;'>Costo</th>");
+    sb.AppendLine("<th style='text-align:right;'>Precio</th><th>Mon</th><th style='text-align:right;'>Importe</th>");
+    sb.AppendLine("<th style='text-align:right;'>Importe Gs</th><th style='text-align:right;'>Importe $</th>");
+    sb.AppendLine("<th>Usuario</th><th>Caja</th><th>Turno</th>");
+    sb.AppendLine("</tr></thead>");
+    
+    // Datos
+    sb.AppendLine("<tbody>");
+    foreach (var r in filas)
+    {
+      sb.AppendLine("<tr>");
+      sb.AppendLine($"<td>{r.IdVenta}</td>");
+      sb.AppendLine($"<td>{r.Fecha:dd/MM/yyyy}</td>");
+      sb.AppendLine($"<td>{r.Numero}</td>");
+      sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(r.Cliente)}<br/><small>RUC: {r.Ruc}</small></td>");
+      sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(r.Producto)}<br/><small>Cod: {r.Codigo}</small></td>");
+      sb.AppendLine($"<td style='text-align:right;'>{r.Cantidad:N2}</td>");
+      sb.AppendLine($"<td style='text-align:right;'>{r.Costo:N0}</td>");
+      sb.AppendLine($"<td style='text-align:right;'>{r.Precio.ToString(r.Formato)}</td>");
+      sb.AppendLine($"<td>{r.Moneda}</td>");
+      sb.AppendLine($"<td style='text-align:right;'>{r.Importe.ToString(r.Formato)}</td>");
+      sb.AppendLine($"<td style='text-align:right;'>{r.ImporteGs:N0}</td>");
+      sb.AppendLine($"<td style='text-align:right;'>{r.ImporteUsd:N2}</td>");
+      sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td>");
+      sb.AppendLine($"<td>{r.IdCaja?.ToString() ?? "-"}</td>");
+      sb.AppendLine($"<td>{r.Turno?.ToString() ?? "-"}</td>");
+      sb.AppendLine("</tr>");
+    }
+    sb.AppendLine("</tbody>");
+    
+    // Totales
+    sb.AppendLine("<tfoot><tr style='background-color:#e0e0e0; font-weight:bold;'>");
+    sb.AppendLine("<td colspan='10' style='text-align:right;'>TOTALES</td>");
+    sb.AppendLine($"<td style='text-align:right;'>{filas.Sum(x => x.ImporteGs):N0}</td>");
+    sb.AppendLine($"<td style='text-align:right;'>{filas.Sum(x => x.ImporteUsd):N2}</td>");
+    sb.AppendLine("<td colspan='3'></td>");
+    sb.AppendLine("</tr></tfoot>");
+    
+    sb.AppendLine("</table>");
+    sb.AppendLine($"<p style='font-size:10px; color:#666;'>Total de registros: {filas.Count}</p>");
+    
+    return Task.FromResult(sb.ToString());
   }
 }
 

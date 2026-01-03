@@ -24,6 +24,8 @@ public partial class Ventas
     [Inject] public PermisosService PermisosService { get; set; } = default!;
     [Inject] public Sifen SifenService { get; set; } = default!;
     [Inject] public DescuentoService DescuentoService { get; set; } = default!;
+    [Inject] public ICorreoService CorreoService { get; set; } = default!;
+    [Inject] public PdfFacturaService PdfService { get; set; } = default!;
 
     [SupplyParameterFromQuery(Name = "presupuesto")]
     public int? PresupuestoId { get; set; }
@@ -148,6 +150,7 @@ public partial class Ventas
     
     // Usuario actual para registrar en movimientos de inventario
     private string _usuarioActual = "Sistema";
+    private int? _idUsuarioActual;
 
     // UI: Modal para receta médica (productos controlados)
     private bool _mostrarModalReceta;
@@ -484,6 +487,7 @@ public partial class Ventas
                 var idClaim = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
                 if (idClaim != null && int.TryParse(idClaim.Value, out int idUsu))
                 {
+                    _idUsuarioActual = idUsu; // Guardar ID del usuario autenticado
                     PuedeEditarPrecio = await PermisosService.TienePermisoAsync(idUsu, "/ventas", "EDIT");
                     // El permiso de cambiar caja y modificar descuento es el mismo que editar precios (EDIT)
                     PuedeCambiarCaja = PuedeEditarPrecio;
@@ -2152,6 +2156,11 @@ public partial class Ventas
                 
                 // Asegurar que IdVenta sea 0 para que EF genere uno nuevo
                 Cab.IdVenta = 0;
+                
+                // Asignar usuario que realizó la venta
+                Cab.IdUsuario = _idUsuarioActual;
+                Cab.Vendedor = _usuarioActual;
+                
                 ctx.Ventas.Add(Cab);
                 await ctx.SaveChangesAsync();
 
@@ -2370,12 +2379,20 @@ public partial class Ventas
                     // Guardar composición de caja
                     await GuardarComposicionCajaAsync(ctx);
                     
+                    // Guardar IdVenta, IdCliente e IdSucursal antes de limpiar
+                    var idVentaGuardada = Cab.IdVenta;
+                    var idClienteGuardado = Cab.IdCliente;
+                    var idSucursalGuardada = Cab.IdSucursal;
+                    
+                    // Enviar factura por correo al cliente si corresponde (en segundo plano)
+                    _ = Task.Run(async () => await EnviarFacturaCorreoSiCorrespondeAsync(idVentaGuardada, idClienteGuardado, idSucursalGuardada));
+                    
                     // Mostrar vista previa del ticket en lugar de abrir ventana nueva
                     // (conservamos el método anterior comentado por si se necesita recuperar)
                     if (debeImprimirAutomaticamente)
                     {
                         // NUEVO: Mostrar modal de vista previa
-                        _idVentaParaVistaPrevia = Cab.IdVenta;
+                        _idVentaParaVistaPrevia = idVentaGuardada;
                         _mostrarVistaPrevia = true;
                         _mostrarComposicionCaja = false;
                         await InvokeAsync(StateHasChanged);
@@ -2392,7 +2409,6 @@ public partial class Ventas
                         */
                         
                         // Preparar para nueva venta
-                        var ventaGuardadaId = Cab.IdVenta;
                         Limpiar();
                         await using var ctxNuevo = await DbFactory.CreateDbContextAsync();
                         Clientes = await ctxNuevo.Clientes.AsNoTracking().OrderBy(c => c.RazonSocial).ToListAsync();
@@ -2419,12 +2435,20 @@ public partial class Ventas
                     // Para ventas a crédito/remisión: mostrar vista previa en lugar de abrir ventana nueva
                     Console.WriteLine($"[Ventas] Venta a crédito/remisión guardada. IdVenta={Cab.IdVenta}, DebeImprimir={debeImprimirAutomaticamente}");
                     
+                    // Guardar IdVenta, IdCliente e IdSucursal antes de limpiar
+                    var idVentaGuardada = Cab.IdVenta;
+                    var idClienteGuardado = Cab.IdCliente;
+                    var idSucursalGuardada = Cab.IdSucursal;
+                    
+                    // Enviar factura por correo al cliente si corresponde (en segundo plano)
+                    _ = Task.Run(async () => await EnviarFacturaCorreoSiCorrespondeAsync(idVentaGuardada, idClienteGuardado, idSucursalGuardada));
+                    
                     if (debeImprimirAutomaticamente)
                     {
                         // NUEVO: Mostrar modal de vista previa
-                        _idVentaParaVistaPrevia = Cab.IdVenta;
+                        _idVentaParaVistaPrevia = idVentaGuardada;
                         _mostrarVistaPrevia = true;
-                        Console.WriteLine($"[Ventas] Mostrando vista previa de ticket para venta: {Cab.IdVenta}");
+                        Console.WriteLine($"[Ventas] Mostrando vista previa de ticket para venta: {idVentaGuardada}");
                         
                         /* MÉTODO ANTERIOR - COMENTADO PARA RECUPERAR SI ES NECESARIO
                         try
@@ -2506,6 +2530,77 @@ public partial class Ventas
         _cajaError = null;
         _cajaInfo = null;
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Envía la factura por correo al cliente si tiene habilitada la opción y tiene email configurado.
+    /// </summary>
+    private async Task EnviarFacturaCorreoSiCorrespondeAsync(int idVenta, int? idCliente, int sucursalId)
+    {
+        if (!idCliente.HasValue || idCliente.Value <= 0) return;
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var cliente = await ctx.Clientes.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.IdCliente == idCliente.Value);
+            
+            if (cliente == null || !cliente.EnviarFacturaPorCorreo || string.IsNullOrWhiteSpace(cliente.Email))
+            {
+                Console.WriteLine($"[Ventas] No se envía correo: Cliente={cliente?.RazonSocial ?? "NULL"}, EnviarFactura={cliente?.EnviarFacturaPorCorreo}, Email={cliente?.Email ?? "NULL"}");
+                return;
+            }
+            
+            // Verificar si el correo está configurado
+            if (!await CorreoService.EstaConfiguradoAsync(sucursalId))
+            {
+                Console.WriteLine("[Ventas] Servicio de correo no configurado. No se puede enviar factura.");
+                return;
+            }
+            
+            // Obtener la venta para armar el nombre del archivo
+            var venta = await ctx.Ventas.AsNoTracking()
+                .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+            
+            if (venta == null)
+            {
+                Console.WriteLine($"[Ventas] Venta {idVenta} no encontrada para envío de correo.");
+                return;
+            }
+            
+            // Generar PDF en formato A4
+            var pdfBytes = await PdfService.GenerarPdfFactura(idVenta);
+            if (pdfBytes == null || pdfBytes.Length == 0)
+            {
+                Console.WriteLine($"[Ventas] No se pudo generar PDF para venta {idVenta}.");
+                return;
+            }
+            
+            var numeroFactura = venta.NumeroFactura ?? $"Venta-{idVenta}";
+            var nombreArchivo = $"Factura_{numeroFactura.Replace("-", "_").Replace(" ", "_")}.pdf";
+            
+            Console.WriteLine($"[Ventas] Enviando factura {numeroFactura} a {cliente.Email}...");
+            var resultado = await CorreoService.EnviarFacturaClienteAsync(
+                idVenta,
+                cliente.Email,
+                pdfBytes,
+                nombreArchivo
+            );
+            
+            if (resultado.Exito)
+            {
+                Console.WriteLine($"[Ventas] ✅ Correo enviado exitosamente a {cliente.Email}");
+            }
+            else
+            {
+                Console.WriteLine($"[Ventas] ❌ Error al enviar correo: {resultado.Mensaje}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Ventas] Error al enviar factura por correo: {ex.Message}");
+            // No interrumpir el flujo principal por un error de correo
+        }
     }
 
     /// <summary>

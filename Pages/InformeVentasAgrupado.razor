@@ -82,6 +82,10 @@
         <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
         <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
         <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+        <EnviarInformeCorreo 
+          TituloInforme="Ventas Agrupado" 
+          OnGenerarHtml="GenerarTablaHtml" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
       </div>
     </div>
   </div>
@@ -227,6 +231,8 @@
             from cli in cliJoin.DefaultIfEmpty()
             join m in ctx.Monedas.AsNoTracking() on v.IdMoneda equals m.IdMoneda into monJoin
             from m in monJoin.DefaultIfEmpty()
+            join u in ctx.Usuarios.AsNoTracking() on v.IdUsuario equals u.Id_Usu into usuJoin
+            from u in usuJoin.DefaultIfEmpty()
             select new {
               v.IdVenta, v.Fecha, v.IdCaja, v.Turno, v.IdSucursal,
               v.Establecimiento, v.PuntoExpedicion, v.NumeroFactura,
@@ -238,7 +244,7 @@
               v.Total,
               Condicion = v.FormaPago ?? v.CodigoCondicion ?? "",
               v.Estado,
-              Usuario = (v.Usuario != null ? v.Usuario.UsuarioNombre : (v.Vendedor ?? ""))
+              Usuario = (u != null ? u.UsuarioNombre : (v.Vendedor ?? ""))
             };
 
     // Filtrar por sucursal seleccionada
@@ -505,6 +511,45 @@
     var b64 = Convert.ToBase64String(ms.ToArray());
     var file = $"VentasAgrupado_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
     await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var partes = new List<string>();
+    if (fDesde.HasValue) partes.Add($"Desde: {fDesde:dd/MM/yyyy}");
+    if (fHasta.HasValue) partes.Add($"Hasta: {fHasta:dd/MM/yyyy}");
+    if (fIdMoneda != 0) partes.Add($"Moneda: {monedas.FirstOrDefault(m=>m.IdMoneda==fIdMoneda)?.CodigoISO}");
+    if (!string.IsNullOrWhiteSpace(fCliente)) partes.Add($"Cliente: {fCliente}");
+    if (!string.IsNullOrWhiteSpace(fEstado)) partes.Add($"Estado: {fEstado}");
+    if (!string.IsNullOrWhiteSpace(fUsuario)) partes.Add($"Usuario: {fUsuario}");
+    if (fCajaDesde.HasValue || fCajaHasta.HasValue) partes.Add($"Caja: {fCajaDesde}-{fCajaHasta}");
+    if (fTurnoDesde.HasValue || fTurnoHasta.HasValue) partes.Add($"Turno: {fTurnoDesde}-{fTurnoHasta}");
+    return string.Join(" | ", partes);
+  }
+
+  private Task<string> GenerarTablaHtml()
+  {
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:11px;'>");
+    sb.AppendLine("<thead><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine("<th>ID</th><th>Fecha</th><th>Doc.</th><th>Cliente</th><th>RUC</th><th>Condición</th><th>Estado</th><th>Mon</th><th style='text-align:right'>Cambio</th><th style='text-align:right'>Total</th><th style='text-align:right'>Total Gs</th><th style='text-align:right'>Total $</th><th>Usuario</th><th>Caja</th><th>Turno</th>");
+    sb.AppendLine("</tr></thead>");
+    sb.AppendLine("<tbody>");
+    foreach (var r in filas)
+    {
+      var rowStyle = r.Estado == "Anulado" ? "text-decoration:line-through; color:#dc3545;" : "";
+      sb.AppendLine($"<tr style='{rowStyle}'>");
+      sb.AppendLine($"<td>{r.IdVenta}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Cliente)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Ruc)}</td><td>{r.Condicion}</td><td>{r.Estado}</td><td>{r.Moneda}</td><td style='text-align:right'>{(r.Cambio ?? 0):N2}</td><td style='text-align:right'>{r.Total.ToString(r.Formato)}</td><td style='text-align:right'>{r.TotalGs:N0}</td><td style='text-align:right'>{r.TotalUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td>");
+      sb.AppendLine("</tr>");
+    }
+    sb.AppendLine("</tbody>");
+    var totalGs = filas.Where(f => f.Estado != "Anulado").Sum(x=>x.TotalGs);
+    var totalUsd = filas.Where(f => f.Estado != "Anulado").Sum(x=>x.TotalUsd);
+    sb.AppendLine("<tfoot><tr style='background-color:#f0f0f0; font-weight:bold;'>");
+    sb.AppendLine($"<td colspan='10' style='text-align:right'>Totales (sin anulados)</td><td style='text-align:right'>{totalGs:N0}</td><td style='text-align:right'>{totalUsd:N2}</td><td></td><td></td><td></td>");
+    sb.AppendLine("</tr></tfoot>");
+    sb.AppendLine("</table>");
+    return Task.FromResult(sb.ToString());
   }
 
   private class Fila

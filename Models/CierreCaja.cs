@@ -61,9 +61,21 @@ namespace SistemIA.Models
         public decimal TotalNotasCredito { get; set; }
 
         /// <summary>
-        /// Cantidad de Notas de Crédito emitidas en el turno
+        /// Cantidad de Notas de Crédito de Ventas emitidas en el turno
         /// </summary>
         public int CantNotasCredito { get; set; }
+
+        /// <summary>
+        /// Total de Notas de Crédito de Compras recibidas en el turno (ingresos de caja si afectan caja)
+        /// Representan créditos del proveedor que pueden generar ingreso de efectivo
+        /// </summary>
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal TotalNotasCreditoCompras { get; set; }
+
+        /// <summary>
+        /// Cantidad de Notas de Crédito de Compras recibidas en el turno
+        /// </summary>
+        public int CantNotasCreditoCompras { get; set; }
 
         /// <summary>
         /// Total de Compras en efectivo realizadas en el turno (egresos de caja)

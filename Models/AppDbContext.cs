@@ -113,6 +113,10 @@ namespace SistemIA.Models
         public DbSet<NotaCreditoCompra> NotasCreditoCompras { get; set; }
         public DbSet<NotaCreditoCompraDetalle> NotasCreditoComprasDetalles { get; set; }
 
+        // Configuración de Correo Electrónico
+        public DbSet<ConfiguracionCorreo> ConfiguracionesCorreo { get; set; }
+        public DbSet<DestinatarioInforme> DestinatariosInforme { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

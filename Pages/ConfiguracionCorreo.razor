@@ -1,0 +1,1624 @@
+@page "/configuracion/correo"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Models = SistemIA.Models
+@using System.Net.Mail
+@using System.Net
+
+<PageProtection Modulo="/configuracion/correo" Permiso="VIEW">
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="text-primary mb-0">
+                <i class="bi bi-envelope-at me-2"></i>Configuración de Correo Electrónico
+            </h2>
+            @if (!string.IsNullOrEmpty(_sucursalNombre))
+            {
+                <small class="text-muted">
+                    <i class="bi bi-building me-1"></i>Sucursal: <strong>@_sucursalNombre</strong>
+                </small>
+            }
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-outline-primary" @onclick="ProbarConexion" disabled="@_probando">
+                @if (_probando)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-plug me-1"></i> Probar Conexión
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="EnviarCorreoPrueba" disabled="@_enviandoPrueba || !_config.ConfiguracionCompleta">
+                @if (_enviandoPrueba)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-send me-1"></i> Enviar Prueba
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_mensaje))
+    {
+        <div class="alert @(_esError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+            <i class="bi @(_esError ? "bi-exclamation-triangle" : "bi-check-circle") me-2"></i>
+            @_mensaje
+            <button type="button" class="btn-close" @onclick="() => _mensaje = null"></button>
+        </div>
+    }
+
+    <div class="row">
+        <!-- Columna Principal: Configuración -->
+        <div class="col-lg-8">
+            <!-- Tipo de Proveedor -->
+            <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-cloud me-2"></i>Proveedor de Correo</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Nombre de Configuración</label>
+                            <input type="text" class="form-control" @bind="_config.Nombre" placeholder="Correo Principal" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Tipo de Proveedor</label>
+                            <select class="form-select" @bind="_config.TipoProveedor" @bind:after="OnProveedorCambiado">
+                                @foreach (var prov in Models.TiposProveedorCorreo.Listado)
+                                {
+                                    <option value="@prov.Valor">@prov.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_descripcionProveedor))
+                    {
+                        <div class="alert alert-info mt-3 mb-0 small">
+                            <i class="bi bi-info-circle me-1"></i> @_descripcionProveedor
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Configuración SMTP (visible según proveedor) -->
+            @if (_config.TipoProveedor == "SMTP" || _config.TipoProveedor == "Gmail" || _config.TipoProveedor == "Outlook")
+            {
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0"><i class="bi bi-server me-2"></i>Servidor SMTP</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label small text-muted">Servidor SMTP</label>
+                                <input type="text" class="form-control" @bind="_config.ServidorSmtp" 
+                                       placeholder="@_placeholderServidor" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Puerto</label>
+                                <input type="number" class="form-control" @bind="_config.Puerto" min="1" max="65535" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Tipo de Seguridad</label>
+                                <select class="form-select" @bind="_config.TipoSeguridad" @bind:after="OnSeguridadCambiada">
+                                    @foreach (var seg in Models.TiposSeguridadCorreo.Listado)
+                                    {
+                                        <option value="@seg.Valor">@seg.Nombre (puerto @seg.PuertoSugerido)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Timeout (segundos)</label>
+                                <input type="number" class="form-control" @bind="_config.TimeoutSegundos" min="5" max="300" />
+                            </div>
+                        </div>
+
+                        <!-- Gmail/Outlook: Opción OAuth2 -->
+                        @if (_config.TipoProveedor == "Gmail" || _config.TipoProveedor == "Outlook")
+                        {
+                            <hr class="my-3" />
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="usarOAuth2" @bind="_config.UsarOAuth2" />
+                                <label class="form-check-label fw-bold" for="usarOAuth2">
+                                    <i class="bi bi-shield-check text-success me-1"></i>
+                                    Usar OAuth2 (más seguro, recomendado)
+                                </label>
+                            </div>
+                            <div class="form-text text-muted small">
+                                OAuth2 no requiere compartir tu contraseña y cumple con las políticas de seguridad de Google/Microsoft.
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Autenticación -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi @(_config.UsarOAuth2 ? "bi-key" : "bi-person-lock") me-2"></i>
+                        @(_config.UsarOAuth2 ? "Autenticación OAuth2" : "Autenticación")
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @if (_config.UsarOAuth2 && (_config.TipoProveedor == "Gmail" || _config.TipoProveedor == "Outlook"))
+                    {
+                        <!-- OAuth2 -->
+                        <div class="alert alert-warning small">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            <strong>Configuración OAuth2:</strong> Requiere configurar una aplicación en 
+                            @(_config.TipoProveedor == "Gmail" ? "Google Cloud Console" : "Azure Portal").
+                            <a href="@(_config.TipoProveedor == "Gmail" ? "https://console.cloud.google.com/apis/credentials" : "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps")" 
+                               target="_blank" class="alert-link">
+                                Ir a configuración <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Client ID</label>
+                                <input type="text" class="form-control" @bind="_config.OAuth2ClientId" 
+                                       placeholder="Tu Client ID de la aplicación OAuth2" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Client Secret</label>
+                                <div class="input-group">
+                                    <input type="@(_mostrarSecret ? "text" : "password")" class="form-control" 
+                                           @bind="_config.OAuth2ClientSecret" placeholder="Tu Client Secret" />
+                                    <button class="btn btn-outline-secondary" type="button" @onclick="() => _mostrarSecret = !_mostrarSecret">
+                                        <i class="bi @(_mostrarSecret ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Refresh Token</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" @bind="_config.OAuth2RefreshToken" 
+                                           placeholder="Token de actualización (se obtiene al autorizar)" readonly="@(!_editandoRefreshToken)" />
+                                    <button class="btn btn-outline-secondary" type="button" @onclick="() => _editandoRefreshToken = !_editandoRefreshToken">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-primary" type="button" @onclick="IniciarAutorizacionOAuth2">
+                                        <i class="bi bi-box-arrow-in-right me-1"></i> Obtener Token
+                                    </button>
+                                </div>
+                                <div class="form-text">El Refresh Token se obtiene al autorizar la aplicación con tu cuenta.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Scopes (opcional)</label>
+                                <input type="text" class="form-control" @bind="_config.OAuth2Scopes" 
+                                       placeholder="@(_config.TipoProveedor == "Gmail" ? "https://mail.google.com/" : "https://outlook.office.com/SMTP.Send")" />
+                            </div>
+                            @if (_config.OAuth2TokenExpira.HasValue)
+                            {
+                                <div class="col-md-6">
+                                    <label class="form-label small text-muted">Token Expira</label>
+                                    <input type="text" class="form-control" readonly 
+                                           value="@_config.OAuth2TokenExpira.Value.ToString("dd/MM/yyyy HH:mm")" />
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (_config.TipoProveedor == "SendGrid" || _config.TipoProveedor == "Mailgun" || _config.TipoProveedor == "AmazonSES")
+                    {
+                        <!-- API Key -->
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label small text-muted">API Key</label>
+                                <div class="input-group">
+                                    <input type="@(_mostrarApiKey ? "text" : "password")" class="form-control" 
+                                           @bind="_config.ApiKey" placeholder="Tu API Key de @_config.TipoProveedor" />
+                                    <button class="btn btn-outline-secondary" type="button" @onclick="() => _mostrarApiKey = !_mostrarApiKey">
+                                        <i class="bi @(_mostrarApiKey ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            @if (_config.TipoProveedor == "Mailgun")
+                            {
+                                <div class="col-md-6">
+                                    <label class="form-label small text-muted">Dominio</label>
+                                    <input type="text" class="form-control" @bind="_config.DominioApi" 
+                                           placeholder="mg.tudominio.com" />
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Usuario/Contraseña tradicional -->
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Usuario SMTP</label>
+                                <input type="text" class="form-control" @bind="_config.UsuarioSmtp" 
+                                       placeholder="usuario@dominio.com" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Contraseña</label>
+                                <div class="input-group">
+                                    <input type="@(_mostrarContrasena ? "text" : "password")" class="form-control" 
+                                           @bind="_config.ContrasenaSmtp" placeholder="Contraseña SMTP" />
+                                    <button class="btn btn-outline-secondary" type="button" @onclick="() => _mostrarContrasena = !_mostrarContrasena">
+                                        <i class="bi @(_mostrarContrasena ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                @if (_config.TipoProveedor == "Gmail")
+                                {
+                                    <div class="form-text text-warning">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        Para Gmail usa una <a href="https://myaccount.google.com/apppasswords" target="_blank">Contraseña de Aplicación</a>, no tu contraseña normal.
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Remitente -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-person-badge me-2"></i>Datos del Remitente</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Correo Remitente (From) <span class="text-danger">*</span></label>
+                            <input type="email" class="form-control" @bind="_config.CorreoRemitente" 
+                                   placeholder="correo@tuempresa.com" required />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Nombre del Remitente</label>
+                            <input type="text" class="form-control" @bind="_config.NombreRemitente" 
+                                   placeholder="Mi Empresa S.A." />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Correo para Respuestas (Reply-To)</label>
+                            <input type="email" class="form-control" @bind="_config.CorreoReplyTo" 
+                                   placeholder="respuestas@tuempresa.com" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Copia Oculta (BCC) - Auditoría</label>
+                            <input type="email" class="form-control" @bind="_config.CorreoBccAuditoria" 
+                                   placeholder="auditoria@tuempresa.com" />
+                            <div class="form-text">Todos los correos enviados tendrán copia aquí.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Información de Envío Automático -->
+            <div class="card mb-3 border-info">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-send-check me-2"></i>Envío Automático de Informes
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info py-2 mb-0">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>¿Cómo funciona?</strong>
+                        <ul class="mb-0 mt-2 small">
+                            <li>Los correos se envían <strong>automáticamente al cerrar la caja</strong></li>
+                            <li>Cada destinatario tiene su propio switch para activar/desactivar el envío</li>
+                            <li>Configure qué informes recibe cada destinatario en la sección de abajo</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Opciones Avanzadas -->
+            <div class="card mb-3">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center" 
+                     style="cursor: pointer" @onclick="() => _mostrarAvanzadas = !_mostrarAvanzadas">
+                    <h5 class="mb-0">
+                        <i class="bi bi-gear-wide-connected me-2"></i>Opciones Avanzadas
+                    </h5>
+                    <i class="bi @(_mostrarAvanzadas ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                </div>
+                @if (_mostrarAvanzadas)
+                {
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Reintentos</label>
+                                <input type="number" class="form-control" @bind="_config.MaxReintentos" min="0" max="10" />
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="logDetallado" @bind="_config.HabilitarLogDetallado" />
+                                    <label class="form-check-label" for="logDetallado">Log detallado</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="ignorarCert" @bind="_config.IgnorarErroresCertificado" />
+                                    <label class="form-check-label text-warning" for="ignorarCert">
+                                        <i class="bi bi-exclamation-triangle"></i> Ignorar errores SSL
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="usarHtml" @bind="_config.UsarHtmlPorDefecto" />
+                                    <label class="form-check-label" for="usarHtml">Usar HTML por defecto</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Firma HTML (se agrega al final de cada correo)</label>
+                                <textarea class="form-control" rows="3" @bind="_config.FirmaHtml" 
+                                          placeholder="<p>Saludos,<br/><strong>Mi Empresa</strong></p>"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Columna Lateral: Estado y Ayuda -->
+        <div class="col-lg-4">
+            <!-- Estado de la Configuración -->
+            <div class="card mb-3 @(_config.ConfiguracionCompleta ? "border-success" : "border-warning")">
+                <div class="card-header @(_config.ConfiguracionCompleta ? "bg-success" : "bg-warning") text-white">
+                    <h5 class="mb-0">
+                        <i class="bi @(_config.ConfiguracionCompleta ? "bi-check-circle" : "bi-exclamation-circle") me-2"></i>
+                        Estado
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="bi @(_config.ConfiguracionCompleta ? "bi-check text-success" : "bi-x text-danger") fs-4 me-2"></i>
+                        <span>@(_config.ConfiguracionCompleta ? "Configuración completa" : "Configuración incompleta")</span>
+                    </div>
+                    <div class="small text-muted">
+                        @_config.Descripcion
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_config.UltimaPruebaResultado))
+                    {
+                        <hr />
+                        <div class="small">
+                            <strong>Última prueba:</strong><br/>
+                            @_config.UltimaPruebaFecha?.ToString("dd/MM/yyyy HH:mm")<br/>
+                            <span class="@(_config.UltimaPruebaResultado.StartsWith("OK") ? "text-success" : "text-danger")">
+                                @_config.UltimaPruebaResultado
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Configuraciones Rápidas por Proveedor -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-lightning me-2"></i>Configuración Rápida</h5>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">Selecciona un proveedor para cargar su configuración predeterminada:</p>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-danger btn-sm" @onclick="() => ConfigurarRapido_Gmail()">
+                            <i class="bi bi-google me-1"></i> Gmail / Google Workspace
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" @onclick="() => ConfigurarRapido_Outlook()">
+                            <i class="bi bi-microsoft me-1"></i> Outlook / Microsoft 365
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="() => ConfigurarRapido_Yahoo()">
+                            <i class="bi bi-envelope me-1"></i> Yahoo Mail
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ayuda -->
+            <div class="card mb-3">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-question-circle me-2"></i>Ayuda</h5>
+                </div>
+                <div class="card-body small">
+                    <p><strong>Gmail (Contraseña de Aplicación):</strong></p>
+                    <ol class="ps-3">
+                        <li>Activar verificación en 2 pasos en tu cuenta Google</li>
+                        <li>Ir a <a href="https://myaccount.google.com/apppasswords" target="_blank">Contraseñas de aplicación</a></li>
+                        <li>Crear una nueva contraseña para "Correo"</li>
+                        <li>Usar esa contraseña de 16 caracteres aquí</li>
+                    </ol>
+
+                    <p class="mt-3"><strong>Puertos comunes:</strong></p>
+                    <ul class="ps-3 mb-0">
+                        <li><strong>587</strong> - TLS/STARTTLS (recomendado)</li>
+                        <li><strong>465</strong> - SSL implícito</li>
+                        <li><strong>25</strong> - Sin encriptación (no recomendado)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Panel de Diagnóstico y Prueba Completa -->
+            <div class="card border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-shield-check me-2"></i>Diagnóstico y Prueba de Correo</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Correo destino -->
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Correo de destino para prueba:</label>
+                        <input type="email" class="form-control" @bind="_correoDestinoPrueba" 
+                               placeholder="tu-correo@ejemplo.com" />
+                        <div class="form-text">Se enviará un correo de prueba a esta dirección.</div>
+                    </div>
+
+                    <!-- Botón de diagnóstico completo -->
+                    <button class="btn btn-primary w-100 mb-3" @onclick="EjecutarDiagnosticoCompleto" 
+                            disabled="@(_ejecutandoDiagnostico || string.IsNullOrEmpty(_correoDestinoPrueba))">
+                        @if (_ejecutandoDiagnostico)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Ejecutando diagnóstico...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-play-circle me-1"></i>
+                            <span>Ejecutar Diagnóstico Completo</span>
+                        }
+                    </button>
+
+                    <!-- Resultado del diagnóstico -->
+                    @if (_pasosDiagnostico.Count > 0)
+                    {
+                        <div class="border rounded p-3 bg-light">
+                            <h6 class="mb-3"><i class="bi bi-list-check me-1"></i>Resultado del Diagnóstico:</h6>
+                            @foreach (var paso in _pasosDiagnostico)
+                            {
+                                <div class="d-flex align-items-start mb-2">
+                                    @if (paso.Estado == "pendiente")
+                                    {
+                                        <span class="spinner-border spinner-border-sm text-secondary me-2 mt-1"></span>
+                                    }
+                                    else if (paso.Estado == "ok")
+                                    {
+                                        <i class="bi bi-check-circle-fill text-success me-2 mt-1"></i>
+                                    }
+                                    else if (paso.Estado == "error")
+                                    {
+                                        <i class="bi bi-x-circle-fill text-danger me-2 mt-1"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-circle text-muted me-2 mt-1"></i>
+                                    }
+                                    <div class="flex-grow-1">
+                                        <div class="@(paso.Estado == "error" ? "text-danger fw-bold" : paso.Estado == "ok" ? "text-success" : "")">
+                                            @paso.Descripcion
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(paso.Detalle))
+                                        {
+                                            <small class="text-muted d-block">@paso.Detalle</small>
+                                        }
+                                    </div>
+                                </div>
+                            }
+
+                            @if (_diagnosticoFinalizado)
+                            {
+                                <hr class="my-2" />
+                                <div class="@(_diagnosticoExitoso ? "alert alert-success" : "alert alert-danger") mb-0 py-2">
+                                    <i class="bi @(_diagnosticoExitoso ? "bi-check-lg" : "bi-exclamation-triangle") me-1"></i>
+                                    @if (_diagnosticoExitoso)
+                                    {
+                                        <span>¡Configuración correcta! El correo fue enviado exitosamente.</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Hay problemas con la configuración. Revisa los errores arriba.</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <!-- Errores comunes -->
+                    @if (_mostrarAyudaErrores && !string.IsNullOrEmpty(_ultimoError))
+                    {
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <h6 class="alert-heading"><i class="bi bi-lightbulb me-1"></i>Posible solución:</h6>
+                            <small>@_sugerenciaError</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botones de Acción de Configuración -->
+    <div class="card mt-3">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div class="text-muted small">
+                @if (_config.FechaModificacion.HasValue)
+                {
+                    <span>Última modificación: @_config.FechaModificacion.Value.ToString("dd/MM/yyyy HH:mm") por @_config.UsuarioModificacion</span>
+                }
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary" @onclick="Cargar">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Recargar
+                </button>
+                <button class="btn btn-success" @onclick="Guardar" disabled="@_guardando">
+                    @if (_guardando)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    <i class="bi bi-check-lg me-1"></i> Guardar Cambios
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== SECCIÓN DE DESTINATARIOS DE INFORMES ========== -->
+    <div class="mt-5">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="text-primary mb-0">
+                <i class="bi bi-people me-2"></i>Destinatarios de Informes
+            </h3>
+            <button class="btn btn-primary" @onclick="MostrarFormularioDestinatario">
+                <i class="bi bi-plus-lg me-1"></i> Agregar Destinatario
+            </button>
+        </div>
+
+        <div class="alert alert-info small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Configure los correos electrónicos que recibirán los diferentes informes del sistema (ventas, cierres de caja, alertas de stock, etc.)
+        </div>
+
+        <!-- Lista de Destinatarios -->
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Destinatarios Configurados</h5>
+            </div>
+            @if (_destinatarios.Count == 0)
+            {
+                <div class="card-body text-center text-muted py-5">
+                    <i class="bi bi-inbox display-4 d-block mb-3"></i>
+                    <p>No hay destinatarios configurados.</p>
+                    <button class="btn btn-outline-primary" @onclick="MostrarFormularioDestinatario">
+                        <i class="bi bi-plus-lg me-1"></i> Agregar el primer destinatario
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 5%"><i class="bi bi-check-square me-1"></i></th>
+                                <th>Nombre</th>
+                                <th>Correo</th>
+                                <th>Tipo</th>
+                                <th>Informes</th>
+                                <th style="width: 10%" class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var dest in _destinatarios)
+                            {
+                                <tr class="@(!dest.Activo ? "table-secondary" : "")">
+                                    <td>
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" checked="@dest.Activo" 
+                                                   @onchange="@(e => CambiarActivoDestinatario(dest, (bool)(e.Value ?? false)))" />
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <strong>@dest.Nombre</strong>
+                                        @if (!string.IsNullOrEmpty(dest.Notas))
+                                        {
+                                            <br/><small class="text-muted">@dest.Notas</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        <a href="mailto:@dest.Correo" class="text-decoration-none">
+                                            <i class="bi bi-envelope me-1"></i>@dest.Correo
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge @(dest.TipoCopia == "TO" ? "bg-primary" : dest.TipoCopia == "CC" ? "bg-info" : "bg-secondary")">
+                                            @(Models.TiposCopiaCorreo.Listado.FirstOrDefault(t => t.Valor == dest.TipoCopia).Nombre ?? dest.TipoCopia)
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">@dest.ResumenInformes</small>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="Editar" @onclick="() => EditarDestinatario(dest)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="Eliminar" @onclick="() => EliminarDestinatario(dest)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Modal para Agregar/Editar Destinatario -->
+    @if (_mostrarModalDestinatario)
+    {
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
+            <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">
+                            <i class="bi bi-@(_destinatarioEditando.IdDestinatarioInforme == 0 ? "plus-lg" : "pencil") me-2"></i>
+                            @(_destinatarioEditando.IdDestinatarioInforme == 0 ? "Agregar" : "Editar") Destinatario
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalDestinatario"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Nombre *</label>
+                                <input type="text" class="form-control" @bind="_destinatarioEditando.Nombre" placeholder="Ej: Gerente, Contador" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Correo Electrónico *</label>
+                                <input type="email" class="form-control" @bind="_destinatarioEditando.Correo" placeholder="correo@ejemplo.com" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Tipo de Copia</label>
+                                <select class="form-select" @bind="_destinatarioEditando.TipoCopia">
+                                    @foreach (var tipo in Models.TiposCopiaCorreo.Listado)
+                                    {
+                                        <option value="@tipo.Valor">@tipo.Nombre</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Notas (opcional)</label>
+                                <input type="text" class="form-control" @bind="_destinatarioEditando.Notas" placeholder="Comentarios..." />
+                            </div>
+                        </div>
+
+                        <!-- SWITCH PRINCIPAL DE ENVÍO - MUY VISIBLE -->
+                        <div class="p-3 rounded mb-3 @(_destinatarioEditando.RecibeCierreCaja ? "bg-success bg-opacity-25 border border-success" : "bg-secondary bg-opacity-10 border")">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <h6 class="mb-1 @(_destinatarioEditando.RecibeCierreCaja ? "text-success" : "")">
+                                        <i class="bi bi-@(_destinatarioEditando.RecibeCierreCaja ? "envelope-check-fill text-success" : "envelope-x text-secondary") me-2"></i>
+                                        Enviar correo al cerrar caja
+                                    </h6>
+                                    <small class="@(_destinatarioEditando.RecibeCierreCaja ? "text-success" : "text-muted")">
+                                        @if (_destinatarioEditando.RecibeCierreCaja)
+                                        {
+                                            <text>✅ Este destinatario recibirá el resumen al cerrar caja</text>
+                                        }
+                                        else
+                                        {
+                                            <text>❌ NO recibirá correos al cerrar caja</text>
+                                        }
+                                    </small>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="chkEnviarCierre" 
+                                           @bind="_destinatarioEditando.RecibeCierreCaja" 
+                                           style="width: 3.5rem; height: 1.75rem; cursor: pointer;" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="my-3" />
+                        
+                        <h6 class="mb-3"><i class="bi bi-file-earmark-text me-1"></i>Informes adicionales a recibir:</h6>
+                        
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="chkVentasDiarias" @bind="_destinatarioEditando.RecibeVentasDiarias" />
+                                    <label class="form-check-label" for="chkVentasDiarias">
+                                        <i class="bi bi-graph-up text-success me-1"></i>Ventas Diarias
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="chkMensual" @bind="_destinatarioEditando.RecibeResumenMensual" />
+                                    <label class="form-check-label" for="chkMensual">
+                                        <i class="bi bi-calendar-month text-info me-1"></i>Resumen Mensual
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="chkStock" @bind="_destinatarioEditando.RecibeAlertaStock" />
+                                    <label class="form-check-label" for="chkStock">
+                                        <i class="bi bi-box-seam text-warning me-1"></i>Alertas Stock Bajo
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="chkCompras" @bind="_destinatarioEditando.RecibeInformeCompras" />
+                                    <label class="form-check-label" for="chkCompras">
+                                        <i class="bi bi-cart text-secondary me-1"></i>Informe Compras
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="chkSifen" @bind="_destinatarioEditando.RecibeResumenSifen" />
+                                    <label class="form-check-label" for="chkSifen">
+                                        <i class="bi bi-file-earmark-check text-primary me-1"></i>Resumen SIFEN
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="chkVencimientos" @bind="_destinatarioEditando.RecibeAlertaVencimientos" />
+                                    <label class="form-check-label" for="chkVencimientos">
+                                        <i class="bi bi-exclamation-triangle text-danger me-1"></i>Alertas Vencimientos
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="chkFacturas" @bind="_destinatarioEditando.RecibeCopiaFacturas" />
+                                    <label class="form-check-label" for="chkFacturas">
+                                        <i class="bi bi-receipt text-info me-1"></i>Copia de Facturas
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="my-3" />
+                        
+                        <div class="form-check form-switch">
+                            <input type="checkbox" class="form-check-input" id="chkActivo" 
+                                   @bind="_destinatarioEditando.Activo" style="width: 2.5rem; height: 1.25rem;" />
+                            <label class="form-check-label fw-bold ms-2" for="chkActivo">
+                                <i class="bi bi-@(_destinatarioEditando.Activo ? "check-circle-fill text-success" : "x-circle text-secondary") me-1"></i>
+                                Destinatario Activo
+                            </label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CerrarModalDestinatario">
+                            <i class="bi bi-x-lg me-1"></i>Cancelar
+                        </button>
+                        <button type="button" class="btn btn-success" @onclick="GuardarDestinatario" disabled="@_guardandoDestinatario">
+                            @if (_guardandoDestinatario)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-check-lg me-1"></i>Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+</PageProtection>
+
+@code {
+    private Models.ConfiguracionCorreo _config = new();
+    private string? _mensaje;
+    private bool _esError;
+    private bool _guardando;
+    private bool _probando;
+    private bool _enviandoPrueba;
+    private bool _mostrarContrasena;
+    private bool _mostrarSecret;
+    private bool _mostrarApiKey;
+    private bool _mostrarAvanzadas;
+    private bool _mostrarEnvioAutomatico;
+    private bool _editandoRefreshToken;
+    private string? _descripcionProveedor;
+    private string _placeholderServidor = "smtp.ejemplo.com";
+    private string _correoDestinoPrueba = string.Empty;
+
+    // Variables para diagnóstico
+    private bool _ejecutandoDiagnostico;
+    private bool _diagnosticoFinalizado;
+    private bool _diagnosticoExitoso;
+    private List<PasoDiagnostico> _pasosDiagnostico = new();
+    private bool _mostrarAyudaErrores;
+    private string? _ultimoError;
+    private string? _sugerenciaError;
+
+    // Variables para destinatarios de informes
+    private List<Models.DestinatarioInforme> _destinatarios = new();
+    private Models.DestinatarioInforme _destinatarioEditando = new();
+    private bool _mostrarModalDestinatario;
+    private bool _guardandoDestinatario;
+
+    private class PasoDiagnostico
+    {
+        public string Descripcion { get; set; } = string.Empty;
+        public string? Detalle { get; set; }
+        public string Estado { get; set; } = "esperando"; // esperando, pendiente, ok, error
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+    private string? _usuarioNombre;
+    private int? _sucursalId;
+    private string? _sucursalNombre;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateTask;
+            _usuarioNombre = authState.User?.Identity?.Name;
+        }
+        catch { }
+
+        // Obtener sucursal del usuario logueado
+        _sucursalId = SucursalProvider.GetSucursalId();
+        
+        // Obtener nombre de la sucursal
+        if (_sucursalId.HasValue)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var sucursal = await db.Sucursal.FindAsync(_sucursalId.Value);
+            _sucursalNombre = sucursal?.NombreSucursal ?? "Sucursal " + _sucursalId;
+        }
+
+        await Cargar();
+        ActualizarDescripcionProveedor();
+    }
+
+    private async Task Cargar()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Cargar configuración existente para esta sucursal o crear nueva
+        var config = await db.Set<Models.ConfiguracionCorreo>()
+            .FirstOrDefaultAsync(c => c.Activo && c.IdSucursal == _sucursalId);
+
+        if (config != null)
+        {
+            _config = config;
+        }
+        else
+        {
+            _config = new Models.ConfiguracionCorreo
+            {
+                Nombre = "Correo Principal",
+                TipoProveedor = "SMTP",
+                Activo = true,
+                IdSucursal = _sucursalId
+            };
+        }
+
+        // Precargar correo de prueba con el remitente si está configurado
+        if (string.IsNullOrEmpty(_correoDestinoPrueba) && !string.IsNullOrEmpty(_config.CorreoRemitente))
+        {
+            _correoDestinoPrueba = _config.CorreoRemitente;
+        }
+
+        // Cargar destinatarios de informes para esta sucursal
+        await CargarDestinatarios();
+    }
+
+    private async Task CargarDestinatarios()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _destinatarios = await db.DestinatariosInforme
+            .Where(d => d.IdSucursal == _sucursalId || d.IdSucursal == null)
+            .OrderBy(d => d.Nombre)
+            .ToListAsync();
+    }
+
+    private async Task Guardar()
+    {
+        _guardando = true;
+        _mensaje = null;
+        StateHasChanged();
+
+        try
+        {
+            // Validaciones básicas
+            if (string.IsNullOrWhiteSpace(_config.CorreoRemitente))
+            {
+                _mensaje = "El correo del remitente es requerido.";
+                _esError = true;
+                return;
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            _config.FechaModificacion = DateTime.Now;
+            _config.UsuarioModificacion = _usuarioNombre;
+
+            if (_config.IdConfiguracionCorreo == 0)
+            {
+                _config.FechaCreacion = DateTime.Now;
+                _config.UsuarioCreacion = _usuarioNombre;
+                db.Set<Models.ConfiguracionCorreo>().Add(_config);
+            }
+            else
+            {
+                db.Set<Models.ConfiguracionCorreo>().Update(_config);
+            }
+
+            await db.SaveChangesAsync();
+
+            _mensaje = "Configuración guardada correctamente.";
+            _esError = false;
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error al guardar: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task ProbarConexion()
+    {
+        _probando = true;
+        _mensaje = null;
+        StateHasChanged();
+
+        try
+        {
+            if (string.IsNullOrEmpty(_config.ServidorSmtp))
+            {
+                _mensaje = "Configura el servidor SMTP primero.";
+                _esError = true;
+                return;
+            }
+
+            // Probar conexión TCP básica
+            using var client = new System.Net.Sockets.TcpClient();
+            var connectTask = client.ConnectAsync(_config.ServidorSmtp, _config.Puerto);
+            
+            if (await Task.WhenAny(connectTask, Task.Delay(_config.TimeoutSegundos * 1000)) == connectTask)
+            {
+                await connectTask; // Propagar excepción si falló
+                
+                _config.UltimaPruebaResultado = "OK - Conexión TCP exitosa";
+                _config.UltimaPruebaFecha = DateTime.Now;
+                _mensaje = $"✓ Conexión exitosa a {_config.ServidorSmtp}:{_config.Puerto}";
+                _esError = false;
+            }
+            else
+            {
+                _config.UltimaPruebaResultado = "Error - Timeout de conexión";
+                _config.UltimaPruebaFecha = DateTime.Now;
+                _mensaje = $"✗ Timeout al conectar a {_config.ServidorSmtp}:{_config.Puerto}";
+                _esError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _config.UltimaPruebaResultado = $"Error - {ex.Message}";
+            _config.UltimaPruebaFecha = DateTime.Now;
+            _mensaje = $"✗ Error de conexión: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _probando = false;
+        }
+    }
+
+    private async Task EnviarCorreoPrueba()
+    {
+        if (string.IsNullOrEmpty(_correoDestinoPrueba))
+        {
+            _mensaje = "Ingresa un correo de destino para la prueba.";
+            _esError = true;
+            return;
+        }
+
+        _enviandoPrueba = true;
+        _mensaje = null;
+        StateHasChanged();
+
+        try
+        {
+            using var client = new SmtpClient(_config.ServidorSmtp, _config.Puerto);
+            
+            // Configurar seguridad
+            client.EnableSsl = _config.TipoSeguridad != "None";
+            client.Timeout = _config.TimeoutSegundos * 1000;
+
+            // Ignorar errores de certificado si está configurado
+            if (_config.IgnorarErroresCertificado)
+            {
+                ServicePointManager.ServerCertificateValidationCallback = (s, cert, chain, errors) => true;
+            }
+
+            // Configurar credenciales
+            if (!string.IsNullOrEmpty(_config.UsuarioSmtp) && !string.IsNullOrEmpty(_config.ContrasenaSmtp))
+            {
+                client.Credentials = new NetworkCredential(_config.UsuarioSmtp, _config.ContrasenaSmtp);
+            }
+
+            // Crear mensaje
+            var fromAddress = new MailAddress(_config.CorreoRemitente, _config.NombreRemitente ?? "SistemIA");
+            var toAddress = new MailAddress(_correoDestinoPrueba);
+            
+            using var mail = new MailMessage(fromAddress, toAddress)
+            {
+                Subject = "✓ Prueba de Correo - SistemIA",
+                Body = $@"
+<html>
+<body style='font-family: Arial, sans-serif;'>
+    <h2 style='color: #0d6efd;'>✓ Correo de Prueba Exitoso</h2>
+    <p>Este es un correo de prueba enviado desde <strong>SistemIA</strong>.</p>
+    <p>Si estás recibiendo este correo, la configuración de correo está funcionando correctamente.</p>
+    <hr />
+    <p style='color: #6c757d; font-size: 12px;'>
+        <strong>Configuración:</strong><br/>
+        Servidor: {_config.ServidorSmtp}:{_config.Puerto}<br/>
+        Seguridad: {_config.TipoSeguridad}<br/>
+        Fecha: {DateTime.Now:dd/MM/yyyy HH:mm:ss}
+    </p>
+    {(_config.FirmaHtml ?? "")}
+</body>
+</html>",
+                IsBodyHtml = true
+            };
+
+            // Agregar Reply-To si está configurado
+            if (!string.IsNullOrEmpty(_config.CorreoReplyTo))
+            {
+                mail.ReplyToList.Add(new MailAddress(_config.CorreoReplyTo));
+            }
+
+            // Agregar BCC si está configurado
+            if (!string.IsNullOrEmpty(_config.CorreoBccAuditoria))
+            {
+                mail.Bcc.Add(new MailAddress(_config.CorreoBccAuditoria));
+            }
+
+            await client.SendMailAsync(mail);
+
+            _config.UltimaPruebaResultado = "OK - Correo enviado exitosamente";
+            _config.UltimaPruebaFecha = DateTime.Now;
+            _mensaje = $"✓ Correo de prueba enviado a {_correoDestinoPrueba}";
+            _esError = false;
+        }
+        catch (Exception ex)
+        {
+            _config.UltimaPruebaResultado = $"Error - {ex.Message}";
+            _config.UltimaPruebaFecha = DateTime.Now;
+            _mensaje = $"✗ Error al enviar: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _enviandoPrueba = false;
+            // Restaurar validación de certificados
+            ServicePointManager.ServerCertificateValidationCallback = null;
+        }
+    }
+
+    private async Task EjecutarDiagnosticoCompleto()
+    {
+        _ejecutandoDiagnostico = true;
+        _diagnosticoFinalizado = false;
+        _diagnosticoExitoso = false;
+        _mostrarAyudaErrores = false;
+        _ultimoError = null;
+        _sugerenciaError = null;
+        _pasosDiagnostico = new List<PasoDiagnostico>
+        {
+            new() { Descripcion = "Verificando configuración básica...", Estado = "esperando" },
+            new() { Descripcion = "Resolviendo DNS del servidor...", Estado = "esperando" },
+            new() { Descripcion = "Conectando al servidor SMTP...", Estado = "esperando" },
+            new() { Descripcion = "Negociando seguridad TLS/SSL...", Estado = "esperando" },
+            new() { Descripcion = "Autenticando credenciales...", Estado = "esperando" },
+            new() { Descripcion = "Enviando correo de prueba...", Estado = "esperando" }
+        };
+        StateHasChanged();
+
+        try
+        {
+            // Paso 1: Verificar configuración básica
+            _pasosDiagnostico[0].Estado = "pendiente";
+            StateHasChanged();
+            await Task.Delay(300);
+
+            if (string.IsNullOrEmpty(_config.ServidorSmtp))
+            {
+                _pasosDiagnostico[0].Estado = "error";
+                _pasosDiagnostico[0].Detalle = "No se ha configurado el servidor SMTP";
+                throw new Exception("Servidor SMTP no configurado");
+            }
+            if (string.IsNullOrEmpty(_config.CorreoRemitente))
+            {
+                _pasosDiagnostico[0].Estado = "error";
+                _pasosDiagnostico[0].Detalle = "No se ha configurado el correo remitente";
+                throw new Exception("Correo remitente no configurado");
+            }
+            if (string.IsNullOrEmpty(_config.UsuarioSmtp) && !_config.UsarOAuth2 && _config.TipoProveedor != "SendGrid" && _config.TipoProveedor != "Mailgun")
+            {
+                _pasosDiagnostico[0].Estado = "error";
+                _pasosDiagnostico[0].Detalle = "No se han configurado las credenciales de autenticación";
+                throw new Exception("Credenciales no configuradas");
+            }
+
+            _pasosDiagnostico[0].Estado = "ok";
+            _pasosDiagnostico[0].Detalle = $"Servidor: {_config.ServidorSmtp}:{_config.Puerto} | Remitente: {_config.CorreoRemitente}";
+            StateHasChanged();
+
+            // Paso 2: Resolver DNS
+            _pasosDiagnostico[1].Estado = "pendiente";
+            StateHasChanged();
+
+            try
+            {
+                var ips = await System.Net.Dns.GetHostAddressesAsync(_config.ServidorSmtp);
+                _pasosDiagnostico[1].Estado = "ok";
+                _pasosDiagnostico[1].Detalle = $"IP resuelta: {ips.FirstOrDefault()}";
+            }
+            catch (Exception ex)
+            {
+                _pasosDiagnostico[1].Estado = "error";
+                _pasosDiagnostico[1].Detalle = $"No se pudo resolver: {ex.Message}";
+                GenerarSugerenciaError("DNS", ex.Message);
+                throw;
+            }
+            StateHasChanged();
+
+            // Paso 3: Conectar al servidor
+            _pasosDiagnostico[2].Estado = "pendiente";
+            StateHasChanged();
+
+            using var tcpClient = new System.Net.Sockets.TcpClient();
+            var connectTask = tcpClient.ConnectAsync(_config.ServidorSmtp, _config.Puerto);
+            
+            if (await Task.WhenAny(connectTask, Task.Delay(10000)) != connectTask)
+            {
+                _pasosDiagnostico[2].Estado = "error";
+                _pasosDiagnostico[2].Detalle = $"Timeout al conectar al puerto {_config.Puerto}";
+                GenerarSugerenciaError("CONEXION", "Timeout");
+                throw new Exception("Timeout de conexión");
+            }
+
+            await connectTask;
+            _pasosDiagnostico[2].Estado = "ok";
+            _pasosDiagnostico[2].Detalle = $"Conexión TCP establecida al puerto {_config.Puerto}";
+            tcpClient.Close();
+            StateHasChanged();
+
+            // Paso 4-5-6: Autenticación y envío real usando SmtpClient
+            _pasosDiagnostico[3].Estado = "pendiente";
+            StateHasChanged();
+
+            using var smtpClient = new SmtpClient(_config.ServidorSmtp, _config.Puerto);
+            smtpClient.EnableSsl = _config.TipoSeguridad != "None";
+            smtpClient.Timeout = (_config.TimeoutSegundos > 0 ? _config.TimeoutSegundos : 30) * 1000;
+
+            if (_config.IgnorarErroresCertificado)
+            {
+                ServicePointManager.ServerCertificateValidationCallback = (s, cert, chain, errors) => true;
+            }
+
+            _pasosDiagnostico[3].Estado = "ok";
+            _pasosDiagnostico[3].Detalle = $"Seguridad: {_config.TipoSeguridad} | SSL/TLS habilitado: {smtpClient.EnableSsl}";
+            StateHasChanged();
+
+            // Paso 5: Autenticación
+            _pasosDiagnostico[4].Estado = "pendiente";
+            StateHasChanged();
+
+            if (!string.IsNullOrEmpty(_config.UsuarioSmtp))
+            {
+                smtpClient.Credentials = new NetworkCredential(_config.UsuarioSmtp, _config.ContrasenaSmtp ?? "");
+                _pasosDiagnostico[4].Estado = "ok";
+                _pasosDiagnostico[4].Detalle = $"Usuario: {_config.UsuarioSmtp}";
+            }
+            else if (!string.IsNullOrEmpty(_config.ApiKey))
+            {
+                // SendGrid, Mailgun, etc.
+                smtpClient.Credentials = new NetworkCredential("apikey", _config.ApiKey);
+                _pasosDiagnostico[4].Estado = "ok";
+                _pasosDiagnostico[4].Detalle = "Autenticación por API Key";
+            }
+            else
+            {
+                _pasosDiagnostico[4].Estado = "ok";
+                _pasosDiagnostico[4].Detalle = "Sin autenticación (anónimo)";
+            }
+            StateHasChanged();
+
+            // Paso 6: Enviar correo de prueba
+            _pasosDiagnostico[5].Estado = "pendiente";
+            StateHasChanged();
+
+            var fromAddress = new MailAddress(_config.CorreoRemitente, _config.NombreRemitente ?? "SistemIA");
+            var toAddress = new MailAddress(_correoDestinoPrueba);
+            
+            using var mail = new MailMessage(fromAddress, toAddress)
+            {
+                Subject = "✅ Diagnóstico de Correo Exitoso - SistemIA",
+                Body = $@"
+<html>
+<body style='font-family: Arial, sans-serif; padding: 20px;'>
+    <div style='background: linear-gradient(135deg, #28a745, #20c997); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
+        <h1 style='margin: 0;'>✅ ¡Diagnóstico Exitoso!</h1>
+    </div>
+    
+    <p style='font-size: 16px;'>El sistema de correo de <strong>SistemIA</strong> está configurado correctamente.</p>
+    
+    <div style='background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;'>
+        <h3 style='margin-top: 0; color: #495057;'>📋 Detalles de la Configuración:</h3>
+        <table style='width: 100%; border-collapse: collapse;'>
+            <tr><td style='padding: 5px 0; color: #6c757d;'>Servidor:</td><td style='padding: 5px 0;'><strong>{_config.ServidorSmtp}:{_config.Puerto}</strong></td></tr>
+            <tr><td style='padding: 5px 0; color: #6c757d;'>Seguridad:</td><td style='padding: 5px 0;'><strong>{_config.TipoSeguridad}</strong></td></tr>
+            <tr><td style='padding: 5px 0; color: #6c757d;'>Remitente:</td><td style='padding: 5px 0;'><strong>{_config.CorreoRemitente}</strong></td></tr>
+            <tr><td style='padding: 5px 0; color: #6c757d;'>Fecha:</td><td style='padding: 5px 0;'><strong>{DateTime.Now:dd/MM/yyyy HH:mm:ss}</strong></td></tr>
+        </table>
+    </div>
+    
+    <p style='color: #6c757d; font-size: 12px;'>Este correo fue enviado automáticamente por el diagnóstico de configuración de correo de SistemIA.</p>
+    {(_config.FirmaHtml ?? "")}
+</body>
+</html>",
+                IsBodyHtml = true
+            };
+
+            await smtpClient.SendMailAsync(mail);
+
+            _pasosDiagnostico[5].Estado = "ok";
+            _pasosDiagnostico[5].Detalle = $"Correo enviado exitosamente a {_correoDestinoPrueba}";
+
+            // Éxito total
+            _diagnosticoExitoso = true;
+            _config.UltimaPruebaResultado = "OK - Diagnóstico completo exitoso";
+            _config.UltimaPruebaFecha = DateTime.Now;
+        }
+        catch (SmtpException smtpEx)
+        {
+            var pasoActual = _pasosDiagnostico.FirstOrDefault(p => p.Estado == "pendiente");
+            if (pasoActual != null)
+            {
+                pasoActual.Estado = "error";
+                pasoActual.Detalle = smtpEx.Message;
+            }
+            GenerarSugerenciaError("SMTP", smtpEx.Message);
+            _config.UltimaPruebaResultado = $"Error SMTP - {smtpEx.Message}";
+            _config.UltimaPruebaFecha = DateTime.Now;
+        }
+        catch (Exception ex)
+        {
+            var pasoActual = _pasosDiagnostico.FirstOrDefault(p => p.Estado == "pendiente");
+            if (pasoActual != null)
+            {
+                pasoActual.Estado = "error";
+                pasoActual.Detalle = ex.Message;
+            }
+            if (string.IsNullOrEmpty(_ultimoError))
+            {
+                GenerarSugerenciaError("GENERAL", ex.Message);
+            }
+            _config.UltimaPruebaResultado = $"Error - {ex.Message}";
+            _config.UltimaPruebaFecha = DateTime.Now;
+        }
+        finally
+        {
+            _ejecutandoDiagnostico = false;
+            _diagnosticoFinalizado = true;
+            ServicePointManager.ServerCertificateValidationCallback = null;
+            StateHasChanged();
+        }
+    }
+
+    private void GenerarSugerenciaError(string tipo, string mensaje)
+    {
+        _mostrarAyudaErrores = true;
+        _ultimoError = mensaje;
+
+        var mensajeLower = mensaje.ToLower();
+
+        if (tipo == "DNS" || mensajeLower.Contains("host") || mensajeLower.Contains("resolve"))
+        {
+            _sugerenciaError = "El servidor SMTP no fue encontrado. Verifica que el nombre del servidor esté escrito correctamente. Para Gmail usa 'smtp.gmail.com', para Outlook usa 'smtp-mail.outlook.com'.";
+        }
+        else if (tipo == "CONEXION" || mensajeLower.Contains("timeout") || mensajeLower.Contains("connection"))
+        {
+            _sugerenciaError = $"No se pudo conectar al puerto {_config.Puerto}. Verifica que: (1) El firewall no esté bloqueando el puerto, (2) El puerto sea correcto para el tipo de seguridad elegida (587 para TLS, 465 para SSL).";
+        }
+        else if (mensajeLower.Contains("authentication") || mensajeLower.Contains("credential") || mensajeLower.Contains("password") || mensajeLower.Contains("5.7."))
+        {
+            if (_config.TipoProveedor == "Gmail")
+            {
+                _sugerenciaError = "Error de autenticación en Gmail. Debes usar una 'Contraseña de Aplicación', no tu contraseña normal. Ve a myaccount.google.com/apppasswords para crear una.";
+            }
+            else if (_config.TipoProveedor == "Outlook")
+            {
+                _sugerenciaError = "Error de autenticación en Outlook. Verifica que tu cuenta permita acceso SMTP (puede requerir configuración en el portal de Microsoft 365).";
+            }
+            else
+            {
+                _sugerenciaError = "Error de autenticación. Verifica que el usuario y contraseña sean correctos.";
+            }
+        }
+        else if (mensajeLower.Contains("certificate") || mensajeLower.Contains("ssl") || mensajeLower.Contains("tls"))
+        {
+            _sugerenciaError = "Error de certificado SSL/TLS. Prueba marcar la opción 'Ignorar errores de certificado' en la sección de opciones avanzadas.";
+        }
+        else if (mensajeLower.Contains("relay") || mensajeLower.Contains("5.5.1"))
+        {
+            _sugerenciaError = "El servidor rechazó el envío (relay denied). El correo remitente debe ser autorizado por el servidor SMTP.";
+        }
+        else
+        {
+            _sugerenciaError = $"Revisa la configuración y los datos ingresados. Error específico: {mensaje}";
+        }
+    }
+
+    private void OnProveedorCambiado()
+    {
+        ActualizarDescripcionProveedor();
+        
+        // Autocompletar configuración según proveedor
+        switch (_config.TipoProveedor)
+        {
+            case "Gmail":
+                _config.ServidorSmtp = "smtp.gmail.com";
+                _config.Puerto = 587;
+                _config.TipoSeguridad = "TLS";
+                _placeholderServidor = "smtp.gmail.com";
+                break;
+            case "Outlook":
+                _config.ServidorSmtp = "smtp-mail.outlook.com";
+                _config.Puerto = 587;
+                _config.TipoSeguridad = "STARTTLS";
+                _placeholderServidor = "smtp-mail.outlook.com";
+                break;
+            default:
+                _placeholderServidor = "smtp.ejemplo.com";
+                break;
+        }
+    }
+
+    private void OnSeguridadCambiada()
+    {
+        // Sugerir puerto según tipo de seguridad
+        var sugerido = Models.TiposSeguridadCorreo.Listado.FirstOrDefault(s => s.Valor == _config.TipoSeguridad);
+        if (sugerido != default && (_config.Puerto == 25 || _config.Puerto == 465 || _config.Puerto == 587))
+        {
+            _config.Puerto = sugerido.PuertoSugerido;
+        }
+    }
+
+    private void ActualizarDescripcionProveedor()
+    {
+        var prov = Models.TiposProveedorCorreo.Listado.FirstOrDefault(p => p.Valor == _config.TipoProveedor);
+        _descripcionProveedor = prov != default ? prov.Descripcion : null;
+    }
+
+    private void ConfigurarRapido_Gmail()
+    {
+        _config.TipoProveedor = "Gmail";
+        _config.ServidorSmtp = "smtp.gmail.com";
+        _config.Puerto = 587;
+        _config.TipoSeguridad = "TLS";
+        _config.UsarOAuth2 = false;
+        ActualizarDescripcionProveedor();
+    }
+
+    private void ConfigurarRapido_Outlook()
+    {
+        _config.TipoProveedor = "Outlook";
+        _config.ServidorSmtp = "smtp-mail.outlook.com";
+        _config.Puerto = 587;
+        _config.TipoSeguridad = "STARTTLS";
+        _config.UsarOAuth2 = false;
+        ActualizarDescripcionProveedor();
+    }
+
+    private void ConfigurarRapido_Yahoo()
+    {
+        _config.TipoProveedor = "SMTP";
+        _config.ServidorSmtp = "smtp.mail.yahoo.com";
+        _config.Puerto = 587;
+        _config.TipoSeguridad = "TLS";
+        ActualizarDescripcionProveedor();
+    }
+
+    private async Task IniciarAutorizacionOAuth2()
+    {
+        // TODO: Implementar flujo OAuth2 completo
+        // Por ahora mostrar instrucciones
+        _mensaje = "La autorización OAuth2 requiere configuración adicional. Por favor, sigue las instrucciones de ayuda para obtener el Refresh Token manualmente.";
+        _esError = false;
+        await Task.CompletedTask;
+    }
+
+    // ========== MÉTODOS PARA DESTINATARIOS DE INFORMES ==========
+
+    private void MostrarFormularioDestinatario()
+    {
+        _destinatarioEditando = new Models.DestinatarioInforme
+        {
+            Activo = true,
+            TipoCopia = "TO",
+            IdSucursal = _sucursalId,
+            IdConfiguracionCorreo = _config.IdConfiguracionCorreo > 0 ? _config.IdConfiguracionCorreo : null
+        };
+        _mostrarModalDestinatario = true;
+    }
+
+    private void EditarDestinatario(Models.DestinatarioInforme dest)
+    {
+        // Crear una copia para edición
+        _destinatarioEditando = new Models.DestinatarioInforme
+        {
+            IdDestinatarioInforme = dest.IdDestinatarioInforme,
+            Nombre = dest.Nombre,
+            Correo = dest.Correo,
+            Activo = dest.Activo,
+            TipoCopia = dest.TipoCopia,
+            Notas = dest.Notas,
+            RecibeVentasDiarias = dest.RecibeVentasDiarias,
+            RecibeResumenSemanal = dest.RecibeResumenSemanal,
+            RecibeResumenMensual = dest.RecibeResumenMensual,
+            RecibeAlertaStock = dest.RecibeAlertaStock,
+            RecibeCierreCaja = dest.RecibeCierreCaja,
+            RecibeInformeCompras = dest.RecibeInformeCompras,
+            RecibeResumenSifen = dest.RecibeResumenSifen,
+            RecibeAlertaVencimientos = dest.RecibeAlertaVencimientos,
+            RecibeCopiaFacturas = dest.RecibeCopiaFacturas,
+            RecibeResumenCierre = dest.RecibeResumenCierre,
+            IdSucursal = dest.IdSucursal,
+            IdConfiguracionCorreo = dest.IdConfiguracionCorreo
+        };
+        _mostrarModalDestinatario = true;
+    }
+
+    private void CerrarModalDestinatario()
+    {
+        _mostrarModalDestinatario = false;
+        _destinatarioEditando = new();
+    }
+
+    private async Task GuardarDestinatario()
+    {
+        if (string.IsNullOrWhiteSpace(_destinatarioEditando.Nombre))
+        {
+            _mensaje = "El nombre del destinatario es requerido.";
+            _esError = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_destinatarioEditando.Correo))
+        {
+            _mensaje = "El correo del destinatario es requerido.";
+            _esError = true;
+            return;
+        }
+
+        _guardandoDestinatario = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            if (_destinatarioEditando.IdDestinatarioInforme == 0)
+            {
+                // Nuevo destinatario
+                _destinatarioEditando.FechaCreacion = DateTime.Now;
+                _destinatarioEditando.UsuarioCreacion = _usuarioNombre;
+                _destinatarioEditando.IdSucursal = _sucursalId;
+                
+                if (_config.IdConfiguracionCorreo > 0)
+                {
+                    _destinatarioEditando.IdConfiguracionCorreo = _config.IdConfiguracionCorreo;
+                }
+
+                db.DestinatariosInforme.Add(_destinatarioEditando);
+                await db.SaveChangesAsync();
+                _mensaje = $"Destinatario '{_destinatarioEditando.Nombre}' agregado correctamente.";
+            }
+            else
+            {
+                // Actualizar existente
+                var existente = await db.DestinatariosInforme.FindAsync(_destinatarioEditando.IdDestinatarioInforme);
+                if (existente != null)
+                {
+                    existente.Nombre = _destinatarioEditando.Nombre;
+                    existente.Correo = _destinatarioEditando.Correo;
+                    existente.Activo = _destinatarioEditando.Activo;
+                    existente.TipoCopia = _destinatarioEditando.TipoCopia;
+                    existente.Notas = _destinatarioEditando.Notas;
+                    existente.RecibeVentasDiarias = _destinatarioEditando.RecibeVentasDiarias;
+                    existente.RecibeResumenSemanal = _destinatarioEditando.RecibeResumenSemanal;
+                    existente.RecibeResumenMensual = _destinatarioEditando.RecibeResumenMensual;
+                    existente.RecibeAlertaStock = _destinatarioEditando.RecibeAlertaStock;
+                    existente.RecibeCierreCaja = _destinatarioEditando.RecibeCierreCaja;
+                    existente.RecibeInformeCompras = _destinatarioEditando.RecibeInformeCompras;
+                    existente.RecibeResumenSifen = _destinatarioEditando.RecibeResumenSifen;
+                    existente.RecibeAlertaVencimientos = _destinatarioEditando.RecibeAlertaVencimientos;
+                    existente.RecibeCopiaFacturas = _destinatarioEditando.RecibeCopiaFacturas;
+                    existente.RecibeResumenCierre = _destinatarioEditando.RecibeResumenCierre;
+                    existente.FechaModificacion = DateTime.Now;
+
+                    await db.SaveChangesAsync();
+                    _mensaje = $"Destinatario '{existente.Nombre}' actualizado correctamente.";
+                }
+            }
+
+            _esError = false;
+            CerrarModalDestinatario();
+            await CargarDestinatarios();
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error al guardar: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _guardandoDestinatario = false;
+        }
+    }
+
+    private async Task EliminarDestinatario(Models.DestinatarioInforme dest)
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", $"¿Eliminar el destinatario '{dest.Nombre}'?");
+        if (!confirmar) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var existente = await db.DestinatariosInforme.FindAsync(dest.IdDestinatarioInforme);
+            if (existente != null)
+            {
+                db.DestinatariosInforme.Remove(existente);
+                await db.SaveChangesAsync();
+                _mensaje = $"Destinatario '{dest.Nombre}' eliminado.";
+                _esError = false;
+                await CargarDestinatarios();
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error al eliminar: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    private async Task CambiarActivoDestinatario(Models.DestinatarioInforme dest, bool activo)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var existente = await db.DestinatariosInforme.FindAsync(dest.IdDestinatarioInforme);
+            if (existente != null)
+            {
+                existente.Activo = activo;
+                existente.FechaModificacion = DateTime.Now;
+                await db.SaveChangesAsync();
+                dest.Activo = activo;
+                _mensaje = $"Destinatario '{dest.Nombre}' {(activo ? "activado" : "desactivado")}.";
+                _esError = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"Error: {ex.Message}";
+            _esError = true;
+        }
+    }
+}

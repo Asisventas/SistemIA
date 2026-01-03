@@ -180,6 +180,53 @@ else
                             </div>
                         </div>
                     </div>
+                    
+                    @if (cierreDetalle.CantNotasCredito > 0 || cierreDetalle.CantComprasEfectivo > 0 || cierreDetalle.CantNotasCreditoCompras > 0)
+                    {
+                        <div class="row mb-3 text-center">
+                            @if (cierreDetalle.CantNotasCredito > 0)
+                            {
+                                <div class="col-md-3">
+                                    <div class="card border-warning">
+                                        <div class="card-body py-2">
+                                            <small class="text-warning">NC Ventas (@cierreDetalle.CantNotasCredito)</small>
+                                            <div class="fw-bold text-warning">-@cierreDetalle.TotalNotasCredito.ToString("N0")</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            @if (cierreDetalle.CantComprasEfectivo > 0)
+                            {
+                                <div class="col-md-3">
+                                    <div class="card border-danger">
+                                        <div class="card-body py-2">
+                                            <small class="text-danger">Compras Efect. (@cierreDetalle.CantComprasEfectivo)</small>
+                                            <div class="fw-bold text-danger">-@cierreDetalle.TotalComprasEfectivo.ToString("N0")</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            @if (cierreDetalle.CantNotasCreditoCompras > 0)
+                            {
+                                <div class="col-md-3">
+                                    <div class="card border-success">
+                                        <div class="card-body py-2">
+                                            <small class="text-success">NC Compras (@cierreDetalle.CantNotasCreditoCompras)</small>
+                                            <div class="fw-bold text-success">+@cierreDetalle.TotalNotasCreditoCompras.ToString("N0")</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            <div class="col-md-3">
+                                <div class="card bg-dark text-white">
+                                    <div class="card-body py-2">
+                                        <small>Neto en Caja</small>
+                                        <div class="fw-bold">@((cierreDetalle.TotalVentasContado + cierreDetalle.TotalCobrosCredito - cierreDetalle.TotalNotasCredito - cierreDetalle.TotalComprasEfectivo + cierreDetalle.TotalNotasCreditoCompras).ToString("N0"))</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
 
                     <h6>Entregas por Medio de Pago</h6>
                     <table class="table table-sm table-striped">

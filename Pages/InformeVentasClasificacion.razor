@@ -60,6 +60,10 @@
                 <button class="btn btn-success" title="Exportar XLSX" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
                 <button class="btn btn-outline-primary" title="Imprimir Ticket" @onclick="ImprimirTicket"><i class="bi bi-receipt"></i></button>
                 <button class="btn btn-outline-secondary" title="Imprimir A4" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+                <EnviarInformeCorreo 
+                  TituloInforme="Ventas por Clasificación" 
+                  OnGenerarHtml="GenerarTablaHtml" 
+                  FiltrosAplicados="@ObtenerFiltrosTexto()" />
             </div>
         </div>
     </div>
@@ -722,5 +726,42 @@ else
         public decimal Costo { get; set; }
         public decimal PrecioPromedio { get; set; }
         public decimal Utilidad => Total - Costo;
+    }
+
+    private string ObtenerFiltrosTexto()
+    {
+        var filtros = new List<string>();
+        if (fDesde.HasValue) filtros.Add($"Desde: {fDesde:dd/MM/yyyy}");
+        if (fHasta.HasValue) filtros.Add($"Hasta: {fHasta:dd/MM/yyyy}");
+        if (fIdClasificacion > 0) filtros.Add($"Clasificación: {clasificaciones.FirstOrDefault(c => c.IdClasificacion == fIdClasificacion)?.Nombre}");
+        if (fIdCaja > 0) filtros.Add($"Caja: {fIdCaja}");
+        if (!string.IsNullOrWhiteSpace(fEstado)) filtros.Add($"Estado: {fEstado}");
+        return string.Join(" | ", filtros);
+    }
+
+    private Task<string> GenerarTablaHtml()
+    {
+        if (!resumenClasificacion.Any()) return Task.FromResult("<p>Sin datos para mostrar</p>");
+        var sb = new System.Text.StringBuilder();
+        // Resumen general
+        sb.AppendLine("<div style='margin-bottom:15px;'>");
+        sb.AppendLine($"<strong>Total Vendido:</strong> {totalGeneral:N0} ₲ | <strong>Cantidad:</strong> {cantidadTotal:N0} uds | <strong>Clasificaciones:</strong> {resumenClasificacion.Count}");
+        sb.AppendLine("</div>");
+        sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:12px;'>");
+        sb.AppendLine("<thead><tr style='background:#f0f0f0;'><th>#</th><th>Clasificación</th><th style='text-align:right'>Cantidad</th><th style='text-align:right'>Total</th><th style='text-align:right'>Costo</th><th style='text-align:right'>Utilidad</th><th style='text-align:right'>% Margen</th><th style='text-align:right'>% Part.</th></tr></thead>");
+        sb.AppendLine("<tbody>");
+        int idx = 0;
+        foreach (var item in resumenClasificacion.OrderByDescending(r => r.Total))
+        {
+            var pct = totalGeneral > 0 ? (item.Total / totalGeneral * 100) : 0;
+            var margen = item.Total > 0 ? ((item.Total - item.Costo) / item.Total * 100) : 0;
+            var colorUtil = item.Utilidad >= 0 ? "color:green" : "color:red";
+            sb.AppendLine($"<tr><td>{++idx}</td><td>{System.Net.WebUtility.HtmlEncode(item.Clasificacion)}</td><td style='text-align:right'>{item.Cantidad:N2}</td><td style='text-align:right;font-weight:bold'>{item.Total:N0}</td><td style='text-align:right'>{item.Costo:N0}</td><td style='text-align:right;{colorUtil}'>{item.Utilidad:N0}</td><td style='text-align:right'>{margen:F1}%</td><td style='text-align:right'>{pct:F1}%</td></tr>");
+        }
+        sb.AppendLine("</tbody>");
+        var margenTotal = totalGeneral > 0 ? ((totalGeneral - resumenClasificacion.Sum(r => r.Costo)) / totalGeneral * 100) : 0;
+        sb.AppendLine($"<tfoot><tr style='background:#e0e0e0;font-weight:bold;'><td colspan='2'>TOTAL</td><td style='text-align:right'>{cantidadTotal:N2}</td><td style='text-align:right'>{totalGeneral:N0}</td><td style='text-align:right'>{resumenClasificacion.Sum(r => r.Costo):N0}</td><td style='text-align:right'>{resumenClasificacion.Sum(r => r.Utilidad):N0}</td><td style='text-align:right'>{margenTotal:F1}%</td><td style='text-align:right'>100%</td></tr></tfoot>");
+        sb.AppendLine("</table>");
+        return Task.FromResult(sb.ToString());
     }
 }
