@@ -217,6 +217,18 @@ IF OBJECT_ID('RegistrosAuditoria', 'U') IS NOT NULL
 GO
 
 -- ============================================
+-- 12B. LIMPIAR CONFIGURACIÓN DE CORREO
+-- ============================================
+PRINT '[12B/15] Limpiando configuración de correo...'
+
+IF OBJECT_ID('DestinatariosInforme', 'U') IS NOT NULL
+    DELETE FROM DestinatariosInforme;
+
+IF OBJECT_ID('ConfiguracionesCorreo', 'U') IS NOT NULL
+    DELETE FROM ConfiguracionesCorreo;
+GO
+
+-- ============================================
 -- 13. REACTIVAR CONSTRAINTS
 -- ============================================
 PRINT '[13/15] Reactivando constraints...'
@@ -297,6 +309,13 @@ IF OBJECT_ID('Asistencias', 'U') IS NOT NULL
 -- Auditoría
 IF OBJECT_ID('RegistrosAuditoria', 'U') IS NOT NULL
     DBCC CHECKIDENT ('RegistrosAuditoria', RESEED, 0);
+
+-- Configuración de Correo
+IF OBJECT_ID('DestinatariosInforme', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('DestinatariosInforme', RESEED, 0);
+
+IF OBJECT_ID('ConfiguracionesCorreo', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('ConfiguracionesCorreo', RESEED, 0);
 GO
 
 -- ============================================
@@ -314,6 +333,7 @@ PRINT '  - Proveedores (excepto ID 1)'
 PRINT '  - Timbrados, Pagos, Cobros'
 PRINT '  - Cierres de caja, Asistencias'
 PRINT '  - Auditoría'
+PRINT '  - Configuración de Correo y Destinatarios'
 PRINT ''
 PRINT 'Datos CONSERVADOS:'
 PRINT '  - Sociedades, Sucursales, Cajas, Depósitos'

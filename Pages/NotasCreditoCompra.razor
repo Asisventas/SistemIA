@@ -16,6 +16,9 @@
 @inject IJSRuntime JS
 @inject PermisosService PermisosService
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ITrackingService TrackingService
+@using static SistemIA.Models.AsistenteIA.TipoAccionTracking
+@using static SistemIA.Models.AsistenteIA.CategoriaAccion
 
 <PageProtection Modulo="/notas-credito-compra" Permiso="CREATE">
 <PageTitle>@(_esEdicion ? "Editar" : "Nueva") Nota de Crédito Compra</PageTitle>
@@ -1191,6 +1194,16 @@
             }
             
             var ncGuardada = _nc.NumeroNota;
+            
+            // Registrar acción para tracking IA
+            _ = TrackingService.RegistrarOperacionAsync(
+                tipoAccion: Creacion,
+                categoria: "NotasCredito",
+                descripcion: $"NC Compra #{ncGuardada} - {_nc.SimboloMoneda} {_nc.Total:N0} - {_nc.Motivo}",
+                entidadId: _nc.IdNotaCreditoCompra,
+                entidadTipo: "NotaCreditoCompra",
+                datos: new { Proveedor = _proveedorSeleccionado?.RazonSocial, Items = _detalles.Count });
+            
             await JS.InvokeVoidAsync("alert", $"NC de Compra #{ncGuardada} guardada correctamente.");
             
             // Limpiar formulario para crear nueva NC
@@ -1202,6 +1215,13 @@
         {
             var innerMsg = ex.InnerException?.Message ?? "";
             await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}\n{innerMsg}");
+            
+            // Registrar error para tracking IA
+            _ = TrackingService.RegistrarErrorAsync(
+                descripcion: $"Error al guardar NC Compra: {ex.Message}",
+                mensajeError: ex.Message,
+                stackTrace: ex.StackTrace,
+                componente: "NotasCreditoCompra");
         }
         finally
         {

@@ -45,6 +45,20 @@
     </Content>
   </ItemGroup>
 
+  <!-- Changelog para notas de versión -->
+  <ItemGroup>
+    <Content Include="CHANGELOG.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Base de conocimiento del Asistente IA -->
+  <ItemGroup>
+    <Content Update="Data\Conocimiento\base_conocimiento.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- Evitar reinicios de dotnet watch al subir imágenes de usuarios -->
   <ItemGroup>
     <Watch Remove="wwwroot\uploads\**" />

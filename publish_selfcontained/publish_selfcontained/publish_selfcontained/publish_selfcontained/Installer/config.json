@@ -1,0 +1,26 @@
+{
+  "Instalacion": {
+    "RutaInstalacion": "C:\\SistemIA",
+    "NombreServicio": "SistemIA",
+    "DescripcionServicio": "Sistema de Gestión Empresarial SistemIA",
+    "PuertoHttp": 5095,
+    "PuertoHttps": 7060,
+    "InicioAutomatico": true
+  },
+  "BaseDatos": {
+    "Servidor": ".\\SQLEXPRESS",
+    "BaseDatos": "SistemIA_DB",
+    "Usuario": "sa",
+    "Password": "",
+    "AutenticacionWindows": false,
+    "TrustServerCertificate": true
+  },
+  "Sociedad": {
+    "Nombre": "Mi Empresa S.A.",
+    "RUC": "80000000-0",
+    "Direccion": "Dirección de la empresa",
+    "Telefono": "",
+    "Email": "",
+    "Ciudad": "Asunción"
+  }
+}

@@ -1134,6 +1134,24 @@ function Copy-ApplicationFiles {
     try {
         Copy-Item -Path "$publishPath\*" -Destination $destPath -Recurse -Force
         Write-Success "Archivos copiados correctamente"
+        
+        # Copiar modelos de reconocimiento facial si existen
+        $faceModelsSource = Join-Path $InstallerPath "face_recognition_models"
+        if (-not (Test-Path $faceModelsSource)) {
+            $faceModelsSource = Join-Path $publishPath "face_recognition_models"
+        }
+        if (Test-Path $faceModelsSource) {
+            $faceModelsDest = Join-Path $destPath "face_recognition_models"
+            if (-not (Test-Path $faceModelsDest)) {
+                New-Item -ItemType Directory -Path $faceModelsDest -Force | Out-Null
+            }
+            Copy-Item -Path "$faceModelsSource\*" -Destination $faceModelsDest -Recurse -Force
+            Write-Success "Modelos de reconocimiento facial copiados"
+        }
+        else {
+            Write-Warning "No se encontraron modelos de reconocimiento facial (face_recognition_models)"
+        }
+        
         return $true
     }
     catch {

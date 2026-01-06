@@ -154,6 +154,14 @@
     font-size: 11px !important;
 }
 
+.col-descuento {
+    text-align: right !important;
+    font-size: 10px !important;
+    color: #17a2b8 !important;
+    width: 32px !important;
+    flex-shrink: 0 !important;
+}
+
 /* Totales */
 .ticket-totales {
     font-size: 12px !important;
@@ -303,6 +311,11 @@
     .col-precio,
     .col-subtotal {
         font-size: 22px !important;
+    }
+
+    .col-descuento {
+        font-size: 20px !important;
+        color: #17a2b8 !important;
     }
 
     .ticket-totales {

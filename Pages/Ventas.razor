@@ -306,10 +306,6 @@
           {
             <div class="form-text text-muted small"><i class="bi bi-info-circle"></i> Sin descuento</div>
           }
-          else if (!ProductoTieneDescuentoConfigurado && NuevoDetalle.IdProducto > 0 && ProductoPermiteDescuento)
-          {
-            <div class="form-text text-warning small"><i class="bi bi-exclamation-triangle"></i> Sin regla configurada</div>
-          }
           @if (!PuedeModificarDescuento && NuevoDetalleDescuentoPorcentaje > 0)
           {
             <div class="form-text text-info small"><i class="bi bi-lock"></i> Automático</div>

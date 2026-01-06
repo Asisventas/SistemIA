@@ -80,6 +80,16 @@
     white-space: nowrap;
 }
 
+/* Permitir que textos hagan wrap en móviles pequeños */
+@media (max-width: 480px) {
+    .nav-link,
+    .link-text,
+    .submenu-button {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+    }
+}
+
 .nav-link:hover {
     background-color: rgba(255, 255, 255, 0.1);
     color: #ffffff;
@@ -384,61 +394,5 @@
 @media (max-width: 767.98px) {
     .nav-menu, .sidebar {
         -webkit-overflow-scrolling: touch;
-    }
-    
-    /* Asegurar que el sidebar tenga ancho suficiente para textos */
-    .sidebar.open {
-        min-width: 280px;
-    }
-    
-    /* Textos del menú visibles completamente */
-    .nav-link, .submenu-button {
-        white-space: nowrap;
-        overflow: visible;
-    }
-    
-    .link-text {
-        display: inline-block;
-        white-space: nowrap;
-        overflow: visible;
-        text-overflow: clip;
-    }
-    
-    /* Submenú items con más espacio */
-    .submenu-items .nav-link {
-        padding-left: 2rem;
-        padding-right: 1rem;
-    }
-    
-    .submenu-items .link-text {
-        font-size: 0.9rem;
-    }
-}
-
-/* Celulares pequeños - textos legibles */
-@media (max-width: 479.98px) {
-    .sidebar.open {
-        min-width: 260px;
-        width: 85vw;
-        max-width: 320px;
-    }
-    
-    .nav-pills .nav-link,
-    .submenu-button {
-        font-size: 0.9rem;
-        padding: 0.7rem 0.8rem;
-    }
-    
-    .link-text {
-        font-size: 0.9rem;
-    }
-    
-    .submenu-items .nav-link {
-        padding: 0.6rem 0.8rem 0.6rem 1.8rem;
-        font-size: 0.85rem;
-    }
-    
-    .submenu-items .link-text {
-        font-size: 0.85rem;
     }
 }

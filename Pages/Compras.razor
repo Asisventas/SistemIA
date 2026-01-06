@@ -13,7 +13,11 @@
 @inject PermisosService PermisosService
 @inject SistemIA.Services.ICajaService CajaService
 @inject SistemIA.Services.IRucDnitService RucService
+@inject SistemIA.Services.ITrackingService TrackingService
+@inject AuditoriaService AuditoriaService
 @using Microsoft.AspNetCore.Components.Authorization
+@using static SistemIA.Models.AsistenteIA.TipoAccionTracking
+@using static SistemIA.Models.AsistenteIA.CategoriaAccion
 
 <PageProtection Modulo="/compras" Permiso="VIEW">
 
@@ -2395,6 +2399,40 @@ END
 
             await trx.CommitAsync();
 
+            // Registrar en auditoría con contexto completo
+            var sucAudit = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == Compra.IdSucursal);
+            var rolUsuario = await ctx.Usuarios.AsNoTracking()
+                .Where(u => u.Id_Usu == _usuarioId)
+                .Select(u => u.Rol != null ? u.Rol.NombreRol : null)
+                .FirstOrDefaultAsync();
+            
+            _ = AuditoriaService.RegistrarAccionAsync(
+                idUsuario: _usuarioId,
+                nombreUsuario: _usuarioNombre ?? "Sistema",
+                rolUsuario: rolUsuario,
+                accion: "Crear Compra",
+                tipoAccion: "CREATE",
+                modulo: "Compras",
+                entidad: "Compra",
+                idRegistroAfectado: Compra.IdCompra,
+                descripcion: $"Compra #{Compra.IdCompra} - Fact #{Compra.Establecimiento}-{Compra.PuntoExpedicion}-{Compra.NumeroFactura} - {Compra.SimboloMoneda} {Compra.Total:N0} - Proveedor: {BuscarProveedor} - Items: {Detalles.Count}",
+                datosDespues: new { 
+                    Compra.IdCompra,
+                    Factura = $"{Compra.Establecimiento}-{Compra.PuntoExpedicion}-{Compra.NumeroFactura}",
+                    Compra.Total, 
+                    Proveedor = BuscarProveedor, 
+                    Items = Detalles.Count,
+                    Compra.FormaPago
+                },
+                fechaHoraEquipo: DateTime.Now,
+                fechaCaja: CajaActiva?.FechaActualCaja,
+                turno: CajaActiva?.TurnoActual,
+                idSucursal: Compra.IdSucursal,
+                nombreSucursal: sucAudit?.NombreSucursal,
+                idCaja: CajaActiva?.IdCaja,
+                nombreCaja: CajaActiva?.Nombre
+            );
+
             // Imprimir en formato Factura General con los datos cargados
             var compraCopia = new SistemIA.Models.Compra
             {
@@ -2485,6 +2523,13 @@ END
         {
             await trx.RollbackAsync();
             Error = (ex.InnerException?.Message ?? ex.Message);
+            
+            // Registrar error para tracking IA
+            _ = TrackingService.RegistrarErrorAsync(
+                descripcion: $"Error al guardar compra: {Error}",
+                mensajeError: ex.Message,
+                stackTrace: ex.StackTrace,
+                componente: "Compras");
         }
     }
 

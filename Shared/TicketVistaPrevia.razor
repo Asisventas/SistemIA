@@ -142,6 +142,10 @@
                             <div class="ticket-detalle-header">
                                 <span class="col-cant">CANT.</span>
                                 <span class="col-desc">DESCRIPCIÓN</span>
+                                @if (_modoFarmaciaActivo)
+                                {
+                                    <span class="col-descuento">%Desc</span>
+                                }
                                 <span class="col-precio">P.UNIT.</span>
                                 @if (_modoFarmaciaActivo)
                                 {
@@ -159,6 +163,10 @@
                                     <div class="ticket-detalle-item">
                                         <span class="col-cant">@det.Cantidad</span>
                                         <span class="col-desc">@det.Producto?.Descripcion</span>
+                                        @if (_modoFarmaciaActivo)
+                                        {
+                                            <span class="col-descuento">@(det.PorcentajeDescuento.HasValue && det.PorcentajeDescuento.Value > 0 ? det.PorcentajeDescuento.Value.ToString("N2") : "-")</span>
+                                        }
                                         <span class="col-precio">@FormatearImporte(det.PrecioUnitario)</span>
                                         @if (_modoFarmaciaActivo)
                                         {
@@ -386,6 +394,7 @@
 
     .ticket-preview-container .ticket-detalle-header .col-cant { width: 38px; text-align: center; }
     .ticket-preview-container .ticket-detalle-header .col-desc { flex: 1; text-align: left; padding-left: 4px; }
+    .ticket-preview-container .ticket-detalle-header .col-descuento { width: 40px; text-align: right; color: #17a2b8; font-size: 11px; }
     .ticket-preview-container .ticket-detalle-header .col-precio { width: 60px; text-align: right; }
     .ticket-preview-container .ticket-detalle-header .col-pmin { width: 60px; text-align: right; color: #0d6efd; }
     .ticket-preview-container .ticket-detalle-header .col-importe { width: 70px; text-align: right; font-weight: bold; }
@@ -417,6 +426,7 @@
         white-space: normal;
         line-height: 1.2;
     }
+    .ticket-preview-container .ticket-detalle-item .col-descuento { width: 40px; text-align: right; flex-shrink: 0; color: #17a2b8; font-size: 11px; }
     .ticket-preview-container .ticket-detalle-item .col-precio { width: 60px; text-align: right; flex-shrink: 0; }
     .ticket-preview-container .ticket-detalle-item .col-pmin { width: 60px; text-align: right; flex-shrink: 0; color: #0d6efd; }
     .ticket-preview-container .ticket-detalle-item .col-importe { width: 70px; text-align: right; flex-shrink: 0; font-weight: 600; }

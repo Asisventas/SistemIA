@@ -68,6 +68,68 @@ namespace SistemIA.Services
         }
 
         /// <summary>
+        /// Obtiene información detallada de los archivos críticos del sistema para verificación
+        /// </summary>
+        public List<ArchivoVerificacion> ObtenerInfoArchivosCriticos()
+        {
+            var archivos = new List<ArchivoVerificacion>();
+            var archivosCriticos = new[] { "SistemIA.exe", "SistemIA.dll", "SistemIA.pdb" };
+
+            foreach (var nombreArchivo in archivosCriticos)
+            {
+                var rutaArchivo = Path.Combine(_appDir, nombreArchivo);
+                var info = new ArchivoVerificacion { Nombre = nombreArchivo };
+
+                if (File.Exists(rutaArchivo))
+                {
+                    var fileInfo = new FileInfo(rutaArchivo);
+                    info.Existe = true;
+                    info.FechaModificacion = fileInfo.LastWriteTime;
+                    info.TamanoKB = fileInfo.Length / 1024.0;
+                    
+                    // Verificar si es reciente (dentro de los últimos 30 minutos)
+                    var diferencia = DateTime.Now - fileInfo.LastWriteTime;
+                    info.EsReciente = diferencia.TotalMinutes <= 30;
+                }
+
+                archivos.Add(info);
+            }
+
+            return archivos;
+        }
+
+        /// <summary>
+        /// Verifica si la actualización fue exitosa comparando fechas de archivos
+        /// </summary>
+        public ResultadoVerificacion VerificarActualizacion()
+        {
+            var resultado = new ResultadoVerificacion
+            {
+                FechaVerificacion = DateTime.Now,
+                Archivos = ObtenerInfoArchivosCriticos()
+            };
+
+            // Verificar si al menos los archivos principales existen y son recientes
+            var exeInfo = resultado.Archivos.FirstOrDefault(a => a.Nombre == "SistemIA.exe");
+            var dllInfo = resultado.Archivos.FirstOrDefault(a => a.Nombre == "SistemIA.dll");
+
+            resultado.Exitosa = (exeInfo?.Existe == true || dllInfo?.Existe == true);
+            
+            if (resultado.Exitosa)
+            {
+                var fechaReferencia = exeInfo?.FechaModificacion ?? dllInfo?.FechaModificacion ?? DateTime.MinValue;
+                resultado.FechaArchivos = fechaReferencia;
+                resultado.Mensaje = $"Archivos actualizados correctamente. Fecha: {fechaReferencia:dd/MM/yyyy HH:mm:ss}";
+            }
+            else
+            {
+                resultado.Mensaje = "No se encontraron los archivos principales del sistema";
+            }
+
+            return resultado;
+        }
+
+        /// <summary>
         /// Proceso completo de actualización con backups y rollback
         /// </summary>
         public async Task<ResultadoActualizacion> ActualizarSistema(
@@ -645,8 +707,8 @@ namespace SistemIA.Services
                     throw new Exception($"Error en compilación: {buildResult.Error}");
                 }
 
-                // Paso 4: Publicar aplicación (framework-dependent - usa runtime existente)
-                progress?.Report("[4/7] Publicando aplicación (usa runtime existente)...");
+                // Paso 4: Publicar aplicación SELF-CONTAINED para que no requiera .NET instalado
+                progress?.Report("[4/7] Publicando aplicación (self-contained para no requerir .NET)...");
                 
                 // Limpiar directorio de publicación si existe
                 if (Directory.Exists(publishDir))
@@ -655,12 +717,14 @@ namespace SistemIA.Services
                 }
                 Directory.CreateDirectory(publishDir);
                 
+                // IMPORTANTE: Usar --self-contained true para que el cliente no necesite .NET instalado
+                // Esto genera un paquete más grande (~85 MB) pero garantiza compatibilidad
                 var publishResult = await EjecutarComandoDotnet("publish", 
                     $"\"{Path.Combine(_appDir, "SistemIA.csproj")}\"",
                     "-c", "Release",
-                    "--no-self-contained",
+                    "--self-contained", "true",
+                    "-r", "win-x64",
                     "-p:PublishSingleFile=false",
-                    "-p:IncludeAllContentForSelfExtract=false",
                     $"-o \"{publishDir}\"");
                 
                 if (!publishResult.Success)
@@ -1510,9 +1574,8 @@ if ($service) {{
         Write-Log 'Iniciando aplicación directamente...'
         Start-Process -FilePath $exePath -WorkingDirectory $installPath
         Write-Log 'Aplicación iniciada'
-        # Esperar un poco a que arranque
+        # Esperar a que arranque
         Start-Sleep -Seconds 5
-        Update-Estado -Estado 'completado' -Progreso 100 -Mensaje '¡Actualización completada exitosamente!'
     }} else {{
         # Intentar con dotnet run
         Write-Log 'Intentando iniciar con dotnet...'
@@ -1520,11 +1583,59 @@ if ($service) {{
         if (Test-Path $dllPath) {{
             Start-Process -FilePath 'dotnet' -ArgumentList """"""$dllPath"""""" -WorkingDirectory $installPath
             Start-Sleep -Seconds 5
-            Update-Estado -Estado 'completado' -Progreso 100 -Mensaje '¡Actualización completada exitosamente!'
         }} else {{
             Update-Estado -Estado 'error' -Progreso 95 -Mensaje 'Actualización aplicada pero no se pudo iniciar la aplicación' -Error 'No se encontró ejecutable ni DLL'
+            exit 1
         }}
     }}
+}}
+
+# 7. Verificar integridad de archivos actualizados
+Write-Log 'Verificando integridad de archivos actualizados...'
+Update-Estado -Estado 'verificando' -Progreso 95 -Mensaje 'Verificando archivos actualizados...'
+
+$fechaZip = (Get-Item $zipPath).LastWriteTime
+$archivosVerificados = 0
+$archivosFallidos = 0
+
+# Verificar archivos críticos
+$archivosCriticos = @('SistemIA.exe', 'SistemIA.dll', 'SistemIA.pdb')
+foreach ($archivo in $archivosCriticos) {{
+    $rutaArchivo = Join-Path $installPath $archivo
+    if (Test-Path $rutaArchivo) {{
+        $fechaArchivo = (Get-Item $rutaArchivo).LastWriteTime
+        # Verificar que el archivo fue modificado recientemente (dentro de los últimos 5 minutos)
+        $diferencia = (Get-Date) - $fechaArchivo
+        if ($diferencia.TotalMinutes -le 5) {{
+            $archivosVerificados++
+            Write-Log ""  ✓ $archivo actualizado correctamente ($fechaArchivo)""
+        }} else {{
+            $archivosFallidos++
+            Write-Log ""  ✗ $archivo NO se actualizó (fecha antigua: $fechaArchivo)""
+        }}
+    }} else {{
+        Write-Log ""  ? $archivo no existe (puede ser normal)""
+    }}
+}}
+
+# Guardar información de verificación en el estado
+$verificacionExitosa = $archivosFallidos -eq 0 -and $archivosVerificados -gt 0
+$fechaActualizacion = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'
+
+if ($verificacionExitosa) {{
+    Write-Log ""Verificación exitosa: $archivosVerificados archivos verificados""
+    Update-Estado -Estado 'completado' -Progreso 100 -Mensaje ""¡Actualización completada y verificada! $archivosVerificados archivos actualizados correctamente.""
+    
+    # Agregar info de verificación al estado
+    $estadoActual = Get-Content $estadoFile -Raw | ConvertFrom-Json
+    $estadoActual | Add-Member -NotePropertyName 'VerificacionExitosa' -NotePropertyValue $true -Force
+    $estadoActual | Add-Member -NotePropertyName 'ArchivosVerificados' -NotePropertyValue $archivosVerificados -Force
+    $estadoActual | Add-Member -NotePropertyName 'FechaVerificacion' -NotePropertyValue $fechaActualizacion -Force
+    $estadoActual | Add-Member -NotePropertyName 'AutoReload' -NotePropertyValue $true -Force
+    $estadoActual | ConvertTo-Json -Depth 10 | Set-Content $estadoFile -Encoding UTF8
+}} else {{
+    Write-Log ""ADVERTENCIA: Algunos archivos no se verificaron correctamente""
+    Update-Estado -Estado 'completado' -Progreso 100 -Mensaje ""Actualización completada con advertencias. Verificar archivos manualmente.""
 }}
 
 Write-Log '=============================================='
@@ -1532,6 +1643,8 @@ Write-Log 'PROCESO DE ACTUALIZACION FINALIZADO'
 Write-Log '=============================================='
 Write-Log ""Log guardado en: $logFile""
 Write-Log ""Backup de BD: {backupPathEscaped}""
+Write-Log ""Archivos verificados: $archivosVerificados""
+Write-Log ""Fecha de verificacion: $fechaActualizacion""
 
 # Script termina silenciosamente (sin esperar entrada del usuario)
 ";
@@ -1720,7 +1833,7 @@ Write-Log ""Backup de BD: {backupPathEscaped}""
     /// </summary>
     public class EstadoActualizacion
     {
-        public string Estado { get; set; } = "idle"; // idle, iniciando, deteniendo, extrayendo, copiando, migrando, reiniciando, completado, error
+        public string Estado { get; set; } = "idle"; // idle, iniciando, deteniendo, extrayendo, copiando, migrando, reiniciando, verificando, completado, error
         public int Progreso { get; set; } = 0;
         public string Mensaje { get; set; } = "";
         public DateTime FechaInicio { get; set; }
@@ -1729,5 +1842,35 @@ Write-Log ""Backup de BD: {backupPathEscaped}""
         public string? VersionAnterior { get; set; }
         public string? VersionNueva { get; set; }
         public List<string> Logs { get; set; } = new();
+        
+        // Campos de verificación de integridad
+        public bool VerificacionExitosa { get; set; } = false;
+        public int ArchivosVerificados { get; set; } = 0;
+        public string? FechaVerificacion { get; set; }
+        public bool AutoReload { get; set; } = false;
+    }
+
+    /// <summary>
+    /// Información de un archivo para verificación post-actualización
+    /// </summary>
+    public class ArchivoVerificacion
+    {
+        public string Nombre { get; set; } = "";
+        public bool Existe { get; set; }
+        public DateTime? FechaModificacion { get; set; }
+        public double TamanoKB { get; set; }
+        public bool EsReciente { get; set; }
+    }
+
+    /// <summary>
+    /// Resultado de la verificación de actualización
+    /// </summary>
+    public class ResultadoVerificacion
+    {
+        public bool Exitosa { get; set; }
+        public string Mensaje { get; set; } = "";
+        public DateTime FechaVerificacion { get; set; }
+        public DateTime? FechaArchivos { get; set; }
+        public List<ArchivoVerificacion> Archivos { get; set; } = new();
     }
 }

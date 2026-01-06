@@ -1761,3 +1761,48 @@ window.downloadTextFile = function (fileName, content, contentType) {
         console.error('Error al descargar archivo:', error);
     }
 };
+
+// =================== FUNCIONES PARA AUDITORÍA ===================
+// Descargar archivo desde base64
+window.descargarArchivoBase64 = (fileName, base64, contentType) => {
+    try {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: contentType });
+        
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.style.display = 'none';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        URL.revokeObjectURL(url);
+        console.log('Archivo descargado:', fileName);
+    } catch (error) {
+        console.error('Error al descargar archivo:', error);
+    }
+};
+
+// Imprimir contenido HTML
+window.imprimirHtml = (htmlContent) => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 250);
+    } else {
+        alert('Por favor habilite las ventanas emergentes para imprimir.');
+    }
+};

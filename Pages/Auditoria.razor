@@ -77,8 +77,22 @@
                     <button class="btn btn-secondary ms-2" @onclick="LimpiarFiltros">
                         <i class="bi bi-x-circle"></i> Limpiar
                     </button>
-                    <button class="btn btn-success ms-2" @onclick="ExportarExcel" disabled="@(!auditorias.Any())">
-                        <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+                    <button class="btn btn-success ms-2" @onclick="ExportarExcel" disabled="@(!auditorias.Any() || exportando)">
+                        @if (exportando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-file-earmark-excel me-1"></i>
+                        }
+                        Exportar Excel
+                    </button>
+                    <button class="btn btn-outline-primary ms-2" @onclick="Imprimir" disabled="@(!auditorias.Any())">
+                        <i class="bi bi-printer me-1"></i> Imprimir
+                    </button>
+                    <button class="btn btn-outline-info ms-2" @onclick="() => mostrarModalEnvio = true" disabled="@(!auditorias.Any())">
+                        <i class="bi bi-envelope me-1"></i> Enviar
                     </button>
                 </div>
             </div>
@@ -134,16 +148,16 @@
                     <table class="table table-hover table-striped mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th style="width: 8%;">Fecha/Hora</th>
+                                <th style="width: 8%;">Fecha Equipo</th>
+                                <th style="width: 8%;">Fecha/Turno Caja</th>
+                                <th style="width: 10%;">Sucursal/Caja</th>
                                 <th style="width: 10%;">Usuario</th>
-                                <th style="width: 8%;">Rol</th>
-                                <th style="width: 10%;">Módulo</th>
-                                <th style="width: 10%;">Acción</th>
-                                <th style="width: 8%;">Tipo</th>
-                                <th style="width: 10%;">Entidad</th>
-                                <th style="width: 20%;">Descripción</th>
-                                <th style="width: 8%;">IP</th>
-                                <th style="width: 5%;">Estado</th>
+                                <th style="width: 8%;">Módulo</th>
+                                <th style="width: 12%;">Acción</th>
+                                <th style="width: 6%;">Tipo</th>
+                                <th style="width: 8%;">Entidad</th>
+                                <th style="width: 18%;">Descripción</th>
+                                <th style="width: 4%;">Estado</th>
                                 <th style="width: 3%;"></th>
                             </tr>
                         </thead>
@@ -152,14 +166,38 @@
                             {
                                 <tr class="@(auditoria.Exitosa ? "" : "table-danger")">
                                     <td>
-                                        <small>@auditoria.FechaHora.ToString("dd/MM/yyyy")</small><br />
-                                        <small class="text-muted">@auditoria.FechaHora.ToString("HH:mm:ss")</small>
+                                        @{
+                                            var fechaMostrar = auditoria.FechaHoraEquipo ?? auditoria.FechaHora;
+                                        }
+                                        <small>@fechaMostrar.ToString("dd/MM/yyyy")</small><br />
+                                        <small class="text-muted">@fechaMostrar.ToString("HH:mm:ss")</small>
+                                    </td>
+                                    <td>
+                                        @if (auditoria.FechaCaja.HasValue)
+                                        {
+                                            <small>@auditoria.FechaCaja.Value.ToString("dd/MM/yyyy")</small><br />
+                                            <small class="text-muted">Turno: @auditoria.Turno</small>
+                                        }
+                                        else
+                                        {
+                                            <small class="text-muted">-</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(auditoria.NombreSucursal))
+                                        {
+                                            <small><strong>@auditoria.NombreSucursal</strong></small><br />
+                                            <small class="text-muted">@auditoria.NombreCaja</small>
+                                        }
+                                        else
+                                        {
+                                            <small class="text-muted">-</small>
+                                        }
                                     </td>
                                     <td>
                                         <strong>@auditoria.NombreUsuario</strong><br />
-                                        <small class="text-muted">@auditoria.Usuario?.UsuarioNombre</small>
+                                        <small class="text-muted">@auditoria.RolUsuario</small>
                                     </td>
-                                    <td>@auditoria.RolUsuario</td>
                                     <td>@auditoria.Modulo</td>
                                     <td>@auditoria.Accion</td>
                                     <td>
@@ -176,12 +214,6 @@
                                     </td>
                                     <td>
                                         <small>@auditoria.Descripcion</small>
-                                    </td>
-                                    <td>
-                                        <small>@auditoria.DireccionIP</small><br />
-                                        <small class="text-muted" title="@auditoria.Navegador">
-                                            @(auditoria.Navegador?.Length > 20 ? auditoria.Navegador.Substring(0, 20) + "..." : auditoria.Navegador)
-                                        </small>
                                     </td>
                                     <td class="text-center">
                                         @if (auditoria.Exitosa)
@@ -317,6 +349,52 @@
     </div>
 }
 
+@* Modal de Envío por Correo *@
+@if (mostrarModalEnvio)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="bi bi-envelope"></i> Enviar Auditoría por Correo</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarModalEnvio = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Correo Destino:</label>
+                        <input type="email" class="form-control" @bind="correoDestino" placeholder="ejemplo@correo.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Asunto:</label>
+                        <input type="text" class="form-control" @bind="asuntoCorreo" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mensaje adicional (opcional):</label>
+                        <textarea class="form-control" rows="3" @bind="mensajeCorreo" placeholder="Escriba un mensaje adicional..."></textarea>
+                    </div>
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle"></i> Se adjuntará un archivo Excel con @auditorias.Count registros de auditoría.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => mostrarModalEnvio = false">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="EnviarPorCorreo" disabled="@(enviandoCorreo || string.IsNullOrWhiteSpace(correoDestino))">
+                        @if (enviandoCorreo)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-send me-1"></i>
+                        }
+                        Enviar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 </PageProtection>
 
 @code {
@@ -327,6 +405,14 @@
     private AuditoriaAccion? auditoriaSeleccionada;
     private string? mensaje;
     private bool mensajeEsError;
+    
+    // Variables para exportar/enviar
+    private bool exportando = false;
+    private bool mostrarModalEnvio = false;
+    private bool enviandoCorreo = false;
+    private string correoDestino = "";
+    private string asuntoCorreo = "Informe de Auditoría del Sistema - SistemIA";
+    private string mensajeCorreo = "";
 
     // Filtros
     private DateTime? fechaDesde = DateTime.Today.AddDays(-7);
@@ -478,8 +564,249 @@
 
     private async Task ExportarExcel()
     {
-        mensaje = "Función de exportación a Excel en desarrollo...";
-        mensajeEsError = false;
-        await Task.CompletedTask;
+        if (!auditorias.Any()) return;
+        
+        exportando = true;
+        StateHasChanged();
+        
+        try
+        {
+            var excelBytes = GenerarExcelAuditoria();
+            var fileName = $"Auditoria_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            
+            // Descargar el archivo
+            await JS.InvokeVoidAsync("descargarArchivoBase64", fileName, Convert.ToBase64String(excelBytes), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            
+            mensaje = "Archivo Excel generado exitosamente.";
+            mensajeEsError = false;
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al exportar: {ex.Message}";
+            mensajeEsError = true;
+        }
+        finally
+        {
+            exportando = false;
+            StateHasChanged();
+        }
+    }
+
+    private byte[] GenerarExcelAuditoria()
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Auditoría");
+        
+        // Título
+        worksheet.Cell(1, 1).Value = "INFORME DE AUDITORÍA DEL SISTEMA";
+        worksheet.Range(1, 1, 1, 10).Merge().Style.Font.Bold = true;
+        worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+        worksheet.Cell(1, 1).Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Center;
+        
+        // Filtros aplicados
+        worksheet.Cell(2, 1).Value = $"Período: {fechaDesde?.ToString("dd/MM/yyyy") ?? "-"} al {fechaHasta?.ToString("dd/MM/yyyy") ?? "-"}";
+        worksheet.Cell(3, 1).Value = $"Generado: {DateTime.Now:dd/MM/yyyy HH:mm:ss}";
+        worksheet.Cell(4, 1).Value = $"Total registros: {auditorias.Count}";
+        
+        // Encabezados
+        int fila = 6;
+        var headers = new[] { "Fecha/Hora", "Fecha Caja", "Turno", "Sucursal", "Caja", "Usuario", "Rol", "Módulo", "Acción", "Tipo", "Entidad", "ID Registro", "Descripción", "Estado" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(fila, i + 1).Value = headers[i];
+            worksheet.Cell(fila, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(fila, i + 1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+            worksheet.Cell(fila, i + 1).Style.Border.OutsideBorder = ClosedXML.Excel.XLBorderStyleValues.Thin;
+        }
+        
+        // Datos
+        fila = 7;
+        foreach (var a in auditorias)
+        {
+            var fechaMostrar = a.FechaHoraEquipo ?? a.FechaHora;
+            worksheet.Cell(fila, 1).Value = fechaMostrar.ToString("dd/MM/yyyy HH:mm:ss");
+            worksheet.Cell(fila, 2).Value = a.FechaCaja?.ToString("dd/MM/yyyy") ?? "-";
+            worksheet.Cell(fila, 3).Value = a.Turno?.ToString() ?? "-";
+            worksheet.Cell(fila, 4).Value = a.NombreSucursal ?? "-";
+            worksheet.Cell(fila, 5).Value = a.NombreCaja ?? "-";
+            worksheet.Cell(fila, 6).Value = a.NombreUsuario ?? "-";
+            worksheet.Cell(fila, 7).Value = a.RolUsuario ?? "-";
+            worksheet.Cell(fila, 8).Value = a.Modulo ?? "-";
+            worksheet.Cell(fila, 9).Value = a.Accion ?? "-";
+            worksheet.Cell(fila, 10).Value = a.TipoAccion ?? "-";
+            worksheet.Cell(fila, 11).Value = a.Entidad ?? "-";
+            worksheet.Cell(fila, 12).Value = a.IdRegistroAfectado?.ToString() ?? "-";
+            worksheet.Cell(fila, 13).Value = a.Descripcion ?? "-";
+            worksheet.Cell(fila, 14).Value = a.Exitosa ? "Exitosa" : "Fallida";
+            
+            // Color de fila según estado
+            if (!a.Exitosa)
+            {
+                worksheet.Row(fila).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightPink;
+            }
+            
+            fila++;
+        }
+        
+        // Ajustar columnas
+        worksheet.Columns().AdjustToContents();
+        
+        using var stream = new System.IO.MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    private async Task Imprimir()
+    {
+        if (!auditorias.Any()) return;
+        
+        try
+        {
+            // Generar HTML para impresión
+            var html = GenerarHtmlImpresion();
+            await JS.InvokeVoidAsync("imprimirHtml", html);
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al imprimir: {ex.Message}";
+            mensajeEsError = true;
+        }
+    }
+
+    private string GenerarHtmlImpresion()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<html>");
+        sb.AppendLine("<head>");
+        sb.AppendLine("<title>Auditoría del Sistema</title>");
+        sb.AppendLine("<style>");
+        sb.AppendLine("body { font-family: Arial, sans-serif; font-size: 10px; margin: 10px; }");
+        sb.AppendLine("h1 { font-size: 16px; text-align: center; margin-bottom: 5px; }");
+        sb.AppendLine(".info { text-align: center; font-size: 9px; color: #666; margin-bottom: 10px; }");
+        sb.AppendLine("table { width: 100%; border-collapse: collapse; }");
+        sb.AppendLine("th, td { border: 1px solid #333; padding: 3px 5px; text-align: left; }");
+        sb.AppendLine("th { background-color: #e0e0e0; font-weight: bold; }");
+        sb.AppendLine(".error { background-color: #ffcccc; }");
+        sb.AppendLine("@media print { @page { size: landscape; margin: 5mm; } }");
+        sb.AppendLine("</style>");
+        sb.AppendLine("</head>");
+        sb.AppendLine("<body>");
+        sb.AppendLine("<h1>AUDITORÍA DEL SISTEMA</h1>");
+        sb.AppendLine($"<div class='info'>Período: {fechaDesde?.ToString("dd/MM/yyyy") ?? "-"} al {fechaHasta?.ToString("dd/MM/yyyy") ?? "-"} | Generado: {DateTime.Now:dd/MM/yyyy HH:mm:ss} | Total: {auditorias.Count} registros</div>");
+        sb.AppendLine("<table>");
+        sb.AppendLine("<thead><tr>");
+        sb.AppendLine("<th>Fecha/Hora</th><th>Sucursal/Caja</th><th>Usuario</th><th>Módulo</th><th>Acción</th><th>Tipo</th><th>Entidad</th><th>Descripción</th><th>Estado</th>");
+        sb.AppendLine("</tr></thead>");
+        sb.AppendLine("<tbody>");
+        
+        foreach (var a in auditorias)
+        {
+            var fechaMostrar = a.FechaHoraEquipo ?? a.FechaHora;
+            var cssClass = a.Exitosa ? "" : " class='error'";
+            sb.AppendLine($"<tr{cssClass}>");
+            sb.AppendLine($"<td>{fechaMostrar:dd/MM/yyyy HH:mm}</td>");
+            sb.AppendLine($"<td>{System.Web.HttpUtility.HtmlEncode(a.NombreSucursal ?? "-")}<br/><small>{System.Web.HttpUtility.HtmlEncode(a.NombreCaja ?? "")}</small></td>");
+            sb.AppendLine($"<td>{System.Web.HttpUtility.HtmlEncode(a.NombreUsuario ?? "-")}</td>");
+            sb.AppendLine($"<td>{System.Web.HttpUtility.HtmlEncode(a.Modulo ?? "-")}</td>");
+            sb.AppendLine($"<td>{System.Web.HttpUtility.HtmlEncode(a.Accion ?? "-")}</td>");
+            sb.AppendLine($"<td>{System.Web.HttpUtility.HtmlEncode(a.TipoAccion ?? "-")}</td>");
+            sb.AppendLine($"<td>{System.Web.HttpUtility.HtmlEncode(a.Entidad ?? "-")}</td>");
+            sb.AppendLine($"<td>{System.Web.HttpUtility.HtmlEncode(a.Descripcion ?? "-")}</td>");
+            sb.AppendLine($"<td>{(a.Exitosa ? "✓" : "✗")}</td>");
+            sb.AppendLine("</tr>");
+        }
+        
+        sb.AppendLine("</tbody></table>");
+        sb.AppendLine("</body></html>");
+        
+        return sb.ToString();
+    }
+
+    private async Task EnviarPorCorreo()
+    {
+        if (string.IsNullOrWhiteSpace(correoDestino) || !auditorias.Any()) return;
+        
+        enviandoCorreo = true;
+        StateHasChanged();
+        
+        try
+        {
+            // Obtener configuración de correo de la sucursal 1 (o la que esté configurada)
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var configCorreo = await ctx.ConfiguracionesCorreo.FirstOrDefaultAsync(c => c.Activo);
+            
+            if (configCorreo == null)
+            {
+                mensaje = "No hay configuración de correo activa. Configure el correo en Configuración > Correo.";
+                mensajeEsError = true;
+                return;
+            }
+            
+            // Generar Excel
+            var excelBytes = GenerarExcelAuditoria();
+            var nombreArchivo = $"Auditoria_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            
+            // Construir cuerpo del correo
+            var sbCorreo = new System.Text.StringBuilder();
+            sbCorreo.AppendLine("<h2>Informe de Auditoría del Sistema</h2>");
+            sbCorreo.AppendLine($"<p><strong>Período:</strong> {fechaDesde?.ToString("dd/MM/yyyy") ?? "-"} al {fechaHasta?.ToString("dd/MM/yyyy") ?? "-"}</p>");
+            sbCorreo.AppendLine($"<p><strong>Total de registros:</strong> {auditorias.Count}</p>");
+            sbCorreo.AppendLine($"<p><strong>Generado:</strong> {DateTime.Now:dd/MM/yyyy HH:mm:ss}</p>");
+            if (!string.IsNullOrWhiteSpace(mensajeCorreo))
+            {
+                sbCorreo.AppendLine($"<p><strong>Mensaje:</strong> {System.Web.HttpUtility.HtmlEncode(mensajeCorreo)}</p>");
+            }
+            sbCorreo.AppendLine("<hr/>");
+            sbCorreo.AppendLine("<p>Se adjunta archivo Excel con el detalle completo de la auditoría.</p>");
+            sbCorreo.AppendLine("<p style='color: #888; font-size: 12px;'>Este correo fue enviado automáticamente desde SistemIA.</p>");
+            var cuerpoHtml = sbCorreo.ToString();
+            
+            // Determinar si usar SSL/TLS
+            var usarSsl = configCorreo.TipoSeguridad?.ToUpper() == "SSL" 
+                       || configCorreo.TipoSeguridad?.ToUpper() == "TLS" 
+                       || configCorreo.TipoSeguridad?.ToUpper() == "STARTTLS";
+            
+            // Enviar correo con adjunto
+            using var smtpClient = new System.Net.Mail.SmtpClient(configCorreo.ServidorSmtp, configCorreo.Puerto)
+            {
+                Credentials = new System.Net.NetworkCredential(configCorreo.UsuarioSmtp, configCorreo.ContrasenaSmtp),
+                EnableSsl = usarSsl
+            };
+            
+            using var mailMessage = new System.Net.Mail.MailMessage
+            {
+                From = new System.Net.Mail.MailAddress(configCorreo.CorreoRemitenteEfectivo, configCorreo.NombreRemitenteEfectivo),
+                Subject = asuntoCorreo,
+                Body = cuerpoHtml,
+                IsBodyHtml = true
+            };
+            
+            mailMessage.To.Add(correoDestino);
+            
+            // Adjuntar Excel
+            using var ms = new System.IO.MemoryStream(excelBytes);
+            var attachment = new System.Net.Mail.Attachment(ms, nombreArchivo, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            mailMessage.Attachments.Add(attachment);
+            
+            await smtpClient.SendMailAsync(mailMessage);
+            
+            mensaje = $"Correo enviado exitosamente a {correoDestino}";
+            mensajeEsError = false;
+            mostrarModalEnvio = false;
+            
+            // Limpiar campos
+            correoDestino = "";
+            mensajeCorreo = "";
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al enviar correo: {ex.Message}";
+            mensajeEsError = true;
+        }
+        finally
+        {
+            enviandoCorreo = false;
+            StateHasChanged();
+        }
     }
 }

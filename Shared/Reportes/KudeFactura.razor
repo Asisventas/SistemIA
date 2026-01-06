@@ -266,6 +266,9 @@ else
           @foreach (var d in detalles)
           {
             var codigo = d.Producto?.CodigoInterno ?? d.Producto?.CodigoBarras ?? d.IdProducto.ToString();
+            // Calcular valores de venta CON IVA incluido
+            var valorVenta5 = d.Grabado5 + d.IVA5;
+            var valorVenta10 = d.Grabado10 + d.IVA10;
             <tr>
               <td>@codigo</td>
               <td>@d.Producto?.Descripcion</td>
@@ -278,9 +281,9 @@ else
                 <td class="t-right">@(d.PrecioMinisterio?.ToString("N0") ?? "—")</td>
               }
               <td class="t-right">@((d.PorcentajeDescuento ?? 0).ToString("N0"))</td>
-              <td class="t-right">@d.Exenta.ToString("N0")</td>
-              <td class="t-right">@d.Grabado5.ToString("N0")</td>
-              <td class="t-right">@d.Grabado10.ToString("N0")</td>
+              <td class="t-right">@(d.Exenta > 0 ? d.Exenta.ToString("N0") : "")</td>
+              <td class="t-right">@(valorVenta5 > 0 ? valorVenta5.ToString("N0") : "")</td>
+              <td class="t-right">@(valorVenta10 > 0 ? valorVenta10.ToString("N0") : "")</td>
             </tr>
           }
         </tbody>
@@ -298,10 +301,45 @@ else
       </div>
       <div class="en-letras">@(venta?.TotalEnLetras)</div>
       <div class="liquidacion-iva">
-        <div class="fila"><div>Liquidación del I.V.A.:</div><div class="t-right"></div></div>
-        <div class="fila"><div>(5%)</div><div class="t-right">@TotIva5.ToString("N0")</div></div>
-        <div class="fila"><div>(10%)</div><div class="t-right">@TotIva10.ToString("N0")</div></div>
-  <div class="fila total-iva"><div>Total I.V.A.:</div><div class="t-right">@((TotIva5 + TotIva10).ToString("N0"))</div></div>
+        <table class="tabla-iva">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th class="t-right">5%</th>
+              <th class="t-right">10%</th>
+              <th class="t-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Total Gravado</td>
+              <td class="t-right">@TotGrav5.ToString("N0")</td>
+              <td class="t-right">@TotGrav10.ToString("N0")</td>
+              <td class="t-right">@((TotGrav5 + TotGrav10).ToString("N0"))</td>
+            </tr>
+            <tr>
+              <td>Liquidación IVA</td>
+              <td class="t-right">@TotIva5.ToString("N0")</td>
+              <td class="t-right">@TotIva10.ToString("N0")</td>
+              <td class="t-right">@((TotIva5 + TotIva10).ToString("N0"))</td>
+            </tr>
+            <tr class="total-iva">
+              <td><b>Total c/IVA</b></td>
+              <td class="t-right"><b>@((TotGrav5 + TotIva5).ToString("N0"))</b></td>
+              <td class="t-right"><b>@((TotGrav10 + TotIva10).ToString("N0"))</b></td>
+              <td class="t-right"><b>@((TotGrav5 + TotIva5 + TotGrav10 + TotIva10).ToString("N0"))</b></td>
+            </tr>
+            @if (TotExentas > 0)
+            {
+            <tr>
+              <td>Total Exentas</td>
+              <td class="t-right">—</td>
+              <td class="t-right">—</td>
+              <td class="t-right">@TotExentas.ToString("N0")</td>
+            </tr>
+            }
+          </tbody>
+        </table>
       </div>
     </div>
 

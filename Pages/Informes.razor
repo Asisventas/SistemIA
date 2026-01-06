@@ -1,0 +1,156 @@
+@page "/informes"
+@using SistemIA.Models
+@inject NavigationManager Navigation
+
+<PageProtection Modulo="/informes" Permiso="VIEW">
+
+<div class="container-fluid">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-file-earmark-bar-graph text-primary me-2"></i>
+            Centro de Informes
+        </h3>
+        <div class="text-muted">
+            <i class="bi bi-calendar3 me-1"></i>
+            @DateTime.Now.ToString("dd/MM/yyyy")
+        </div>
+    </div>
+
+    <!-- Cards de categorías de informes -->
+    <div class="row g-4">
+        <!-- Informes de Ventas -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-cart-check me-2"></i>Ventas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="/informes/ventas-agrupado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-bar-chart me-2 text-primary"></i>Ventas Agrupado
+                        </a>
+                        <a href="/informes/ventas-detallado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-list-ul me-2 text-primary"></i>Ventas Detallado
+                        </a>
+                        <a href="/informes/ventas-clasificacion" class="list-group-item list-group-item-action">
+                            <i class="bi bi-pie-chart me-2 text-primary"></i>Ventas por Clasificación
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informes de Notas de Crédito -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-receipt-cutoff me-2"></i>Notas de Crédito</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="/informes/nc-agrupado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-bar-chart me-2 text-warning"></i>NC Ventas Agrupado
+                        </a>
+                        <a href="/informes/nc-detallado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-list-ul me-2 text-warning"></i>NC Ventas Detallado
+                        </a>
+                        <a href="/informes/nc-compras-agrupado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-bar-chart me-2 text-warning"></i>NC Compras Agrupado
+                        </a>
+                        <a href="/informes/nc-compras-detallado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-list-ul me-2 text-warning"></i>NC Compras Detallado
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informes de Compras -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-bag me-2"></i>Compras</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="/informes/compras-general" class="list-group-item list-group-item-action">
+                            <i class="bi bi-bar-chart me-2 text-info"></i>Compras General
+                        </a>
+                        <a href="/informes/compras-detallado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-list-ul me-2 text-info"></i>Compras Detallado
+                        </a>
+                        <a href="/informes/proveedores" class="list-group-item list-group-item-action">
+                            <i class="bi bi-people me-2 text-info"></i>Listado de Proveedores
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informes de Inventario -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Inventario</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="/informes/productos-valorizado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-currency-dollar me-2 text-success"></i>Productos Valorizado
+                        </a>
+                        <a href="/informes/productos-detallado" class="list-group-item list-group-item-action">
+                            <i class="bi bi-list-check me-2 text-success"></i>Productos Detallado
+                        </a>
+                        <a href="/informes/movimientos-productos" class="list-group-item list-group-item-action">
+                            <i class="bi bi-arrow-left-right me-2 text-success"></i>Movimientos de Stock
+                        </a>
+                        <a href="/informes/ajustes-stock" class="list-group-item list-group-item-action">
+                            <i class="bi bi-sliders me-2 text-success"></i>Ajustes de Stock
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informes Financieros -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Financieros</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="/informes/cuentas-cobrar" class="list-group-item list-group-item-action">
+                            <i class="bi bi-arrow-up-circle me-2 text-danger"></i>Cuentas por Cobrar
+                        </a>
+                        <a href="/informes/cuentas-pagar" class="list-group-item list-group-item-action">
+                            <i class="bi bi-arrow-down-circle me-2 text-danger"></i>Cuentas por Pagar
+                        </a>
+                        <a href="/informes/resumen-caja" class="list-group-item list-group-item-action">
+                            <i class="bi bi-cash-coin me-2 text-danger"></i>Resumen de Caja
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informes de Personal -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-people-fill me-2"></i>Personal</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="/informes-asistencia" class="list-group-item list-group-item-action">
+                            <i class="bi bi-clock-history me-2 text-secondary"></i>Control de Asistencia
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</PageProtection>

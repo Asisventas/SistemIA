@@ -3,6 +3,9 @@
 @inject NavigationManager Nav
 @using System.Net.Http.Json
 
+<PageTitle>Pruebas XML SIFEN - SistemIA</PageTitle>
+
+<SaProtection TituloPagina="Pruebas XML SIFEN" UrlRetorno="/">
 <h3>Pruebas con XML Externo (SIFEN)</h3>
 
 <div class="mb-3">
@@ -87,6 +90,7 @@
         </div>
     </div>
 }
+</SaProtection>
 
 @code {
     private string Xml { get; set; } = string.Empty;

@@ -2,23 +2,19 @@
 @inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject IJSRuntime JSRuntime
 @inject SistemIA.Services.InformeAsistenciaService InformeService
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
 @using Microsoft.EntityFrameworkCore
 @using SistemIA.Services
+@using ClosedXML.Excel
+@using System.Text
 
 <PageProtection Modulo="/reportes" Permiso="VIEW">
 
-
 <div class="container-fluid">
+    <h3 class="mb-3"><i class="bi bi-person-check me-2"></i>Informe de Asistencia</h3>
+
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2 class="text-primary">
-                    <i class="bi bi-file-earmark-pdf me-2"></i>
-                    Informes de Asistencia
-                </h2>
-                <small class="text-muted">@DateTime.Now.ToString("dd/MM/yyyy")</small>
-            </div>
-
             @if (!string.IsNullOrEmpty(errorMessage))
             {
                 <div class="alert alert-danger" role="alert">
@@ -37,91 +33,99 @@
 
             <!-- Configuración del Informe -->
             <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        <i class="bi bi-gear me-2"></i>
-                        Configuración del Informe
-                    </h5>
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">
+                        <i class="bi bi-funnel me-2"></i>
+                        Filtros de Búsqueda
+                    </h6>
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">Fecha Desde</label>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Fecha Desde</label>
                             <input type="date" class="form-control" @bind="fechaDesde" />
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Fecha Hasta</label>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Fecha Hasta</label>
                             <input type="date" class="form-control" @bind="fechaHasta" />
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Usuario</label>
-                            <select class="form-select" @bind="usuarioSeleccionado">
-                                <option value="">Todos los usuarios</option>
-                                @foreach (var usuario in usuarios)
-                                {
-                                    <option value="@usuario.Id_Usu">@usuario.Nombres @usuario.Apellidos</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Sucursal</label>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Sucursal</label>
                             <select class="form-select" @bind="sucursalSeleccionada">
-                                <option value="">Todas las sucursales</option>
+                                <option value="">Todas</option>
                                 @foreach (var sucursal in sucursales)
                                 {
                                     <option value="@sucursal.Id">@sucursal.NombreSucursal</option>
                                 }
                             </select>
                         </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Usuario</label>
+                            <select class="form-select" @bind="usuarioSeleccionado">
+                                <option value="">Todos</option>
+                                @foreach (var usuario in usuarios)
+                                {
+                                    <option value="@usuario.Id_Usu">@usuario.Nombres @usuario.Apellidos</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Tipo Registro</label>
+                            <select class="form-select" @bind="tipoRegistroFiltro">
+                                <option value="">Todos</option>
+                                <option value="Entrada">Entradas</option>
+                                <option value="Salida">Salidas</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Estado</label>
+                            <select class="form-select" @bind="estadoPuntualidadFiltro">
+                                <option value="">Todos</option>
+                                <option value="Puntual">Puntual</option>
+                                <option value="Tardanza">Tardanza</option>
+                                <option value="Adelanto">Adelanto</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label small text-muted">Turno</label>
+                            <select class="form-select" @bind="turnoFiltro">
+                                <option value="">Todos</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                            </select>
+                        </div>
                     </div>
                     
-                    <div class="row mt-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Formato del Informe</label>
+                    <div class="row mt-3 g-3">
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Formato</label>
                             <select class="form-select" @bind="formatoInforme">
                                 <option value="PDF">PDF</option>
                                 <option value="WORD">Word (DOCX)</option>
                             </select>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Tipo de Informe</label>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Tipo Informe</label>
                             <select class="form-select" @bind="tipoInforme">
                                 <option value="DETALLADO">Detallado</option>
                                 <option value="RESUMEN">Resumen por Usuario</option>
                                 <option value="ESTADISTICO">Estadístico</option>
                             </select>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Botones de Acción -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-12">
-                            <button class="btn btn-primary btn-lg me-3" @onclick="GenerarInforme" disabled="@generandoInforme">
-                                @if (generandoInforme)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                }
-                                else
-                                {
-                                    <i class="bi bi-file-earmark-arrow-down me-2"></i>
-                                }
-                                Generar Informe
+                        <div class="col-md-2 d-flex gap-2 align-items-end justify-content-end flex-wrap">
+                            <button class="btn btn-primary" @onclick="VistaPrevia" disabled="@generandoInforme" title="Buscar">
+                                <i class="bi bi-search"></i> Buscar
                             </button>
-                            
-                            <button class="btn btn-outline-secondary btn-lg me-3" @onclick="VistaPrevia" disabled="@generandoInforme">
-                                <i class="bi bi-eye me-2"></i>
-                                Vista Previa
+                            <button class="btn btn-outline-success" title="Exportar CSV" @onclick="ExportarCsv" disabled="@generandoInforme">
+                                <i class="bi bi-filetype-csv"></i>
                             </button>
-                            
-                            <button class="btn btn-outline-info btn-lg" @onclick="EnviarPorEmail" disabled="@generandoInforme">
-                                <i class="bi bi-envelope me-2"></i>
-                                Enviar por Email
+                            <button class="btn btn-success" title="Exportar Excel" @onclick="ExportarXlsx" disabled="@generandoInforme">
+                                <i class="bi bi-file-earmark-excel"></i>
                             </button>
-                            
+                            <button class="btn btn-outline-secondary" title="Imprimir" @onclick="Imprimir" disabled="@generandoInforme">
+                                <i class="bi bi-printer"></i>
+                            </button>
                             <EnviarInformeCorreo 
                               TituloInforme="Control de Asistencia" 
                               OnGenerarHtml="GenerarTablaHtml" 
@@ -135,54 +139,195 @@
             @if (mostrarVistaPrevia && asistenciasParaInforme.Any())
             {
                 <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="bi bi-eye me-2"></i>
+                    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="bi bi-table me-2"></i>
                             Vista Previa del Informe
-                        </h5>
+                        </h6>
+                        <div class="d-flex gap-3 align-items-center">
+                            <span class="badge bg-primary">@asistenciasParaInforme.Count registros</span>
+                            <small class="text-muted">
+                                <i class="bi bi-clock me-1"></i>
+                                Hora Sistema: @DateTime.Now.ToString("HH:mm:ss")
+                            </small>
+                        </div>
                     </div>
-                    <div class="card-body">
+                    <div class="card-body p-0">
+                        <!-- Resumen rápido -->
+                        <div class="bg-light p-3 border-bottom">
+                            <div class="row text-center">
+                                <div class="col-md-3">
+                                    <div class="fw-bold text-success fs-4">@asistenciasParaInforme.Count(a => a.TipoRegistro == "Entrada")</div>
+                                    <small class="text-muted">Entradas</small>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="fw-bold text-danger fs-4">@asistenciasParaInforme.Count(a => a.TipoRegistro == "Salida")</div>
+                                    <small class="text-muted">Salidas</small>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="fw-bold text-primary fs-4">@asistenciasParaInforme.Select(a => a.Id_Usuario).Distinct().Count()</div>
+                                    <small class="text-muted">Usuarios</small>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="fw-bold text-warning fs-4">@asistenciasParaInforme.Count(a => a.EstadoPuntualidad == "Tardanza")</div>
+                                    <small class="text-muted">Tardanzas</small>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead class="table-dark">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
                                     <tr>
+                                        <th style="width:50px;">#</th>
                                         <th>Fecha</th>
-                                        <th>Hora</th>
+                                        <th>Hora Registro</th>
                                         <th>Usuario</th>
-                                        <th>Tipo</th>
                                         <th>Sucursal</th>
+                                        <th class="text-center">Turno</th>
+                                        <th class="text-center">Tipo</th>
+                                        <th class="text-center">Estado</th>
+                                        <th>Hora Programada</th>
+                                        <th>Diferencia</th>
+                                        <th>Método</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var asistencia in asistenciasParaInforme.Take(20))
+                                    @{ int nroFila = 0; }
+                                    @foreach (var asistencia in asistenciasParaInforme.Take(50))
                                     {
+                                        nroFila++;
+                                        var sucNombre = sucursales.FirstOrDefault(s => s.Id == asistencia.Sucursal)?.NombreSucursal ?? "-";
                                         <tr>
-                                            <td>@asistencia.FechaHora.ToString("dd/MM/yyyy")</td>
-                                            <td>@asistencia.FechaHora.ToString("HH:mm:ss")</td>
-                                            <td>@(asistencia.Usuario?.Nombres ?? "") @(asistencia.Usuario?.Apellidos ?? "")</td>
+                                            <td class="text-muted">@nroFila</td>
                                             <td>
-                                                @if (asistencia.TipoRegistro == "Entrada")
+                                                <div class="fw-semibold">@asistencia.FechaHora.ToString("dd/MM/yyyy")</div>
+                                                <small class="text-muted">@ObtenerNombreDia(asistencia.FechaHora)</small>
+                                            </td>
+                                            <td>
+                                                <span class="fw-bold">@asistencia.FechaHora.ToString("HH:mm:ss")</span>
+                                            </td>
+                                            <td>
+                                                <div class="fw-semibold">@(asistencia.Usuario?.Nombres ?? "") @(asistencia.Usuario?.Apellidos ?? "")</div>
+                                                <small class="text-muted">@(asistencia.Usuario?.Correo ?? "")</small>
+                                            </td>
+                                            <td>
+                                                <i class="bi bi-building me-1 text-muted"></i>
+                                                @sucNombre
+                                            </td>
+                                            <td class="text-center">
+                                                @if (asistencia.Turno.HasValue)
                                                 {
-                                                    <span class="badge bg-success">Entrada</span>
+                                                    <span class="badge bg-info-subtle text-info">
+                                                        <i class="bi bi-clock me-1"></i>Turno @asistencia.Turno
+                                                    </span>
                                                 }
                                                 else
                                                 {
-                                                    <span class="badge bg-danger">Salida</span>
+                                                    <span class="text-muted">-</span>
                                                 }
                                             </td>
-                                            <td>@sucursales.FirstOrDefault(s => s.Id == asistencia.Sucursal)?.NombreSucursal</td>
+                                            <td class="text-center">
+                                                @if (asistencia.TipoRegistro == "Entrada")
+                                                {
+                                                    <span class="badge bg-success">
+                                                        <i class="bi bi-box-arrow-in-right me-1"></i>Entrada
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-danger">
+                                                        <i class="bi bi-box-arrow-right me-1"></i>Salida
+                                                    </span>
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                @if (asistencia.EstadoPuntualidad == "Puntual")
+                                                {
+                                                    <span class="badge bg-success-subtle text-success">Puntual</span>
+                                                }
+                                                else if (asistencia.EstadoPuntualidad == "Tardanza")
+                                                {
+                                                    <span class="badge bg-warning-subtle text-warning">Tardanza</span>
+                                                }
+                                                else if (asistencia.EstadoPuntualidad == "Adelanto")
+                                                {
+                                                    <span class="badge bg-info-subtle text-info">Adelanto</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">-</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (asistencia.HoraProgramada.HasValue)
+                                                {
+                                                    <span>@asistencia.HoraProgramada.Value.ToString("HH:mm")</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">-</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (asistencia.DiferenciaMinutos.HasValue && asistencia.DiferenciaMinutos != 0)
+                                                {
+                                                    var dif = asistencia.DiferenciaMinutos.Value;
+                                                    var colorDif = dif > 0 ? "text-danger" : "text-success";
+                                                    var signoDif = dif > 0 ? "+" : "";
+                                                    <span class="@colorDif fw-semibold">@signoDif@dif min</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">-</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (!string.IsNullOrEmpty(asistencia.MetodoRegistro))
+                                                {
+                                                    var iconoMetodo = asistencia.MetodoRegistro switch
+                                                    {
+                                                        "Facial" => "bi-person-bounding-box",
+                                                        "Manual" => "bi-pencil",
+                                                        "Tarjeta" => "bi-credit-card",
+                                                        "QR" => "bi-qr-code",
+                                                        _ => "bi-check-circle"
+                                                    };
+                                                    <span title="@asistencia.MetodoRegistro">
+                                                        <i class="bi @iconoMetodo text-muted"></i>
+                                                        <small>@asistencia.MetodoRegistro</small>
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">-</span>
+                                                }
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
                         </div>
-                        @if (asistenciasParaInforme.Count > 20)
+                        @if (asistenciasParaInforme.Count > 50)
                         {
-                            <div class="alert alert-info">
+                            <div class="alert alert-info m-3 mb-0">
                                 <i class="bi bi-info-circle me-2"></i>
-                                Mostrando los primeros 20 registros de @asistenciasParaInforme.Count total.
+                                Mostrando los primeros 50 registros de <strong>@asistenciasParaInforme.Count</strong> total.
+                                El informe completo incluirá todos los registros.
                             </div>
                         }
+                    </div>
+                    <div class="card-footer bg-light small text-muted">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <i class="bi bi-calendar3 me-1"></i>
+                                Período: @fechaDesde.ToString("dd/MM/yyyy") - @fechaHasta.ToString("dd/MM/yyyy")
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <i class="bi bi-clock-history me-1"></i>
+                                Generado: @DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")
+                            </div>
+                        </div>
                     </div>
                 </div>
             }
@@ -200,6 +345,12 @@
     private bool mostrarVistaPrevia = false;
     private string? errorMessage;
     private string? successMessage;
+    
+    // ========== DATOS DE CABECERA ==========
+    private string nombreEmpresa = "Empresa";
+    private string nombreSucursal = "Sucursal";
+    private string rucEmpresa = "";
+    private string? logoDataUri;
 
     // Filtros
     private DateTime fechaDesde = DateTime.Today.AddDays(-30);
@@ -208,6 +359,9 @@
     private string sucursalSeleccionada = "";
     private string formatoInforme = "PDF";
     private string tipoInforme = "DETALLADO";
+    private string tipoRegistroFiltro = "";  // Entrada, Salida o vacío para todos
+    private string estadoPuntualidadFiltro = "";  // Puntual, Tardanza, Adelanto o vacío
+    private string turnoFiltro = "";  // 1, 2, 3 o vacío para todos
 
     protected override async Task OnInitializedAsync()
     {
@@ -318,6 +472,30 @@
 
             usuarios = await context.Usuarios.OrderBy(u => u.Nombres).ToListAsync();
             sucursales = await context.Sucursal.OrderBy(s => s.NombreSucursal).ToListAsync();
+            
+            // ========== CARGAR DATOS DE CABECERA (SUCURSAL) ==========
+            var sucIdSel = SucursalProvider.GetSucursalId();
+            Sucursal? suc = null;
+            
+            if (sucIdSel.HasValue)
+            {
+                suc = await context.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+            }
+            
+            // Si no hay sucursal seleccionada, tomar la primera
+            suc ??= await context.Sucursal.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+            
+            if (suc != null)
+            {
+                nombreEmpresa = suc.NombreEmpresa ?? "Empresa";
+                nombreSucursal = suc.NombreSucursal ?? "Sucursal";
+                rucEmpresa = !string.IsNullOrEmpty(suc.RUC) ? $"{suc.RUC}-{suc.DV}" : "";
+                
+                if (suc.Logo != null && suc.Logo.Length > 0)
+                {
+                    logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -345,6 +523,24 @@
             {
                 query = query.Where(a => a.Sucursal.ToString() == sucursalSeleccionada);
             }
+            
+            // Filtro por tipo de registro (Entrada/Salida)
+            if (!string.IsNullOrEmpty(tipoRegistroFiltro))
+            {
+                query = query.Where(a => a.TipoRegistro == tipoRegistroFiltro);
+            }
+            
+            // Filtro por estado de puntualidad
+            if (!string.IsNullOrEmpty(estadoPuntualidadFiltro))
+            {
+                query = query.Where(a => a.EstadoPuntualidad == estadoPuntualidadFiltro);
+            }
+            
+            // Filtro por turno
+            if (!string.IsNullOrEmpty(turnoFiltro) && int.TryParse(turnoFiltro, out int turnoNum))
+            {
+                query = query.Where(a => a.Turno == turnoNum);
+            }
 
             asistenciasParaInforme = await query.OrderByDescending(a => a.FechaHora).ToListAsync();
         }
@@ -352,6 +548,24 @@
         {
             errorMessage = $"Error al cargar asistencias: {ex.Message}";
         }
+    }
+    
+    /// <summary>
+    /// Obtiene el nombre del día de la semana en español
+    /// </summary>
+    private string ObtenerNombreDia(DateTime fecha)
+    {
+        return fecha.DayOfWeek switch
+        {
+            DayOfWeek.Monday => "Lunes",
+            DayOfWeek.Tuesday => "Martes",
+            DayOfWeek.Wednesday => "Miércoles",
+            DayOfWeek.Thursday => "Jueves",
+            DayOfWeek.Friday => "Viernes",
+            DayOfWeek.Saturday => "Sábado",
+            DayOfWeek.Sunday => "Domingo",
+            _ => ""
+        };
     }
 
     private async Task VistaPrevia()
@@ -480,10 +694,244 @@
         }
     }
 
-    private async Task EnviarPorEmail()
+    private async Task ExportarCsv()
     {
-        // TODO: Implementar envío por email
-        errorMessage = "Funcionalidad de envío por email en desarrollo.";
+        try
+        {
+            if (!asistenciasParaInforme.Any())
+            {
+                await VistaPrevia();
+                if (!asistenciasParaInforme.Any())
+                {
+                    errorMessage = "No hay datos para exportar. Realice una búsqueda primero.";
+                    return;
+                }
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Fecha,Hora,Usuario,Sucursal,Turno,Tipo,Estado,Hora Programada,Diferencia,Método");
+
+            foreach (var a in asistenciasParaInforme)
+            {
+                var sucNombre = sucursales.FirstOrDefault(s => s.Id == a.Sucursal)?.NombreSucursal ?? "-";
+                sb.AppendLine($"\"{a.FechaHora:dd/MM/yyyy}\",\"{a.FechaHora:HH:mm:ss}\",\"{a.Usuario?.Nombres} {a.Usuario?.Apellidos}\",\"{sucNombre}\",\"{a.Turno?.ToString() ?? "-"}\",\"{a.TipoRegistro}\",\"{a.EstadoPuntualidad ?? "-"}\",\"{a.HoraProgramada?.ToString(@"hh\:mm") ?? "-"}\",\"{a.DiferenciaMinutos?.ToString() ?? "0"} min\",\"{a.MetodoRegistro ?? "-"}\"");
+            }
+
+            var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+            var base64 = Convert.ToBase64String(bytes);
+            var nombre = $"Asistencias_{fechaDesde:yyyyMMdd}_{fechaHasta:yyyyMMdd}.csv";
+
+            await JSRuntime.InvokeVoidAsync("eval", $@"
+                const byteCharacters = atob('{base64}');
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+                const blob = new Blob([new Uint8Array(byteNumbers)], {{ type: 'text/csv;charset=utf-8' }});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '{nombre}'; a.click();
+                URL.revokeObjectURL(url);
+            ");
+            successMessage = $"Exportado: {nombre}";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al exportar CSV: {ex.Message}";
+        }
+    }
+
+    private async Task ExportarXlsx()
+    {
+        try
+        {
+            if (!asistenciasParaInforme.Any())
+            {
+                await VistaPrevia();
+                if (!asistenciasParaInforme.Any())
+                {
+                    errorMessage = "No hay datos para exportar. Realice una búsqueda primero.";
+                    return;
+                }
+            }
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("Asistencias");
+
+            // Encabezados
+            var headers = new[] { "Fecha", "Hora", "Usuario", "Sucursal", "Turno", "Tipo", "Estado", "Hora Programada", "Diferencia", "Método" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                ws.Cell(1, i + 1).Value = headers[i];
+                ws.Cell(1, i + 1).Style.Font.Bold = true;
+                ws.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+            }
+
+            // Datos
+            int row = 2;
+            foreach (var a in asistenciasParaInforme)
+            {
+                var sucNombre = sucursales.FirstOrDefault(s => s.Id == a.Sucursal)?.NombreSucursal ?? "-";
+                ws.Cell(row, 1).Value = a.FechaHora.ToString("dd/MM/yyyy");
+                ws.Cell(row, 2).Value = a.FechaHora.ToString("HH:mm:ss");
+                ws.Cell(row, 3).Value = $"{a.Usuario?.Nombres} {a.Usuario?.Apellidos}";
+                ws.Cell(row, 4).Value = sucNombre;
+                ws.Cell(row, 5).Value = a.Turno?.ToString() ?? "-";
+                ws.Cell(row, 6).Value = a.TipoRegistro;
+                ws.Cell(row, 7).Value = a.EstadoPuntualidad ?? "-";
+                ws.Cell(row, 8).Value = a.HoraProgramada?.ToString(@"hh\:mm") ?? "-";
+                ws.Cell(row, 9).Value = a.DiferenciaMinutos?.ToString() ?? "0";
+                ws.Cell(row, 10).Value = a.MetodoRegistro ?? "-";
+                row++;
+            }
+
+            ws.Columns().AdjustToContents();
+
+            using var ms = new MemoryStream();
+            wb.SaveAs(ms);
+            var bytes = ms.ToArray();
+            var base64 = Convert.ToBase64String(bytes);
+            var nombre = $"Asistencias_{fechaDesde:yyyyMMdd}_{fechaHasta:yyyyMMdd}.xlsx";
+
+            await JSRuntime.InvokeVoidAsync("eval", $@"
+                const byteCharacters = atob('{base64}');
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+                const blob = new Blob([new Uint8Array(byteNumbers)], {{ type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '{nombre}'; a.click();
+                URL.revokeObjectURL(url);
+            ");
+            successMessage = $"Exportado: {nombre}";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al exportar Excel: {ex.Message}";
+        }
+    }
+
+    private async Task Imprimir()
+    {
+        try
+        {
+            if (!asistenciasParaInforme.Any())
+            {
+                await VistaPrevia();
+                if (!asistenciasParaInforme.Any())
+                {
+                    errorMessage = "No hay datos para imprimir. Realice una búsqueda primero.";
+                    return;
+                }
+            }
+
+            // Head estilo factura (igual que listado de ventas)
+            var head = new StringBuilder();
+            head.AppendLine("<meta charset=\"utf-8\"/>");
+            head.AppendLine("<title>Informe de Asistencia</title>");
+            head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+            head.AppendLine("<style>");
+            head.AppendLine("@media print { @page { size: A4 landscape; margin: 10mm 10mm; } }");
+            head.AppendLine("body{font-size:10px;color:#111;}");
+            head.AppendLine(".factura-header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+            head.AppendLine(".factura-header .logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+            head.AppendLine(".factura-header .logo-wrap{width:140px;display:flex;align-items:center;justify-content:center;}");
+            head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
+            head.AppendLine(".factura-header .empresa .small{color:#555;}");
+            head.AppendLine(".tabla th,.tabla td{padding:.25rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
+            head.AppendLine(".right{text-align:right}");
+            head.AppendLine(".center{text-align:center}");
+            head.AppendLine(".muted{color:#666}");
+            head.AppendLine(".badge-success{background:#198754;color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;}");
+            head.AppendLine(".badge-danger{background:#dc3545;color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;}");
+            head.AppendLine(".badge-warning{background:#ffc107;color:#000;padding:2px 6px;border-radius:4px;font-size:9px;}");
+            head.AppendLine(".badge-info{background:#0dcaf0;color:#000;padding:2px 6px;border-radius:4px;font-size:9px;}");
+            head.AppendLine("</style>");
+
+            // Datos empresa/logo
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+            var sucIdSel = SucursalProvider.GetSucursalId();
+            if (sucIdSel.HasValue)
+            {
+                var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+                if (s2 != null) suc = s2;
+            }
+            string empresa = suc?.NombreEmpresa ?? "Empresa";
+            string sucursalNombre = suc?.NombreSucursal ?? "Sucursal";
+            string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+            string? logoUri = null;
+            if (suc?.Logo != null && suc.Logo.Length > 0) logoUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+            var filtros = System.Net.WebUtility.HtmlEncode(ObtenerFiltrosTexto());
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class=\"container-fluid\">");
+            sb.AppendLine("  <div class=\"factura-header\">");
+            sb.AppendLine("    <div class=\"logo-wrap\">");
+            if (!string.IsNullOrEmpty(logoUri)) sb.AppendLine($"      <img class=\"logo\" src=\"{logoUri}\" alt=\"Logo\"/>");
+            else sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:10px;color:#999;min-height:40px;min-width:100px;\">LOGO</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class=\"empresa\">");
+            sb.AppendLine($"      <h2>{System.Net.WebUtility.HtmlEncode(empresa)}</h2>");
+            sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+            sb.AppendLine($"      <div class=\"small\">{System.Net.WebUtility.HtmlEncode(sucursalNombre)}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class=\"ms-auto text-end\">");
+            sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Informe de Asistencia</div>");
+            sb.AppendLine($"      <div>Desde: {fechaDesde:dd/MM/yyyy} &nbsp; Hasta: {fechaHasta:dd/MM/yyyy}</div>");
+            sb.AppendLine($"      <div class=\"small muted\">Total registros: {asistenciasParaInforme.Count} | Entradas: {asistenciasParaInforme.Count(a => a.TipoRegistro == "Entrada")} | Salidas: {asistenciasParaInforme.Count(a => a.TipoRegistro == "Salida")}</div>");
+            sb.AppendLine($"      <div class=\"small muted\">{filtros}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            // Tabla
+            sb.AppendLine("  <table class=\"table table-sm tabla\">");
+            sb.AppendLine("    <thead><tr><th>#</th><th>Fecha</th><th>Día</th><th>Hora</th><th>Usuario</th><th>Sucursal</th><th class='center'>Turno</th><th class='center'>Tipo</th><th class='center'>Estado</th><th>H.Prog.</th><th class='right'>Dif.</th><th>Método</th></tr></thead>");
+            sb.AppendLine("    <tbody>");
+            
+            int nro = 0;
+            foreach (var a in asistenciasParaInforme)
+            {
+                nro++;
+                var sucNombre = sucursales.FirstOrDefault(s => s.Id == a.Sucursal)?.NombreSucursal ?? "-";
+                var tipoBadge = a.TipoRegistro == "Entrada" ? "badge-success" : "badge-danger";
+                var estadoBadge = a.EstadoPuntualidad switch
+                {
+                    "Puntual" => "badge-success",
+                    "Tardanza" => "badge-warning",
+                    "Adelanto" => "badge-info",
+                    _ => ""
+                };
+                var horaProg = a.HoraProgramada?.ToString(@"hh\:mm") ?? "-";
+                var difMin = a.DiferenciaMinutos?.ToString() ?? "0";
+
+                sb.AppendLine($"      <tr>");
+                sb.AppendLine($"        <td>{nro}</td>");
+                sb.AppendLine($"        <td>{a.FechaHora:dd/MM/yyyy}</td>");
+                sb.AppendLine($"        <td>{ObtenerNombreDia(a.FechaHora)}</td>");
+                sb.AppendLine($"        <td>{a.FechaHora:HH:mm:ss}</td>");
+                sb.AppendLine($"        <td>{System.Net.WebUtility.HtmlEncode($"{a.Usuario?.Nombres} {a.Usuario?.Apellidos}")}</td>");
+                sb.AppendLine($"        <td>{System.Net.WebUtility.HtmlEncode(sucNombre)}</td>");
+                sb.AppendLine($"        <td class='center'>{(a.Turno?.ToString() ?? "-")}</td>");
+                sb.AppendLine($"        <td class='center'><span class='{tipoBadge}'>{a.TipoRegistro}</span></td>");
+                sb.AppendLine($"        <td class='center'>{(string.IsNullOrEmpty(estadoBadge) ? (a.EstadoPuntualidad ?? "-") : $"<span class='{estadoBadge}'>{a.EstadoPuntualidad}</span>")}</td>");
+                sb.AppendLine($"        <td>{horaProg}</td>");
+                sb.AppendLine($"        <td class='right'>{difMin} min</td>");
+                sb.AppendLine($"        <td>{a.MetodoRegistro ?? "-"}</td>");
+                sb.AppendLine($"      </tr>");
+            }
+            sb.AppendLine("    </tbody>");
+            sb.AppendLine("  </table>");
+            
+            // Pie con totales
+            sb.AppendLine($"  <div class=\"mt-2 small muted\">Generado: {DateTime.Now:dd/MM/yyyy HH:mm:ss}</div>");
+            sb.AppendLine("</div>");
+
+            await JSRuntime.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al imprimir: {ex.Message}";
+        }
     }
 
     private string ObtenerFiltrosTexto()
@@ -491,17 +939,25 @@
         var filtros = new List<string>();
         filtros.Add($"Desde: {fechaDesde:dd/MM/yyyy}");
         filtros.Add($"Hasta: {fechaHasta:dd/MM/yyyy}");
-        if (!string.IsNullOrWhiteSpace(usuarioSeleccionado))
-        {
-            var usu = usuarios.FirstOrDefault(u => u.Id_Usu.ToString() == usuarioSeleccionado);
-            if (usu != null) filtros.Add($"Usuario: {usu.Nombres} {usu.Apellidos}");
-        }
         if (!string.IsNullOrWhiteSpace(sucursalSeleccionada))
         {
             var suc = sucursales.FirstOrDefault(s => s.Id.ToString() == sucursalSeleccionada);
             if (suc != null) filtros.Add($"Sucursal: {suc.NombreSucursal}");
         }
-        filtros.Add($"Tipo: {tipoInforme}");
+        if (!string.IsNullOrWhiteSpace(usuarioSeleccionado))
+        {
+            var usu = usuarios.FirstOrDefault(u => u.Id_Usu.ToString() == usuarioSeleccionado);
+            if (usu != null) filtros.Add($"Usuario: {usu.Nombres} {usu.Apellidos}");
+        }
+        if (!string.IsNullOrWhiteSpace(tipoRegistroFiltro))
+        {
+            filtros.Add($"Tipo: {tipoRegistroFiltro}");
+        }
+        if (!string.IsNullOrWhiteSpace(estadoPuntualidadFiltro))
+        {
+            filtros.Add($"Estado: {estadoPuntualidadFiltro}");
+        }
+        filtros.Add($"Informe: {tipoInforme}");
         return string.Join(" | ", filtros);
     }
 
@@ -509,21 +965,58 @@
     {
         if (!asistenciasParaInforme.Any()) return Task.FromResult("<p>Sin datos para mostrar</p>");
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"<p><strong>Total registros:</strong> {asistenciasParaInforme.Count}</p>");
-        sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:12px;'>");
-        sb.AppendLine("<thead><tr style='background:#f0f0f0;'><th>#</th><th>Fecha</th><th>Hora</th><th>Usuario</th><th>Tipo</th><th>Sucursal</th></tr></thead>");
+        
+        // Resumen
+        var entradas = asistenciasParaInforme.Count(a => a.TipoRegistro == "Entrada");
+        var salidas = asistenciasParaInforme.Count(a => a.TipoRegistro == "Salida");
+        var tardanzas = asistenciasParaInforme.Count(a => a.EstadoPuntualidad == "Tardanza");
+        var usuariosDistintos = asistenciasParaInforme.Select(a => a.Id_Usuario).Distinct().Count();
+        
+        sb.AppendLine("<div style='margin-bottom:15px;'>");
+        sb.AppendLine($"<strong>Total registros:</strong> {asistenciasParaInforme.Count} | ");
+        sb.AppendLine($"<strong style='color:green'>Entradas:</strong> {entradas} | ");
+        sb.AppendLine($"<strong style='color:red'>Salidas:</strong> {salidas} | ");
+        sb.AppendLine($"<strong>Usuarios:</strong> {usuariosDistintos} | ");
+        sb.AppendLine($"<strong style='color:orange'>Tardanzas:</strong> {tardanzas}");
+        sb.AppendLine("</div>");
+        
+        sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:11px;'>");
+        sb.AppendLine("<thead><tr style='background:#f0f0f0;'>");
+        sb.AppendLine("<th>#</th><th>Fecha</th><th>Día</th><th>Hora</th><th>Usuario</th><th>Sucursal</th><th>Tipo</th><th>Estado</th><th>H.Prog.</th><th>Dif.</th><th>Método</th>");
+        sb.AppendLine("</tr></thead>");
         sb.AppendLine("<tbody>");
         int n = 0;
-        foreach (var a in asistenciasParaInforme.Take(100))
+        foreach (var a in asistenciasParaInforme.Take(200))
         {
             var colorTipo = a.TipoRegistro == "Entrada" ? "color:green" : "color:red";
+            var colorEstado = a.EstadoPuntualidad == "Tardanza" ? "color:orange" : (a.EstadoPuntualidad == "Puntual" ? "color:green" : "color:#666");
             var sucNombre = sucursales.FirstOrDefault(s => s.Id == a.Sucursal)?.NombreSucursal ?? "-";
-            sb.AppendLine($"<tr><td>{++n}</td><td>{a.FechaHora:dd/MM/yyyy}</td><td>{a.FechaHora:HH:mm:ss}</td><td>{a.Usuario?.Nombres} {a.Usuario?.Apellidos}</td><td style='{colorTipo}'>{a.TipoRegistro}</td><td>{sucNombre}</td></tr>");
+            var horaProg = a.HoraProgramada?.ToString("HH:mm") ?? "-";
+            var difMin = a.DiferenciaMinutos.HasValue && a.DiferenciaMinutos != 0 
+                ? $"{(a.DiferenciaMinutos > 0 ? "+" : "")}{a.DiferenciaMinutos} min" 
+                : "-";
+            var colorDif = a.DiferenciaMinutos > 0 ? "color:red" : "color:green";
+            
+            sb.AppendLine($"<tr>");
+            sb.AppendLine($"<td>{++n}</td>");
+            sb.AppendLine($"<td>{a.FechaHora:dd/MM/yyyy}</td>");
+            sb.AppendLine($"<td>{ObtenerNombreDia(a.FechaHora)}</td>");
+            sb.AppendLine($"<td><strong>{a.FechaHora:HH:mm:ss}</strong></td>");
+            sb.AppendLine($"<td>{a.Usuario?.Nombres} {a.Usuario?.Apellidos}</td>");
+            sb.AppendLine($"<td>{sucNombre}</td>");
+            sb.AppendLine($"<td style='{colorTipo}'><strong>{a.TipoRegistro}</strong></td>");
+            sb.AppendLine($"<td style='{colorEstado}'>{a.EstadoPuntualidad ?? "-"}</td>");
+            sb.AppendLine($"<td>{horaProg}</td>");
+            sb.AppendLine($"<td style='{(a.DiferenciaMinutos > 0 ? colorDif : "")}'>{difMin}</td>");
+            sb.AppendLine($"<td>{a.MetodoRegistro ?? "-"}</td>");
+            sb.AppendLine($"</tr>");
         }
         sb.AppendLine("</tbody>");
         sb.AppendLine("</table>");
-        if (asistenciasParaInforme.Count > 100)
-            sb.AppendLine($"<p style='font-size:11px;color:#666;'>Mostrando 100 de {asistenciasParaInforme.Count} registros</p>");
+        if (asistenciasParaInforme.Count > 200)
+            sb.AppendLine($"<p style='font-size:11px;color:#666;'>Mostrando 200 de {asistenciasParaInforme.Count} registros</p>");
+        
+        sb.AppendLine($"<p style='font-size:10px;color:#999;margin-top:10px;'>Generado: {DateTime.Now:dd/MM/yyyy HH:mm:ss}</p>");
         return Task.FromResult(sb.ToString());
     }
 }

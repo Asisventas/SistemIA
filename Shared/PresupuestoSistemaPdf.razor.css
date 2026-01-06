@@ -1,0 +1,283 @@
+.presupuesto-pdf {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 11pt;
+    color: #333;
+    background: white;
+}
+
+.doc-a4 {
+    width: 210mm;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 15mm 12mm;
+    background: white;
+}
+
+/* ENCABEZADO */
+.encabezado {
+    margin-bottom: 10px;
+}
+
+.logo-empresa {
+    max-width: 100px;
+    max-height: 80px;
+    object-fit: contain;
+}
+
+.logo-placeholder {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    border: 2px dashed #ccc;
+    border-radius: 10px;
+}
+
+.titulo-empresa {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.numero-presupuesto {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.numero-presupuesto .etiqueta {
+    font-size: 0.7rem;
+    color: #666;
+    letter-spacing: 2px;
+}
+
+.numero-presupuesto .numero {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #2980b9;
+}
+
+.fecha-presupuesto {
+    color: #666;
+}
+
+.separador {
+    border-top: 2px solid #2c3e50;
+    margin: 15px 0;
+}
+
+/* SECCIONES */
+.seccion {
+    margin-bottom: 15px;
+}
+
+.seccion-titulo {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #2c3e50;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+}
+
+.seccion-titulo.bg-success,
+.seccion-titulo.bg-info {
+    border-bottom: none;
+    border-radius: 5px;
+}
+
+/* CLIENTE */
+.datos-cliente {
+    background: #f8f9fa;
+    padding: 10px 15px;
+    border-radius: 5px;
+    border-left: 4px solid #3498db;
+}
+
+.nombre-cliente {
+    font-size: 1.1rem;
+    color: #2c3e50;
+}
+
+.label {
+    color: #666;
+    font-weight: 500;
+}
+
+/* DESCRIPCIÓN SISTEMA */
+.descripcion-sistema {
+    background: #e8f4f8;
+    padding: 12px;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    border-left: 4px solid #17a2b8;
+}
+
+/* MÓDULOS GRID */
+.modulos-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.modulo-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    font-size: 0.85rem;
+}
+
+.modulo-item i {
+    font-size: 1rem;
+}
+
+.incluye-info {
+    text-align: center;
+    padding: 8px;
+    background: #e9ecef;
+    border-radius: 5px;
+    font-size: 0.85rem;
+}
+
+/* TABLAS DE PRECIOS */
+.tabla-precios {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+}
+
+.tabla-precios th,
+.tabla-precios td {
+    padding: 8px 10px;
+    border: 1px solid #dee2e6;
+}
+
+.tabla-precios thead th {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.tabla-precios tbody td {
+    font-size: 0.9rem;
+}
+
+.tabla-precios .total-row {
+    background: #f8f9fa;
+}
+
+.tabla-precios .total-row td {
+    border-top: 2px solid #333;
+    font-weight: bold;
+}
+
+.total-usd {
+    color: #27ae60;
+    font-size: 1.1rem !important;
+}
+
+.total-gs {
+    color: #2980b9;
+    font-size: 1.1rem !important;
+}
+
+.tabla-pequena {
+    font-size: 0.85rem;
+}
+
+.tabla-pequena th,
+.tabla-pequena td {
+    padding: 5px 10px;
+}
+
+.nota-leasing {
+    font-size: 0.8rem;
+    color: #666;
+    font-style: italic;
+    margin-top: 8px;
+    padding: 8px;
+    background: #e8f4f8;
+    border-radius: 5px;
+}
+
+/* AVISO IMPORTANTE */
+.aviso-importante {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-left: 4px solid #ffc107;
+    padding: 12px;
+    border-radius: 5px;
+    margin: 15px 0;
+}
+
+.aviso-importante h6 {
+    color: #856404;
+    margin-bottom: 8px;
+}
+
+.aviso-importante p {
+    font-size: 0.85rem;
+    color: #856404;
+}
+
+/* PIE */
+.pie-presupuesto {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #dee2e6;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+/* IMPRESIÓN */
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 8mm 10mm 10mm 10mm;
+    }
+
+    body {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .presupuesto-pdf {
+        font-size: 10pt;
+    }
+
+    .doc-a4 {
+        width: 210mm !important;
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .seccion {
+        page-break-inside: avoid;
+    }
+
+    .precios {
+        page-break-inside: avoid;
+    }
+
+    .aviso-importante {
+        page-break-inside: avoid;
+    }
+
+    /* Forzar colores en impresión */
+    .bg-success { background-color: #28a745 !important; }
+    .bg-info { background-color: #17a2b8 !important; }
+    .text-white { color: white !important; }
+    .text-success { color: #28a745 !important; }
+    .text-info { color: #17a2b8 !important; }
+    .text-warning { color: #ffc107 !important; }
+    .text-danger { color: #dc3545 !important; }
+    .text-primary { color: #007bff !important; }
+}

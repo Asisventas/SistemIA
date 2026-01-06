@@ -42,6 +42,10 @@
                         <a class="nav-link @(seccionActiva == "correo" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("correo")'>
                             <i class="bi bi-envelope-at me-2"></i>Correo Electrónico
                         </a>
+                        <a class="nav-link @(seccionActiva == "asistente" ? "active" : "")" href="javascript:void(0)" @onclick='() => CambiarSeccion("asistente")'>
+                            <i class="bi bi-robot me-2"></i>Asistente IA
+                            <span class="badge bg-info ms-1" style="font-size: 8px;">Próx.</span>
+                        </a>
                     </nav>
                 </div>
             </div>
@@ -77,6 +81,9 @@
                     break;
                 case "correo":
                     @RenderCorreo()
+                    break;
+                case "asistente":
+                    @RenderAsistenteIA()
                     break;
             }
         </div>
@@ -1056,7 +1063,7 @@
                 
                 <h5><i class="bi bi-gear me-2"></i>Opciones de Envío Automático</h5>
                 <div class="row g-3 mt-2">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="card border-primary h-100">
                             <div class="card-body">
                                 <h6 class="text-primary"><i class="bi bi-power me-2"></i>Enviar al Cierre del Sistema</h6>
@@ -1064,11 +1071,19 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="card border-success h-100">
                             <div class="card-body">
-                                <h6 class="text-success"><i class="bi bi-clock me-2"></i>Enviar Resumen Diario</h6>
-                                <p class="small mb-0">Configure una hora específica para enviar automáticamente el resumen diario de ventas.</p>
+                                <h6 class="text-success"><i class="bi bi-cash-stack me-2"></i>Enviar al Cierre de Caja</h6>
+                                <p class="small mb-0">Cada destinatario puede elegir recibir informes automáticamente cuando se cierra un turno/caja.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-warning h-100">
+                            <div class="card-body">
+                                <h6 class="text-warning"><i class="bi bi-clock me-2"></i>Resumen Diario/Semanal/Mensual</h6>
+                                <p class="small mb-0">Los destinatarios pueden elegir recibir resúmenes periódicos según su preferencia.</p>
                             </div>
                         </div>
                     </div>
@@ -1139,7 +1154,11 @@
                             </div>
                             <ul class="list-group list-group-flush">
                                 <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Resumen SIFEN</li>
-                                <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Resumen Cierre Sistema</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Resumen Semanal</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Resumen Mensual</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Alertas Vencimientos</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Copia Facturas</li>
+                                <li class="list-group-item small"><i class="bi bi-check2 text-danger me-2"></i>Resumen al Cierre</li>
                             </ul>
                         </div>
                     </div>
@@ -1153,6 +1172,11 @@
                             </ul>
                         </div>
                     </div>
+                </div>
+
+                <div class="alert alert-primary mt-4">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    <strong>Nuevo:</strong> Cada destinatario puede elegir la opción <strong>"Recibir TODOS los informes"</strong> para recibir automáticamente cualquier informe actual y futuro.
                 </div>
 
                 <hr class="my-4" />
@@ -1186,6 +1210,97 @@
                     <a href="/configuracion/correo" class="btn btn-primary" style="background-color: #6f42c1; border-color: #6f42c1;">
                         <i class="bi bi-envelope-at me-1"></i>Configurar Correo
                     </a>
+                </div>
+            </div>
+        </div>
+    };
+
+    // ========== SECCIÓN: ASISTENTE IA ==========
+    private RenderFragment RenderAsistenteIA() => __builder =>
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <h4 class="mb-0"><i class="bi bi-robot me-2"></i>Asistente IA - Próximamente</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-stars me-2"></i>
+                    <strong>En Desarrollo:</strong> Estamos trabajando en un asistente con inteligencia artificial para ayudarle a usar el sistema de forma más eficiente.
+                </div>
+                
+                <div class="text-center py-5">
+                    <div style="font-size: 80px; color: #764ba2; opacity: 0.5;">
+                        <i class="bi bi-robot"></i>
+                    </div>
+                    <h4 class="text-muted mt-3">Asistente Inteligente</h4>
+                    <p class="text-muted">Un asistente que responderá sus preguntas sobre el sistema</p>
+                </div>
+
+                <h5><i class="bi bi-lightbulb me-2"></i>¿Qué podrá hacer el Asistente IA?</h5>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <div class="card h-100 border-primary">
+                            <div class="card-body">
+                                <h6 class="text-primary"><i class="bi bi-question-circle me-2"></i>Responder Preguntas</h6>
+                                <p class="small mb-0">Pregunte cómo realizar cualquier tarea del sistema y obtendrá instrucciones paso a paso.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-success">
+                            <div class="card-body">
+                                <h6 class="text-success"><i class="bi bi-book me-2"></i>Guía Contextual</h6>
+                                <p class="small mb-0">El asistente conocerá cada módulo del sistema y podrá guiarlo según donde se encuentre.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-warning">
+                            <div class="card-body">
+                                <h6 class="text-warning"><i class="bi bi-exclamation-triangle me-2"></i>Solución de Problemas</h6>
+                                <p class="small mb-0">Ayuda para resolver errores comunes y problemas frecuentes en el uso del sistema.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-info">
+                            <div class="card-body">
+                                <h6 class="text-info"><i class="bi bi-lightning me-2"></i>Tips y Atajos</h6>
+                                <p class="small mb-0">Descubra funciones ocultas, atajos de teclado y mejores prácticas para ser más productivo.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4" />
+
+                <h5><i class="bi bi-chat-dots me-2"></i>Ejemplos de Preguntas</h5>
+                <div class="list-group mt-3">
+                    <div class="list-group-item">
+                        <i class="bi bi-chat-left-quote text-primary me-2"></i>
+                        "¿Cómo configuro un descuento del 10% para todos los productos de una marca?"
+                    </div>
+                    <div class="list-group-item">
+                        <i class="bi bi-chat-left-quote text-primary me-2"></i>
+                        "¿Cómo envío la factura por correo al cliente?"
+                    </div>
+                    <div class="list-group-item">
+                        <i class="bi bi-chat-left-quote text-primary me-2"></i>
+                        "¿Por qué me sale error al enviar a SIFEN?"
+                    </div>
+                    <div class="list-group-item">
+                        <i class="bi bi-chat-left-quote text-primary me-2"></i>
+                        "¿Cómo hago una transferencia de stock entre depósitos?"
+                    </div>
+                    <div class="list-group-item">
+                        <i class="bi bi-chat-left-quote text-primary me-2"></i>
+                        "¿Cómo configuro los permisos de un usuario?"
+                    </div>
+                </div>
+
+                <div class="alert alert-secondary mt-4">
+                    <i class="bi bi-hourglass-split me-2"></i>
+                    <strong>Disponibilidad:</strong> Esta funcionalidad estará disponible en una próxima actualización del sistema. Manténgase atento a las novedades.
                 </div>
             </div>
         </div>

@@ -117,6 +117,24 @@ namespace SistemIA.Models
         public DbSet<ConfiguracionCorreo> ConfiguracionesCorreo { get; set; }
         public DbSet<DestinatarioInforme> DestinatariosInforme { get; set; }
 
+        // Asistente IA
+        public DbSet<SistemIA.Models.AsistenteIA.RegistroError> RegistrosErrorIA { get; set; }
+        public DbSet<SistemIA.Models.AsistenteIA.ConversacionAsistente> ConversacionesAsistente { get; set; }
+        public DbSet<SistemIA.Models.AsistenteIA.ArticuloConocimientoDB> ArticulosConocimiento { get; set; }
+        public DbSet<SistemIA.Models.AsistenteIA.PreguntaSinRespuesta> PreguntasSinRespuesta { get; set; }
+        public DbSet<SistemIA.Models.AsistenteIA.CategoriaConocimiento> CategoriasConocimiento { get; set; }
+        public DbSet<SistemIA.Models.AsistenteIA.ConfiguracionAsistenteIA> ConfiguracionesAsistenteIA { get; set; }
+        public DbSet<SistemIA.Models.AsistenteIA.SolicitudSoporteIA> SolicitudesSoporteIA { get; set; }
+        public DbSet<SistemIA.Models.AsistenteIA.AccionUsuario> AccionesUsuario { get; set; }
+
+        // Presupuestos del Sistema (comercial)
+        public DbSet<PresupuestoSistema> PresupuestosSistema { get; set; }
+        public DbSet<PresupuestoSistemaDetalle> PresupuestosSistemaDetalles { get; set; }
+
+        // Historial de Cambios del Sistema y Conversaciones IA (para contexto y documentación)
+        public DbSet<HistorialCambioSistema> HistorialCambiosSistema { get; set; }
+        public DbSet<ConversacionIAHistorial> ConversacionesIAHistorial { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

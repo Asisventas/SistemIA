@@ -257,6 +257,290 @@
 }
 
 /* /Shared/NavMenu.razor.rz.scp.css */
+/* /Shared/PresupuestoSistemaPdf.razor.rz.scp.css */
+.presupuesto-pdf[b-yii2fwb7je] {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 11pt;
+    color: #333;
+    background: white;
+}
+
+.doc-a4[b-yii2fwb7je] {
+    width: 210mm;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 15mm 12mm;
+    background: white;
+}
+
+/* ENCABEZADO */
+.encabezado[b-yii2fwb7je] {
+    margin-bottom: 10px;
+}
+
+.logo-empresa[b-yii2fwb7je] {
+    max-width: 100px;
+    max-height: 80px;
+    object-fit: contain;
+}
+
+.logo-placeholder[b-yii2fwb7je] {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    border: 2px dashed #ccc;
+    border-radius: 10px;
+}
+
+.titulo-empresa[b-yii2fwb7je] {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.numero-presupuesto[b-yii2fwb7je] {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.numero-presupuesto .etiqueta[b-yii2fwb7je] {
+    font-size: 0.7rem;
+    color: #666;
+    letter-spacing: 2px;
+}
+
+.numero-presupuesto .numero[b-yii2fwb7je] {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #2980b9;
+}
+
+.fecha-presupuesto[b-yii2fwb7je] {
+    color: #666;
+}
+
+.separador[b-yii2fwb7je] {
+    border-top: 2px solid #2c3e50;
+    margin: 15px 0;
+}
+
+/* SECCIONES */
+.seccion[b-yii2fwb7je] {
+    margin-bottom: 15px;
+}
+
+.seccion-titulo[b-yii2fwb7je] {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #2c3e50;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+}
+
+.seccion-titulo.bg-success[b-yii2fwb7je],
+.seccion-titulo.bg-info[b-yii2fwb7je] {
+    border-bottom: none;
+    border-radius: 5px;
+}
+
+/* CLIENTE */
+.datos-cliente[b-yii2fwb7je] {
+    background: #f8f9fa;
+    padding: 10px 15px;
+    border-radius: 5px;
+    border-left: 4px solid #3498db;
+}
+
+.nombre-cliente[b-yii2fwb7je] {
+    font-size: 1.1rem;
+    color: #2c3e50;
+}
+
+.label[b-yii2fwb7je] {
+    color: #666;
+    font-weight: 500;
+}
+
+/* DESCRIPCIÓN SISTEMA */
+.descripcion-sistema[b-yii2fwb7je] {
+    background: #e8f4f8;
+    padding: 12px;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    border-left: 4px solid #17a2b8;
+}
+
+/* MÓDULOS GRID */
+.modulos-grid[b-yii2fwb7je] {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.modulo-item[b-yii2fwb7je] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    font-size: 0.85rem;
+}
+
+.modulo-item i[b-yii2fwb7je] {
+    font-size: 1rem;
+}
+
+.incluye-info[b-yii2fwb7je] {
+    text-align: center;
+    padding: 8px;
+    background: #e9ecef;
+    border-radius: 5px;
+    font-size: 0.85rem;
+}
+
+/* TABLAS DE PRECIOS */
+.tabla-precios[b-yii2fwb7je] {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+}
+
+.tabla-precios th[b-yii2fwb7je],
+.tabla-precios td[b-yii2fwb7je] {
+    padding: 8px 10px;
+    border: 1px solid #dee2e6;
+}
+
+.tabla-precios thead th[b-yii2fwb7je] {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.tabla-precios tbody td[b-yii2fwb7je] {
+    font-size: 0.9rem;
+}
+
+.tabla-precios .total-row[b-yii2fwb7je] {
+    background: #f8f9fa;
+}
+
+.tabla-precios .total-row td[b-yii2fwb7je] {
+    border-top: 2px solid #333;
+    font-weight: bold;
+}
+
+.total-usd[b-yii2fwb7je] {
+    color: #27ae60;
+    font-size: 1.1rem !important;
+}
+
+.total-gs[b-yii2fwb7je] {
+    color: #2980b9;
+    font-size: 1.1rem !important;
+}
+
+.tabla-pequena[b-yii2fwb7je] {
+    font-size: 0.85rem;
+}
+
+.tabla-pequena th[b-yii2fwb7je],
+.tabla-pequena td[b-yii2fwb7je] {
+    padding: 5px 10px;
+}
+
+.nota-leasing[b-yii2fwb7je] {
+    font-size: 0.8rem;
+    color: #666;
+    font-style: italic;
+    margin-top: 8px;
+    padding: 8px;
+    background: #e8f4f8;
+    border-radius: 5px;
+}
+
+/* AVISO IMPORTANTE */
+.aviso-importante[b-yii2fwb7je] {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-left: 4px solid #ffc107;
+    padding: 12px;
+    border-radius: 5px;
+    margin: 15px 0;
+}
+
+.aviso-importante h6[b-yii2fwb7je] {
+    color: #856404;
+    margin-bottom: 8px;
+}
+
+.aviso-importante p[b-yii2fwb7je] {
+    font-size: 0.85rem;
+    color: #856404;
+}
+
+/* PIE */
+.pie-presupuesto[b-yii2fwb7je] {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #dee2e6;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+/* IMPRESIÓN */
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 8mm 10mm 10mm 10mm;
+    }
+
+    body[b-yii2fwb7je] {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .presupuesto-pdf[b-yii2fwb7je] {
+        font-size: 10pt;
+    }
+
+    .doc-a4[b-yii2fwb7je] {
+        width: 210mm !important;
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .seccion[b-yii2fwb7je] {
+        page-break-inside: avoid;
+    }
+
+    .precios[b-yii2fwb7je] {
+        page-break-inside: avoid;
+    }
+
+    .aviso-importante[b-yii2fwb7je] {
+        page-break-inside: avoid;
+    }
+
+    /* Forzar colores en impresión */
+    .bg-success[b-yii2fwb7je] { background-color: #28a745 !important; }
+    .bg-info[b-yii2fwb7je] { background-color: #17a2b8 !important; }
+    .text-white[b-yii2fwb7je] { color: white !important; }
+    .text-success[b-yii2fwb7je] { color: #28a745 !important; }
+    .text-info[b-yii2fwb7je] { color: #17a2b8 !important; }
+    .text-warning[b-yii2fwb7je] { color: #ffc107 !important; }
+    .text-danger[b-yii2fwb7je] { color: #dc3545 !important; }
+    .text-primary[b-yii2fwb7je] { color: #007bff !important; }
+}
 /* /Shared/Reportes/KudeFactura.razor.rz.scp.css */
 .kude[b-v9lpkbvwk4] { 
   font-family: Arial, Helvetica, sans-serif; 
@@ -383,9 +667,31 @@
 .kude .resumen[b-v9lpkbvwk4] { margin-top: 6px; display:grid; grid-template-columns: 1fr; gap: 6px; }
 .kude .subtotales[b-v9lpkbvwk4], .kude .total-operacion[b-v9lpkbvwk4] { display:flex; justify-content:space-between; border-bottom:1px solid var(--bs-border-color, #ced4da); padding-bottom:4px; }
 .kude .en-letras[b-v9lpkbvwk4] { font-style: italic; font-size: .9rem; color: var(--bs-secondary-color, #6c757d); }
-.kude .liquidacion-iva[b-v9lpkbvwk4] { margin-top: 4px; max-width: 60mm; }
+.kude .liquidacion-iva[b-v9lpkbvwk4] { margin-top: 8px; max-width: 350px; }
 .kude .liquidacion-iva .fila[b-v9lpkbvwk4] { display:flex; justify-content:space-between; }
 .kude .liquidacion-iva .total-iva[b-v9lpkbvwk4] { border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; font-weight: bold; }
+
+/* Tabla de IVA discriminada */
+.kude .tabla-iva[b-v9lpkbvwk4] { 
+  width: 100%; 
+  border-collapse: collapse; 
+  font-size: 0.85rem; 
+  background: #fff; 
+}
+.kude .tabla-iva th[b-v9lpkbvwk4], .kude .tabla-iva td[b-v9lpkbvwk4] { 
+  border: 1px solid var(--bs-border-color, #9aa0a6); 
+  padding: 4px 6px; 
+}
+.kude .tabla-iva th[b-v9lpkbvwk4] { 
+  background: #e3f2fd; 
+  color: #1565c0; 
+  font-weight: 600; 
+  text-align: left;
+}
+.kude .tabla-iva tr.total-iva td[b-v9lpkbvwk4] {
+  background: #f5f5f5;
+  border-top: 2px solid #1565c0;
+}
 
 .kude .validacion[b-v9lpkbvwk4] { 
   display: grid;

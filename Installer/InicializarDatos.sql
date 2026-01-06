@@ -337,6 +337,214 @@ ELSE
 -- ============================================
 -- FINALIZACIÓN
 -- ============================================
+-- ============================================
+-- 20. ARTÍCULOS DE CONOCIMIENTO - ASISTENTE IA
+-- ============================================
+PRINT ''
+PRINT 'Inicializando artículos de conocimiento del Asistente IA...'
+
+-- VENTAS
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Crear una nueva venta')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Ventas', 'Operaciones', 'Crear una nueva venta',
+'Para **crear una nueva venta**:
+1. Ve a **Ventas → Nueva Venta**
+2. Selecciona el **cliente**
+3. Agrega productos
+4. Selecciona **forma de pago**
+5. **Confirma** la venta',
+'venta, factura, vender, facturar, nueva venta', '/ventas', 'bi-cart', 9, GETDATE(), GETDATE(), 1, 0);
+
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Anular una venta')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Ventas', 'Operaciones', 'Anular una venta',
+'Para **anular una venta**:
+1. Ve a **Ventas → Explorador**
+2. Busca la venta
+3. Click en **Anular**
+Nota: Solo ventas del día. Usa NC para ventas anteriores.',
+'anular venta, cancelar venta, eliminar venta', '/ventas/explorar', 'bi-x-circle', 8, GETDATE(), GETDATE(), 1, 0);
+
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Crear Nota de Crédito')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Ventas', 'Notas de Crédito', 'Crear Nota de Crédito',
+'Para crear una **Nota de Crédito**:
+1. Ve a **Ventas → Notas de Crédito**
+2. Busca la factura original
+3. Selecciona productos a devolver
+4. **Confirma** la NC',
+'nota credito, devolucion, nc, devolver', '/notas-credito', 'bi-receipt-cutoff', 8, GETDATE(), GETDATE(), 1, 0);
+
+-- COMPRAS
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Registrar una compra')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Compras', 'Operaciones', 'Registrar una compra',
+'Para **registrar una compra**:
+1. Ve a **Compras → Nueva Compra**
+2. Selecciona el proveedor
+3. Ingresa productos y cantidades
+4. **Confirma** la compra',
+'compra, comprar, nueva compra, factura proveedor', '/compras', 'bi-bag', 9, GETDATE(), GETDATE(), 1, 0);
+
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Pagar a proveedores')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Compras', 'Pagos', 'Pagar a proveedores',
+'Para **pagar a un proveedor**:
+1. Ve a **Compras → Pagos**
+2. Selecciona el proveedor
+3. Elige facturas a pagar
+4. Registra el monto y forma de pago',
+'pago proveedor, pagar proveedor, cuentas pagar', '/pagos-proveedores', 'bi-cash-coin', 8, GETDATE(), GETDATE(), 1, 0);
+
+-- CAJA
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Cierre de caja')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Caja', 'Operaciones', 'Cierre de caja',
+'Para **cerrar caja**:
+1. Ve a **Ventas → Cierre de Caja**
+2. Revisa el resumen de operaciones
+3. Ingresa efectivo contado
+4. **Confirma** el cierre',
+'cierre caja, cerrar caja, arqueo, cuadrar caja', '/caja/cierre', 'bi-cash-stack', 9, GETDATE(), GETDATE(), 1, 0);
+
+-- INVENTARIO
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Ajustar stock de productos')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Inventario', 'Stock', 'Ajustar stock de productos',
+'Para **ajustar stock**:
+1. Ve a **Inventario → Ajustes**
+2. Busca el producto
+3. Ingresa cantidad nueva o ajuste
+4. Selecciona motivo
+5. **Confirma**',
+'ajuste stock, inventario, merma, corregir stock', '/inventario/ajustes', 'bi-box-seam', 8, GETDATE(), GETDATE(), 1, 0);
+
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Transferir stock entre depósitos')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Inventario', 'Stock', 'Transferir stock entre depósitos',
+'Para **transferir stock**:
+1. Ve a **Inventario → Transferencias**
+2. Selecciona origen y destino
+3. Agrega productos y cantidades
+4. **Confirma** la transferencia',
+'transferir, mover productos, transferencia deposito', '/inventario/transferencias', 'bi-arrow-left-right', 7, GETDATE(), GETDATE(), 1, 0);
+
+-- CLIENTES Y COBROS
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Cobrar cuotas a clientes')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Clientes', 'Cobros', 'Cobrar cuotas a clientes',
+'Para **cobrar a un cliente**:
+1. Ve a **Ventas → Cuentas por Cobrar**
+2. Selecciona el cliente
+3. Marca cuotas a cobrar
+4. Registra monto y forma de pago',
+'cobro, cobrar cliente, cuota, deuda cliente', '/cobros', 'bi-currency-dollar', 8, GETDATE(), GETDATE(), 1, 0);
+
+-- SISTEMA (BACKUP)
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Hacer backup de la base de datos')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Sistema', 'Backup', 'Hacer backup de la base de datos',
+'Para hacer **backup**:
+1. Abre SQL Server Management Studio
+2. Click derecho en asiswebapp
+3. Tareas → Copia de seguridad
+4. Selecciona destino (.bak)
+Haz backup diario y guarda copia externa.',
+'backup, copia seguridad, respaldo, guardar datos', NULL, 'bi-hdd', 10, GETDATE(), GETDATE(), 1, 0);
+
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Restaurar backup de base de datos')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Sistema', 'Backup', 'Restaurar backup de base de datos',
+'Para **restaurar backup**:
+1. Cierra la aplicación
+2. En SSMS: Restaurar base de datos
+3. Selecciona archivo .bak
+4. Confirma la restauración
+La restauración sobrescribe datos actuales.',
+'restaurar, restore, recuperar, cargar backup', NULL, 'bi-arrow-counterclockwise', 9, GETDATE(), GETDATE(), 1, 0);
+
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Actualizar el sistema')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Sistema', 'Mantenimiento', 'Actualizar el sistema',
+'Para **actualizar SistemIA**:
+1. Haz backup primero
+2. Descarga la nueva versión
+3. Ejecuta Actualizar.bat
+4. Reinicia la aplicación
+Las migraciones de BD se aplican automáticamente.',
+'actualizar, update, version, nueva version', '/actualizacion-sistema', 'bi-cloud-download', 8, GETDATE(), GETDATE(), 1, 0);
+
+-- USUARIOS
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Crear nuevo usuario')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Usuarios', 'Gestión', 'Crear nuevo usuario',
+'Para **crear usuario**:
+1. Ve a **Personal → Usuarios**
+2. Click en Nuevo Usuario
+3. Completa datos y rol
+4. Configura permisos
+5. Guarda',
+'usuario, crear usuario, nuevo usuario, empleado', '/menu-usuarios', 'bi-person-plus', 8, GETDATE(), GETDATE(), 1, 0);
+
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Configurar permisos de usuario')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Usuarios', 'Permisos', 'Configurar permisos de usuario',
+'Para **configurar permisos**:
+1. Ve a **Personal → Permisos**
+2. Selecciona usuario o rol
+3. Marca permisos por módulo
+4. Guarda cambios',
+'permisos, acceso, roles, seguridad', '/personal/permisos-usuarios', 'bi-shield-lock', 8, GETDATE(), GETDATE(), 1, 0);
+
+-- PRODUCTOS
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Crear nuevo producto')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Productos', 'Gestión', 'Crear nuevo producto',
+'Para **crear producto**:
+1. Ve a **Productos → Administrar**
+2. Click en Nuevo Producto
+3. Ingresa código, descripción, precio
+4. Selecciona tipo IVA
+5. Guarda',
+'producto, crear producto, nuevo producto, articulo', '/productos', 'bi-box', 9, GETDATE(), GETDATE(), 1, 0);
+
+-- CONFIGURACIÓN
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Configurar timbrado y facturación electrónica')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Configuración', 'SIFEN', 'Configurar timbrado y facturación electrónica',
+'Para configurar **SIFEN**:
+1. Ve a Configuración → Sociedad
+2. Carga certificado .pfx
+3. Ve a Configuración → Cajas
+4. Ingresa timbrado y vigencia
+5. Selecciona ambiente (Test/Producción)',
+'sifen, timbrado, factura electronica, certificado, set', '/configuracion/cajas', 'bi-patch-check', 9, GETDATE(), GETDATE(), 1, 0);
+
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Configurar envío automático de correo')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Configuración', 'Correo', 'Configurar envío automático de correo',
+'Para configurar **correo**:
+1. Ve a Configuración → Correo
+2. Configura servidor SMTP (smtp.gmail.com:587)
+3. Ingresa usuario y contraseña app
+4. Agrega destinatarios
+5. Activa envío automático',
+'correo, email, smtp, gmail, notificacion', '/configuracion/correo', 'bi-envelope', 9, GETDATE(), GETDATE(), 1, 0);
+
+-- PRESUPUESTOS
+IF NOT EXISTS (SELECT 1 FROM ArticulosConocimiento WHERE Titulo = 'Crear un presupuesto')
+INSERT INTO ArticulosConocimiento (Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES ('Ventas', 'Presupuestos', 'Crear un presupuesto',
+'Para crear **presupuesto**:
+1. Ve a Ventas → Presupuestos
+2. Nuevo Presupuesto
+3. Agrega cliente y productos
+4. Define validez
+5. Guarda (convierte a venta cuando acepten)',
+'presupuesto, cotizacion, proforma', '/presupuestos/explorar', 'bi-file-earmark-text', 8, GETDATE(), GETDATE(), 1, 0);
+
+PRINT '✓ Artículos de conocimiento creados'
+
 PRINT ''
 PRINT '============================================'
 PRINT 'INICIALIZACIÓN COMPLETADA'

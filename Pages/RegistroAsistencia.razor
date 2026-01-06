@@ -279,8 +279,11 @@ else
     {
 
         await using var Db = await DbFactory.CreateDbContextAsync();
-        // Se inicializaba todo en cada carga
-        var modeloPath = @"C:\asis\SistemIA\face_recognition_models";
+        // Usar ruta relativa al ejecutable para que funcione en cualquier instalación
+        var baseDir = AppContext.BaseDirectory;
+        var modeloPath = Path.Combine(baseDir, "face_recognition_models");
+        if (!Directory.Exists(modeloPath))
+            modeloPath = @"C:\asis\SistemIA\face_recognition_models";
         faceRecognition = FaceRecognition.Create(modeloPath);
 
         sucursales = await Db.Sucursal.OrderBy(s => s.NombreSucursal).ToListAsync();
@@ -394,6 +397,12 @@ else
     private async Task RegistrarAsistenciaAutomatica(Usuario usuario)
     {
         await using var Db = await DbFactory.CreateDbContextAsync();
+        
+        // Obtener la caja activa para el turno
+        var cajaActiva = await Db.Cajas
+            .Where(c => c.CajaActual == 1 && c.IdSucursal == sucursalSeleccionadaId)
+            .FirstOrDefaultAsync();
+        
         var ultimoRegistro = await Db.Asistencias.Where(a => a.Id_Usuario == usuario.Id_Usu).OrderByDescending(a => a.FechaHora).FirstOrDefaultAsync();
         string tipoRegistro = (ultimoRegistro == null || ultimoRegistro.TipoRegistro == "Salida" || ultimoRegistro.TipoRegistro == "FinBreak") ? "Entrada" : "Salida";
 
@@ -407,7 +416,9 @@ else
             Notas = "Reconocimiento Facial",
             MetodoRegistro = "Facial",
             EsRegistroAutomatico = true,
-            UbicacionRegistro = "Terminal Principal" // TODO: Obtener ubicación real
+            UbicacionRegistro = "Terminal Principal",
+            Turno = cajaActiva?.TurnoActual,
+            IdCaja = cajaActiva?.IdCaja
         };
 
         // *** NUEVO: Calcular automáticamente todos los campos de control de tiempo ***
@@ -479,7 +490,21 @@ else
             await JS.InvokeVoidAsync("alert", "Debe seleccionar un usuario, sucursal y tipo de registro.");
             return;
         }
+        
+        // Obtener la caja activa para el turno
+        var cajaActiva = await Db.Cajas
+            .Where(c => c.CajaActual == 1 && c.IdSucursal == nuevaAsistencia.Sucursal)
+            .FirstOrDefaultAsync();
+        
         nuevaAsistencia.FechaHora = DateTime.Now;
+        nuevaAsistencia.MetodoRegistro = "Manual";
+        nuevaAsistencia.EsRegistroAutomatico = false;
+        nuevaAsistencia.Turno = cajaActiva?.TurnoActual;
+        nuevaAsistencia.IdCaja = cajaActiva?.IdCaja;
+        
+        // Calcular control de tiempo (puntualidad, etc.)
+        nuevaAsistencia = await AsistenciaCalculator.CalcularControlTiempo(nuevaAsistencia);
+        
         Db.Asistencias.Add(nuevaAsistencia);
         await Db.SaveChangesAsync();
         nuevaAsistencia = new();

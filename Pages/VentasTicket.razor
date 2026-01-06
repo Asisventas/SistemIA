@@ -130,6 +130,10 @@ else
                 <div class="ticket-detalle-header">
                     <span class="col-desc">DESCRIPCIÓN</span>
                     <span class="col-cant">CANT</span>
+                    @if (_modoFarmaciaActivo)
+                    {
+                        <span class="col-descuento">%Desc</span>
+                    }
                     <span class="col-precio">PRECIO</span>
                     <span class="col-subtotal">TOTAL</span>
                 </div>
@@ -139,6 +143,10 @@ else
                     <div class="ticket-detalle-item">
                         <span class="col-desc">@det.Producto?.Descripcion</span>
                         <span class="col-cant">@det.Cantidad</span>
+                        @if (_modoFarmaciaActivo)
+                        {
+                            <span class="col-descuento">@(det.PorcentajeDescuento.HasValue && det.PorcentajeDescuento.Value > 0 ? det.PorcentajeDescuento.Value.ToString("N2") : "-")</span>
+                        }
                         <span class="col-precio">@FormatearImporte(det.PrecioUnitario)</span>
                         <span class="col-subtotal">@FormatearImporte(det.Importe)</span>
                     </div>
@@ -212,6 +220,7 @@ else
     private decimal _totalExentas;
     private decimal _liquidacionIva10;
     private decimal _liquidacionIva5;
+    private bool _modoFarmaciaActivo;
 
     private int AnchoCaracteres => _caja?.AnchoTicket is > 20 ? _caja.AnchoTicket.Value : 42;
 
@@ -430,6 +439,10 @@ else
         var totalGravado5 = _detalles.Sum(x => x.Grabado5 + x.IVA5);     // Total de productos con 5%
         _liquidacionIva10 = Math.Round(totalGravado10 / 11m, 0);
         _liquidacionIva5 = Math.Round(totalGravado5 / 21m, 0);
+
+        // Cargar configuración de farmacia
+        var configSistema = await ctx.ConfiguracionSistema.FirstOrDefaultAsync();
+        _modoFarmaciaActivo = configSistema?.FarmaciaModoActivo ?? false;
     }
 
     private string FormatearImporte(decimal v) => _venta?.EsMonedaExtranjera == true ? v.ToString("N2") : v.ToString("N0");

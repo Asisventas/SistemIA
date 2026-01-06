@@ -292,10 +292,11 @@ namespace SistemIA.Services
                 var guardados = 0;
                 foreach (var reg in ParseCambiosChaco(json))
                 {
-                    var tasaBase = reg.compra > 0 ? reg.compra : (reg.venta ?? 0m);
+                    // Usar precio de VENTA (más alto) como tipo de cambio principal
+                    var tasaBase = reg.venta > 0 ? reg.venta.Value : (reg.compra > 0 ? reg.compra : 0m);
                     if (tasaBase > 0)
                     {
-                        await GuardarTipoCambioAsync(reg.iso, "PYG", tasaBase, "Cambios Chaco", reg.venta);
+                        await GuardarTipoCambioAsync(reg.iso, "PYG", tasaBase, "Cambios Chaco (Venta)", reg.compra > 0 ? reg.compra : null);
                         guardados++;
                         _logger.LogInformation($"💱 {reg.iso}/PYG: Compra {(reg.compra > 0 ? reg.compra.ToString("N1") : "-")} | Venta {reg.venta?.ToString("N1") ?? "-"}");
                     }

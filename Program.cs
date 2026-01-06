@@ -17,6 +17,10 @@ using System.Text;
 using System.Text.RegularExpressions;
 using SistemIA.Utils;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using QuestPDF.Infrastructure;
+
+// Configurar licencia QuestPDF (Community para proyectos pequeños)
+QuestPDF.Settings.License = LicenseType.Community;
 
 // Configuración global SSL/TLS para SIFEN (desarrollo)
 // ADVERTENCIA: En producción, validar certificados apropiadamente
@@ -70,6 +74,7 @@ builder.Services.AddScoped<ICajaProvider, CajaProvider>();
 builder.Services.AddScoped<DEBuilderService>();
 builder.Services.AddScoped<DEXmlBuilder>();
 builder.Services.AddScoped<PdfFacturaService>();
+builder.Services.AddScoped<PdfPresupuestoSistemaService>();
 builder.Services.AddScoped<ICajaService, CajaService>();
 builder.Services.AddScoped<PagoProveedorService>();
 builder.Services.AddScoped<AuditoriaService>();
@@ -78,7 +83,14 @@ builder.Services.AddScoped<ActualizacionService>();
 builder.Services.AddScoped<DescuentoService>();
 builder.Services.AddScoped<ICorreoService, CorreoService>();
 builder.Services.AddScoped<IInformeCorreoService, InformeCorreoService>();
+builder.Services.AddScoped<IAsistenteIAService, AsistenteIAService>();
 builder.Services.AddScoped<IHtmlToPdfService, HtmlToPdfService>();
+builder.Services.AddScoped<IInformePdfService, InformePdfService>();
+builder.Services.AddScoped<IHistorialCambiosService, HistorialCambiosService>();
+builder.Services.AddScoped<ISaAuthenticationService, SaAuthenticationService>(); // Autenticación SA con memoria de 30 min
+builder.Services.AddSingleton<ChatStateService>(); // Estado del chat (singleton por circuito)
+builder.Services.AddSingleton<RutasSistemaService>(); // Escaneo automático de rutas del sistema
+builder.Services.AddSingleton<ITrackingService, TrackingService>(); // Tracking de acciones del usuario
 // Impresión directa sin diálogo (solo Windows)
 if (OperatingSystem.IsWindows())
 {
@@ -1844,6 +1856,7 @@ using (var scope = app.Services.CreateScope())
     var dataInitService = scope.ServiceProvider.GetRequiredService<IDataInitializationService>();
     await dataInitService.InicializarDatosListasPreciosAsync();
     await dataInitService.InicializarGeografiaSifenAsync();
+    await dataInitService.InicializarArticulosAsistenteIAAsync();
 }
 
 // ============================================
@@ -1940,7 +1953,83 @@ app.MapGet("/pagos-proveedores/comprobante-a4/{idPago:int}", async (
     }
 });
 
+// ============================================
+// INICIO AUTOMÁTICO DEL ACTUALIZADOR (puerto 5096)
+// ============================================
+IniciarActualizadorSiNoEstaActivo();
+
 app.Run();
+
+// Función para iniciar el Actualizador automáticamente como proceso INDEPENDIENTE
+void IniciarActualizadorSiNoEstaActivo()
+{
+    try
+    {
+        // Verificar si el puerto 5096 ya está en uso
+        bool actualizadorActivo = false;
+        try
+        {
+            using var client = new System.Net.Http.HttpClient();
+            client.Timeout = TimeSpan.FromSeconds(2);
+            var response = client.GetAsync("http://localhost:5096").Result;
+            actualizadorActivo = response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound;
+        }
+        catch
+        {
+            actualizadorActivo = false;
+        }
+
+        if (!actualizadorActivo)
+        {
+            // Buscar la ruta del Actualizador
+            var posiblesRutas = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "Actualizador", "SistemIA.Actualizador.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "Actualizador", "SistemIA.Actualizador.exe"),
+                @"C:\SistemIA\Actualizador\SistemIA.Actualizador.exe",
+                @"C:\asis\SistemIA.Actualizador\bin\Debug\net8.0\SistemIA.Actualizador.exe",
+                @"C:\asis\SistemIA.Actualizador\bin\Release\net8.0\SistemIA.Actualizador.exe"
+            };
+
+            string? rutaActualizador = posiblesRutas.FirstOrDefault(File.Exists);
+
+            if (rutaActualizador != null)
+            {
+                // Usar WMI (wmic) para crear un proceso completamente independiente
+                // que sobrevive al cierre del proceso padre
+                var wmiCommand = $"process call create \"{rutaActualizador}\"";
+                var startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "wmic",
+                    Arguments = wmiCommand,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                
+                using var process = System.Diagnostics.Process.Start(startInfo);
+                process?.WaitForExit(5000); // Esperar máximo 5 segundos
+                
+                Console.WriteLine($"[Actualizador] Iniciado como proceso independiente desde: {rutaActualizador}");
+            }
+            else
+            {
+                Console.WriteLine("[Actualizador] No se encontró el ejecutable. Rutas buscadas:");
+                foreach (var ruta in posiblesRutas)
+                    Console.WriteLine($"  - {ruta}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("[Actualizador] Ya está activo en puerto 5096");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Actualizador] Error al intentar iniciar: {ex.Message}");
+    }
+}
 
 // ============================================
 // FUNCIÓN: Generar HTML Recibo Pago Proveedor

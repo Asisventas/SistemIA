@@ -29,6 +29,23 @@
                     <div class="alert alert-success">
                         <i class="fas fa-check-circle me-2"></i>
                         <strong>¡Actualización completada exitosamente!</strong>
+                        @if (estadoActualizacion.VerificacionExitosa)
+                        {
+                            <div class="mt-2 small">
+                                <i class="fas fa-shield-alt me-1"></i>
+                                <strong>Verificación:</strong> @estadoActualizacion.ArchivosVerificados archivos verificados correctamente
+                                <br/>
+                                <i class="fas fa-clock me-1"></i>
+                                <strong>Fecha:</strong> @estadoActualizacion.FechaVerificacion
+                            </div>
+                        }
+                        @if (estadoActualizacion.AutoReload)
+                        {
+                            <div class="mt-2">
+                                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                <span>La página se recargará automáticamente en 3 segundos...</span>
+                            </div>
+                        }
                     </div>
                 }
                 else if (reconectando)
@@ -68,10 +85,13 @@
                     <div class="mt-3 text-center">
                         @if (estadoActualizacion?.Estado == "completado")
                         {
-                            <button class="btn btn-success btn-lg" @onclick="RecargarPagina">
-                                <i class="fas fa-check me-2"></i>
-                                ¡Listo! Recargar Página
-                            </button>
+                            @if (!estadoActualizacion.AutoReload)
+                            {
+                                <button class="btn btn-success btn-lg" @onclick="RecargarPagina">
+                                    <i class="fas fa-check me-2"></i>
+                                    ¡Listo! Recargar Página
+                                </button>
+                            }
                         }
                         else
                         {
@@ -119,23 +139,98 @@
                             <i class="fas fa-box me-2"></i>
                             Generar Paquete de Actualización
                         </a>
+                        <button class="btn btn-outline-info ms-2" @onclick="VerificarArchivos">
+                            <i class="fas fa-shield-alt me-2"></i>
+                            Verificar Archivos
+                        </button>
                     </div>
+
+                    @* Panel de Verificación de Archivos *@
+                    @if (verificacionActiva && resultadoVerificacion != null)
+                    {
+                        <div class="alert @(resultadoVerificacion.Exitosa ? "alert-success" : "alert-warning") mb-4">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h5>
+                                        <i class="fas @(resultadoVerificacion.Exitosa ? "fa-check-circle" : "fa-exclamation-triangle") me-2"></i>
+                                        Verificación de Archivos del Sistema
+                                    </h5>
+                                    <p class="mb-2">@resultadoVerificacion.Mensaje</p>
+                                    <small class="text-muted">
+                                        Verificación realizada: @resultadoVerificacion.FechaVerificacion.ToString("dd/MM/yyyy HH:mm:ss")
+                                    </small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => verificacionActiva = false">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <hr/>
+                            <table class="table table-sm table-bordered mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Archivo</th>
+                                        <th>Estado</th>
+                                        <th>Fecha Modificación</th>
+                                        <th>Tamaño</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var archivo in resultadoVerificacion.Archivos)
+                                    {
+                                        <tr class="@(archivo.Existe ? (archivo.EsReciente ? "table-success" : "table-warning") : "table-danger")">
+                                            <td><code>@archivo.Nombre</code></td>
+                                            <td>
+                                                @if (archivo.Existe)
+                                                {
+                                                    @if (archivo.EsReciente)
+                                                    {
+                                                        <span class="badge bg-success">
+                                                            <i class="fas fa-check me-1"></i>Actualizado
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-warning text-dark">
+                                                            <i class="fas fa-clock me-1"></i>Antiguo
+                                                        </span>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">
+                                                        <i class="fas fa-times me-1"></i>No existe
+                                                    </span>
+                                                }
+                                            </td>
+                                            <td>@(archivo.FechaModificacion?.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
+                                            <td>@(archivo.Existe ? $"{archivo.TamanoKB:N0} KB" : "-")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
 
                     <!-- Pestañas -->
                     <ul class="nav nav-tabs mb-4">
                         <li class="nav-item">
                             <button class="@GetTabClass("aplicar")" @onclick="ActivarPestanaAplicar" type="button">
-                                Aplicar Actualización
+                                <i class="fas fa-download me-1"></i> Aplicar Actualización
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="@GetTabClass("changelog")" @onclick="ActivarPestanaChangelog" type="button">
+                                <i class="fas fa-list-alt me-1"></i> Notas de Versión
                             </button>
                         </li>
                         <li class="nav-item">
                             <button class="@GetTabClass("generar")" @onclick="ActivarPestanaGenerar" type="button">
-                                Generar Paquete
+                                <i class="fas fa-box me-1"></i> Generar Paquete
                             </button>
                         </li>
                         <li class="nav-item">
                             <button class="@GetTabClass("backups")" @onclick="ActivarPestanaBackups" type="button">
-                                Backups
+                                <i class="fas fa-database me-1"></i> Backups
                             </button>
                         </li>
                     </ul>
@@ -574,6 +669,43 @@
                         }
                     }
 
+                    <!-- Contenido de Notas de Versión -->
+                    @if (pestanaActiva == "changelog")
+                    {
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5>
+                                <i class="fas fa-clipboard-list me-2"></i>
+                                Historial de Cambios
+                            </h5>
+                            <button class="btn btn-outline-primary btn-sm" @onclick="RecargarChangelog">
+                                <i class="fas fa-sync-alt me-1"></i> Actualizar
+                            </button>
+                        </div>
+
+                        @if (cargandoChangelog)
+                        {
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status"></div>
+                                <p class="mt-2 text-muted">Cargando notas de versión...</p>
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(contenidoChangelog))
+                        {
+                            <div class="card">
+                                <div class="card-body changelog-content">
+                                    @((MarkupString)ConvertirMarkdownAHtml(contenidoChangelog))
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                No se encontró el archivo de notas de versión (CHANGELOG.md).
+                            </div>
+                        }
+                    }
+
                 </div>
             </div>
         </div>
@@ -587,6 +719,10 @@
     
     // Control de pestañas
     private string pestanaActiva = "aplicar";
+    
+    // Changelog
+    private string contenidoChangelog = "";
+    private bool cargandoChangelog = false;
     
     // Aplicar actualización
     private string archivoSubido = "";
@@ -616,6 +752,10 @@
     private System.Threading.Timer? pollingTimer;
     private string? archivoParaReintento;
 
+    // Verificación de archivos
+    private bool verificacionActiva = false;
+    private ResultadoVerificacion? resultadoVerificacion = null;
+
     protected override async Task OnInitializedAsync()
     {
         versionActual = ActualizacionService.ObtenerVersionActual();
@@ -624,6 +764,13 @@
         
         // Verificar si hay una actualización en progreso al cargar la página
         await VerificarActualizacionEnProgreso();
+    }
+
+    private void VerificarArchivos()
+    {
+        resultadoVerificacion = ActualizacionService.VerificarActualizacion();
+        verificacionActiva = true;
+        StateHasChanged();
     }
 
     private async Task VerificarActualizacionEnProgreso()
@@ -920,10 +1067,18 @@
                     reconectando = false;
                     intentosReconexion = 0;
                     
-                    // Si completó o error, detener polling después de un momento
+                    // Si completó o error, detener polling
                     if (estado.Estado == "completado" || estado.Estado == "error")
                     {
                         DetenerPolling();
+                        
+                        // Auto-reload si la verificación fue exitosa
+                        if (estado.Estado == "completado" && estado.AutoReload)
+                        {
+                            // Esperar 3 segundos para mostrar el mensaje de éxito y luego recargar
+                            await Task.Delay(3000);
+                            await RecargarPagina();
+                        }
                     }
                 }
             }
@@ -1151,6 +1306,105 @@
     private void ActivarPestanaAplicar() => pestanaActiva = "aplicar";
     private void ActivarPestanaGenerar() => pestanaActiva = "generar";
     private void ActivarPestanaBackups() => pestanaActiva = "backups";
+    private async Task ActivarPestanaChangelog()
+    {
+        pestanaActiva = "changelog";
+        if (string.IsNullOrEmpty(contenidoChangelog))
+            await CargarChangelog();
+    }
+
+    private async Task CargarChangelog()
+    {
+        cargandoChangelog = true;
+        StateHasChanged();
+
+        try
+        {
+            // Buscar CHANGELOG.md en la raíz de la aplicación
+            var rutaApp = AppDomain.CurrentDomain.BaseDirectory;
+            var rutaChangelog = Path.Combine(rutaApp, "CHANGELOG.md");
+            
+            // Si no existe en BaseDirectory, buscar en el directorio de trabajo
+            if (!File.Exists(rutaChangelog))
+            {
+                rutaChangelog = Path.Combine(Directory.GetCurrentDirectory(), "CHANGELOG.md");
+            }
+
+            if (File.Exists(rutaChangelog))
+            {
+                contenidoChangelog = await File.ReadAllTextAsync(rutaChangelog);
+            }
+            else
+            {
+                contenidoChangelog = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            contenidoChangelog = $"Error al cargar changelog: {ex.Message}";
+        }
+        finally
+        {
+            cargandoChangelog = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RecargarChangelog()
+    {
+        contenidoChangelog = "";
+        await CargarChangelog();
+    }
+
+    private string ConvertirMarkdownAHtml(string markdown)
+    {
+        if (string.IsNullOrEmpty(markdown))
+            return "";
+
+        // Conversión básica de Markdown a HTML
+        var html = markdown;
+
+        // Encabezados
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^### (.+)$", "<h5 class='text-primary mt-4'>$1</h5>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^## (.+)$", "<h4 class='border-bottom pb-2 mt-4'>$1</h4>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^# (.+)$", "<h3 class='text-primary'>$1</h3>", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        // Negritas y cursivas
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\*(.+?)\*", "<em>$1</em>");
+
+        // Listas
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^- (.+)$", "<li>$1</li>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"(<li>.+</li>\n)+", "<ul class='mb-3'>$0</ul>");
+
+        // Checkmarks
+        html = html.Replace("✅", "<i class='fas fa-check-circle text-success'></i>");
+        html = html.Replace("❌", "<i class='fas fa-times-circle text-danger'></i>");
+
+        // Emojis comunes
+        html = html.Replace("📋", "<i class='fas fa-clipboard-list'></i>");
+        html = html.Replace("📧", "<i class='fas fa-envelope'></i>");
+        html = html.Replace("📊", "<i class='fas fa-chart-bar'></i>");
+        html = html.Replace("📝", "<i class='fas fa-edit'></i>");
+        html = html.Replace("⚙️", "<i class='fas fa-cog'></i>");
+        html = html.Replace("💰", "<i class='fas fa-dollar-sign'></i>");
+        html = html.Replace("♻️", "<i class='fas fa-recycle'></i>");
+        html = html.Replace("🧾", "<i class='fas fa-receipt'></i>");
+        html = html.Replace("📈", "<i class='fas fa-chart-line'></i>");
+        html = html.Replace("🖨️", "<i class='fas fa-print'></i>");
+        html = html.Replace("🔧", "<i class='fas fa-wrench'></i>");
+        html = html.Replace("🤖", "<i class='fas fa-robot'></i>");
+        html = html.Replace("📌", "<i class='fas fa-thumbtack'></i>");
+
+        // Líneas horizontales
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^---+$", "<hr class='my-4'>", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        // Saltos de línea
+        html = html.Replace("\n\n", "</p><p>");
+        html = "<p>" + html + "</p>";
+
+        return html;
+    }
 
     // Clase para archivos en Releases
     private class ArchivoReleaseInfo
@@ -1313,6 +1567,59 @@
         border-radius: 15px;
         font-weight: bold;
         font-size: 0.9rem;
+    }
+
+    /* Estilos para el Changelog */
+    .changelog-content {
+        font-size: 0.95rem;
+        line-height: 1.6;
+        max-height: 600px;
+        overflow-y: auto;
+    }
+
+    .changelog-content h3 {
+        color: var(--bs-primary);
+        margin-bottom: 1rem;
+    }
+
+    .changelog-content h4 {
+        color: var(--text-primary, #333);
+        border-bottom: 2px solid var(--bs-primary);
+        padding-bottom: 0.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .changelog-content h5 {
+        color: var(--bs-primary);
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .changelog-content ul {
+        padding-left: 1.5rem;
+    }
+
+    .changelog-content li {
+        margin-bottom: 0.3rem;
+    }
+
+    .changelog-content hr {
+        border-top: 2px dashed var(--bs-secondary);
+        opacity: 0.3;
+    }
+
+    .changelog-content::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .changelog-content::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+
+    .changelog-content::-webkit-scrollbar-thumb {
+        background: var(--bs-primary);
+        border-radius: 4px;
     }
 </style>
 

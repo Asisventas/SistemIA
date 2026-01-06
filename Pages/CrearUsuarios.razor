@@ -158,7 +158,11 @@
         {
             await Task.Run(() =>
             {
-                var modeloPath = @"C:\asis\SistemIA\face_recognition_models";
+                // Usar ruta relativa al ejecutable
+                var baseDir = AppContext.BaseDirectory;
+                var modeloPath = Path.Combine(baseDir, "face_recognition_models");
+                if (!Directory.Exists(modeloPath))
+                    modeloPath = @"C:\asis\SistemIA\face_recognition_models";
                 using var faceRecognition = FaceRecognition.Create(modeloPath);
 
                 // Convertir byte[] a Bitmap

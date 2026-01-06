@@ -265,27 +265,55 @@
                     <h5 class="mb-0"><i class="bi bi-person-badge me-2"></i>Datos del Remitente</h5>
                 </div>
                 <div class="card-body">
+                    <!-- Switch para usar datos de empresa -->
+                    <div class="form-check form-switch mb-3 p-3 rounded @(_config.UsarDatosEmpresaComoRemitente ? "bg-success bg-opacity-10 border border-success" : "")">
+                        <input class="form-check-input" type="checkbox" id="usarDatosEmpresa" 
+                               @bind="_config.UsarDatosEmpresaComoRemitente" style="width: 2.5rem; height: 1.25rem;" />
+                        <label class="form-check-label fw-bold ms-2" for="usarDatosEmpresa">
+                            <i class="bi bi-building me-1"></i>
+                            Usar datos de la empresa como remitente
+                        </label>
+                        @if (_config.UsarDatosEmpresaComoRemitente && _sucursal != null)
+                        {
+                            <div class="small text-success mt-1 ms-4">
+                                <i class="bi bi-check-circle me-1"></i>
+                                Se usará: <strong>@(_sucursal.NombreEmpresa)</strong> &lt;@(_sucursal.Correo ?? "sin correo configurado")&gt;
+                            </div>
+                        }
+                    </div>
+
+                    @if (!_config.UsarDatosEmpresaComoRemitente)
+                    {
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Correo Remitente (From)</label>
+                                <input type="email" class="form-control" @bind="_config.CorreoRemitente" 
+                                       placeholder="@(_sucursal?.Correo ?? "correo@tuempresa.com")" />
+                                <div class="form-text">Dejar vacío para usar el correo de la sucursal</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Nombre del Remitente</label>
+                                <input type="text" class="form-control" @bind="_config.NombreRemitente" 
+                                       placeholder="@(_sucursal?.NombreEmpresa ?? "Mi Empresa S.A.")" />
+                                <div class="form-text">Dejar vacío para usar el nombre de la empresa</div>
+                            </div>
+                        </div>
+                    }
+
+                    <hr class="my-3" />
+
                     <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label small text-muted">Correo Remitente (From) <span class="text-danger">*</span></label>
-                            <input type="email" class="form-control" @bind="_config.CorreoRemitente" 
-                                   placeholder="correo@tuempresa.com" required />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label small text-muted">Nombre del Remitente</label>
-                            <input type="text" class="form-control" @bind="_config.NombreRemitente" 
-                                   placeholder="Mi Empresa S.A." />
-                        </div>
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Correo para Respuestas (Reply-To)</label>
                             <input type="email" class="form-control" @bind="_config.CorreoReplyTo" 
                                    placeholder="respuestas@tuempresa.com" />
+                            <div class="form-text">Opcional: donde llegarán las respuestas</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Copia Oculta (BCC) - Auditoría</label>
                             <input type="email" class="form-control" @bind="_config.CorreoBccAuditoria" 
                                    placeholder="auditoria@tuempresa.com" />
-                            <div class="form-text">Todos los correos enviados tendrán copia aquí.</div>
+                            <div class="form-text">Opcional: todos los correos tendrán copia aquí</div>
                         </div>
                     </div>
                 </div>
@@ -306,6 +334,7 @@
                             <li>Los correos se envían <strong>automáticamente al cerrar la caja</strong></li>
                             <li>Cada destinatario tiene su propio switch para activar/desactivar el envío</li>
                             <li>Configure qué informes recibe cada destinatario en la sección de abajo</li>
+                            <li>Use la opción <strong>"Recibir TODOS los informes"</strong> para simplificar</li>
                         </ul>
                     </div>
                 </div>
@@ -654,7 +683,7 @@
     @if (_mostrarModalDestinatario)
     {
         <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
-            <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
                 <div class="modal-content">
                     <div class="modal-header bg-primary text-white">
                         <h5 class="modal-title">
@@ -664,7 +693,8 @@
                         <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalDestinatario"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="row g-3">
+                        <!-- Datos básicos -->
+                        <div class="row g-3 mb-3">
                             <div class="col-md-6">
                                 <label class="form-label small text-muted">Nombre *</label>
                                 <input type="text" class="form-control" @bind="_destinatarioEditando.Nombre" placeholder="Ej: Gerente, Contador" />
@@ -688,95 +718,254 @@
                             </div>
                         </div>
 
-                        <!-- SWITCH PRINCIPAL DE ENVÍO - MUY VISIBLE -->
-                        <div class="p-3 rounded mb-3 @(_destinatarioEditando.RecibeCierreCaja ? "bg-success bg-opacity-25 border border-success" : "bg-secondary bg-opacity-10 border")">
+                        <!-- SWITCH PRINCIPAL: RECIBIR TODOS LOS INFORMES -->
+                        <div class="p-3 rounded mb-3 @(_destinatarioEditando.RecibeTodosLosInformes ? "bg-primary bg-opacity-10 border border-primary" : "bg-light border")">
                             <div class="d-flex align-items-center justify-content-between">
                                 <div>
-                                    <h6 class="mb-1 @(_destinatarioEditando.RecibeCierreCaja ? "text-success" : "")">
-                                        <i class="bi bi-@(_destinatarioEditando.RecibeCierreCaja ? "envelope-check-fill text-success" : "envelope-x text-secondary") me-2"></i>
-                                        Enviar correo al cerrar caja
-                                    </h6>
-                                    <small class="@(_destinatarioEditando.RecibeCierreCaja ? "text-success" : "text-muted")">
-                                        @if (_destinatarioEditando.RecibeCierreCaja)
+                                    <h5 class="mb-1 @(_destinatarioEditando.RecibeTodosLosInformes ? "text-primary" : "")">
+                                        <i class="bi bi-@(_destinatarioEditando.RecibeTodosLosInformes ? "check-all text-primary" : "list-check text-secondary") me-2"></i>
+                                        Recibir TODOS los informes
+                                    </h5>
+                                    <small class="@(_destinatarioEditando.RecibeTodosLosInformes ? "text-primary" : "text-muted")">
+                                        @if (_destinatarioEditando.RecibeTodosLosInformes)
                                         {
-                                            <text>✅ Este destinatario recibirá el resumen al cerrar caja</text>
+                                            <text>✅ Recibirá automáticamente TODOS los informes disponibles (actual y futuros)</text>
                                         }
                                         else
                                         {
-                                            <text>❌ NO recibirá correos al cerrar caja</text>
+                                            <text>Seleccione informes individuales abajo</text>
                                         }
                                     </small>
                                 </div>
                                 <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="chkEnviarCierre" 
-                                           @bind="_destinatarioEditando.RecibeCierreCaja" 
+                                    <input class="form-check-input" type="checkbox" role="switch" id="chkTodos" 
+                                           @bind="_destinatarioEditando.RecibeTodosLosInformes" 
                                            style="width: 3.5rem; height: 1.75rem; cursor: pointer;" />
                                 </div>
                             </div>
                         </div>
 
-                        <hr class="my-3" />
+                        @if (!_destinatarioEditando.RecibeTodosLosInformes)
+                        {
+                            <!-- SWITCH CIERRE DE CAJA -->
+                            <div class="p-3 rounded mb-3 @(_destinatarioEditando.RecibeCierreCaja ? "border border-success" : "bg-light border")" style="@(_destinatarioEditando.RecibeCierreCaja ? "background-color: rgba(25, 135, 84, 0.08);" : "")">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div>
+                                        <h6 class="mb-1 @(_destinatarioEditando.RecibeCierreCaja ? "text-success" : "")">
+                                            <i class="bi bi-@(_destinatarioEditando.RecibeCierreCaja ? "envelope-check-fill text-success" : "envelope-x text-secondary") me-2"></i>
+                                            Enviar correo al cerrar caja
+                                        </h6>
+                                        <small class="@(_destinatarioEditando.RecibeCierreCaja ? "text-success" : "text-muted")">
+                                            @if (_destinatarioEditando.RecibeCierreCaja)
+                                            {
+                                                <text>✅ Recibirá el resumen al cerrar cada turno/caja</text>
+                                            }
+                                            else
+                                            {
+                                                <text>❌ NO recibirá correos de cierre de caja</text>
+                                            }
+                                        </small>
+                                    </div>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="chkEnviarCierre" 
+                                               @bind="_destinatarioEditando.RecibeCierreCaja" 
+                                               style="width: 3rem; height: 1.5rem; cursor: pointer;" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr class="my-3" />
                         
-                        <h6 class="mb-3"><i class="bi bi-file-earmark-text me-1"></i>Informes adicionales a recibir:</h6>
+                            <h6 class="mb-3"><i class="bi bi-file-earmark-text me-1"></i>Seleccionar informes por categoría:</h6>
                         
-                        <div class="row g-2">
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="chkVentasDiarias" @bind="_destinatarioEditando.RecibeVentasDiarias" />
-                                    <label class="form-check-label" for="chkVentasDiarias">
-                                        <i class="bi bi-graph-up text-success me-1"></i>Ventas Diarias
-                                    </label>
+                            <div class="row g-3">
+                                <!-- VENTAS -->
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card h-100 border-success">
+                                        <div class="card-header py-2" style="background: rgba(25, 135, 84, 0.15); border-bottom: 2px solid #198754;">
+                                            <strong style="color: #198754;"><i class="bi bi-graph-up-arrow me-1"></i>Ventas</strong>
+                                            <button type="button" class="btn btn-sm btn-link float-end p-0" 
+                                                    @onclick="SeleccionarVentas">
+                                                <small>Todos</small>
+                                            </button>
+                                        </div>
+                                        <div class="card-body py-2">
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeVentasDiarias" />
+                                                <label class="form-check-label">Ventas Diarias</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeVentasDetallado" />
+                                                <label class="form-check-label">Ventas Detallado</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeVentasAgrupado" />
+                                                <label class="form-check-label">Ventas Agrupado</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeVentasClasificacion" />
+                                                <label class="form-check-label">Ventas por Clasificación</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- COMPRAS -->
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card h-100 border-warning">
+                                        <div class="card-header py-2" style="background: rgba(255, 193, 7, 0.15); border-bottom: 2px solid #ffc107;">
+                                            <strong style="color: #e0a800;"><i class="bi bi-cart me-1"></i>Compras</strong>
+                                            <button type="button" class="btn btn-sm btn-link float-end p-0" 
+                                                    @onclick="SeleccionarCompras">
+                                                <small>Todos</small>
+                                            </button>
+                                        </div>
+                                        <div class="card-body py-2">
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeInformeCompras" />
+                                                <label class="form-check-label">Informe Compras</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeComprasDetallado" />
+                                                <label class="form-check-label">Compras Detallado</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- NOTAS DE CRÉDITO -->
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card h-100 border-danger">
+                                        <div class="card-header py-2" style="background: rgba(220, 53, 69, 0.15); border-bottom: 2px solid #dc3545;">
+                                            <strong style="color: #dc3545;"><i class="bi bi-file-earmark-minus me-1"></i>Notas de Crédito</strong>
+                                            <button type="button" class="btn btn-sm btn-link float-end p-0" 
+                                                    @onclick="SeleccionarNC">
+                                                <small>Todos</small>
+                                            </button>
+                                        </div>
+                                        <div class="card-body py-2">
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeNotasCredito" />
+                                                <label class="form-check-label">NC Ventas</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeNCDetallado" />
+                                                <label class="form-check-label">NC Detallado</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeNCCompras" />
+                                                <label class="form-check-label">NC Compras</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- INVENTARIO -->
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card h-100 border-info">
+                                        <div class="card-header py-2" style="background: rgba(13, 202, 240, 0.15); border-bottom: 2px solid #0dcaf0;">
+                                            <strong style="color: #0dcaf0;"><i class="bi bi-box-seam me-1"></i>Inventario</strong>
+                                            <button type="button" class="btn btn-sm btn-link float-end p-0" 
+                                                    @onclick="SeleccionarStock">
+                                                <small>Todos</small>
+                                            </button>
+                                        </div>
+                                        <div class="card-body py-2">
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeProductosValorizado" />
+                                                <label class="form-check-label">Stock Valorizado</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeProductosDetallado" />
+                                                <label class="form-check-label">Productos Detallado</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeMovimientosStock" />
+                                                <label class="form-check-label">Movimientos Stock</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeAjustesStock" />
+                                                <label class="form-check-label">Ajustes Stock</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeAlertaStock" />
+                                                <label class="form-check-label">Alertas Stock Bajo</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- FINANCIERO -->
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card h-100 border-secondary">
+                                        <div class="card-header py-2" style="background: rgba(108, 117, 125, 0.15); border-bottom: 2px solid #6c757d;">
+                                            <strong style="color: #6c757d;"><i class="bi bi-cash-stack me-1"></i>Financiero</strong>
+                                            <button type="button" class="btn btn-sm btn-link float-end p-0" 
+                                                    @onclick="SeleccionarFinanciero">
+                                                <small>Todos</small>
+                                            </button>
+                                        </div>
+                                        <div class="card-body py-2">
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeCuentasPorCobrar" />
+                                                <label class="form-check-label">Cuentas por Cobrar</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeCuentasPorPagar" />
+                                                <label class="form-check-label">Cuentas por Pagar</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeResumenCaja" />
+                                                <label class="form-check-label">Resumen Caja</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- SISTEMA -->
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card h-100 border-primary">
+                                        <div class="card-header py-2" style="background: rgba(13, 110, 253, 0.15); border-bottom: 2px solid #0d6efd;">
+                                            <strong style="color: #0d6efd;"><i class="bi bi-gear me-1"></i>Sistema</strong>
+                                            <button type="button" class="btn btn-sm btn-link float-end p-0" 
+                                                    @onclick="SeleccionarSistema">
+                                                <small>Todos</small>
+                                            </button>
+                                        </div>
+                                        <div class="card-body py-2">
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeResumenSifen" />
+                                                <label class="form-check-label">Resumen SIFEN</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeAsistencia" />
+                                                <label class="form-check-label">Control Asistencia</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeResumenSemanal" />
+                                                <label class="form-check-label">Resumen Semanal</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeResumenMensual" />
+                                                <label class="form-check-label">Resumen Mensual</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeAlertaVencimientos" />
+                                                <label class="form-check-label">Alertas Vencimientos</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeCopiaFacturas" />
+                                                <label class="form-check-label">Copia Facturas</label>
+                                            </div>
+                                            <div class="form-check small">
+                                                <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeResumenCierre" />
+                                                <label class="form-check-label">Resumen al Cierre</label>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="chkMensual" @bind="_destinatarioEditando.RecibeResumenMensual" />
-                                    <label class="form-check-label" for="chkMensual">
-                                        <i class="bi bi-calendar-month text-info me-1"></i>Resumen Mensual
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="chkStock" @bind="_destinatarioEditando.RecibeAlertaStock" />
-                                    <label class="form-check-label" for="chkStock">
-                                        <i class="bi bi-box-seam text-warning me-1"></i>Alertas Stock Bajo
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="chkCompras" @bind="_destinatarioEditando.RecibeInformeCompras" />
-                                    <label class="form-check-label" for="chkCompras">
-                                        <i class="bi bi-cart text-secondary me-1"></i>Informe Compras
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="chkSifen" @bind="_destinatarioEditando.RecibeResumenSifen" />
-                                    <label class="form-check-label" for="chkSifen">
-                                        <i class="bi bi-file-earmark-check text-primary me-1"></i>Resumen SIFEN
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="chkVencimientos" @bind="_destinatarioEditando.RecibeAlertaVencimientos" />
-                                    <label class="form-check-label" for="chkVencimientos">
-                                        <i class="bi bi-exclamation-triangle text-danger me-1"></i>Alertas Vencimientos
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="chkFacturas" @bind="_destinatarioEditando.RecibeCopiaFacturas" />
-                                    <label class="form-check-label" for="chkFacturas">
-                                        <i class="bi bi-receipt text-info me-1"></i>Copia de Facturas
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
+                        }
 
                         <hr class="my-3" />
                         
@@ -853,6 +1042,7 @@
     private string? _usuarioNombre;
     private int? _sucursalId;
     private string? _sucursalNombre;
+    private Models.Sucursal? _sucursal;
 
     protected override async Task OnInitializedAsync()
     {
@@ -866,12 +1056,12 @@
         // Obtener sucursal del usuario logueado
         _sucursalId = SucursalProvider.GetSucursalId();
         
-        // Obtener nombre de la sucursal
+        // Obtener información completa de la sucursal
         if (_sucursalId.HasValue)
         {
             await using var db = await DbFactory.CreateDbContextAsync();
-            var sucursal = await db.Sucursal.FindAsync(_sucursalId.Value);
-            _sucursalNombre = sucursal?.NombreSucursal ?? "Sucursal " + _sucursalId;
+            _sucursal = await db.Sucursal.FindAsync(_sucursalId.Value);
+            _sucursalNombre = _sucursal?.NombreSucursal ?? "Sucursal " + _sucursalId;
         }
 
         await Cargar();
@@ -884,6 +1074,7 @@
 
         // Cargar configuración existente para esta sucursal o crear nueva
         var config = await db.Set<Models.ConfiguracionCorreo>()
+            .Include(c => c.Sucursal)
             .FirstOrDefaultAsync(c => c.Activo && c.IdSucursal == _sucursalId);
 
         if (config != null)
@@ -897,14 +1088,22 @@
                 Nombre = "Correo Principal",
                 TipoProveedor = "SMTP",
                 Activo = true,
-                IdSucursal = _sucursalId
+                IdSucursal = _sucursalId,
+                UsarDatosEmpresaComoRemitente = true,
+                Sucursal = _sucursal
             };
         }
 
-        // Precargar correo de prueba con el remitente si está configurado
-        if (string.IsNullOrEmpty(_correoDestinoPrueba) && !string.IsNullOrEmpty(_config.CorreoRemitente))
+        // Asegurar que tenga la referencia a la sucursal
+        if (_config.Sucursal == null && _sucursal != null)
         {
-            _correoDestinoPrueba = _config.CorreoRemitente;
+            _config.Sucursal = _sucursal;
+        }
+
+        // Precargar correo de prueba con el remitente efectivo si está configurado
+        if (string.IsNullOrEmpty(_correoDestinoPrueba) && !string.IsNullOrEmpty(_config.CorreoRemitenteEfectivo))
+        {
+            _correoDestinoPrueba = _config.CorreoRemitenteEfectivo;
         }
 
         // Cargar destinatarios de informes para esta sucursal
@@ -928,10 +1127,11 @@
 
         try
         {
-            // Validaciones básicas
-            if (string.IsNullOrWhiteSpace(_config.CorreoRemitente))
+            // Validar que haya un correo remitente (de la config o de la sucursal)
+            var correoEfectivo = _config.CorreoRemitenteEfectivo;
+            if (string.IsNullOrWhiteSpace(correoEfectivo))
             {
-                _mensaje = "El correo del remitente es requerido.";
+                _mensaje = "Se requiere un correo de remitente. Configure uno manualmente o asegúrese de que la sucursal tenga correo configurado.";
                 _esError = true;
                 return;
             }
@@ -1470,12 +1670,30 @@
             Activo = dest.Activo,
             TipoCopia = dest.TipoCopia,
             Notas = dest.Notas,
+            // Nuevo campo
+            RecibeTodosLosInformes = dest.RecibeTodosLosInformes,
+            // Campos existentes
             RecibeVentasDiarias = dest.RecibeVentasDiarias,
             RecibeResumenSemanal = dest.RecibeResumenSemanal,
             RecibeResumenMensual = dest.RecibeResumenMensual,
             RecibeAlertaStock = dest.RecibeAlertaStock,
             RecibeCierreCaja = dest.RecibeCierreCaja,
             RecibeInformeCompras = dest.RecibeInformeCompras,
+            RecibeComprasDetallado = dest.RecibeComprasDetallado,
+            RecibeVentasDetallado = dest.RecibeVentasDetallado,
+            RecibeVentasAgrupado = dest.RecibeVentasAgrupado,
+            RecibeVentasClasificacion = dest.RecibeVentasClasificacion,
+            RecibeNotasCredito = dest.RecibeNotasCredito,
+            RecibeNCDetallado = dest.RecibeNCDetallado,
+            RecibeNCCompras = dest.RecibeNCCompras,
+            RecibeProductosValorizado = dest.RecibeProductosValorizado,
+            RecibeProductosDetallado = dest.RecibeProductosDetallado,
+            RecibeMovimientosStock = dest.RecibeMovimientosStock,
+            RecibeAjustesStock = dest.RecibeAjustesStock,
+            RecibeCuentasPorCobrar = dest.RecibeCuentasPorCobrar,
+            RecibeCuentasPorPagar = dest.RecibeCuentasPorPagar,
+            RecibeResumenCaja = dest.RecibeResumenCaja,
+            RecibeAsistencia = dest.RecibeAsistencia,
             RecibeResumenSifen = dest.RecibeResumenSifen,
             RecibeAlertaVencimientos = dest.RecibeAlertaVencimientos,
             RecibeCopiaFacturas = dest.RecibeCopiaFacturas,
@@ -1533,26 +1751,17 @@
             }
             else
             {
-                // Actualizar existente
+                // Actualizar existente - usar SetValues para que EF detecte todos los cambios
                 var existente = await db.DestinatariosInforme.FindAsync(_destinatarioEditando.IdDestinatarioInforme);
                 if (existente != null)
                 {
-                    existente.Nombre = _destinatarioEditando.Nombre;
-                    existente.Correo = _destinatarioEditando.Correo;
-                    existente.Activo = _destinatarioEditando.Activo;
-                    existente.TipoCopia = _destinatarioEditando.TipoCopia;
-                    existente.Notas = _destinatarioEditando.Notas;
-                    existente.RecibeVentasDiarias = _destinatarioEditando.RecibeVentasDiarias;
-                    existente.RecibeResumenSemanal = _destinatarioEditando.RecibeResumenSemanal;
-                    existente.RecibeResumenMensual = _destinatarioEditando.RecibeResumenMensual;
-                    existente.RecibeAlertaStock = _destinatarioEditando.RecibeAlertaStock;
-                    existente.RecibeCierreCaja = _destinatarioEditando.RecibeCierreCaja;
-                    existente.RecibeInformeCompras = _destinatarioEditando.RecibeInformeCompras;
-                    existente.RecibeResumenSifen = _destinatarioEditando.RecibeResumenSifen;
-                    existente.RecibeAlertaVencimientos = _destinatarioEditando.RecibeAlertaVencimientos;
-                    existente.RecibeCopiaFacturas = _destinatarioEditando.RecibeCopiaFacturas;
-                    existente.RecibeResumenCierre = _destinatarioEditando.RecibeResumenCierre;
-                    existente.FechaModificacion = DateTime.Now;
+                    // Preservar campos que no queremos sobrescribir
+                    _destinatarioEditando.FechaCreacion = existente.FechaCreacion;
+                    _destinatarioEditando.UsuarioCreacion = existente.UsuarioCreacion;
+                    _destinatarioEditando.FechaModificacion = DateTime.Now;
+                    
+                    // SetValues copia todos los valores y EF detecta automáticamente los cambios
+                    db.Entry(existente).CurrentValues.SetValues(_destinatarioEditando);
 
                     await db.SaveChangesAsync();
                     _mensaje = $"Destinatario '{existente.Nombre}' actualizado correctamente.";
@@ -1621,4 +1830,63 @@
             _esError = true;
         }
     }
+
+    /// <summary>
+    /// Selecciona o deselecciona todos los informes de un grupo/categoría
+    /// </summary>
+    private void SeleccionarGrupo(string grupo, bool seleccionar)
+    {
+        switch (grupo)
+        {
+            case "ventas":
+                _destinatarioEditando.RecibeVentasDiarias = seleccionar;
+                _destinatarioEditando.RecibeVentasDetallado = seleccionar;
+                _destinatarioEditando.RecibeVentasAgrupado = seleccionar;
+                _destinatarioEditando.RecibeVentasClasificacion = seleccionar;
+                break;
+            
+            case "compras":
+                _destinatarioEditando.RecibeInformeCompras = seleccionar;
+                _destinatarioEditando.RecibeComprasDetallado = seleccionar;
+                break;
+            
+            case "nc":
+                _destinatarioEditando.RecibeNotasCredito = seleccionar;
+                _destinatarioEditando.RecibeNCDetallado = seleccionar;
+                _destinatarioEditando.RecibeNCCompras = seleccionar;
+                break;
+            
+            case "stock":
+                _destinatarioEditando.RecibeProductosValorizado = seleccionar;
+                _destinatarioEditando.RecibeProductosDetallado = seleccionar;
+                _destinatarioEditando.RecibeMovimientosStock = seleccionar;
+                _destinatarioEditando.RecibeAjustesStock = seleccionar;
+                _destinatarioEditando.RecibeAlertaStock = seleccionar;
+                break;
+            
+            case "financiero":
+                _destinatarioEditando.RecibeCuentasPorCobrar = seleccionar;
+                _destinatarioEditando.RecibeCuentasPorPagar = seleccionar;
+                _destinatarioEditando.RecibeResumenCaja = seleccionar;
+                break;
+            
+            case "sistema":
+                _destinatarioEditando.RecibeResumenSifen = seleccionar;
+                _destinatarioEditando.RecibeAsistencia = seleccionar;
+                _destinatarioEditando.RecibeResumenSemanal = seleccionar;
+                _destinatarioEditando.RecibeResumenMensual = seleccionar;
+                _destinatarioEditando.RecibeAlertaVencimientos = seleccionar;
+                _destinatarioEditando.RecibeCopiaFacturas = seleccionar;
+                _destinatarioEditando.RecibeResumenCierre = seleccionar;
+                break;
+        }
+    }
+
+    // Métodos helper para evitar problemas con strings en Razor
+    private void SeleccionarVentas() => SeleccionarGrupo("ventas", true);
+    private void SeleccionarCompras() => SeleccionarGrupo("compras", true);
+    private void SeleccionarNC() => SeleccionarGrupo("nc", true);
+    private void SeleccionarStock() => SeleccionarGrupo("stock", true);
+    private void SeleccionarFinanciero() => SeleccionarGrupo("financiero", true);
+    private void SeleccionarSistema() => SeleccionarGrupo("sistema", true);
 }

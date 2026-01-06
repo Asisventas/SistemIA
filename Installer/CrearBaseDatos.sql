@@ -7131,3 +7131,1239 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102230224_Agregar_ConfiguracionCorreo'
+)
+BEGIN
+    CREATE TABLE [ConfiguracionCorreo] (
+        [IdConfiguracionCorreo] int NOT NULL IDENTITY,
+        [Nombre] nvarchar(100) NOT NULL,
+        [Activo] bit NOT NULL,
+        [TipoProveedor] nvarchar(30) NOT NULL,
+        [ServidorSmtp] nvarchar(200) NULL,
+        [Puerto] int NOT NULL,
+        [TipoSeguridad] nvarchar(20) NOT NULL,
+        [UsuarioSmtp] nvarchar(200) NULL,
+        [ContrasenaSmtp] nvarchar(500) NULL,
+        [UsarOAuth2] bit NOT NULL,
+        [OAuth2ClientId] nvarchar(300) NULL,
+        [OAuth2ClientSecret] nvarchar(500) NULL,
+        [OAuth2RefreshToken] nvarchar(2000) NULL,
+        [OAuth2AccessToken] nvarchar(2000) NULL,
+        [OAuth2TokenExpira] datetime2 NULL,
+        [OAuth2Scopes] nvarchar(500) NULL,
+        [CorreoRemitente] nvarchar(200) NOT NULL,
+        [NombreRemitente] nvarchar(200) NULL,
+        [CorreoReplyTo] nvarchar(200) NULL,
+        [CorreoBccAuditoria] nvarchar(200) NULL,
+        [TimeoutSegundos] int NOT NULL,
+        [MaxReintentos] int NOT NULL,
+        [HabilitarLogDetallado] bit NOT NULL,
+        [IgnorarErroresCertificado] bit NOT NULL,
+        [ApiKey] nvarchar(500) NULL,
+        [DominioApi] nvarchar(200) NULL,
+        [FirmaHtml] nvarchar(max) NULL,
+        [UsarHtmlPorDefecto] bit NOT NULL,
+        [IdSociedad] int NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        [UsuarioCreacion] nvarchar(50) NULL,
+        [UsuarioModificacion] nvarchar(50) NULL,
+        [UltimaPruebaResultado] nvarchar(500) NULL,
+        [UltimaPruebaFecha] datetime2 NULL,
+        CONSTRAINT [PK_ConfiguracionCorreo] PRIMARY KEY ([IdConfiguracionCorreo]),
+        CONSTRAINT [FK_ConfiguracionCorreo_Sociedades_IdSociedad] FOREIGN KEY ([IdSociedad]) REFERENCES [Sociedades] ([IdSociedad])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102230224_Agregar_ConfiguracionCorreo'
+)
+BEGIN
+    CREATE INDEX [IX_ConfiguracionCorreo_IdSociedad] ON [ConfiguracionCorreo] ([IdSociedad]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102230224_Agregar_ConfiguracionCorreo'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260102230224_Agregar_ConfiguracionCorreo', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102232434_Agregar_IdSucursal_ConfiguracionCorreo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionCorreo] ADD [IdSucursal] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102232434_Agregar_IdSucursal_ConfiguracionCorreo'
+)
+BEGIN
+    CREATE INDEX [IX_ConfiguracionCorreo_IdSucursal] ON [ConfiguracionCorreo] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102232434_Agregar_IdSucursal_ConfiguracionCorreo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionCorreo] ADD CONSTRAINT [FK_ConfiguracionCorreo_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102232434_Agregar_IdSucursal_ConfiguracionCorreo'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260102232434_Agregar_IdSucursal_ConfiguracionCorreo', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102235856_Agregar_DestinatariosInforme'
+)
+BEGIN
+    CREATE TABLE [DestinatariosInforme] (
+        [IdDestinatarioInforme] int NOT NULL IDENTITY,
+        [Nombre] nvarchar(100) NOT NULL,
+        [Correo] nvarchar(200) NOT NULL,
+        [Activo] bit NOT NULL,
+        [RecibeVentasDiarias] bit NOT NULL,
+        [RecibeResumenSemanal] bit NOT NULL,
+        [RecibeResumenMensual] bit NOT NULL,
+        [RecibeAlertaStock] bit NOT NULL,
+        [RecibeCierreCaja] bit NOT NULL,
+        [RecibeInformeCompras] bit NOT NULL,
+        [RecibeResumenSifen] bit NOT NULL,
+        [RecibeAlertaVencimientos] bit NOT NULL,
+        [RecibeCopiaFacturas] bit NOT NULL,
+        [TipoCopia] nvarchar(5) NOT NULL,
+        [Notas] nvarchar(500) NULL,
+        [IdSucursal] int NULL,
+        [IdConfiguracionCorreo] int NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        [UsuarioCreacion] nvarchar(50) NULL,
+        CONSTRAINT [PK_DestinatariosInforme] PRIMARY KEY ([IdDestinatarioInforme]),
+        CONSTRAINT [FK_DestinatariosInforme_ConfiguracionCorreo_IdConfiguracionCorreo] FOREIGN KEY ([IdConfiguracionCorreo]) REFERENCES [ConfiguracionCorreo] ([IdConfiguracionCorreo]),
+        CONSTRAINT [FK_DestinatariosInforme_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102235856_Agregar_DestinatariosInforme'
+)
+BEGIN
+    CREATE INDEX [IX_DestinatariosInforme_IdConfiguracionCorreo] ON [DestinatariosInforme] ([IdConfiguracionCorreo]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102235856_Agregar_DestinatariosInforme'
+)
+BEGIN
+    CREATE INDEX [IX_DestinatariosInforme_IdSucursal] ON [DestinatariosInforme] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260102235856_Agregar_DestinatariosInforme'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260102235856_Agregar_DestinatariosInforme', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103004216_Agregar_EnvioAutomatico_Correo'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeResumenCierre] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103004216_Agregar_EnvioAutomatico_Correo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionCorreo] ADD [DiaEnvioMensual] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103004216_Agregar_EnvioAutomatico_Correo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionCorreo] ADD [DiaEnvioSemanal] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103004216_Agregar_EnvioAutomatico_Correo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionCorreo] ADD [EnviarAlCierreSistema] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103004216_Agregar_EnvioAutomatico_Correo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionCorreo] ADD [HoraEnvioDiario] nvarchar(5) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103004216_Agregar_EnvioAutomatico_Correo'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260103004216_Agregar_EnvioAutomatico_Correo', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103011734_Agregar_EnviarFacturaPorCorreo_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [EnviarFacturaPorCorreo] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103011734_Agregar_EnviarFacturaPorCorreo_Cliente'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260103011734_Agregar_EnviarFacturaPorCorreo_Cliente', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeAjustesStock] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeAsistencia] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeComprasDetallado] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeCuentasPorCobrar] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeCuentasPorPagar] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeMovimientosStock] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeNCCompras] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeNCDetallado] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeNotasCredito] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeProductosDetallado] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeProductosValorizado] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeResumenCaja] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeVentasAgrupado] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeVentasClasificacion] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeVentasDetallado] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260103015521_Agregar_Campos_Informes_DestinatarioInforme', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103150431_Agregar_NCCompras_CierreCaja'
+)
+BEGIN
+    ALTER TABLE [CierresCaja] ADD [CantNotasCreditoCompras] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103150431_Agregar_NCCompras_CierreCaja'
+)
+BEGIN
+    ALTER TABLE [CierresCaja] ADD [TotalNotasCreditoCompras] decimal(18,2) NOT NULL DEFAULT 0.0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103150431_Agregar_NCCompras_CierreCaja'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260103150431_Agregar_NCCompras_CierreCaja', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103193602_ConfigCorreo_Simplificacion'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeTodosLosInformes] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103193602_ConfigCorreo_Simplificacion'
+)
+BEGIN
+    DECLARE @var26 sysname;
+    SELECT @var26 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[ConfiguracionCorreo]') AND [c].[name] = N'CorreoRemitente');
+    IF @var26 IS NOT NULL EXEC(N'ALTER TABLE [ConfiguracionCorreo] DROP CONSTRAINT [' + @var26 + '];');
+    ALTER TABLE [ConfiguracionCorreo] ALTER COLUMN [CorreoRemitente] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103193602_ConfigCorreo_Simplificacion'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionCorreo] ADD [UsarDatosEmpresaComoRemitente] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260103193602_ConfigCorreo_Simplificacion'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260103193602_ConfigCorreo_Simplificacion', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104004053_Agregar_AsistenteIA_Tablas'
+)
+BEGIN
+    CREATE TABLE [ConversacionesAsistente] (
+        [IdConversacion] int NOT NULL IDENTITY,
+        [Fecha] datetime2 NOT NULL,
+        [IdUsuario] int NULL,
+        [NombreUsuario] nvarchar(100) NULL,
+        [Pregunta] nvarchar(max) NOT NULL,
+        [Respuesta] nvarchar(max) NOT NULL,
+        [TipoIntencion] nvarchar(50) NULL,
+        [Util] bit NOT NULL,
+        [PaginaOrigen] nvarchar(200) NULL,
+        CONSTRAINT [PK_ConversacionesAsistente] PRIMARY KEY ([IdConversacion])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104004053_Agregar_AsistenteIA_Tablas'
+)
+BEGIN
+    CREATE TABLE [RegistrosErrorIA] (
+        [IdRegistroError] int NOT NULL IDENTITY,
+        [Fecha] datetime2 NOT NULL,
+        [Modulo] nvarchar(100) NULL,
+        [Pagina] nvarchar(200) NULL,
+        [MensajeError] nvarchar(max) NULL,
+        [StackTrace] nvarchar(max) NULL,
+        [IdUsuario] int NULL,
+        [NombreUsuario] nvarchar(100) NULL,
+        [TipoError] nvarchar(50) NULL,
+        [Analizado] bit NOT NULL,
+        [NotasAnalisis] nvarchar(500) NULL,
+        CONSTRAINT [PK_RegistrosErrorIA] PRIMARY KEY ([IdRegistroError])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104004053_Agregar_AsistenteIA_Tablas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260104004053_Agregar_AsistenteIA_Tablas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104010407_Agregar_Tablas_Asistente_IA_Admin'
+)
+BEGIN
+    CREATE TABLE [ArticulosConocimiento] (
+        [IdArticulo] int NOT NULL IDENTITY,
+        [Categoria] nvarchar(50) NOT NULL,
+        [Subcategoria] nvarchar(50) NULL,
+        [Titulo] nvarchar(200) NOT NULL,
+        [Contenido] nvarchar(max) NOT NULL,
+        [PalabrasClave] nvarchar(500) NULL,
+        [Sinonimos] nvarchar(500) NULL,
+        [RutaNavegacion] nvarchar(200) NULL,
+        [Icono] nvarchar(50) NULL,
+        [Prioridad] int NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaActualizacion] datetime2 NOT NULL,
+        [Activo] bit NOT NULL,
+        [IdUsuarioCreador] int NULL,
+        [VecesUtilizado] int NOT NULL,
+        CONSTRAINT [PK_ArticulosConocimiento] PRIMARY KEY ([IdArticulo])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104010407_Agregar_Tablas_Asistente_IA_Admin'
+)
+BEGIN
+    CREATE TABLE [CategoriasConocimiento] (
+        [IdCategoria] int NOT NULL IDENTITY,
+        [Nombre] nvarchar(50) NOT NULL,
+        [Descripcion] nvarchar(200) NULL,
+        [Icono] nvarchar(50) NULL,
+        [Orden] int NOT NULL,
+        [Activa] bit NOT NULL,
+        CONSTRAINT [PK_CategoriasConocimiento] PRIMARY KEY ([IdCategoria])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104010407_Agregar_Tablas_Asistente_IA_Admin'
+)
+BEGIN
+    CREATE TABLE [PreguntasSinRespuesta] (
+        [IdPregunta] int NOT NULL IDENTITY,
+        [Pregunta] nvarchar(max) NOT NULL,
+        [CantidadVeces] int NOT NULL,
+        [PrimeraVez] datetime2 NOT NULL,
+        [UltimaVez] datetime2 NOT NULL,
+        [Resuelta] bit NOT NULL,
+        [IdArticuloRespuesta] int NULL,
+        CONSTRAINT [PK_PreguntasSinRespuesta] PRIMARY KEY ([IdPregunta])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104010407_Agregar_Tablas_Asistente_IA_Admin'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260104010407_Agregar_Tablas_Asistente_IA_Admin', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104011645_Agregar_ConfiguracionAsistenteIA_SolicitudSoporte'
+)
+BEGIN
+    CREATE TABLE [ConfiguracionesAsistenteIA] (
+        [IdConfiguracion] int NOT NULL IDENTITY,
+        [CorreoSoporte] nvarchar(150) NULL,
+        [NombreSoporte] nvarchar(100) NOT NULL,
+        [HabilitarEnvioSoporte] bit NOT NULL,
+        [MensajeBienvenida] nvarchar(500) NULL,
+        [MensajeSinRespuesta] nvarchar(500) NOT NULL,
+        [HabilitarVozEntrada] bit NOT NULL,
+        [HabilitarVozSalida] bit NOT NULL,
+        [HabilitarCapturaPantalla] bit NOT NULL,
+        [HabilitarGrabacionVideo] bit NOT NULL,
+        [MaxSegundosVideo] int NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaActualizacion] datetime2 NOT NULL,
+        CONSTRAINT [PK_ConfiguracionesAsistenteIA] PRIMARY KEY ([IdConfiguracion])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104011645_Agregar_ConfiguracionAsistenteIA_SolicitudSoporte'
+)
+BEGIN
+    CREATE TABLE [SolicitudesSoporteIA] (
+        [IdSolicitud] int NOT NULL IDENTITY,
+        [Fecha] datetime2 NOT NULL,
+        [IdUsuario] int NULL,
+        [NombreUsuario] nvarchar(100) NULL,
+        [PaginaOrigen] nvarchar(200) NULL,
+        [PreguntaOriginal] nvarchar(max) NULL,
+        [DescripcionProblema] nvarchar(max) NULL,
+        [ScreenshotBase64] nvarchar(max) NULL,
+        [VideoBase64] nvarchar(max) NULL,
+        [InfoNavegador] nvarchar(500) NULL,
+        [Estado] nvarchar(30) NOT NULL,
+        [CorreoEnviado] bit NOT NULL,
+        [ErrorEnvio] nvarchar(500) NULL,
+        [NotasSoporte] nvarchar(max) NULL,
+        [FechaResolucion] datetime2 NULL,
+        CONSTRAINT [PK_SolicitudesSoporteIA] PRIMARY KEY ([IdSolicitud])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104011645_Agregar_ConfiguracionAsistenteIA_SolicitudSoporte'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260104011645_Agregar_ConfiguracionAsistenteIA_SolicitudSoporte', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104190125_Agregar_AccionesUsuario_y_ContextoSolicitud'
+)
+BEGIN
+    ALTER TABLE [SolicitudesSoporteIA] ADD [ContextoAcciones] nvarchar(max) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104190125_Agregar_AccionesUsuario_y_ContextoSolicitud'
+)
+BEGIN
+    CREATE TABLE [AccionesUsuario] (
+        [IdAccion] bigint NOT NULL IDENTITY,
+        [IdUsuario] int NULL,
+        [NombreUsuario] nvarchar(100) NULL,
+        [SessionId] nvarchar(64) NULL,
+        [TipoAccion] nvarchar(30) NOT NULL,
+        [Categoria] nvarchar(50) NULL,
+        [Descripcion] nvarchar(200) NOT NULL,
+        [Ruta] nvarchar(300) NULL,
+        [DatosJson] nvarchar(max) NULL,
+        [EsError] bit NOT NULL,
+        [MensajeError] nvarchar(1000) NULL,
+        [StackTrace] nvarchar(max) NULL,
+        [Componente] nvarchar(100) NULL,
+        [EntidadId] int NULL,
+        [EntidadTipo] nvarchar(50) NULL,
+        [FechaHora] datetime2 NOT NULL,
+        [DuracionMs] int NULL,
+        CONSTRAINT [PK_AccionesUsuario] PRIMARY KEY ([IdAccion])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260104190125_Agregar_AccionesUsuario_y_ContextoSolicitud'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260104190125_Agregar_AccionesUsuario_y_ContextoSolicitud', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] ADD [FechaCaja] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] ADD [FechaHoraEquipo] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] ADD [IdCaja] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] ADD [IdSucursal] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] ADD [NombreCaja] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] ADD [NombreSucursal] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] ADD [Turno] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AccionesUsuario] ADD [FechaCaja] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AccionesUsuario] ADD [FechaEquipo] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AccionesUsuario] ADD [IdCaja] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AccionesUsuario] ADD [IdSucursal] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AccionesUsuario] ADD [NombreCaja] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AccionesUsuario] ADD [NombreSucursal] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    ALTER TABLE [AccionesUsuario] ADD [Turno] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105124427_Agregar_Contexto_Caja_AccionUsuario'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260105124427_Agregar_Contexto_Caja_AccionUsuario', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105132847_Hacer_AuditoriaAccion_IdUsuario_Nullable'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] DROP CONSTRAINT [FK_AuditoriasAcciones_Usuarios_IdUsuario];
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105132847_Hacer_AuditoriaAccion_IdUsuario_Nullable'
+)
+BEGIN
+    DECLARE @var27 sysname;
+    SELECT @var27 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[AuditoriasAcciones]') AND [c].[name] = N'NombreUsuario');
+    IF @var27 IS NOT NULL EXEC(N'ALTER TABLE [AuditoriasAcciones] DROP CONSTRAINT [' + @var27 + '];');
+    ALTER TABLE [AuditoriasAcciones] ALTER COLUMN [NombreUsuario] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105132847_Hacer_AuditoriaAccion_IdUsuario_Nullable'
+)
+BEGIN
+    DECLARE @var28 sysname;
+    SELECT @var28 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[AuditoriasAcciones]') AND [c].[name] = N'IdUsuario');
+    IF @var28 IS NOT NULL EXEC(N'ALTER TABLE [AuditoriasAcciones] DROP CONSTRAINT [' + @var28 + '];');
+    ALTER TABLE [AuditoriasAcciones] ALTER COLUMN [IdUsuario] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105132847_Hacer_AuditoriaAccion_IdUsuario_Nullable'
+)
+BEGIN
+    ALTER TABLE [AuditoriasAcciones] ADD CONSTRAINT [FK_AuditoriasAcciones_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105132847_Hacer_AuditoriaAccion_IdUsuario_Nullable'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260105132847_Hacer_AuditoriaAccion_IdUsuario_Nullable', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105175932_Agregar_PresupuestosSistema'
+)
+BEGIN
+    CREATE TABLE [PresupuestosSistema] (
+        [IdPresupuesto] int NOT NULL IDENTITY,
+        [NombreCliente] nvarchar(200) NOT NULL,
+        [RucCliente] nvarchar(20) NULL,
+        [DireccionCliente] nvarchar(300) NULL,
+        [TelefonoCliente] nvarchar(50) NULL,
+        [EmailCliente] nvarchar(150) NULL,
+        [ContactoCliente] nvarchar(100) NULL,
+        [CargoContacto] nvarchar(100) NULL,
+        [NumeroPresupuesto] int NOT NULL,
+        [FechaEmision] datetime2 NOT NULL,
+        [FechaVigencia] datetime2 NOT NULL,
+        [PrecioContadoUsd] decimal(18,2) NOT NULL,
+        [PrecioContadoGs] decimal(18,0) NOT NULL,
+        [TipoCambio] decimal(18,2) NOT NULL,
+        [PrecioLeasingMensualUsd] decimal(18,2) NOT NULL,
+        [PrecioLeasingMensualGs] decimal(18,0) NOT NULL,
+        [CantidadCuotasLeasing] int NOT NULL,
+        [EntradaLeasingUsd] decimal(18,2) NOT NULL,
+        [EntradaLeasingGs] decimal(18,0) NOT NULL,
+        [CostoImplementacionUsd] decimal(18,2) NOT NULL,
+        [CostoImplementacionGs] decimal(18,0) NOT NULL,
+        [CostoCapacitacionUsd] decimal(18,2) NOT NULL,
+        [CostoCapacitacionGs] decimal(18,0) NOT NULL,
+        [HorasCapacitacion] int NOT NULL,
+        [CostoMantenimientoMensualUsd] decimal(18,2) NOT NULL,
+        [CostoMantenimientoMensualGs] decimal(18,0) NOT NULL,
+        [CostoSucursalAdicionalUsd] decimal(18,2) NOT NULL,
+        [CostoSucursalAdicionalGs] decimal(18,0) NOT NULL,
+        [CostoUsuarioAdicionalUsd] decimal(18,2) NOT NULL,
+        [CostoUsuarioAdicionalGs] decimal(18,0) NOT NULL,
+        [CostoHoraDesarrolloUsd] decimal(18,2) NOT NULL,
+        [CostoHoraDesarrolloGs] decimal(18,0) NOT NULL,
+        [CostoVisitaTecnicaUsd] decimal(18,2) NOT NULL,
+        [CostoVisitaTecnicaGs] decimal(18,0) NOT NULL,
+        [ModuloVentas] bit NOT NULL,
+        [ModuloCompras] bit NOT NULL,
+        [ModuloInventario] bit NOT NULL,
+        [ModuloClientes] bit NOT NULL,
+        [ModuloCaja] bit NOT NULL,
+        [ModuloSifen] bit NOT NULL,
+        [ModuloInformes] bit NOT NULL,
+        [ModuloUsuarios] bit NOT NULL,
+        [ModuloCorreo] bit NOT NULL,
+        [ModuloAsistenteIA] bit NOT NULL,
+        [CantidadSucursalesIncluidas] int NOT NULL,
+        [CantidadUsuariosIncluidos] int NOT NULL,
+        [CantidadCajasIncluidas] int NOT NULL,
+        [Observaciones] nvarchar(2000) NULL,
+        [CondicionesPago] nvarchar(2000) NULL,
+        [Garantias] nvarchar(1000) NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [FechaEnvio] datetime2 NULL,
+        [FechaRespuesta] datetime2 NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NOT NULL,
+        [UsuarioCreacion] nvarchar(50) NULL,
+        [IdSucursal] int NOT NULL,
+        [SucursalId] int NULL,
+        CONSTRAINT [PK_PresupuestosSistema] PRIMARY KEY ([IdPresupuesto]),
+        CONSTRAINT [FK_PresupuestosSistema_Sucursal_SucursalId] FOREIGN KEY ([SucursalId]) REFERENCES [Sucursal] ([Id])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105175932_Agregar_PresupuestosSistema'
+)
+BEGIN
+    CREATE INDEX [IX_PresupuestosSistema_SucursalId] ON [PresupuestosSistema] ([SucursalId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105175932_Agregar_PresupuestosSistema'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260105175932_Agregar_PresupuestosSistema', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105200406_Agregar_PresupuestoSistemaDetalle'
+)
+BEGIN
+    CREATE TABLE [PresupuestosSistemaDetalles] (
+        [IdDetalle] int NOT NULL IDENTITY,
+        [IdPresupuesto] int NOT NULL,
+        [NumeroLinea] int NOT NULL,
+        [Descripcion] nvarchar(300) NOT NULL,
+        [DescripcionAdicional] nvarchar(1000) NULL,
+        [Codigo] nvarchar(50) NULL,
+        [Cantidad] decimal(18,4) NOT NULL,
+        [Unidad] nvarchar(20) NOT NULL,
+        [PrecioUnitarioUsd] decimal(18,2) NOT NULL,
+        [PrecioUnitarioGs] decimal(18,0) NOT NULL,
+        [PorcentajeDescuento] decimal(5,2) NOT NULL,
+        [SubtotalUsd] decimal(18,2) NOT NULL,
+        [SubtotalGs] decimal(18,0) NOT NULL,
+        [TipoItem] nvarchar(30) NOT NULL,
+        [EsOpcional] bit NOT NULL,
+        [Incluido] bit NOT NULL,
+        CONSTRAINT [PK_PresupuestosSistemaDetalles] PRIMARY KEY ([IdDetalle]),
+        CONSTRAINT [FK_PresupuestosSistemaDetalles_PresupuestosSistema_IdPresupuesto] FOREIGN KEY ([IdPresupuesto]) REFERENCES [PresupuestosSistema] ([IdPresupuesto]) ON DELETE CASCADE
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105200406_Agregar_PresupuestoSistemaDetalle'
+)
+BEGIN
+    CREATE INDEX [IX_PresupuestosSistemaDetalles_IdPresupuesto] ON [PresupuestosSistemaDetalles] ([IdPresupuesto]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260105200406_Agregar_PresupuestoSistemaDetalle'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260105200406_Agregar_PresupuestoSistemaDetalle', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260106143359_Agregar_FechaModificacion_HistorialCambios'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ConversacionesIAHistorial')
+                    BEGIN
+                        CREATE TABLE [ConversacionesIAHistorial] (
+                            [IdConversacionIA] int NOT NULL IDENTITY,
+                            [FechaInicio] datetime2 NOT NULL,
+                            [FechaFin] datetime2 NULL,
+                            [ModeloIA] nvarchar(50) NOT NULL,
+                            [Titulo] nvarchar(200) NOT NULL,
+                            [ResumenEjecutivo] nvarchar(max) NOT NULL DEFAULT '',
+                            [ObjetivosSesion] nvarchar(max) NULL,
+                            [ResultadosObtenidos] nvarchar(max) NULL,
+                            [TareasPendientes] nvarchar(max) NULL,
+                            [ModulosTrabajados] nvarchar(max) NULL,
+                            [ArchivosCreados] nvarchar(max) NULL,
+                            [ArchivosModificados] nvarchar(max) NULL,
+                            [MigracionesGeneradas] nvarchar(max) NULL,
+                            [ProblemasResoluciones] nvarchar(max) NULL,
+                            [DecisionesTecnicas] nvarchar(max) NULL,
+                            [Etiquetas] nvarchar(500) NULL,
+                            [Complejidad] nvarchar(20) NOT NULL DEFAULT 'Moderado',
+                            [DuracionMinutos] int NULL,
+                            [CantidadCambios] int NOT NULL DEFAULT 0,
+                            [FechaCreacion] datetime2 NOT NULL DEFAULT GETDATE(),
+                            [FechaModificacion] datetime2 NULL,
+                            CONSTRAINT [PK_ConversacionesIAHistorial] PRIMARY KEY ([IdConversacionIA])
+                        );
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260106143359_Agregar_FechaModificacion_HistorialCambios'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'HistorialCambiosSistema')
+                    BEGIN
+                        CREATE TABLE [HistorialCambiosSistema] (
+                            [IdHistorialCambio] int NOT NULL IDENTITY,
+                            [Version] nvarchar(20) NULL,
+                            [FechaCambio] datetime2 NOT NULL,
+                            [TituloCambio] nvarchar(100) NOT NULL,
+                            [Tema] nvarchar(100) NULL,
+                            [TipoCambio] nvarchar(50) NOT NULL,
+                            [ModuloAfectado] nvarchar(50) NULL,
+                            [Prioridad] nvarchar(20) NOT NULL DEFAULT 'Media',
+                            [Tags] nvarchar(500) NULL,
+                            [Referencias] nvarchar(500) NULL,
+                            [DescripcionBreve] nvarchar(500) NOT NULL,
+                            [DescripcionTecnica] nvarchar(max) NULL,
+                            [ArchivosModificados] nvarchar(max) NULL,
+                            [Notas] nvarchar(max) NULL,
+                            [ImplementadoPor] nvarchar(100) NULL,
+                            [ReferenciaTicket] nvarchar(50) NULL,
+                            [IdConversacionIA] int NULL,
+                            [Estado] nvarchar(30) NOT NULL DEFAULT 'Implementado',
+                            [RequiereMigracion] bit NOT NULL DEFAULT 0,
+                            [NombreMigracion] nvarchar(100) NULL,
+                            [FechaCreacion] datetime2 NOT NULL DEFAULT GETDATE(),
+                            [FechaModificacion] datetime2 NULL,
+                            CONSTRAINT [PK_HistorialCambiosSistema] PRIMARY KEY ([IdHistorialCambio]),
+                            CONSTRAINT [FK_HistorialCambiosSistema_ConversacionesIAHistorial_IdConversacionIA] 
+                                FOREIGN KEY ([IdConversacionIA]) REFERENCES [ConversacionesIAHistorial] ([IdConversacionIA])
+                        );
+                        CREATE INDEX [IX_HistorialCambiosSistema_IdConversacionIA] ON [HistorialCambiosSistema] ([IdConversacionIA]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260106143359_Agregar_FechaModificacion_HistorialCambios'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('HistorialCambiosSistema') AND name = 'FechaModificacion')
+                    BEGIN
+                        ALTER TABLE [HistorialCambiosSistema] ADD [FechaModificacion] datetime2 NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260106143359_Agregar_FechaModificacion_HistorialCambios'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ConversacionesIAHistorial') AND name = 'FechaModificacion')
+                    BEGIN
+                        ALTER TABLE [ConversacionesIAHistorial] ADD [FechaModificacion] datetime2 NULL;
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260106143359_Agregar_FechaModificacion_HistorialCambios'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_HistorialCambiosSistema_IdConversacionIA' AND object_id = OBJECT_ID('HistorialCambiosSistema'))
+                    BEGIN
+                        CREATE INDEX [IX_HistorialCambiosSistema_IdConversacionIA] ON [HistorialCambiosSistema] ([IdConversacionIA]);
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260106143359_Agregar_FechaModificacion_HistorialCambios'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260106143359_Agregar_FechaModificacion_HistorialCambios', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+

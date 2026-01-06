@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -10,6 +9,10 @@ using SistemIA.Models;
 
 namespace SistemIA.Services;
 
+/// <summary>
+/// Servicio para generar PDF de facturas en formato KuDE (Representación gráfica de Factura Electrónica).
+/// El diseño sigue el estándar SIFEN de Paraguay.
+/// </summary>
 public class PdfFacturaService
 {
     private readonly IServiceProvider _serviceProvider;
@@ -19,29 +22,18 @@ public class PdfFacturaService
         _serviceProvider = serviceProvider;
     }
 
-    private string ObtenerSimboloMoneda(Moneda? moneda)
-    {
-        return moneda?.Simbolo ?? "Gs.";
-    }
+    private string Pad7(string? n)
+        => int.TryParse(n, out var x) ? x.ToString("D7") : (n ?? "0000001");
 
-    private string FormatearPrecio(decimal valor, Moneda? moneda)
-    {
-        var simbolo = ObtenerSimboloMoneda(moneda);
-        
-        // Si es dólar (símbolo $), formatea con 2 decimales
-        if (simbolo == "$")
-            return valor.ToString("N2");
-        
-        // Para moneda local (Gs.), formatea sin decimales
-        return valor.ToString("N0");
-    }
+    private string NumeroKude(Venta venta)
+        => $"{venta.Establecimiento ?? "001"}-{venta.PuntoExpedicion ?? "001"}-{Pad7(venta.NumeroFactura)}";
 
     public async Task<byte[]> GenerarPdfFactura(int idVenta)
     {
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // Cargar venta (async) con las relaciones necesarias
+        // Cargar venta con todas las relaciones necesarias
         var venta = await context.Ventas
             .Include(v => v.Cliente)
             .Include(v => v.Sucursal)
@@ -60,330 +52,374 @@ public class PdfFacturaService
             .ToListAsync();
 
         // Cargar configuración de caja para determinar tipo de facturación
-        var cajaConfig = await context.Cajas.AsNoTracking()
+        Caja? cajaConfig = null;
+        if (venta.IdCaja.HasValue)
+        {
+            cajaConfig = await context.Cajas.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.IdCaja == venta.IdCaja.Value);
+        }
+        cajaConfig ??= await context.Cajas.AsNoTracking()
             .FirstOrDefaultAsync(c => c.CajaActual == 1);
-        var tipoFacturacion = cajaConfig?.TipoFacturacion ?? "ELECTRONICA";
-        bool esFacturaElectronica = tipoFacturacion == "ELECTRONICA";
 
-        // DEBUG: Log de configuración
-        Console.WriteLine($"[DEBUG PDF] CajaConfig encontrada: {cajaConfig != null}");
-        Console.WriteLine($"[DEBUG PDF] TipoFacturacion: {tipoFacturacion}");
-        Console.WriteLine($"[DEBUG PDF] esFacturaElectronica: {esFacturaElectronica}");
+        var tipoFacturacion = cajaConfig?.TipoFacturacion ?? "AUTOIMPRESOR";
+        bool esFacturaElectronica = tipoFacturacion?.ToUpper() == "ELECTRONICA"
+                                 || tipoFacturacion?.ToUpper() == "FACTURA ELECTRONICA";
 
-        // Generar QR solo si es factura electrónica
+        Console.WriteLine($"[PDF KuDE] Venta {idVenta}, Caja: {venta.IdCaja}, TipoFacturacion: {tipoFacturacion}, EsFE: {esFacturaElectronica}");
+
+        // Generar QR solo si es factura electrónica y tiene CDC
         byte[]? qrPng = null;
         if (esFacturaElectronica && !string.IsNullOrWhiteSpace(venta.CDC))
         {
+            var urlQr = $"https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={venta.CDC}";
             using var qr = new QRCodeGenerator();
-            var qrData = qr.CreateQrCode(venta.CDC, QRCodeGenerator.ECCLevel.M);
+            var qrData = qr.CreateQrCode(urlQr, QRCodeGenerator.ECCLevel.M);
             using var qrCode = new PngByteQRCode(qrData);
             qrPng = qrCode.GetGraphic(pixelsPerModule: 20);
         }
+
+        // Datos de la empresa/sucursal
+        var sucursal = venta.Sucursal;
+        var cliente = venta.Cliente;
+        var rucEmpresa = $"{sucursal?.RUC}-{sucursal?.DV}";
+        var timbrado = venta.Timbrado ?? "";
+        var vigenciaTimbrado = cajaConfig?.VigenciaDel?.ToString("dd/MM/yyyy") ?? "";
+
+        // Calcular totales
+        var totalExenta = detalles.Sum(x => x.Exenta);
+        var totalGrav5 = detalles.Sum(x => x.Grabado5);
+        var totalGrav10 = detalles.Sum(x => x.Grabado10);
+        var iva5 = detalles.Sum(x => x.IVA5);
+        var iva10 = detalles.Sum(x => x.IVA10);
+        var totalIva = iva5 + iva10;
+
+        // RUC/CI del cliente
+        var rucCiCliente = string.IsNullOrWhiteSpace(cliente?.RUC)
+            ? cliente?.NumeroDocumentoIdentidad ?? "—"
+            : $"{cliente?.RUC}-{cliente?.DV}";
+
+        // Condición de venta
+        var condicionVenta = string.IsNullOrWhiteSpace(venta.FormaPago)
+            ? (venta.TipoPago?.EsCredito == true ? "CRÉDITO" : "CONTADO")
+            : venta.FormaPago;
 
         QuestPDF.Settings.License = LicenseType.Community;
 
         var documento = Document.Create(container =>
         {
-            // Cargar plantilla XML
-            var layoutPath = Path.Combine(AppContext.BaseDirectory, "FacturaLayout.xml");
-            if (!File.Exists(layoutPath))
-            {
-                // Path alternativo (cuando se ejecuta desde raíz del proyecto con watch)
-                var alt = Path.Combine(Directory.GetCurrentDirectory(), "Templates", "FacturaLayout.xml");
-                if (File.Exists(alt)) layoutPath = alt;        
-            }
-            XDocument? xmlLayout = null;
-            try { if (File.Exists(layoutPath)) xmlLayout = XDocument.Load(layoutPath); } catch { /* ignorar */ }
-
-            // Derivar algunos campos desde la plantilla si existe
-            string razonSocial = xmlLayout?.Root?.Element("Empresa")?.Element("RazonSocial")?.Value
-                ?? "FERRER MIRANDA NESTOR FABIAN";
-            string rucEmpresa = xmlLayout?.Root?.Element("Empresa")?.Element("Ruc")?.Value ?? "1462998-1";
-            string timbrado = venta.Timbrado ?? xmlLayout?.Root?.Element("Factura")?.Element("TimbradoNumero")?.Value ?? "";
-            string vigencia = xmlLayout?.Root?.Element("Factura")?.Element("TimbradoVigencia")?.Value ?? "";
-
-
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(12, Unit.Millimetre);
+                page.Margin(10, Unit.Millimetre);
                 page.DefaultTextStyle(t => t.FontSize(9).FontFamily(Fonts.Arial));
 
                 page.Content().Column(column =>
                 {
-                    // ENCABEZADO EXACTO COMO LA IMAGEN
-                    column.Item().Row(row =>
+                    // ========== ENCABEZADO KuDE ==========
+                    column.Item().Border(1).BorderColor(Colors.Grey.Medium).Row(encabezado =>
                     {
-                        // Izquierda: Logo y empresa
-                        row.RelativeItem(2).Column(left =>
+                        // COLUMNA IZQUIERDA: Logo + Datos Empresa
+                        encabezado.RelativeItem(3).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(6).Column(izq =>
                         {
-                            // Logo ASISVENTAS (rectángulo negro con texto cyan)
-                            left.Item().Width(70, Unit.Millimetre).Height(20, Unit.Millimetre)
-                                .Border(1).BorderColor(Colors.Black)
-                                .Background(Colors.Black)
-                                .AlignCenter().AlignMiddle()
-                                .Text("¡ASISVENTAS!").FontColor(Colors.Cyan.Medium).FontSize(14).Bold();
-
-                            // Información de la empresa
-                            left.Item().PaddingTop(10).Column(empresa =>
+                            // Logo de la empresa (si existe)
+                            if (sucursal?.Logo != null && sucursal.Logo.Length > 0)
                             {
-                                empresa.Item().Text(razonSocial).FontSize(11).Bold();
-                                empresa.Item().Text($"R.U.C.: {rucEmpresa}").FontSize(10);
-                                empresa.Item().Text("AVDA. AVELINO MARTINEZ Y DEL MAESTRO").FontSize(9);
-                                empresa.Item().Text("(021) 573291").FontSize(9);
-                                empresa.Item().Text("CONSULTORAWEMAG@HOTMAIL.COM").FontSize(9);
-                                empresa.Item().PaddingTop(4).Text("DESARROLLO DE SOFTWARE").FontSize(10).Bold();
-                            });
-                        });
-
-                        // Derecha: Datos fiscales
-                        row.RelativeItem(1).Column(right =>
-                        {
-                            right.Item().AlignRight().Text($"R.U.C.: {rucEmpresa}").FontSize(11).Bold();
-                            if (!string.IsNullOrWhiteSpace(timbrado))
-                                right.Item().AlignRight().Text($"Timbrado Nº: {timbrado}").FontSize(11).Bold();
-                            if (!string.IsNullOrWhiteSpace(vigencia))
-                                right.Item().AlignRight().Text($"Vigencia: {vigencia}").FontSize(9);
-                        });
-                    });
-
-                    // TÍTULO CENTRADO
-                    column.Item().PaddingTop(15).AlignCenter().Column(titulo =>
-                    {
-                        titulo.Item().Text(esFacturaElectronica ? "FACTURA ELECTRÓNICA" : "FACTURA")
-                            .FontSize(18).Bold();
-                        titulo.Item().Text($"001-002-{venta.IdVenta.ToString().PadLeft(7, '0')}")
-                            .FontSize(16).Bold();
-                    });
-
-                    // INFORMACIÓN DE LA VENTA (DOS COLUMNAS)
-                    column.Item().PaddingTop(12).Row(info =>
-                    {
-                        // Izquierda
-                        info.RelativeItem().Column(izq =>
-                        {
-                            izq.Item().Text($"Fecha y Hora de Emisión: {venta.Fecha:dd-MM-yyyy HH:mm:ss}").FontSize(9);
-                            izq.Item().Text("Condición de Venta: CONTADO").FontSize(9);
-                            izq.Item().Text($"Moneda: {(venta.Moneda?.CodigoISO ?? "PYG")}").FontSize(9);
-                            if (venta.CambioDelDia.HasValue && venta.EsMonedaExtranjera == true)
-                                izq.Item().Text($"Tipo de Cambio: {venta.CambioDelDia:0.0000}").FontSize(9);
-                            izq.Item().Text($"Nº Venta: {venta.IdVenta}").FontSize(9);
-                            // Mostrar el Número de Pedido si existe
-                            if (!string.IsNullOrWhiteSpace(venta.NroPedido))
-                                izq.Item().Text($"Nº Pedido: {venta.NroPedido}").FontSize(9);
+                                izq.Item().Height(40).Width(120).Image(sucursal.Logo).FitArea();
+                            }
                             else
-                                izq.Item().Text("Nº Pedido:").FontSize(9);
+                            {
+                                // Placeholder si no hay logo
+                                izq.Item().Height(40).Width(120)
+                                    .Background(Colors.Grey.Lighten3)
+                                    .AlignCenter().AlignMiddle()
+                                    .Text("LOGO").FontSize(12).Bold().FontColor(Colors.Grey.Medium);
+                            }
+
+                            izq.Item().PaddingTop(8).Text(sucursal?.NombreEmpresa ?? "EMPRESA").FontSize(11).Bold();
+                            izq.Item().Text(sucursal?.Direccion ?? "").FontSize(8);
+                            if (!string.IsNullOrWhiteSpace(sucursal?.Telefono))
+                                izq.Item().Text($"Teléfono: {sucursal.Telefono}").FontSize(8);
+                            if (!string.IsNullOrWhiteSpace(sucursal?.Correo))
+                                izq.Item().Text(sucursal.Correo).FontSize(8);
+                            if (!string.IsNullOrWhiteSpace(sucursal?.RubroEmpresa))
+                                izq.Item().PaddingTop(4).Text($"Actividad Económica: {sucursal.RubroEmpresa}").FontSize(8);
                         });
 
-                        // Derecha
-                        info.RelativeItem().Column(der =>
+                        // COLUMNA DERECHA: Datos Fiscales
+                        encabezado.RelativeItem(2).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(6).Column(der =>
                         {
-                            // Mostrar el Tipo de Documento en negritas
-                            var tipoDoc = venta.TipoDocumento ?? "FACTURA";
-                            der.Item().Text($"Tipo Doc.: {tipoDoc}").FontSize(9).Bold();
-                            
-                            var rucCi = string.IsNullOrWhiteSpace(venta.Cliente?.RUC) 
-                                ? venta.Cliente?.NumeroDocumento ?? "X-4"
-                                : $"{venta.Cliente?.RUC}-{venta.Cliente?.DV}";
-                            
-                            der.Item().Text($"R.U.C./C.I.: {rucCi}").FontSize(9);
-                            der.Item().Text($"Razón Social: {venta.Cliente?.RazonSocial ?? "SIN NOMBRE-CONSUMIDOR FINAL"}")
-                                .FontSize(9);
-                            der.Item().Text("Teléfono:").FontSize(9);
-                            der.Item().Text("Correo Electrónico:").FontSize(9);
-                            der.Item().Text($"Plazo Crédito (días): {venta.Plazo ?? 0}").FontSize(9);
-                            der.Item().Text("Tipo de Transacción: Mixto").FontSize(9);
+                            der.Item().AlignRight().Text($"R.U.C.: {rucEmpresa}").FontSize(10).Bold();
+                            if (!string.IsNullOrWhiteSpace(timbrado))
+                                der.Item().AlignRight().Text($"Timbrado N°: {timbrado}").FontSize(10).Bold();
+                            if (!string.IsNullOrWhiteSpace(vigenciaTimbrado))
+                                der.Item().AlignRight().Text($"Fecha de Inicio de Vigencia: {vigenciaTimbrado}").FontSize(8);
+
+                            der.Item().PaddingTop(12).AlignRight()
+                                .Text(esFacturaElectronica ? "FACTURA ELECTRÓNICA" : "FACTURA")
+                                .FontSize(14).Bold().FontColor(Colors.Blue.Darken2);
+
+                            der.Item().AlignRight().Text(NumeroKude(venta)).FontSize(14).Bold();
                         });
                     });
 
-                    // TABLA DE PRODUCTOS EXACTA COMO EN LA IMAGEN
-                    column.Item().PaddingTop(15).Table(table =>
+                    // ========== BANDA DE INFORMACIÓN (2 columnas) ==========
+                    column.Item().PaddingTop(8).Border(1).BorderColor(Colors.Grey.Medium).Row(banda =>
                     {
-                        // Definir todas las columnas como en la imagen
+                        // Columna izquierda - Datos de la transacción
+                        banda.RelativeItem().Border(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(6).Column(izq =>
+                        {
+                            izq.Item().Text(t => { t.Span("Fecha y Hora de Emisión: ").Bold(); t.Span($"{venta.Fecha:dd/MM/yyyy HH:mm:ss}"); });
+                            izq.Item().Text(t => { t.Span("Condición de Venta: ").Bold(); t.Span(condicionVenta); });
+                            izq.Item().Text(t => { t.Span("Cuotas: ").Bold(); t.Span($"{(venta.TipoPago?.EsCredito == true ? (venta.Plazo ?? 0) : 1)}"); });
+                            izq.Item().Text(t => { t.Span("Moneda: ").Bold(); t.Span(venta.Moneda?.CodigoISO ?? "PYG"); });
+                            izq.Item().Text(t => { t.Span("Tipo de Cambio: ").Bold(); t.Span($"{venta.CambioDelDia ?? 1}"); });
+                            izq.Item().Text(t => { t.Span("N° Venta: ").Bold(); t.Span($"{venta.IdVenta}"); });
+                            izq.Item().Text(t => { t.Span("N° Pedido: ").Bold(); t.Span(venta.NroPedido ?? "—"); });
+                        });
+
+                        // Columna derecha - Datos del cliente
+                        banda.RelativeItem().Border(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(6).Column(der =>
+                        {
+                            der.Item().Text(t => { t.Span("Tipo Doc.: ").Bold(); t.Span(venta.TipoDocumento ?? "FACTURA"); });
+                            der.Item().Text(t => { t.Span("R.U.C./C.I.: ").Bold(); t.Span(rucCiCliente); });
+                            der.Item().Text(t => { t.Span("Razón Social: ").Bold(); t.Span(cliente?.RazonSocial ?? "SIN NOMBRE"); });
+                            der.Item().Text(t => { t.Span("Dirección: ").Bold(); t.Span(cliente?.Direccion ?? "—"); });
+                            if (!string.IsNullOrWhiteSpace(cliente?.Telefono))
+                                der.Item().Text(t => { t.Span("Teléfono: ").Bold(); t.Span(cliente.Telefono); });
+                            if (!string.IsNullOrWhiteSpace(cliente?.Email))
+                                der.Item().Text(t => { t.Span("Correo Electrónico: ").Bold(); t.Span(cliente.Email); });
+                            der.Item().Text(t => { t.Span("Plazo Crédito (días): ").Bold(); t.Span($"{(venta.TipoPago?.EsCredito == true ? (venta.Plazo ?? 0) : 0)}"); });
+                            der.Item().Text(t => { t.Span("Tipo de Transacción: ").Bold(); t.Span(venta.TipoPago?.EsCredito == true ? "Crédito" : "Contado"); });
+                        });
+                    });
+
+                    // ========== TABLA DE ITEMS ==========
+                    column.Item().PaddingTop(8).Table(table =>
+                    {
                         table.ColumnsDefinition(columns =>
                         {
-                            columns.ConstantColumn(40); // Código
-                            columns.RelativeColumn(3); // Descripción
-                            columns.ConstantColumn(35); // Unidad Medida
-                            columns.ConstantColumn(30); // Cajas
-                            columns.ConstantColumn(35); // Cantidad
-                            columns.ConstantColumn(45); // Precio Unitario
-                            columns.ConstantColumn(40); // Descuento
-                            columns.ConstantColumn(45); // Exentas
-                            columns.ConstantColumn(35); // 5%
-                            columns.ConstantColumn(35); // 10%
+                            columns.ConstantColumn(50);   // Código
+                            columns.RelativeColumn(4);    // Descripción
+                            columns.ConstantColumn(40);   // Unidad
+                            columns.ConstantColumn(35);   // Cajas
+                            columns.ConstantColumn(40);   // Cantidad
+                            columns.ConstantColumn(55);   // Precio Unit.
+                            columns.ConstantColumn(45);   // Descuento
+                            columns.ConstantColumn(55);   // Exentas
+                            columns.ConstantColumn(45);   // 5%
+                            columns.ConstantColumn(55);   // 10%
                         });
 
-                        // ENCABEZADO COMPLETO
+                        // Encabezado de tabla
                         table.Header(header =>
                         {
-                            // Primera fila - headers principales
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3)
-                                .Padding(2).Text("Código").FontSize(8).Bold().AlignCenter();
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3)
-                                .Padding(2).Text("Descripción del Producto o Servicio").FontSize(8).Bold().AlignCenter();
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3)
-                                .Padding(2).Text("Unidad Medida").FontSize(8).Bold().AlignCenter();
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3)
-                                .Padding(2).Text("Cajas").FontSize(8).Bold().AlignCenter();
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3)
-                                .Padding(2).Text("Cantidad").FontSize(8).Bold().AlignCenter();
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3)
-                                .Padding(2).Text("Precio Unitario").FontSize(8).Bold().AlignCenter();
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3)
-                                .Padding(2).Text("Descuento").FontSize(8).Bold().AlignCenter();
+                            void HeaderCell(IContainer container, string texto)
+                            {
+                                container.Border(0.5f).BorderColor(Colors.Grey.Medium)
+                                    .Background(Colors.Grey.Lighten3)
+                                    .Padding(3).AlignCenter().AlignMiddle()
+                                    .Text(texto).FontSize(7).Bold();
+                            }
 
-                            // Agrupación "Valor de Venta" - 3 columnas
-                            header.Cell().ColumnSpan(3).Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3)
-                                .Padding(2).Text("Valor de Venta").FontSize(8).Bold().AlignCenter();
-
-                            // Segunda fila - sub-headers de "Valor de Venta"
-                            for (int i = 0; i < 7; i++)
-                                header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.White)
-                                    .Padding(1).Text("").FontSize(6);
-                            
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten4)
-                                .Padding(1).Text("Exentas").FontSize(7).Bold().AlignCenter();
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten4)
-                                .Padding(1).Text("5%").FontSize(7).Bold().AlignCenter();
-                            header.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten4)
-                                .Padding(1).Text("10%").FontSize(7).Bold().AlignCenter();
+                            HeaderCell(header.Cell(), "Código");
+                            HeaderCell(header.Cell(), "Descripción");
+                            HeaderCell(header.Cell(), "Unidad Medida");
+                            HeaderCell(header.Cell(), "Cajas");
+                            HeaderCell(header.Cell(), "Cantidad");
+                            HeaderCell(header.Cell(), "Precio Unitario");
+                            HeaderCell(header.Cell(), "Descuento");
+                            HeaderCell(header.Cell(), "Exentas");
+                            HeaderCell(header.Cell(), "5%");
+                            HeaderCell(header.Cell(), "10%");
                         });
 
-                        // FILAS DE DATOS
+                        // Filas de datos
                         foreach (var d in detalles)
                         {
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text(d.Producto?.CodigoInterno ?? "").FontSize(8).AlignCenter();
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text(d.Producto?.Descripcion ?? "").FontSize(8);
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text("UNI").FontSize(8).AlignCenter();
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text("").FontSize(8).AlignCenter();
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text($"{d.Cantidad:N0}").FontSize(8).AlignCenter();
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text($"{d.PrecioUnitario:N0}").FontSize(8).AlignRight();
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text("").FontSize(8).AlignRight();
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text(d.Exenta > 0 ? $"{d.Exenta:N0}" : "").FontSize(8).AlignRight();
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text(d.Grabado5 > 0 ? $"{d.Grabado5:N0}" : "").FontSize(8).AlignRight();
-                            table.Cell().Border(1).BorderColor(Colors.Black).Padding(2)
-                                .Text(d.Grabado10 > 0 ? $"{d.Grabado10:N0}" : "").FontSize(8).AlignRight();
+                            var codigo = d.Producto?.CodigoInterno ?? d.Producto?.CodigoBarras ?? d.IdProducto.ToString();
+                            
+                            // Calcular valores de venta CON IVA incluido (Grabado + IVA)
+                            var valorExenta = d.Exenta;
+                            var valorVenta5 = d.Grabado5 + d.IVA5;   // Precio con IVA 5% incluido
+                            var valorVenta10 = d.Grabado10 + d.IVA10; // Precio con IVA 10% incluido
+
+                            void DataCell(IContainer container, string texto, bool alignRight = false)
+                            {
+                                var cell = container.Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(2);
+                                if (alignRight)
+                                    cell.AlignRight().Text(texto).FontSize(8);
+                                else
+                                    cell.Text(texto).FontSize(8);
+                            }
+
+                            DataCell(table.Cell(), codigo);
+                            DataCell(table.Cell(), d.Producto?.Descripcion ?? "");
+                            table.Cell().Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(2).AlignCenter().Text(d.Producto?.UndMedida ?? "UNI").FontSize(8);
+                            table.Cell().Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(2).AlignCenter().Text("1,00").FontSize(8);
+                            DataCell(table.Cell(), d.Cantidad.ToString("N2"), true);
+                            DataCell(table.Cell(), d.PrecioUnitario.ToString("N0"), true);
+                            DataCell(table.Cell(), (d.PorcentajeDescuento ?? 0).ToString("N0"), true);
+                            // Mostrar valor de venta CON IVA incluido en cada columna
+                            DataCell(table.Cell(), valorExenta > 0 ? valorExenta.ToString("N0") : "", true);
+                            DataCell(table.Cell(), valorVenta5 > 0 ? valorVenta5.ToString("N0") : "", true);
+                            DataCell(table.Cell(), valorVenta10 > 0 ? valorVenta10.ToString("N0") : "", true);
                         }
                     });
 
-                    // TOTALES COMO EN LA IMAGEN (DERECHA)
-                    var totalExenta = detalles.Sum(x => x.Exenta);
-                    var totalGrav5 = detalles.Sum(x => x.Grabado5);
-                    var totalGrav10 = detalles.Sum(x => x.Grabado10);
-                    var iva5 = detalles.Sum(x => x.IVA5);
-                    var iva10 = detalles.Sum(x => x.IVA10);
-                    var subtotal = totalExenta + totalGrav5 + totalGrav10;
-                    var totalIva = iva5 + iva10;
-
-                    column.Item().PaddingTop(8).Row(row =>
+                    // ========== RESUMEN / TOTALES ==========
+                    column.Item().PaddingTop(8).Row(resumen =>
                     {
-                        row.RelativeItem(2); // Espacio izquierdo
-
-                        // Totales derecha
-                        row.RelativeItem(1).Column(totales =>
+                        // Espacio izquierdo (para el texto en letras)
+                        resumen.RelativeItem(2).Column(letras =>
                         {
-                            totales.Item().Border(1).BorderColor(Colors.Black).Padding(4).Row(r =>
+                            letras.Item().Text("Subtotal:").FontSize(9).Bold();
+                            letras.Item().PaddingTop(4).Text("Total de la Operación (en guaraníes):").FontSize(9).Bold();
+                            if (!string.IsNullOrWhiteSpace(venta.TotalEnLetras))
+                                letras.Item().PaddingTop(4).Text(venta.TotalEnLetras).FontSize(8).Italic();
+                        });
+
+                        // Totales numéricos
+                        resumen.RelativeItem(1).Column(nums =>
+                        {
+                            nums.Item().AlignRight().Text(venta.Total.ToString("N0")).FontSize(9).Bold();
+                            nums.Item().PaddingTop(4).AlignRight().Text(venta.Total.ToString("N0")).FontSize(11).Bold();
+                        });
+                    });
+
+                    // ========== LIQUIDACIÓN DEL IVA ==========
+                    column.Item().PaddingTop(8).Border(1).BorderColor(Colors.Grey.Medium).Column(liq =>
+                    {
+                        liq.Item().Background(Colors.Blue.Lighten4).Padding(4).AlignCenter()
+                            .Text("Liquidación del I.V.A.").FontSize(10).Bold();
+
+                        // Calcular totales de venta CON IVA
+                        var totalVenta5 = totalGrav5 + iva5;   // Total venta 5% (con IVA)
+                        var totalVenta10 = totalGrav10 + iva10; // Total venta 10% (con IVA)
+
+                        liq.Item().Table(tablaIva =>
+                        {
+                            tablaIva.ColumnsDefinition(cols =>
                             {
-                                r.RelativeItem().Text($"Sub Total {ObtenerSimboloMoneda(venta.Moneda)}").FontSize(10).Bold();
-                                r.ConstantItem(80).Text($"{FormatearPrecio(subtotal, venta.Moneda)}").FontSize(10).Bold().AlignRight();
+                                cols.RelativeColumn(2); // Concepto
+                                cols.RelativeColumn();  // 5%
+                                cols.RelativeColumn();  // 10%
+                                cols.RelativeColumn();  // Total
                             });
 
-                            totales.Item().Border(1).BorderColor(Colors.Black).Padding(4).Row(r =>
+                            // Encabezado
+                            void HeaderIva(IContainer c, string txt)
                             {
-                                r.RelativeItem().Text($"Total I.V.A. {ObtenerSimboloMoneda(venta.Moneda)}").FontSize(10).Bold();
-                                r.ConstantItem(80).Text($"{FormatearPrecio(totalIva, venta.Moneda)}").FontSize(10).Bold().AlignRight();
-                            });
+                                c.Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                    .Background(Colors.Blue.Lighten5)
+                                    .Padding(3).AlignCenter()
+                                    .Text(txt).FontSize(8).Bold();
+                            }
 
-                            totales.Item().Border(2).BorderColor(Colors.Black).Background(Colors.Red.Lighten4)
-                                .Padding(4).Row(r =>
+                            HeaderIva(tablaIva.Cell(), "Concepto");
+                            HeaderIva(tablaIva.Cell(), "5%");
+                            HeaderIva(tablaIva.Cell(), "10%");
+                            HeaderIva(tablaIva.Cell(), "Total");
+
+                            // Fila: Total Gravado (base imponible)
+                            void CeldaIva(IContainer c, string txt)
+                            {
+                                c.Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                    .Padding(3).AlignRight()
+                                    .Text(txt).FontSize(8);
+                            }
+                            void CeldaIvaLabel(IContainer c, string txt)
+                            {
+                                c.Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                    .Padding(3)
+                                    .Text(txt).FontSize(8);
+                            }
+
+                            CeldaIvaLabel(tablaIva.Cell(), "Total Gravado");
+                            CeldaIva(tablaIva.Cell(), totalGrav5.ToString("N0"));
+                            CeldaIva(tablaIva.Cell(), totalGrav10.ToString("N0"));
+                            CeldaIva(tablaIva.Cell(), (totalGrav5 + totalGrav10).ToString("N0"));
+
+                            // Fila: Liquidación IVA
+                            CeldaIvaLabel(tablaIva.Cell(), "Liquidación IVA");
+                            CeldaIva(tablaIva.Cell(), iva5.ToString("N0"));
+                            CeldaIva(tablaIva.Cell(), iva10.ToString("N0"));
+                            CeldaIva(tablaIva.Cell(), totalIva.ToString("N0"));
+
+                            // Fila: Total (gravado + IVA = valor venta)
+                            tablaIva.Cell().Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                .Background(Colors.Grey.Lighten4).Padding(3)
+                                .Text("Total c/IVA").FontSize(8).Bold();
+                            tablaIva.Cell().Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                .Background(Colors.Grey.Lighten4).Padding(3).AlignRight()
+                                .Text(totalVenta5.ToString("N0")).FontSize(8).Bold();
+                            tablaIva.Cell().Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                .Background(Colors.Grey.Lighten4).Padding(3).AlignRight()
+                                .Text(totalVenta10.ToString("N0")).FontSize(8).Bold();
+                            tablaIva.Cell().Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                .Background(Colors.Grey.Lighten4).Padding(3).AlignRight()
+                                .Text((totalVenta5 + totalVenta10).ToString("N0")).FontSize(8).Bold();
+
+                            // Fila: Exentas (si hay)
+                            if (totalExenta > 0)
+                            {
+                                CeldaIvaLabel(tablaIva.Cell(), "Total Exentas");
+                                CeldaIva(tablaIva.Cell(), "—");
+                                CeldaIva(tablaIva.Cell(), "—");
+                                CeldaIva(tablaIva.Cell(), totalExenta.ToString("N0"));
+                            }
+                        });
+                    });
+
+                    // ========== SECCIÓN QR y CDC (solo Factura Electrónica) ==========
+                    if (esFacturaElectronica)
+                    {
+                        column.Item().PaddingTop(10).Border(1).BorderColor(Colors.Grey.Medium).Row(validacion =>
+                        {
+                            // QR a la izquierda
+                            validacion.ConstantItem(100).Padding(6).Column(qrCol =>
+                            {
+                                if (qrPng != null)
                                 {
-                                    r.RelativeItem().Text($"TOTAL GENERAL {ObtenerSimboloMoneda(venta.Moneda)}").FontSize(12).Bold();
-                                    r.ConstantItem(80).Text($"{FormatearPrecio(venta.Total, venta.Moneda)}").FontSize(12).Bold().AlignRight();
-                                });
-                        });
-                    });
-
-                    // LIQUIDACIÓN DEL IVA - TABLA AZUL COMO EN LA IMAGEN
-                    column.Item().PaddingTop(12).Border(1).BorderColor(Colors.Black).Column(liq =>
-                    {
-                        liq.Item().Background(Colors.Blue.Lighten3).Padding(4)
-                            .AlignCenter().Text("LIQUIDACIÓN DEL I.V.A.").FontSize(11).Bold();
-
-                        liq.Item().Table(t =>
-                        {
-                            t.ColumnsDefinition(c =>
-                            {
-                                c.RelativeColumn();
-                                c.RelativeColumn();
-                                c.RelativeColumn();
+                                    qrCol.Item().Width(80).Height(80).Image(qrPng).FitArea();
+                                }
+                                else
+                                {
+                                    qrCol.Item().Width(80).Height(80)
+                                        .Border(1).BorderColor(Colors.Grey.Lighten2)
+                                        .Background(Colors.Grey.Lighten4)
+                                        .AlignCenter().AlignMiddle()
+                                        .Text("QR").FontSize(14).Bold().FontColor(Colors.Grey.Medium);
+                                }
                             });
 
-                            t.Header(h =>
+                            // Textos de validación
+                            validacion.RelativeItem().Padding(6).Column(textos =>
                             {
-                                h.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Blue.Lighten4)
-                                    .Padding(4).AlignCenter().Text("0%").FontSize(10).Bold();
-                                h.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Blue.Lighten4)
-                                    .Padding(4).AlignCenter().Text("5%").FontSize(10).Bold();
-                                h.Cell().Border(1).BorderColor(Colors.Black).Background(Colors.Blue.Lighten4)
-                                    .Padding(4).AlignCenter().Text("10%").FontSize(10).Bold();
-                            });
+                                textos.Item().Text("Consulte la validez de esta Factura Electrónica con el número de CDC impreso abajo en:")
+                                    .FontSize(8).Bold();
+                                textos.Item().Text("https://ekuatia.set.gov.py/consultas/")
+                                    .FontSize(9).FontColor(Colors.Blue.Darken2).Bold();
 
-                            t.Cell().Border(1).BorderColor(Colors.Black).Padding(4)
-                                .AlignCenter().Text("0").FontSize(10);
-                            t.Cell().Border(1).BorderColor(Colors.Black).Padding(4)
-                                .AlignCenter().Text("0").FontSize(10);
-                            t.Cell().Border(1).BorderColor(Colors.Black).Padding(4)
-                                .AlignCenter().Text($"{iva10:N0}").FontSize(10);
-                        });
-                    });
-
-                    // QR Y CDC PROMINENTE COMO EN LA IMAGEN (solo para facturas electrónicas)
-                    if (esFacturaElectronica && !string.IsNullOrWhiteSpace(venta.CDC) && qrPng != null)
-                    {
-                        column.Item().PaddingTop(15).Row(row =>
-                        {
-                            // QR grande a la izquierda
-                            row.ConstantItem(50, Unit.Millimetre).Column(qrCol =>
-                            {
-                                qrCol.Item().Width(45, Unit.Millimetre).Height(45, Unit.Millimetre)
-                                    .Border(1).BorderColor(Colors.Black)
-                                    .Image(qrPng).FitArea();
-                            });
-
-                            // Información CDC
-                            row.RelativeItem().PaddingLeft(8).Column(infoCol =>
-                            {
-                                infoCol.Item().Text("Consulte la validez de esta Factura Electrónica con el número de CDC impreso abajo en:")
+                                textos.Item().PaddingTop(6).Border(1).BorderColor(Colors.Grey.Medium)
+                                    .Background(Colors.Grey.Lighten4).Padding(4)
+                                    .Text($"CDC: {venta.CDC ?? "(Pendiente)"}")
                                     .FontSize(9).Bold();
-                                infoCol.Item().PaddingTop(4).Text("https://ekuatia.set.gov.py/consultas/")
-                                    .FontSize(10).Bold().FontColor(Colors.Blue.Darken2);
 
-                                // CDC destacado
-                                infoCol.Item().PaddingTop(8).Border(2).BorderColor(Colors.Black)
-                                    .Background(Colors.Grey.Lighten4).Padding(6)
-                                    .Text($"CDC: {FormatearCdc(venta.CDC!)}")
-                                    .FontSize(12).Bold().FontColor(Colors.Black);
+                                textos.Item().PaddingTop(6)
+                                    .Text("ESTE DOCUMENTO ES UNA REPRESENTACIÓN GRÁFICA DE UN DOCUMENTO ELECTRÓNICO (XML)")
+                                    .FontSize(7).Bold().FontColor(Colors.Red.Darken1);
 
-                                infoCol.Item().PaddingTop(8).Text("ESTE DOCUMENTO ES UNA REPRESENTACIÓN GRÁFICA DE UN DOCUMENTO ELECTRÓNICO (XML)")
-                                    .FontSize(9).Bold().FontColor(Colors.Red.Darken1);
-
-                                infoCol.Item().PaddingTop(4).Text("Información de interés del facturador electrónico emisor:")
-                                    .FontSize(8);
-                                infoCol.Item().Text("Si su documento electrónico presenta algún error, podrá solicitar la modificación dentro de las 72 horas siguientes de la emisión de este comprobante.")
-                                    .FontSize(8);
+                                textos.Item().PaddingTop(4).Text("Información de interés del receptor emisor:").FontSize(7);
+                                textos.Item().Text("Si su documento electrónico presenta algún error, podrá solicitar la modificación dentro de las 48 horas siguientes de la emisión de este comprobante.")
+                                    .FontSize(7);
                             });
                         });
                     }
+
+                    // ========== LEYENDA FINAL ==========
+                    column.Item().PaddingTop(10).Text(
+                        "La falta de pago a su vencimiento constituirá en mora automática al deudor, sin necesidad de interpelación judicial o extrajudicial previa, devengándose un interés moratorio del 3% mensual para operaciones en guaraníes, más un interés punitorio del 30% del interés moratorio, el que se adicionará, por todo el tiempo de mora y que será calculado sobre los saldos deudores hasta el efectivo pago. A todos los efectos legales y procesales emergentes de este documento las partes aceptan la jurisdicción y competencia de los Jueces y Tribunales de la ciudad de Asunción, renunciando a cualquier otro fuero o jurisdicción que pudiera corresponder."
+                    ).FontSize(6).FontColor(Colors.Grey.Darken1);
                 });
             });
         });
@@ -391,12 +427,18 @@ public class PdfFacturaService
         return documento.GeneratePdf();
     }
 
+    /// <summary>
+    /// Formatea el CDC en grupos de 4 caracteres para mejor legibilidad
+    /// </summary>
     private static string FormatearCdc(string cdc)
     {
-        if (string.IsNullOrWhiteSpace(cdc) || cdc.Length < 16)
-            return cdc;
-
-        return string.Join(" ", Enumerable.Range(0, (cdc.Length + 3) / 4)
-            .Select(i => cdc.Substring(i * 4, Math.Min(4, cdc.Length - i * 4))));
+        if (string.IsNullOrWhiteSpace(cdc)) return "";
+        var chars = cdc.Replace(" ", "").Replace("-", "");
+        var grupos = new List<string>();
+        for (int i = 0; i < chars.Length; i += 4)
+        {
+            grupos.Add(chars.Substring(i, Math.Min(4, chars.Length - i)));
+        }
+        return string.Join(" ", grupos);
     }
 }

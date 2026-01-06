@@ -222,6 +222,16 @@ if (Test-Path $certSource) {
     Write-Success "Carpeta Certificados HTTPS incluida"
 }
 
+# Copiar modelos de reconocimiento facial
+$faceModelsSource = Join-Path $projectPath "face_recognition_models"
+if (Test-Path $faceModelsSource) {
+    $faceModelsDest = Join-Path $publishPath "face_recognition_models"
+    Copy-Item -Path $faceModelsSource -Destination $faceModelsDest -Recurse -Force
+    Write-Success "Modelos de reconocimiento facial incluidos"
+} else {
+    Write-Info "Carpeta face_recognition_models no encontrada (reconocimiento facial no disponible)"
+}
+
 # ============================================================
 # PASO 6: Crear ZIP
 # ============================================================

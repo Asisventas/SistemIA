@@ -11,7 +11,11 @@
 @inject IJSRuntime JS
 @inject SistemIA.Services.ISucursalProvider SucursalProvider
 @inject ICorreoService CorreoService
+@inject IInformeCorreoService InformeCorreoService
 @inject PermisosService PermisosService
+@inject ITrackingService TrackingService
+@using static SistemIA.Models.AsistenteIA.TipoAccionTracking
+@using static SistemIA.Models.AsistenteIA.CategoriaAccion
 
 <PageProtection Modulo="/ventas" Permiso="VIEW">
 
@@ -930,6 +934,20 @@ else
 
             mensaje = $"Turno cerrado correctamente. Cierre #{cierre.IdCierreCaja}";
             
+            // Registrar acción para tracking IA
+            _ = TrackingService.RegistrarOperacionAsync(
+                tipoAccion: "CierreCaja",
+                categoria: "Caja",
+                descripcion: $"Cierre #{cierre.IdCierreCaja} - Caja {cierre.IdCaja} - Turno {cierre.Turno} - Total: ₲ {cierre.TotalEsperado:N0}",
+                entidadId: cierre.IdCierreCaja,
+                entidadTipo: "CierreCaja",
+                datos: new { 
+                    VentasContado = cierre.TotalVentasContado, 
+                    VentasCredito = cierre.TotalVentasCredito, 
+                    CobrosCredito = cierre.TotalCobrosCredito, 
+                    Diferencia = cierre.Diferencia 
+                });
+            
             // Imprimir reporte de cierre automáticamente
             await ImprimirCierreA4(cierre, entregas.ToList());
             
@@ -939,7 +957,7 @@ else
                 var resultadoCorreo = await CorreoService.EnviarResumenCierreCajaAsync(cierre, entregas.ToList(), sucursalId ?? 1);
                 if (resultadoCorreo.Exito)
                 {
-                    mensaje += $" | Correo enviado: {resultadoCorreo.Mensaje}";
+                    mensaje += $" | Correo cierre: {resultadoCorreo.Mensaje}";
                 }
                 // Si falla, no mostrar error (el cierre ya fue exitoso)
             }
@@ -947,6 +965,26 @@ else
             {
                 // Log del error pero no afecta el cierre
                 Console.WriteLine($"Error al enviar correo de cierre: {exCorreo.Message}");
+            }
+
+            // Enviar todos los informes configurados al cierre (Ventas, Compras, NC, etc.)
+            try
+            {
+                // Usar datos del cierre: fecha de caja, turno y caja
+                var resultadoInformes = await InformeCorreoService.EnviarInformesCierreAsync(
+                    sucursalId ?? 1, 
+                    cierre.FechaCaja,    // Fecha de la caja, NO fecha del equipo
+                    cierre.Turno,        // Turno del cierre
+                    cierre.IdCaja);      // ID de la caja
+                    
+                if (resultadoInformes.Exito && resultadoInformes.InformesEnviados > 0)
+                {
+                    mensaje += $" | {resultadoInformes.InformesEnviados} informes PDF enviados";
+                }
+            }
+            catch (Exception exInformes)
+            {
+                Console.WriteLine($"Error al enviar informes de cierre: {exInformes.Message}");
             }
             
             // Limpiar cache y recargar datos para el nuevo turno
@@ -973,6 +1011,13 @@ else
         catch (Exception ex)
         {
             error = $"Error al cerrar caja: {ex.Message}";
+            
+            // Registrar error para tracking IA
+            _ = TrackingService.RegistrarErrorAsync(
+                descripcion: $"Error al cerrar caja: {ex.Message}",
+                mensajeError: ex.Message,
+                stackTrace: ex.StackTrace,
+                componente: "CierreCajaPage");
         }
         finally
         {

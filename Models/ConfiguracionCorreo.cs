@@ -133,20 +133,44 @@ namespace SistemIA.Models
         // ========== CONFIGURACIÓN DEL REMITENTE ==========
 
         /// <summary>
-        /// Dirección de correo del remitente (From)
+        /// Dirección de correo del remitente (From).
+        /// Si está vacío, se usará el correo de la sucursal.
         /// </summary>
-        [Required(ErrorMessage = "El correo del remitente es requerido")]
         [StringLength(200)]
         [EmailAddress(ErrorMessage = "Formato de correo inválido")]
         [Display(Name = "Correo Remitente")]
-        public string CorreoRemitente { get; set; } = string.Empty;
+        public string? CorreoRemitente { get; set; }
 
         /// <summary>
-        /// Nombre que aparece como remitente (ej: "Mi Empresa")
+        /// Nombre que aparece como remitente (ej: "Mi Empresa").
+        /// Si está vacío, se usará automáticamente el NombreEmpresa de la Sucursal.
         /// </summary>
         [StringLength(200)]
         [Display(Name = "Nombre Remitente")]
         public string? NombreRemitente { get; set; }
+
+        /// <summary>
+        /// Si true, usa automáticamente los datos de la Sucursal para el remitente.
+        /// NombreRemitente = Sucursal.NombreEmpresa, CorreoRemitente = Sucursal.Correo
+        /// </summary>
+        [Display(Name = "Usar datos de empresa como remitente")]
+        public bool UsarDatosEmpresaComoRemitente { get; set; } = true;
+
+        /// <summary>
+        /// Obtiene el nombre del remitente efectivo (de la config o de la sucursal)
+        /// </summary>
+        [NotMapped]
+        public string NombreRemitenteEfectivo => 
+            !string.IsNullOrEmpty(NombreRemitente) ? NombreRemitente 
+            : (Sucursal?.NombreEmpresa ?? "SistemIA");
+
+        /// <summary>
+        /// Obtiene el correo del remitente efectivo (de la config o de la sucursal)
+        /// </summary>
+        [NotMapped]
+        public string CorreoRemitenteEfectivo => 
+            !string.IsNullOrEmpty(CorreoRemitente) ? CorreoRemitente 
+            : (Sucursal?.Correo ?? UsuarioSmtp ?? string.Empty);
 
         /// <summary>
         /// Correo para respuestas (Reply-To), si es diferente al remitente
@@ -309,7 +333,9 @@ namespace SistemIA.Models
         {
             get
             {
-                if (string.IsNullOrEmpty(CorreoRemitente))
+                // El correo puede venir de la config o de la sucursal
+                var correoEfectivo = CorreoRemitenteEfectivo;
+                if (string.IsNullOrEmpty(correoEfectivo))
                     return false;
 
                 if (TipoProveedor == "SMTP")

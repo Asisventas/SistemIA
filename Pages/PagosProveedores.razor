@@ -6,7 +6,10 @@
 @inject PagoProveedorService PagoProveedorSvc
 @inject SistemIA.Services.ICajaProvider CajaProvider
 @inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.ITrackingService TrackingService
 @using Microsoft.EntityFrameworkCore
+@using static SistemIA.Models.AsistenteIA.TipoAccionTracking
+@using static SistemIA.Models.AsistenteIA.CategoriaAccion
 @using SistemIA.Models
 
 <PageProtection Modulo="/pagos" Permiso="VIEW">
@@ -14,10 +17,15 @@
 <PageTitle>Pagos a Proveedores</PageTitle>
 
 <div class="page-header">
-    <h3 class="mb-0">
-        <i class="bi bi-cash-coin text-warning me-2"></i>
-        Pagos a Proveedores
-    </h3>
+    <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-outline-secondary" @onclick="Volver">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <h3 class="mb-0">
+            <i class="bi bi-cash-coin text-warning me-2"></i>
+            Pagos a Proveedores
+        </h3>
+    </div>
     <div class="text-muted">
         <i class="bi bi-clock me-1"></i>
         Total pendiente: <span class="fw-bold text-danger">@totalPorPagar.ToString("N0") Gs.</span>
@@ -412,6 +420,11 @@
     private List<CuentaDto> cuentas = new();
     private decimal totalPorPagar = 0;
     private HashSet<int> cuotasExpandidas = new();
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/compras/explorar");
+    }
     
     // Modal de pago
     private bool mostrarModalPago = false;
@@ -614,6 +627,11 @@
             });
         }
 
+        // Ordenar todas las cuentas por fecha de crédito descendente (más recientes primero)
+        cuentas = cuentas.OrderByDescending(c => c.FechaCredito)
+                         .ThenByDescending(c => c.IdCompra)
+                         .ToList();
+
         totalPorPagar = cuentas.Where(c => c.Estado != "PAGADO" && c.Estado != "Pagada").Sum(c => c.SaldoPendiente);
         StateHasChanged();
     }
@@ -815,6 +833,15 @@
             var imprimirA4 = await JS.InvokeAsync<bool>("confirm", 
                 $"✅ Pago registrado exitosamente.\nRecibo: {pago.NumeroRecibo}\nSaldo restante: {FormatearPrecio(Math.Max(0, saldoRestante), cuentaSeleccionada.IdMoneda)}\n\n¿Desea imprimir en formato A4?\n\n• Aceptar = Comprobante A4\n• Cancelar = Recibo térmico");
             
+            // Registrar acción para tracking IA
+            _ = TrackingService.RegistrarOperacionAsync(
+                tipoAccion: Creacion,
+                categoria: "Pagos",
+                descripcion: $"Pago {pago.NumeroRecibo} - {FormatearPrecio(totalPago, cuentaSeleccionada.IdMoneda)} {ObtenerSimboloMoneda(cuentaSeleccionada.IdMoneda)}",
+                entidadId: pago.IdPagoProveedor,
+                entidadTipo: "PagoProveedor",
+                datos: new { Proveedor = cuentaSeleccionada.ProveedorNombre, IdCompra = cuentaSeleccionada.IdCompra });
+            
             var url = imprimirA4 
                 ? $"/pagos-proveedores/comprobante-a4/{pago.IdPagoProveedor}"
                 : $"/pagos-proveedores/recibo/{pago.IdPagoProveedor}";
@@ -826,6 +853,13 @@
         catch (Exception ex)
         {
             await JS.InvokeVoidAsync("alert", $"Error al registrar el pago: {ex.Message}");
+            
+            // Registrar error para tracking IA
+            _ = TrackingService.RegistrarErrorAsync(
+                descripcion: $"Error al registrar pago proveedor: {ex.Message}",
+                mensajeError: ex.Message,
+                stackTrace: ex.StackTrace,
+                componente: "PagosProveedores");
         }
     }
 

@@ -26,6 +26,8 @@ public partial class Ventas
     [Inject] public DescuentoService DescuentoService { get; set; } = default!;
     [Inject] public ICorreoService CorreoService { get; set; } = default!;
     [Inject] public PdfFacturaService PdfService { get; set; } = default!;
+    [Inject] public ITrackingService TrackingService { get; set; } = default!;
+    [Inject] public AuditoriaService AuditoriaService { get; set; } = default!;
 
     [SupplyParameterFromQuery(Name = "presupuesto")]
     public int? PresupuestoId { get; set; }
@@ -630,6 +632,24 @@ public partial class Ventas
                             // Si no hay composición, guardar venta
                             var btnGuardar = document.querySelector('#btnGuardarVenta');
                             if (btnGuardar) btnGuardar.click();
+                        }
+                        // F3 - Buscar producto
+                        else if (e.key === 'F3') {
+                            e.preventDefault();
+                            var inputProducto = document.querySelector('[placeholder*=""Buscar por nombre""]');
+                            if (inputProducto) {
+                                inputProducto.focus();
+                                inputProducto.select();
+                            }
+                        }
+                        // F4 - Buscar cliente
+                        else if (e.key === 'F4') {
+                            e.preventDefault();
+                            var inputCliente = document.querySelector('[placeholder*=""Buscar por Razón Social""]');
+                            if (inputCliente) {
+                                inputCliente.focus();
+                                inputCliente.select();
+                            }
                         }
                     };
                     document.addEventListener('keydown', window._ventasF2Handler);
@@ -1512,53 +1532,39 @@ public partial class Ventas
         Console.WriteLine($"[SeleccionarProducto] Info descuento: TieneDesc={ProductoTieneDescuentoConfigurado}, Base={DescuentoBaseProducto}%, Margen={MargenCajeroProducto}%, Max={DescuentoMaximoPermitidoProducto}%, Origen={OrigenDescuentoProducto}");
         
         // ========== APLICAR DESCUENTO AUTOMÁTICO ==========
-        // Si el sistema permite descuentos y el producto lo permite, obtener descuento automático
+        // PRIORIDAD 1: Si tiene regla configurada en "Precios y Descuentos" → usar esa regla
         if (PermitirVenderConDescuento && p.PermiteDescuento && ProductoTieneDescuentoConfigurado)
         {
-            // Modo Farmacia: calcular descuento basado en Precio Ministerio
-            if (DescuentoBasadoEnPrecioMinisterio && p.PrecioMinisterio.HasValue && p.PrecioMinisterio.Value > 0)
+            NuevoDetalleDescuentoPorcentaje = DescuentoBaseProducto;
+            
+            if (NuevoDetalleDescuentoPorcentaje > 0)
             {
-                // Fórmula: ((PrecioMinisterio - PrecioVenta) / PrecioMinisterio) * 100
-                var precioMinisterio = p.PrecioMinisterio.Value;
-                var precioVenta = NuevoDetalle.PrecioUnitario;
+                // Aplicar el descuento al precio
+                var descuentoMultiplier = 1m - (NuevoDetalleDescuentoPorcentaje / 100m);
+                NuevoDetalle.PrecioUnitario = Math.Round(PrecioOriginalSinDescuento * descuentoMultiplier, 2);
+                NuevoDetalle.PorcentajeDescuento = NuevoDetalleDescuentoPorcentaje;
                 
-                if (precioVenta < precioMinisterio)
-                {
-                    var descuentoCalculado = Math.Round(((precioMinisterio - precioVenta) / precioMinisterio) * 100, 2);
-                    
-                    // IMPORTANTE: Limitar al máximo permitido por la regla configurada
-                    if (descuentoCalculado > DescuentoMaximoPermitidoProducto)
-                    {
-                        NuevoDetalleDescuentoPorcentaje = DescuentoMaximoPermitidoProducto;
-                        // Recalcular precio con el descuento limitado
-                        var descuentoMultiplier = 1m - (NuevoDetalleDescuentoPorcentaje / 100m);
-                        NuevoDetalle.PrecioUnitario = Math.Round(precioMinisterio * descuentoMultiplier, 2);
-                        Console.WriteLine($"[SeleccionarProducto] Descuento Ministerio LIMITADO: {descuentoCalculado}% -> {NuevoDetalleDescuentoPorcentaje}% (Max regla: {DescuentoMaximoPermitidoProducto}%)");
-                    }
-                    else
-                    {
-                        NuevoDetalleDescuentoPorcentaje = descuentoCalculado;
-                        Console.WriteLine($"[SeleccionarProducto] Descuento Ministerio calculado: {NuevoDetalleDescuentoPorcentaje}% (Ministerio: {precioMinisterio}, Venta: {precioVenta})");
-                    }
-                    NuevoDetalle.PorcentajeDescuento = NuevoDetalleDescuentoPorcentaje;
-                }
-            }
-            else
-            {
-                // Modo normal: usar descuento base configurado
-                NuevoDetalleDescuentoPorcentaje = DescuentoBaseProducto;
-                
-                if (NuevoDetalleDescuentoPorcentaje > 0)
-                {
-                    // Aplicar el descuento al precio
-                    var descuentoMultiplier = 1m - (NuevoDetalleDescuentoPorcentaje / 100m);
-                    NuevoDetalle.PrecioUnitario = Math.Round(PrecioOriginalSinDescuento * descuentoMultiplier, 2);
-                    NuevoDetalle.PorcentajeDescuento = NuevoDetalleDescuentoPorcentaje;
-                    
-                    Console.WriteLine($"[SeleccionarProducto] Descuento automático aplicado: {DescuentoBaseProducto}% (Producto: {p.Descripcion})");
-                }
+                Console.WriteLine($"[SeleccionarProducto] PRIORIDAD 1 - Descuento por REGLA: {DescuentoBaseProducto}% (Producto: {p.Descripcion})");
             }
         }
+        // PRIORIDAD 2: Si NO tiene regla, pero está activo "Calcular descuento basado en Precio Ministerio" 
+        // Y el producto tiene Precio Ministerio → calcular automáticamente
+        else if (DescuentoBasadoEnPrecioMinisterio && p.PrecioMinisterio.HasValue && p.PrecioMinisterio.Value > 0)
+        {
+            // Fórmula: ((PrecioMinisterio - PrecioVenta) / PrecioMinisterio) * 100
+            var precioMinisterio = p.PrecioMinisterio.Value;
+            var precioVenta = NuevoDetalle.PrecioUnitario;
+            
+            if (precioVenta < precioMinisterio)
+            {
+                var descuentoCalculado = Math.Round(((precioMinisterio - precioVenta) / precioMinisterio) * 100, 2);
+                NuevoDetalleDescuentoPorcentaje = descuentoCalculado;
+                NuevoDetalle.PorcentajeDescuento = NuevoDetalleDescuentoPorcentaje;
+                
+                Console.WriteLine($"[SeleccionarProducto] PRIORIDAD 2 - Descuento MINISTERIO calculado: {NuevoDetalleDescuentoPorcentaje}% (Ministerio: {precioMinisterio}, Venta: {precioVenta})");
+            }
+        }
+        // SIN DESCUENTO: No tiene regla Y (no está activo cálculo Ministerio O no tiene Precio Ministerio)
         
         // Guardar precio ministerio si aplica (modo farmacia)
         if (ModoFarmaciaActivo && p.PrecioMinisterio.HasValue)
@@ -2298,6 +2304,40 @@ public partial class Ventas
                     await ctx.SaveChangesAsync();
                 }
                 await tx.CommitAsync();
+                
+                // Registrar en auditoría con contexto completo
+                var cajaAudit = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.IdCaja == Cab.IdCaja);
+                var sucAudit = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == Cab.IdSucursal);
+                var rolUsuario = await ctx.Usuarios.AsNoTracking()
+                    .Where(u => u.Id_Usu == _idUsuarioActual)
+                    .Select(u => u.Rol != null ? u.Rol.NombreRol : null)
+                    .FirstOrDefaultAsync();
+                
+                _ = AuditoriaService.RegistrarAccionAsync(
+                    idUsuario: _idUsuarioActual,
+                    nombreUsuario: _usuarioActual ?? "Sistema",
+                    rolUsuario: rolUsuario,
+                    accion: esPresupuesto ? "Crear Presupuesto" : "Crear Venta",
+                    tipoAccion: "CREATE",
+                    modulo: "Ventas",
+                    entidad: esPresupuesto ? "Presupuesto" : "Venta",
+                    idRegistroAfectado: Cab.IdVenta,
+                    descripcion: $"{(esPresupuesto ? "Presupuesto" : "Venta")} #{Cab.NumeroFactura} - {Cab.SimboloMoneda} {Cab.Total:N0} - {Cab.FormaPago} - Cliente: {ClienteSeleccionadoLabel} - Items: {Detalles.Count}",
+                    datosDespues: new { 
+                        Cab.NumeroFactura, 
+                        Cab.Total, 
+                        Cab.FormaPago, 
+                        Cliente = ClienteSeleccionadoLabel, 
+                        Items = Detalles.Count
+                    },
+                    fechaHoraEquipo: FechaEquipoAuditoria,
+                    fechaCaja: cajaAudit?.FechaActualCaja,
+                    turno: cajaAudit?.TurnoActual,
+                    idSucursal: Cab.IdSucursal,
+                    nombreSucursal: sucAudit?.NombreSucursal,
+                    idCaja: Cab.IdCaja,
+                    nombreCaja: cajaAudit?.Nombre
+                );
             }
 
             // Ajuste de stock: solo para VENTAS. Para PRESUPUESTO no afecta stock.
@@ -2498,12 +2538,25 @@ public partial class Ventas
         catch (ValidationException vex)
         {
             MensajeAdvertencia = $"⚠️ {vex.Message}";
+            _ = TrackingService.RegistrarErrorAsync(
+                descripcion: "Error de validación en Ventas",
+                mensajeError: vex.Message,
+                componente: "Ventas.GuardarAsync",
+                idUsuario: _idUsuarioActual,
+                nombreUsuario: _usuarioActual);
             await InvokeAsync(StateHasChanged);
         }
         catch (DbUpdateException dbEx)
         {
             var innerMsg = dbEx.InnerException?.Message ?? dbEx.Message;
             MensajeAdvertencia = $"❌ Error de base de datos al guardar: {innerMsg}";
+            _ = TrackingService.RegistrarErrorAsync(
+                descripcion: "Error de BD al guardar venta",
+                mensajeError: innerMsg,
+                stackTrace: dbEx.StackTrace,
+                componente: "Ventas.GuardarAsync",
+                idUsuario: _idUsuarioActual,
+                nombreUsuario: _usuarioActual);
             await InvokeAsync(StateHasChanged);
             Console.WriteLine($"Error DbUpdate en GuardarAsync: {dbEx}");
             if (dbEx.InnerException != null)
@@ -2513,6 +2566,13 @@ public partial class Ventas
         {
             var innerMsg = ex.InnerException?.Message ?? ex.Message;
             MensajeAdvertencia = $"❌ Error al guardar la venta: {innerMsg}";
+            _ = TrackingService.RegistrarErrorAsync(
+                descripcion: "Error general al guardar venta",
+                mensajeError: innerMsg,
+                stackTrace: ex.StackTrace,
+                componente: "Ventas.GuardarAsync",
+                idUsuario: _idUsuarioActual,
+                nombreUsuario: _usuarioActual);
             await InvokeAsync(StateHasChanged);
             Console.WriteLine($"Error en GuardarAsync: {ex}");
             if (ex.InnerException != null)

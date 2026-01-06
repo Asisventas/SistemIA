@@ -1,0 +1,81 @@
+@page "/presupuesto-sistema-pdf/{Id:int}"
+@page "/pdf/presupuesto-sistema/{Id:int}"
+@layout EmptyLayout
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+@if (_presupuesto != null)
+{
+    <PresupuestoSistemaPdf Presupuesto="_presupuesto" Sucursal="_sucursal" Items="_items" />
+}
+else if (_cargando)
+{
+    <div class="d-flex justify-content-center align-items-center" style="height: 100vh;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-warning m-4">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        Presupuesto no encontrado.
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private PresupuestoSistema? _presupuesto;
+    private Sucursal? _sucursal;
+    private List<PresupuestoSistemaDetalle>? _items;
+    private bool _cargando = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await CargarDatosAsync();
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        _cargando = true;
+        
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        _presupuesto = await ctx.PresupuestosSistema
+            .Include(p => p.Sucursal)
+            .Include(p => p.Detalles)
+            .FirstOrDefaultAsync(p => p.IdPresupuesto == Id);
+
+        if (_presupuesto != null)
+        {
+            _items = _presupuesto.Detalles?.ToList() ?? new List<PresupuestoSistemaDetalle>();
+            
+            // Si el presupuesto tiene sucursal, usarla; sino cargar la primera disponible
+            if (_presupuesto.Sucursal != null)
+            {
+                _sucursal = _presupuesto.Sucursal;
+            }
+            else if (_presupuesto.IdSucursal > 0)
+            {
+                _sucursal = await ctx.Sucursal
+                    .FirstOrDefaultAsync(s => s.Id == _presupuesto.IdSucursal);
+            }
+            else
+            {
+                // Fallback: cargar primera sucursal disponible
+                _sucursal = await ctx.Sucursal.FirstOrDefaultAsync();
+            }
+        }
+
+        _cargando = false;
+    }
+}

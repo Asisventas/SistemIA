@@ -10,6 +10,7 @@
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject SistemIA.Services.ICajaProvider CajaProvider
 @inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.ITrackingService TrackingService
 @implements IAsyncDisposable
 
 <PageProtection Modulo="/inventario" Permiso="VIEW">
@@ -531,10 +532,27 @@
       var nuevoId = await Ajustes.CrearAjusteAsync(primerDep.IdSucursal, cajaSeleccionadaId, CajaActiva?.TurnoActual, usuario, comentario, inputs, FechaAjuste);
       ajusteGeneradoId = nuevoId;
       okMsg = $"Ajuste #{nuevoId} guardado";
+      
+      // Registrar acción para tracking IA
+      var diferenciaTotal = lineas.Sum(l => l.Diferencia);
+      _ = TrackingService.RegistrarOperacionAsync(
+          tipoAccion: "edicion",
+          categoria: "Inventario",
+          descripcion: $"Ajuste Stock #{nuevoId} - {lineas.Count} productos - Diferencia total: {diferenciaTotal:N2}",
+          entidadId: nuevoId,
+          entidadTipo: "AjusteStock",
+          datos: new { Comentario = comentario, Items = lineas.Count, DiferenciaTotal = diferenciaTotal });
     }
     catch (Exception ex)
     {
       errorMsg = ex.GetBaseException().Message;
+      
+      // Registrar error para tracking IA
+      _ = TrackingService.RegistrarErrorAsync(
+          descripcion: $"Error al guardar ajuste de stock: {errorMsg}",
+          mensajeError: ex.Message,
+          stackTrace: ex.StackTrace,
+          componente: "AjustesStock");
     }
     finally { guardando = false; }
   }

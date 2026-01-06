@@ -5,7 +5,10 @@
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject SistemIA.Services.ICajaProvider CajaProvider
 @inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.ITrackingService TrackingService
 @using Microsoft.EntityFrameworkCore
+@using static SistemIA.Models.AsistenteIA.TipoAccionTracking
+@using static SistemIA.Models.AsistenteIA.CategoriaAccion
 @using SistemIA.Models
 
 <PageProtection Modulo="/clientes/cobros" Permiso="VIEW">
@@ -13,15 +16,19 @@
 <PageTitle>Cobros de Créditos</PageTitle>
 
 <div class="page-header">
-    <h3 class="mb-0">
-        <i class="bi bi-cash-coin text-success me-2"></i>
-        Cobros
-    </h3>
+    <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-outline-secondary" @onclick="Volver">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <h3 class="mb-0">
+            <i class="bi bi-cash-coin text-success me-2"></i>
+            Cobros
+        </h3>
+    </div>
     <div class="text-muted">
         <i class="bi bi-clock me-1"></i>
         Total pendiente: <span class="fw-bold text-danger">@totalPendiente.ToString("N0") Gs.</span>
     </div>
-}
 </div>
 
 <div class="card mb-3 shadow-sm">
@@ -413,6 +420,11 @@
     private List<CuentaDto> cuentas = new();
     private decimal totalPendiente = 0;
     private HashSet<int> cuotasExpandidas = new();
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/ventas/explorar");
+    }
     
     // Modal de cobro
     private bool mostrarModalCobro = false;
@@ -814,6 +826,15 @@
 
             await ctx.SaveChangesAsync();
 
+            // Registrar acción para tracking IA
+            _ = TrackingService.RegistrarOperacionAsync(
+                tipoAccion: Creacion,
+                categoria: "Cobros",
+                descripcion: $"Cobro {cobro.NumeroRecibo} - {FormatearPrecio(totalCobro, cuentaSeleccionada.IdMoneda)} {ObtenerSimboloMoneda(cuentaSeleccionada.IdMoneda)}",
+                entidadId: cobro.IdCobro,
+                entidadTipo: "Cobro",
+                datos: new { Cliente = cuentaSeleccionada.ClienteNombre, IdVenta = cuentaSeleccionada.IdVenta });
+
             // Preguntar formato de impresión
             var imprimirA4 = await JS.InvokeAsync<bool>("confirm", 
                 $"✅ Cobro registrado exitosamente.\nRecibo: {cobro.NumeroRecibo}\nMonto cobrado: {FormatearPrecio(totalCobro, cuentaSeleccionada.IdMoneda)}\n\n¿Desea imprimir en formato A4?\n\n• Aceptar = Comprobante A4\n• Cancelar = Recibo térmico");
@@ -830,6 +851,13 @@
         catch (Exception ex)
         {
             await JS.InvokeVoidAsync("alert", $"Error al registrar el cobro: {ex.Message}");
+            
+            // Registrar error para tracking IA
+            _ = TrackingService.RegistrarErrorAsync(
+                descripcion: $"Error al registrar cobro: {ex.Message}",
+                mensajeError: ex.Message,
+                stackTrace: ex.StackTrace,
+                componente: "Cobros");
         }
     }
 

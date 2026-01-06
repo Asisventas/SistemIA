@@ -41,6 +41,13 @@ namespace SistemIA.Models
         // ========== TIPOS DE INFORMES ==========
 
         /// <summary>
+        /// Recibir TODOS los informes disponibles.
+        /// Si está activo, se ignoran los checkboxes individuales.
+        /// </summary>
+        [Display(Name = "Recibir TODOS los informes")]
+        public bool RecibeTodosLosInformes { get; set; } = false;
+
+        /// <summary>
         /// Recibir informe de ventas diario
         /// </summary>
         [Display(Name = "Ventas Diarias")]
@@ -248,6 +255,9 @@ namespace SistemIA.Models
         {
             get
             {
+                if (RecibeTodosLosInformes)
+                    return "✅ Todos los informes";
+
                 var informes = new List<string>();
                 if (RecibeVentasDiarias) informes.Add("Ventas Diarias");
                 if (RecibeResumenSemanal) informes.Add("Semanal");
@@ -277,6 +287,45 @@ namespace SistemIA.Models
 
                 return informes.Count > 0 ? string.Join(", ", informes) : "Ninguno";
             }
+        }
+
+        /// <summary>
+        /// Verifica si el destinatario recibe un tipo específico de informe
+        /// </summary>
+        public bool RecibeInforme(string tipoInforme)
+        {
+            if (RecibeTodosLosInformes)
+                return true;
+
+            return tipoInforme switch
+            {
+                "VentasDiarias" => RecibeVentasDiarias,
+                "ResumenSemanal" => RecibeResumenSemanal,
+                "ResumenMensual" => RecibeResumenMensual,
+                "AlertaStock" => RecibeAlertaStock,
+                "CierreCaja" => RecibeCierreCaja,
+                "InformeCompras" => RecibeInformeCompras,
+                "ComprasDetallado" => RecibeComprasDetallado,
+                "VentasDetallado" => RecibeVentasDetallado,
+                "VentasAgrupado" => RecibeVentasAgrupado,
+                "VentasClasificacion" => RecibeVentasClasificacion,
+                "NotasCredito" => RecibeNotasCredito,
+                "NCDetallado" => RecibeNCDetallado,
+                "NCCompras" => RecibeNCCompras,
+                "ProductosValorizado" => RecibeProductosValorizado,
+                "ProductosDetallado" => RecibeProductosDetallado,
+                "MovimientosStock" => RecibeMovimientosStock,
+                "AjustesStock" => RecibeAjustesStock,
+                "CuentasPorCobrar" => RecibeCuentasPorCobrar,
+                "CuentasPorPagar" => RecibeCuentasPorPagar,
+                "ResumenCaja" => RecibeResumenCaja,
+                "Asistencia" => RecibeAsistencia,
+                "ResumenSifen" => RecibeResumenSifen,
+                "AlertaVencimientos" => RecibeAlertaVencimientos,
+                "CopiaFacturas" => RecibeCopiaFacturas,
+                "ResumenCierre" => RecibeResumenCierre,
+                _ => false
+            };
         }
     }
 

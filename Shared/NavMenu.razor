@@ -409,10 +409,6 @@
                         <i class="bi bi-file-earmark-pdf me-2"></i>
                         @if (!IsCollapsed){<span class="link-text">Informe de Asistencia</span>}
                     </NavLink>
-                    <NavLink class="nav-link" href="/listado-asistencia" title="@(IsCollapsed ? "Listado Asistencia" : "")" @onclick="OnAnyNavigate">
-                        <i class="bi bi-list-ul me-2"></i>
-                        @if (!IsCollapsed){<span class="link-text">Listado de Asistencia</span>}
-                    </NavLink>
                 </div>
             </div>
         </div>
@@ -603,30 +599,58 @@
                         <i class="bi bi-journal-text me-2"></i>
                         <span class="link-text">Auditoría</span>
                     </NavLink>
-                    <NavLink class="nav-link submenu-item" href="/actualizacion-sistema" title="Actualización del Sistema" @onclick="OnAnyNavigate">
-                        <i class="bi bi-arrow-repeat me-2"></i>
-                        <span class="link-text">Actualización</span>
-                    </NavLink>
                     <NavLink class="nav-link submenu-item" href="/manual-sistema" title="Manual y Ayuda del Sistema" @onclick="OnAnyNavigate">
                         <i class="bi bi-book me-2"></i>
                         <span class="link-text">Manual del Sistema</span>
                     </NavLink>
+                    <NavLink class="nav-link submenu-item" href="/sistema/historial-cambios" title="Historial de Cambios del Sistema" @onclick="OnAnyNavigate">
+                        <i class="bi bi-clock-history me-2"></i>
+                        <span class="link-text">Historial Cambios</span>
+                        <span class="badge bg-info ms-1" style="font-size: 0.6rem;">Nuevo</span>
+                    </NavLink>
+                    <NavLink class="nav-link submenu-item" href="/sistema/conversaciones-ia" title="Historial de Conversaciones con IA" @onclick="OnAnyNavigate">
+                        <i class="bi bi-chat-dots me-2"></i>
+                        <span class="link-text">Conversaciones IA</span>
+                    </NavLink>
                     
                     <hr class="my-1 mx-2 border-secondary opacity-25" />
                     
-                    <!-- Desarrollo -->
+                    <!-- Herramientas SA -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-code-slash me-1"></i>
-                        <span class="small fw-bold text-muted">DESARROLLO</span>
+                        <i class="bi bi-shield-lock me-1"></i>
+                        <span class="small fw-bold text-muted">SA (Requiere Contraseña)</span>
                     </div>
-                    <NavLink class="nav-link submenu-item" href="/pruebas-xml" title="Pruebas XML SIFEN" @onclick="OnAnyNavigate">
+                    <NavLink class="nav-link submenu-item" href="/configuracion/presupuestos-sistema" title="Presupuestos Comerciales del Sistema (SA)" @onclick="OnAnyNavigate">
+                        <i class="bi bi-file-earmark-text me-2"></i>
+                        <span class="link-text">Presupuestos Sistema</span>
+                        <span class="badge bg-warning text-dark ms-1" style="font-size: 0.55rem;">SA</span>
+                    </NavLink>
+                    <NavLink class="nav-link submenu-item" href="/asistente-ia" title="Asistente de Inteligencia Artificial (SA)" @onclick="OnAnyNavigate">
+                        <i class="bi bi-robot me-2"></i>
+                        <span class="link-text">Asistente IA</span>
+                        <span class="badge bg-warning text-dark ms-1" style="font-size: 0.55rem;">SA</span>
+                    </NavLink>
+                    <NavLink class="nav-link submenu-item" href="/admin/asistente-ia" title="Administrar Base de Conocimiento del Asistente IA (SA)" @onclick="OnAnyNavigate">
+                        <i class="bi bi-cpu me-2"></i>
+                        <span class="link-text">Admin Asistente IA</span>
+                        <span class="badge bg-warning text-dark ms-1" style="font-size: 0.55rem;">SA</span>
+                    </NavLink>
+                    <NavLink class="nav-link submenu-item" href="/pruebas-xml" title="Pruebas XML SIFEN (SA)" @onclick="OnAnyNavigate">
                         <i class="bi bi-filetype-xml me-2"></i>
                         <span class="link-text">Pruebas XML SIFEN</span>
+                        <span class="badge bg-warning text-dark ms-1" style="font-size: 0.55rem;">SA</span>
                     </NavLink>
-                    <NavLink class="nav-link submenu-item" href="/admin/instalador" title="Generar Paquete de Instalación" @onclick="OnAnyNavigate">
+                    <NavLink class="nav-link submenu-item" href="/admin/instalador" title="Generar Paquete de Instalación (SA)" @onclick="OnAnyNavigate">
                         <i class="bi bi-box-seam-fill me-2"></i>
                         <span class="link-text">Generar Instalador</span>
+                        <span class="badge bg-warning text-dark ms-1" style="font-size: 0.55rem;">SA</span>
                     </NavLink>
+                    <a class="nav-link submenu-item" href="http://localhost:5096" target="_blank" title="Abrir Centro de Actualizaciones (SA - puerto 5096)">
+                        <i class="bi bi-rocket-takeoff me-2"></i>
+                        <span class="link-text">Centro de Actualizaciones</span>
+                        <span class="badge bg-warning text-dark ms-1" style="font-size: 0.55rem;">SA</span>
+                        <i class="bi bi-box-arrow-up-right ms-1 small opacity-50"></i>
+                    </a>
                 </div>
             </div>
         </div>

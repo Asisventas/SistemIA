@@ -28,6 +28,20 @@ namespace SistemIA.Models
         [Required]
         [StringLength(50)]
         public string TipoRegistro { get; set; } = string.Empty;
+        
+        // ========== TURNO Y CAJA ==========
+        
+        /// <summary>
+        /// Turno en el que se registró la asistencia (1, 2, 3, etc.)
+        /// </summary>
+        public int? Turno { get; set; }
+        
+        /// <summary>
+        /// ID de la caja donde se registró (opcional, para relacionar con el turno de caja)
+        /// </summary>
+        public int? IdCaja { get; set; }
+        [ForeignKey("IdCaja")]
+        public Caja? CajaNavigation { get; set; }
 
         [StringLength(255)]
         public string? Notas { get; set; }

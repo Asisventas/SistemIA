@@ -1,0 +1,267 @@
+@using SistemIA.Services
+@inject ISaAuthenticationService SaAuth
+@inject NavigationManager NavigationManager
+
+@* 
+    Componente de Protección SA
+    Uso: <SaProtection TituloPagina="Nombre de la Página">
+             <!-- Contenido protegido aquí -->
+         </SaProtection>
+*@
+
+<style>
+    /* Estilos del modal SA - compatibles con todos los temas */
+    .sa-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.85);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .sa-modal-content {
+        background: var(--bg-surface, #1f2937);
+        border: 2px solid #374151;
+        border-radius: 8px;
+        max-width: 400px;
+        width: 90%;
+        color: var(--text-primary, #f9fafb);
+    }
+    .sa-modal-header {
+        padding: 1rem;
+        border-bottom: 1px solid var(--bar-border, #374151);
+        background: var(--bar-bg, #111827);
+        border-radius: 6px 6px 0 0;
+    }
+    .sa-modal-body {
+        padding: 1.5rem;
+    }
+    .sa-modal-footer {
+        padding: 1rem;
+        border-top: 1px solid var(--bar-border, #374151);
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+    .sa-icon-warning {
+        color: #f59e0b;
+    }
+    .sa-caps-warning {
+        color: #f59e0b;
+        font-weight: bold;
+    }
+    /* Input en tema oscuro */
+    html[data-theme="oscuro"] .sa-modal-content .form-control {
+        background-color: #374151;
+        border-color: #4b5563;
+        color: #f9fafb;
+    }
+    html[data-theme="oscuro"] .sa-modal-content .form-control:focus {
+        background-color: #374151;
+        border-color: #3b82f6;
+        color: #f9fafb;
+    }
+    html[data-theme="oscuro"] .sa-modal-content .btn-outline-secondary {
+        border-color: #6b7280;
+        color: #9ca3af;
+    }
+    html[data-theme="oscuro"] .sa-modal-content .btn-outline-secondary:hover {
+        background-color: #6b7280;
+        color: #fff;
+    }
+    /* Tema claro */
+    html[data-theme="claro"] .sa-modal-content {
+        background: #ffffff;
+        color: #1f2937;
+        border-color: #d1d5db;
+    }
+    html[data-theme="claro"] .sa-modal-header {
+        background: #f3f4f6;
+        border-color: #d1d5db;
+    }
+    html[data-theme="claro"] .sa-modal-footer {
+        border-color: #d1d5db;
+    }
+</style>
+
+@if (verificando)
+{
+    <div class="d-flex justify-content-center align-items-center" style="min-height: 200px;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Verificando...</span>
+        </div>
+    </div>
+}
+else if (!autenticado)
+{
+    <div class="sa-modal-overlay">
+        <div class="sa-modal-content">
+            <div class="sa-modal-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-shield-lock me-2"></i>Acceso Restringido
+                </h5>
+            </div>
+            <div class="sa-modal-body">
+                <div class="text-center mb-3">
+                    <i class="bi bi-person-lock sa-icon-warning" style="font-size: 3rem;"></i>
+                </div>
+                <p class="text-center mb-3">
+                    <strong>@TituloPagina</strong><br/>
+                    <small class="text-muted">Este módulo requiere autenticación de administrador.</small>
+                </p>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Contraseña SA:</label>
+                    <div class="input-group">
+                        <input type="@(mostrarPassword ? "text" : "password")" 
+                               class="form-control" 
+                               @bind="passwordIngresada" 
+                               @bind:event="oninput"
+                               @onkeypress="OnPasswordKeyPress"
+                               @onkeydown="OnKeyDown"
+                               placeholder="Ingrese contraseña SA"
+                               @ref="inputPassword" />
+                        <button class="btn btn-outline-secondary" type="button" 
+                                @onclick="() => mostrarPassword = !mostrarPassword"
+                                title="@(mostrarPassword ? "Ocultar" : "Mostrar")">
+                            <i class="bi @(mostrarPassword ? "bi-eye-slash" : "bi-eye")"></i>
+                        </button>
+                    </div>
+                    <small class="@(capsLockActivo ? "sa-caps-warning" : "text-muted")">
+                        @if (capsLockActivo)
+                        {
+                            <span>⚠️ MAYÚSCULAS ACTIVADAS</span>
+                        }
+                        else
+                        {
+                            <span><i class="bi bi-info-circle me-1"></i>Ingrese la contraseña de administrador</span>
+                        }
+                    </small>
+                </div>
+                @if (!string.IsNullOrEmpty(errorAutenticacion))
+                {
+                    <div class="alert alert-danger py-2 mb-0">
+                        <i class="bi bi-exclamation-triangle me-2"></i>@errorAutenticacion
+                    </div>
+                }
+            </div>
+            <div class="sa-modal-footer">
+                <button class="btn btn-secondary" @onclick="Volver">
+                    <i class="bi bi-arrow-left me-1"></i>Volver
+                </button>
+                <button class="btn btn-primary" @onclick="VerificarPassword" disabled="@autenticando">
+                    @if (autenticando)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-key me-1"></i>
+                    }
+                    Ingresar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string TituloPagina { get; set; } = "Módulo Protegido";
+    [Parameter] public string? UrlRetorno { get; set; }
+    
+    private bool verificando = true;
+    private bool autenticado = false;
+    private bool autenticando = false;
+    private string passwordIngresada = "";
+    private string errorAutenticacion = "";
+    private bool mostrarPassword = false;
+    private bool capsLockActivo = false;
+    
+    private ElementReference inputPassword;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            autenticado = await SaAuth.EstaAutenticadoAsync();
+            verificando = false;
+            
+            if (autenticado)
+            {
+                // Actualizar actividad al entrar a una página protegida
+                await SaAuth.ActualizarActividadAsync();
+            }
+            
+            StateHasChanged();
+        }
+    }
+    
+    private void OnPasswordKeyPress(KeyboardEventArgs e)
+    {
+        // Detectar Caps Lock
+        if (!string.IsNullOrEmpty(e.Key) && e.Key.Length == 1 && char.IsLetter(e.Key[0]))
+        {
+            bool esLetraMayuscula = char.IsUpper(e.Key[0]);
+            bool shiftPresionado = e.ShiftKey;
+            capsLockActivo = (esLetraMayuscula && !shiftPresionado) || (!esLetraMayuscula && shiftPresionado);
+        }
+    }
+    
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await VerificarPassword();
+        }
+    }
+    
+    private async Task VerificarPassword()
+    {
+        if (autenticando) return;
+        
+        errorAutenticacion = "";
+        autenticando = true;
+        
+        try
+        {
+            if (await SaAuth.AutenticarAsync(passwordIngresada))
+            {
+                autenticado = true;
+                passwordIngresada = "";
+            }
+            else
+            {
+                errorAutenticacion = "Contraseña incorrecta";
+                passwordIngresada = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorAutenticacion = "Error al verificar: " + ex.Message;
+        }
+        finally
+        {
+            autenticando = false;
+        }
+    }
+    
+    private void Volver()
+    {
+        if (!string.IsNullOrEmpty(UrlRetorno))
+        {
+            NavigationManager.NavigateTo(UrlRetorno);
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/");
+        }
+    }
+}

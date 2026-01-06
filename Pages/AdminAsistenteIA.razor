@@ -1,0 +1,1313 @@
+@page "/admin/asistente-ia"
+@using SistemIA.Models
+@using SistemIA.Models.AsistenteIA
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject AppDbContext _context
+@inject IAsistenteIAService AsistenteService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Admin Asistente IA - SistemIA</PageTitle>
+
+<SaProtection TituloPagina="Administración del Asistente IA" UrlRetorno="/">
+
+@* SOLO ADMIN (IdRol = 1) PUEDE ACCEDER *@
+@if (_cargando)
+{
+    <div class="container py-5 text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p class="mt-3 text-muted">Verificando permisos...</p>
+    </div>
+}
+else if (!_esAdmin)
+{
+    <div class="container py-5">
+        <div class="alert alert-danger text-center">
+            <i class="bi bi-shield-exclamation fs-1 d-block mb-3"></i>
+            <h4>Acceso Restringido</h4>
+            <p>Esta sección solo está disponible para administradores del sistema.</p>
+            <button class="btn btn-primary mt-2" @onclick='() => Nav.NavigateTo("/")'>
+                <i class="bi bi-house me-1"></i>Volver al Inicio
+            </button>
+        </div>
+    </div>
+}
+else
+{
+<div class="container-fluid py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-robot text-primary me-2"></i>
+            Administración del Asistente IA
+        </h3>
+        <div class="text-muted">
+            <i class="bi bi-database me-1"></i>
+            <span class="fw-bold">@_articulos.Count</span> artículos en base de conocimiento
+        </div>
+    </div>
+
+    <!-- Pestañas -->
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <button class="nav-link @(_pestanaActiva == "articulos" ? "active" : "")" @onclick='() => _pestanaActiva = "articulos"'>
+                <i class="bi bi-book me-1"></i>Base de Conocimiento
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_pestanaActiva == "preguntas" ? "active" : "")" @onclick='() => _pestanaActiva = "preguntas"'>
+                <i class="bi bi-question-circle me-1"></i>Preguntas Sin Respuesta
+                @if (_preguntasSinRespuesta.Any())
+                {
+                    <span class="badge bg-warning text-dark ms-1">@_preguntasSinRespuesta.Count</span>
+                }
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_pestanaActiva == "solicitudes" ? "active" : "")" @onclick='() => _pestanaActiva = "solicitudes"'>
+                <i class="bi bi-envelope-exclamation me-1"></i>Solicitudes Soporte
+                @if (_solicitudesPendientes > 0)
+                {
+                    <span class="badge bg-danger ms-1">@_solicitudesPendientes</span>
+                }
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_pestanaActiva == "estadisticas" ? "active" : "")" @onclick='() => _pestanaActiva = "estadisticas"'>
+                <i class="bi bi-graph-up me-1"></i>Estadísticas
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_pestanaActiva == "categorias" ? "active" : "")" @onclick='() => _pestanaActiva = "categorias"'>
+                <i class="bi bi-tags me-1"></i>Categorías
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_pestanaActiva == "configuracion" ? "active" : "")" @onclick='() => _pestanaActiva = "configuracion"'>
+                <i class="bi bi-gear me-1"></i>Configuración
+            </button>
+        </li>
+    </ul>
+
+    @* ========== PESTAÑA: BASE DE CONOCIMIENTO ========== *@
+    @if (_pestanaActiva == "articulos")
+    {
+        <!-- Filtros y botón agregar -->
+        <div class="card mb-3 shadow-sm">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Buscar</label>
+                        <input type="text" class="form-control" placeholder="Título, contenido..." @bind="_filtroTexto" @bind:event="oninput" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Categoría</label>
+                        <select class="form-select" @bind="_filtroCategoria">
+                            <option value="">Todas</option>
+                            @foreach (var cat in _categorias.Where(c => c.Activa))
+                            {
+                                <option value="@cat.Nombre">@cat.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Estado</label>
+                        <select class="form-select" @bind="_filtroActivo">
+                            <option value="">Todos</option>
+                            <option value="true">Activos</option>
+                            <option value="false">Inactivos</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5 text-end">
+                        <button class="btn btn-success" @onclick="NuevoArticulo">
+                            <i class="bi bi-plus-lg me-1"></i>Nuevo Artículo
+                        </button>
+                        <button class="btn btn-outline-primary ms-2" @onclick="RecargarConocimiento" disabled="@_recargando">
+                            @if (_recargando)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-arrow-clockwise me-1"></i>
+                            }
+                            Recargar IA
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de artículos -->
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 5%"><i class="bi bi-hash"></i></th>
+                            <th style="width: 15%">Categoría</th>
+                            <th>Título</th>
+                            <th style="width: 10%">Prioridad</th>
+                            <th style="width: 10%">Usos</th>
+                            <th style="width: 8%">Estado</th>
+                            <th style="width: 12%" class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var art in ArticulosFiltrados)
+                        {
+                            <tr class="@(!art.Activo ? "table-secondary" : "")">
+                                <td>@art.IdArticulo</td>
+                                <td>
+                                    <span class="badge bg-primary">@art.Categoria</span>
+                                    @if (!string.IsNullOrEmpty(art.Subcategoria))
+                                    {
+                                        <br /><small class="text-muted">@art.Subcategoria</small>
+                                    }
+                                </td>
+                                <td>
+                                    <strong>@art.Titulo</strong>
+                                    @if (!string.IsNullOrEmpty(art.RutaNavegacion))
+                                    {
+                                        <br /><small class="text-info"><i class="bi bi-link-45deg"></i>@art.RutaNavegacion</small>
+                                    }
+                                </td>
+                                <td>
+                                    @for (int i = 1; i <= 5; i++)
+                                    {
+                                        <i class="bi @(i <= art.Prioridad / 2 ? "bi-star-fill text-warning" : "bi-star text-muted")"></i>
+                                    }
+                                </td>
+                                <td><span class="badge bg-secondary">@art.VecesUtilizado</span></td>
+                                <td>
+                                    @if (art.Activo)
+                                    {
+                                        <span class="badge bg-success">Activo</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">Inactivo</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" @onclick="() => EditarArticulo(art)" title="Editar">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-info" @onclick="() => VerArticulo(art)" title="Ver">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn @(art.Activo ? "btn-outline-warning" : "btn-outline-success")" 
+                                                @onclick="() => ToggleActivo(art)" 
+                                                title="@(art.Activo ? "Desactivar" : "Activar")">
+                                            <i class="bi @(art.Activo ? "bi-pause" : "bi-play")"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" @onclick="() => EliminarArticulo(art)" title="Eliminar">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        @if (!ArticulosFiltrados.Any())
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox display-6"></i>
+                                    <p class="mt-2">No hay artículos que coincidan con los filtros</p>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    @* ========== PESTAÑA: PREGUNTAS SIN RESPUESTA ========== *@
+    @if (_pestanaActiva == "preguntas")
+    {
+        <div class="card shadow-sm">
+            <div class="card-header bg-warning bg-opacity-25">
+                <h6 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Preguntas que el asistente no pudo responder</h6>
+                <small class="text-muted">Crea artículos para mejorar el conocimiento del asistente</small>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Pregunta</th>
+                            <th style="width: 10%">Veces</th>
+                            <th style="width: 15%">Primera vez</th>
+                            <th style="width: 15%">Última vez</th>
+                            <th style="width: 15%" class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var preg in _preguntasSinRespuesta.Where(p => !p.Resuelta).OrderByDescending(p => p.CantidadVeces))
+                        {
+                            <tr>
+                                <td>
+                                    <i class="bi bi-question-circle text-warning me-2"></i>
+                                    @preg.Pregunta
+                                </td>
+                                <td><span class="badge bg-info">@preg.CantidadVeces</span></td>
+                                <td><small>@preg.PrimeraVez.ToString("dd/MM/yyyy HH:mm")</small></td>
+                                <td><small>@preg.UltimaVez.ToString("dd/MM/yyyy HH:mm")</small></td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-success" @onclick="() => CrearArticuloDesdePreguenta(preg)">
+                                        <i class="bi bi-plus-lg me-1"></i>Crear Artículo
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => MarcarResuelta(preg)">
+                                        <i class="bi bi-check"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                        @if (!_preguntasSinRespuesta.Any(p => !p.Resuelta))
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center text-success py-4">
+                                    <i class="bi bi-check-circle display-6"></i>
+                                    <p class="mt-2">¡Excelente! No hay preguntas pendientes</p>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    @* ========== PESTAÑA: ESTADÍSTICAS ========== *@
+    @if (_pestanaActiva == "estadisticas")
+    {
+        <div class="row g-4">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="bi bi-book display-4 text-primary"></i>
+                        <h2 class="mt-2">@_articulos.Count(a => a.Activo)</h2>
+                        <p class="text-muted mb-0">Artículos activos</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="bi bi-chat-dots display-4 text-success"></i>
+                        <h2 class="mt-2">@_totalConversaciones</h2>
+                        <p class="text-muted mb-0">Conversaciones totales</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="bi bi-question-circle display-4 text-warning"></i>
+                        <h2 class="mt-2">@_preguntasSinRespuesta.Count(p => !p.Resuelta)</h2>
+                        <p class="text-muted mb-0">Preguntas pendientes</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="bi bi-tags display-4 text-info"></i>
+                        <h2 class="mt-2">@_categorias.Count(c => c.Activa)</h2>
+                        <p class="text-muted mb-0">Categorías</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Artículos más usados -->
+        <div class="card mt-4 shadow-sm">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-trophy me-2"></i>Artículos más utilizados</h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Título</th>
+                            <th>Categoría</th>
+                            <th>Usos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{ var top = 1; }
+                        @foreach (var art in _articulos.OrderByDescending(a => a.VecesUtilizado).Take(10))
+                        {
+                            <tr>
+                                <td><span class="badge @(top <= 3 ? "bg-warning" : "bg-secondary")">@top</span></td>
+                                <td>@art.Titulo</td>
+                                <td><span class="badge bg-primary">@art.Categoria</span></td>
+                                <td><strong>@art.VecesUtilizado</strong></td>
+                            </tr>
+                            top++;
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    @* ========== PESTAÑA: CATEGORÍAS ========== *@
+    @if (_pestanaActiva == "categorias")
+    {
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-tags me-2"></i>Categorías de Conocimiento</h6>
+                        <button class="btn btn-sm btn-success" @onclick="NuevaCategoria">
+                            <i class="bi bi-plus-lg me-1"></i>Nueva
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Icono</th>
+                                    <th>Nombre</th>
+                                    <th>Descripción</th>
+                                    <th>Artículos</th>
+                                    <th>Estado</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var cat in _categorias.OrderBy(c => c.Orden))
+                                {
+                                    <tr>
+                                        <td><i class="bi @(cat.Icono ?? "bi-folder") fs-5"></i></td>
+                                        <td><strong>@cat.Nombre</strong></td>
+                                        <td><small class="text-muted">@cat.Descripcion</small></td>
+                                        <td><span class="badge bg-secondary">@_articulos.Count(a => a.Categoria == cat.Nombre)</span></td>
+                                        <td>
+                                            @if (cat.Activa)
+                                            {
+                                                <span class="badge bg-success">Activa</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-danger">Inactiva</span>
+                                            }
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary" @onclick="() => EditarCategoria(cat)">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger" @onclick="() => EliminarCategoria(cat)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* ========== MODAL: EDITAR/CREAR ARTÍCULO ========== *@
+@if (_mostrarModalArticulo)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-book me-2"></i>
+                        @(_articuloEditando.IdArticulo == 0 ? "Nuevo Artículo" : "Editar Artículo")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModalArticulo"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Categoría <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="_articuloEditando.Categoria">
+                                <option value="">-- Seleccione --</option>
+                                @foreach (var cat in _categorias.Where(c => c.Activa))
+                                {
+                                    <option value="@cat.Nombre">@cat.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Subcategoría</label>
+                            <input type="text" class="form-control" @bind="_articuloEditando.Subcategoria" placeholder="Opcional" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Título <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_articuloEditando.Titulo" placeholder="Título descriptivo del artículo" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Contenido <span class="text-danger">*</span></label>
+                            <textarea class="form-control" rows="6" @bind="_articuloEditando.Contenido" 
+                                      placeholder="Explica detalladamente el tema. Este contenido será usado por el asistente para responder preguntas."></textarea>
+                            <small class="text-muted">Puedes usar Markdown para formato</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Palabras clave</label>
+                            <input type="text" class="form-control" @bind="_articuloEditando.PalabrasClave" 
+                                   placeholder="venta, factura, cliente (separadas por coma)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sinónimos</label>
+                            <input type="text" class="form-control" @bind="_articuloEditando.Sinonimos" 
+                                   placeholder="boleta, ticket, comprobante" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Ruta de navegación</label>
+                            <input type="text" class="form-control" @bind="_articuloEditando.RutaNavegacion" 
+                                   placeholder="/ventas, /clientes/explorar" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Icono Bootstrap</label>
+                            <input type="text" class="form-control" @bind="_articuloEditando.Icono" 
+                                   placeholder="bi-cart, bi-person" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Prioridad (1-10)</label>
+                            <input type="number" class="form-control" min="1" max="10" @bind="_articuloEditando.Prioridad" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalArticulo">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarArticulo" disabled="@_guardando">
+                        @if (_guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========== MODAL: VER ARTÍCULO ========== *@
+@if (_mostrarModalVer && _articuloVer != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi @(_articuloVer.Icono ?? "bi-book") me-2"></i>
+                        @_articuloVer.Titulo
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarModalVer = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <span class="badge bg-primary me-2">@_articuloVer.Categoria</span>
+                        @if (!string.IsNullOrEmpty(_articuloVer.Subcategoria))
+                        {
+                            <span class="badge bg-secondary">@_articuloVer.Subcategoria</span>
+                        }
+                    </div>
+                    <div class="border rounded p-3 bg-light">
+                        @((MarkupString)FormatearContenido(_articuloVer.Contenido))
+                    </div>
+                    @if (!string.IsNullOrEmpty(_articuloVer.PalabrasClave))
+                    {
+                        <div class="mt-3">
+                            <strong>Palabras clave:</strong>
+                            @foreach (var kw in _articuloVer.PalabrasClave.Split(','))
+                            {
+                                <span class="badge bg-info me-1">@kw.Trim()</span>
+                            }
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_articuloVer.RutaNavegacion))
+                    {
+                        <div class="mt-2">
+                            <strong>Ruta:</strong> <code>@_articuloVer.RutaNavegacion</code>
+                        </div>
+                    }
+                    <div class="mt-3 text-muted small">
+                        <i class="bi bi-clock me-1"></i>Última actualización: @_articuloVer.FechaActualizacion.ToString("dd/MM/yyyy HH:mm")
+                        <span class="ms-3"><i class="bi bi-bar-chart me-1"></i>Usado @_articuloVer.VecesUtilizado veces</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _mostrarModalVer = false">Cerrar</button>
+                    <button type="button" class="btn btn-primary" @onclick="() => { _mostrarModalVer = false; EditarArticulo(_articuloVer); }">
+                        <i class="bi bi-pencil me-1"></i>Editar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========== MODAL: CATEGORÍA ========== *@
+@if (_mostrarModalCategoria)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-tags me-2"></i>
+                        @(_categoriaEditando.IdCategoria == 0 ? "Nueva Categoría" : "Editar Categoría")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarModalCategoria = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_categoriaEditando.Nombre" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <input type="text" class="form-control" @bind="_categoriaEditando.Descripcion" />
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Icono (Bootstrap Icons)</label>
+                            <input type="text" class="form-control" @bind="_categoriaEditando.Icono" placeholder="bi-folder" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Orden</label>
+                            <input type="number" class="form-control" @bind="_categoriaEditando.Orden" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _mostrarModalCategoria = false">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarCategoria">
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========== PESTAÑA: SOLICITUDES DE SOPORTE ========== *@
+@if (_pestanaActiva == "solicitudes")
+{
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-envelope-exclamation me-2"></i>Solicitudes de Soporte</h6>
+            <div>
+                <select class="form-select form-select-sm d-inline-block w-auto" @bind="_filtroEstadoSolicitud">
+                    <option value="">Todas</option>
+                    <option value="Pendiente">Pendientes</option>
+                    <option value="EnProceso">En Proceso</option>
+                    <option value="Resuelto">Resueltas</option>
+                </select>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 5%">#</th>
+                        <th style="width: 12%">Fecha</th>
+                        <th style="width: 15%">Usuario</th>
+                        <th>Pregunta/Problema</th>
+                        <th style="width: 10%">Adjuntos</th>
+                        <th style="width: 10%">Estado</th>
+                        <th style="width: 12%">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var sol in SolicitudesFiltradas)
+                    {
+                        <tr>
+                            <td>@sol.IdSolicitud</td>
+                            <td>@sol.Fecha.ToString("dd/MM/yy HH:mm")</td>
+                            <td>@(sol.NombreUsuario ?? "Anónimo")</td>
+                            <td>
+                                <div class="text-truncate" style="max-width: 300px;" title="@sol.PreguntaOriginal">
+                                    @sol.PreguntaOriginal
+                                </div>
+                                @if (!string.IsNullOrEmpty(sol.DescripcionProblema))
+                                {
+                                    <small class="text-muted d-block text-truncate" style="max-width: 300px;">@sol.DescripcionProblema</small>
+                                }
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(sol.ScreenshotBase64))
+                                {
+                                    <span class="badge bg-info me-1" title="Screenshot"><i class="bi bi-image"></i></span>
+                                }
+                                @if (!string.IsNullOrEmpty(sol.VideoBase64))
+                                {
+                                    <span class="badge bg-warning" title="Video"><i class="bi bi-camera-video"></i></span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge @(sol.Estado == "Pendiente" ? "bg-danger" : sol.Estado == "EnProceso" ? "bg-warning text-dark" : "bg-success")">
+                                    @sol.Estado
+                                </span>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" title="Ver Detalle" @onclick="() => VerSolicitud(sol)">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    @if (sol.Estado != "Resuelto")
+                                    {
+                                        <button class="btn btn-outline-success" title="Marcar como Resuelta" @onclick="() => ResolverSolicitud(sol)">
+                                            <i class="bi bi-check-lg"></i>
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    @if (!SolicitudesFiltradas.Any())
+                    {
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                                No hay solicitudes de soporte
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@* ========== PESTAÑA: CONFIGURACIÓN ========== *@
+@if (_pestanaActiva == "configuracion")
+{
+    <div class="card shadow-sm">
+        <div class="card-header bg-white">
+            <h6 class="mb-0"><i class="bi bi-gear me-2"></i>Configuración del Asistente IA</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-envelope me-2"></i>Soporte Técnico</h6>
+                    <div class="mb-3">
+                        <label class="form-label">Correo de Soporte</label>
+                        <input type="email" class="form-control" @bind="_configuracion.CorreoSoporte" placeholder="soporte@empresa.com" />
+                        <small class="text-muted">Las solicitudes de soporte se enviarán a este correo</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Soporte</label>
+                        <input type="text" class="form-control" @bind="_configuracion.NombreSoporte" />
+                    </div>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="chkHabilitarSoporte" @bind="_configuracion.HabilitarEnvioSoporte" />
+                        <label class="form-check-label" for="chkHabilitarSoporte">
+                            Habilitar envío de reportes a soporte
+                        </label>
+                    </div>
+
+                    <h6 class="border-bottom pb-2 mb-3 mt-4"><i class="bi bi-chat-dots me-2"></i>Mensajes</h6>
+                    <div class="mb-3">
+                        <label class="form-label">Mensaje de Bienvenida</label>
+                        <textarea class="form-control" rows="2" @bind="_configuracion.MensajeBienvenida" 
+                                  placeholder="Usa {nombre} para personalizar"></textarea>
+                        <small class="text-muted">Ej: ¡Hola {nombre}! Soy tu asistente.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mensaje cuando no encuentra respuesta</label>
+                        <textarea class="form-control" rows="2" @bind="_configuracion.MensajeSinRespuesta"></textarea>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-mic me-2"></i>Funciones de Voz</h6>
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" id="chkVozEntrada" @bind="_configuracion.HabilitarVozEntrada" />
+                        <label class="form-check-label" for="chkVozEntrada">
+                            <i class="bi bi-mic me-1"></i>Habilitar voz de entrada (reconocimiento de voz)
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="chkVozSalida" @bind="_configuracion.HabilitarVozSalida" />
+                        <label class="form-check-label" for="chkVozSalida">
+                            <i class="bi bi-volume-up me-1"></i>Habilitar voz de salida (lectura de respuestas)
+                        </label>
+                    </div>
+
+                    <h6 class="border-bottom pb-2 mb-3 mt-4"><i class="bi bi-camera me-2"></i>Captura de Evidencia</h6>
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" id="chkCaptura" @bind="_configuracion.HabilitarCapturaPantalla" />
+                        <label class="form-check-label" for="chkCaptura">
+                            <i class="bi bi-camera me-1"></i>Permitir captura de pantalla
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="chkVideo" @bind="_configuracion.HabilitarGrabacionVideo" />
+                        <label class="form-check-label" for="chkVideo">
+                            <i class="bi bi-camera-video me-1"></i>Permitir grabación de video
+                        </label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Máximo segundos de video</label>
+                        <input type="number" class="form-control" style="max-width: 100px;" min="5" max="60" @bind="_configuracion.MaxSegundosVideo" />
+                    </div>
+
+                    <div class="alert alert-info mt-4">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Nota:</strong> Asegúrate de tener configurado el correo SMTP en 
+                        <a href="/configuracion/correo">Configuración de Correo</a> para que funcione el envío a soporte.
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer bg-white">
+            <button class="btn btn-primary" @onclick="GuardarConfiguracion" disabled="@_guardandoConfig">
+                @if (_guardandoConfig)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-check-lg me-1"></i>
+                }
+                Guardar Configuración
+            </button>
+            @if (_mensajeConfig != null)
+            {
+                <span class="ms-3 @(_exitoConfig ? "text-success" : "text-danger")">
+                    <i class="bi @(_exitoConfig ? "bi-check-circle" : "bi-exclamation-circle") me-1"></i>@_mensajeConfig
+                </span>
+            }
+        </div>
+    </div>
+}
+
+@* ========== MODAL: VER SOLICITUD ========== *@
+@if (_mostrarModalSolicitud && _solicitudVer != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-envelope-exclamation me-2"></i>
+                        Solicitud de Soporte #@_solicitudVer.IdSolicitud
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarModalSolicitud = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Fecha:</strong><br/>@_solicitudVer.Fecha.ToString("dd/MM/yyyy HH:mm")
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Usuario:</strong><br/>@(_solicitudVer.NombreUsuario ?? "Anónimo")
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Estado:</strong><br/>
+                            <span class="badge @(_solicitudVer.Estado == "Pendiente" ? "bg-danger" : _solicitudVer.Estado == "EnProceso" ? "bg-warning text-dark" : "bg-success")">
+                                @_solicitudVer.Estado
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <strong>Pregunta Original:</strong>
+                        <div class="border rounded p-2 bg-light">@_solicitudVer.PreguntaOriginal</div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_solicitudVer.DescripcionProblema))
+                    {
+                        <div class="mb-3">
+                            <strong>Descripción del Problema:</strong>
+                            <div class="border rounded p-2 bg-light">@_solicitudVer.DescripcionProblema</div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_solicitudVer.PaginaOrigen))
+                    {
+                        <div class="mb-3">
+                            <strong>Página de Origen:</strong> <code>@_solicitudVer.PaginaOrigen</code>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_solicitudVer.ScreenshotBase64))
+                    {
+                        <div class="mb-3">
+                            <strong><i class="bi bi-image me-1"></i>Screenshot:</strong>
+                            <div class="border rounded p-2 mt-1">
+                                <img src="@_solicitudVer.ScreenshotBase64" class="img-fluid" style="max-height: 400px;" />
+                            </div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_solicitudVer.VideoBase64))
+                    {
+                        <div class="mb-3">
+                            <strong><i class="bi bi-camera-video me-1"></i>Video:</strong>
+                            <div class="border rounded p-2 mt-1">
+                                <video src="@_solicitudVer.VideoBase64" controls class="w-100" style="max-height: 400px;"></video>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <strong>Notas del Soporte:</strong>
+                        <textarea class="form-control" rows="3" @bind="_solicitudVer.NotasSoporte" placeholder="Agregar notas de resolución..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _mostrarModalSolicitud = false">Cerrar</button>
+                    @if (_solicitudVer.Estado != "Resuelto")
+                    {
+                        <button type="button" class="btn btn-warning" @onclick='() => CambiarEstadoSolicitud(_solicitudVer, "EnProceso")'>
+                            <i class="bi bi-clock me-1"></i>Marcar En Proceso
+                        </button>
+                        <button type="button" class="btn btn-success" @onclick="() => ResolverSolicitud(_solicitudVer)">
+                            <i class="bi bi-check-lg me-1"></i>Marcar Resuelta
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+} @* Fin del else de _esAdmin *@
+
+</SaProtection>
+
+@code {
+    // Control de acceso
+    private bool _esAdmin = false;
+    private int? _idUsuario;
+    private int? _idRol;
+
+    private string _pestanaActiva = "articulos";
+    private List<ArticuloConocimientoDB> _articulos = new();
+    private List<PreguntaSinRespuesta> _preguntasSinRespuesta = new();
+    private List<CategoriaConocimiento> _categorias = new();
+    private List<SolicitudSoporteIA> _solicitudesSoporte = new();
+    private ConfiguracionAsistenteIA _configuracion = new();
+    private int _totalConversaciones = 0;
+    private int _solicitudesPendientes = 0;
+
+    // Filtros
+    private string _filtroTexto = "";
+    private string _filtroCategoria = "";
+    private string _filtroActivo = "";
+    private string _filtroEstadoSolicitud = "";
+
+    // Modal artículo
+    private bool _mostrarModalArticulo = false;
+    private ArticuloConocimientoDB _articuloEditando = new();
+    private bool _guardando = false;
+    private bool _recargando = false;
+
+    // Modal ver
+    private bool _mostrarModalVer = false;
+    private ArticuloConocimientoDB? _articuloVer;
+
+    // Modal categoría
+    private bool _mostrarModalCategoria = false;
+    private CategoriaConocimiento _categoriaEditando = new();
+
+    // Modal solicitud
+    private bool _mostrarModalSolicitud = false;
+    private SolicitudSoporteIA? _solicitudVer;
+
+    // Configuración
+    private bool _guardandoConfig = false;
+    private string? _mensajeConfig;
+    private bool _exitoConfig = false;
+
+    private IEnumerable<ArticuloConocimientoDB> ArticulosFiltrados => _articulos
+        .Where(a => string.IsNullOrEmpty(_filtroTexto) || 
+                    a.Titulo.Contains(_filtroTexto, StringComparison.OrdinalIgnoreCase) ||
+                    a.Contenido.Contains(_filtroTexto, StringComparison.OrdinalIgnoreCase))
+        .Where(a => string.IsNullOrEmpty(_filtroCategoria) || a.Categoria == _filtroCategoria)
+        .Where(a => string.IsNullOrEmpty(_filtroActivo) || a.Activo.ToString() == _filtroActivo)
+        .OrderBy(a => a.Categoria)
+        .ThenByDescending(a => a.Prioridad)
+        .ThenBy(a => a.Titulo);
+
+    private IEnumerable<SolicitudSoporteIA> SolicitudesFiltradas => _solicitudesSoporte
+        .Where(s => string.IsNullOrEmpty(_filtroEstadoSolicitud) || s.Estado == _filtroEstadoSolicitud)
+        .OrderByDescending(s => s.Estado == "Pendiente")
+        .ThenByDescending(s => s.Fecha);
+
+    private bool _cargando = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Verificar si es admin (IdRol = 1) usando Claims
+            try
+            {
+                var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                var user = authState.User;
+
+                if (user?.Identity?.IsAuthenticated == true)
+                {
+                    // Obtener IdUsuario del claim
+                    var idUsuarioClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+                    if (idUsuarioClaim != null && int.TryParse(idUsuarioClaim.Value, out int idUsu))
+                    {
+                        _idUsuario = idUsu;
+                    }
+
+                    // Obtener IdRol del claim
+                    var rolClaim = user.FindFirst(ClaimTypes.Role);
+                    if (rolClaim != null && int.TryParse(rolClaim.Value, out int idRol))
+                    {
+                        _idRol = idRol;
+                        _esAdmin = _idRol == 1; // Solo admin
+                    }
+                }
+            }
+            catch
+            {
+                _esAdmin = false;
+            }
+
+            _cargando = false;
+
+            if (_esAdmin)
+            {
+                await CargarDatos();
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task CargarDatos()
+    {
+        _articulos = await _context.ArticulosConocimiento.ToListAsync();
+        _preguntasSinRespuesta = await _context.PreguntasSinRespuesta.ToListAsync();
+        _categorias = await _context.CategoriasConocimiento.ToListAsync();
+        _solicitudesSoporte = await _context.SolicitudesSoporteIA.OrderByDescending(s => s.Fecha).ToListAsync();
+        _totalConversaciones = await _context.ConversacionesAsistente.CountAsync();
+        _solicitudesPendientes = _solicitudesSoporte.Count(s => s.Estado == "Pendiente");
+
+        // Cargar o crear configuración
+        _configuracion = await _context.ConfiguracionesAsistenteIA.FirstOrDefaultAsync() 
+                         ?? new ConfiguracionAsistenteIA();
+
+        // Si no hay categorías, crear las predeterminadas
+        if (!_categorias.Any())
+        {
+            var categoriasDefault = new List<CategoriaConocimiento>
+            {
+                new() { Nombre = "Ventas", Descripcion = "Todo sobre facturación y ventas", Icono = "bi-cart", Orden = 1 },
+                new() { Nombre = "Inventario", Descripcion = "Gestión de productos y stock", Icono = "bi-box", Orden = 2 },
+                new() { Nombre = "Clientes", Descripcion = "Gestión de clientes y créditos", Icono = "bi-people", Orden = 3 },
+                new() { Nombre = "Compras", Descripcion = "Compras y proveedores", Icono = "bi-bag", Orden = 4 },
+                new() { Nombre = "SIFEN", Descripcion = "Facturación electrónica SET", Icono = "bi-file-earmark-code", Orden = 5 },
+                new() { Nombre = "Caja", Descripcion = "Cierres y arqueos de caja", Icono = "bi-cash-stack", Orden = 6 },
+                new() { Nombre = "Reportes", Descripcion = "Informes y estadísticas", Icono = "bi-graph-up", Orden = 7 },
+                new() { Nombre = "Configuración", Descripcion = "Configuración del sistema", Icono = "bi-gear", Orden = 8 },
+                new() { Nombre = "General", Descripcion = "Información general del sistema", Icono = "bi-info-circle", Orden = 99 },
+            };
+            _context.CategoriasConocimiento.AddRange(categoriasDefault);
+            await _context.SaveChangesAsync();
+            _categorias = categoriasDefault;
+        }
+    }
+
+    private void NuevoArticulo()
+    {
+        _articuloEditando = new ArticuloConocimientoDB
+        {
+            Prioridad = 5,
+            Activo = true
+        };
+        _mostrarModalArticulo = true;
+    }
+
+    private void EditarArticulo(ArticuloConocimientoDB art)
+    {
+        _articuloEditando = new ArticuloConocimientoDB
+        {
+            IdArticulo = art.IdArticulo,
+            Categoria = art.Categoria,
+            Subcategoria = art.Subcategoria,
+            Titulo = art.Titulo,
+            Contenido = art.Contenido,
+            PalabrasClave = art.PalabrasClave,
+            Sinonimos = art.Sinonimos,
+            RutaNavegacion = art.RutaNavegacion,
+            Icono = art.Icono,
+            Prioridad = art.Prioridad,
+            Activo = art.Activo,
+            VecesUtilizado = art.VecesUtilizado,
+            FechaCreacion = art.FechaCreacion
+        };
+        _mostrarModalArticulo = true;
+    }
+
+    private void VerArticulo(ArticuloConocimientoDB art)
+    {
+        _articuloVer = art;
+        _mostrarModalVer = true;
+    }
+
+    private async Task GuardarArticulo()
+    {
+        if (string.IsNullOrWhiteSpace(_articuloEditando.Categoria) ||
+            string.IsNullOrWhiteSpace(_articuloEditando.Titulo) ||
+            string.IsNullOrWhiteSpace(_articuloEditando.Contenido))
+        {
+            return;
+        }
+
+        _guardando = true;
+        try
+        {
+            _articuloEditando.FechaActualizacion = DateTime.Now;
+
+            if (_articuloEditando.IdArticulo == 0)
+            {
+                _articuloEditando.FechaCreacion = DateTime.Now;
+                _context.ArticulosConocimiento.Add(_articuloEditando);
+            }
+            else
+            {
+                var existente = await _context.ArticulosConocimiento.FindAsync(_articuloEditando.IdArticulo);
+                if (existente != null)
+                {
+                    existente.Categoria = _articuloEditando.Categoria;
+                    existente.Subcategoria = _articuloEditando.Subcategoria;
+                    existente.Titulo = _articuloEditando.Titulo;
+                    existente.Contenido = _articuloEditando.Contenido;
+                    existente.PalabrasClave = _articuloEditando.PalabrasClave;
+                    existente.Sinonimos = _articuloEditando.Sinonimos;
+                    existente.RutaNavegacion = _articuloEditando.RutaNavegacion;
+                    existente.Icono = _articuloEditando.Icono;
+                    existente.Prioridad = _articuloEditando.Prioridad;
+                    existente.Activo = _articuloEditando.Activo;
+                    existente.FechaActualizacion = DateTime.Now;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            await CargarDatos();
+            _mostrarModalArticulo = false;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private void CerrarModalArticulo()
+    {
+        _mostrarModalArticulo = false;
+    }
+
+    private async Task ToggleActivo(ArticuloConocimientoDB art)
+    {
+        art.Activo = !art.Activo;
+        art.FechaActualizacion = DateTime.Now;
+        await _context.SaveChangesAsync();
+    }
+
+    private async Task EliminarArticulo(ArticuloConocimientoDB art)
+    {
+        _context.ArticulosConocimiento.Remove(art);
+        await _context.SaveChangesAsync();
+        await CargarDatos();
+    }
+
+    private async Task RecargarConocimiento()
+    {
+        _recargando = true;
+        StateHasChanged();
+        try
+        {
+            await AsistenteService.RecargarConocimientoAsync();
+        }
+        finally
+        {
+            _recargando = false;
+            StateHasChanged();
+        }
+    }
+
+    // Categorías
+    private void NuevaCategoria()
+    {
+        _categoriaEditando = new CategoriaConocimiento { Activa = true, Orden = _categorias.Count + 1 };
+        _mostrarModalCategoria = true;
+    }
+
+    private void EditarCategoria(CategoriaConocimiento cat)
+    {
+        _categoriaEditando = new CategoriaConocimiento
+        {
+            IdCategoria = cat.IdCategoria,
+            Nombre = cat.Nombre,
+            Descripcion = cat.Descripcion,
+            Icono = cat.Icono,
+            Orden = cat.Orden,
+            Activa = cat.Activa
+        };
+        _mostrarModalCategoria = true;
+    }
+
+    private async Task GuardarCategoria()
+    {
+        if (string.IsNullOrWhiteSpace(_categoriaEditando.Nombre)) return;
+
+        if (_categoriaEditando.IdCategoria == 0)
+        {
+            _context.CategoriasConocimiento.Add(_categoriaEditando);
+        }
+        else
+        {
+            var existente = await _context.CategoriasConocimiento.FindAsync(_categoriaEditando.IdCategoria);
+            if (existente != null)
+            {
+                existente.Nombre = _categoriaEditando.Nombre;
+                existente.Descripcion = _categoriaEditando.Descripcion;
+                existente.Icono = _categoriaEditando.Icono;
+                existente.Orden = _categoriaEditando.Orden;
+                existente.Activa = _categoriaEditando.Activa;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        await CargarDatos();
+        _mostrarModalCategoria = false;
+    }
+
+    private async Task EliminarCategoria(CategoriaConocimiento cat)
+    {
+        if (_articulos.Any(a => a.Categoria == cat.Nombre))
+        {
+            // No eliminar si tiene artículos asociados
+            return;
+        }
+        _context.CategoriasConocimiento.Remove(cat);
+        await _context.SaveChangesAsync();
+        await CargarDatos();
+    }
+
+    // Preguntas sin respuesta
+    private void CrearArticuloDesdePreguenta(PreguntaSinRespuesta preg)
+    {
+        _articuloEditando = new ArticuloConocimientoDB
+        {
+            Titulo = $"Respuesta: {preg.Pregunta}",
+            Contenido = $"[Pregunta frecuente: {preg.Pregunta}]\n\n[Escribe aquí la respuesta detallada]",
+            PalabrasClave = string.Join(",", preg.Pregunta.Split(' ').Where(w => w.Length > 3).Take(5)),
+            Prioridad = 7, // Alta prioridad para preguntas frecuentes
+            Activo = true
+        };
+        _mostrarModalArticulo = true;
+    }
+
+    private async Task MarcarResuelta(PreguntaSinRespuesta preg)
+    {
+        preg.Resuelta = true;
+        await _context.SaveChangesAsync();
+        StateHasChanged();
+    }
+
+    private string FormatearContenido(string contenido)
+    {
+        if (string.IsNullOrEmpty(contenido)) return "";
+        
+        // Formato básico: saltos de línea
+        return contenido
+            .Replace("\n\n", "</p><p>")
+            .Replace("\n", "<br/>")
+            .Insert(0, "<p>") + "</p>";
+    }
+
+    // ========== MÉTODOS DE CONFIGURACIÓN ==========
+    private async Task GuardarConfiguracion()
+    {
+        _guardandoConfig = true;
+        _mensajeConfig = null;
+        try
+        {
+            _configuracion.FechaActualizacion = DateTime.Now;
+
+            if (_configuracion.IdConfiguracion == 0)
+            {
+                _configuracion.FechaCreacion = DateTime.Now;
+                _context.ConfiguracionesAsistenteIA.Add(_configuracion);
+            }
+            else
+            {
+                var existente = await _context.ConfiguracionesAsistenteIA.FindAsync(_configuracion.IdConfiguracion);
+                if (existente != null)
+                {
+                    existente.CorreoSoporte = _configuracion.CorreoSoporte;
+                    existente.NombreSoporte = _configuracion.NombreSoporte;
+                    existente.HabilitarEnvioSoporte = _configuracion.HabilitarEnvioSoporte;
+                    existente.MensajeBienvenida = _configuracion.MensajeBienvenida;
+                    existente.MensajeSinRespuesta = _configuracion.MensajeSinRespuesta;
+                    existente.HabilitarVozEntrada = _configuracion.HabilitarVozEntrada;
+                    existente.HabilitarVozSalida = _configuracion.HabilitarVozSalida;
+                    existente.HabilitarCapturaPantalla = _configuracion.HabilitarCapturaPantalla;
+                    existente.HabilitarGrabacionVideo = _configuracion.HabilitarGrabacionVideo;
+                    existente.MaxSegundosVideo = _configuracion.MaxSegundosVideo;
+                    existente.FechaActualizacion = DateTime.Now;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            _exitoConfig = true;
+            _mensajeConfig = "Configuración guardada correctamente";
+        }
+        catch (Exception ex)
+        {
+            _exitoConfig = false;
+            _mensajeConfig = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _guardandoConfig = false;
+        }
+    }
+
+    // ========== MÉTODOS DE SOLICITUDES DE SOPORTE ==========
+    private void VerSolicitud(SolicitudSoporteIA sol)
+    {
+        _solicitudVer = sol;
+        _mostrarModalSolicitud = true;
+    }
+
+    private async Task ResolverSolicitud(SolicitudSoporteIA sol)
+    {
+        sol.Estado = "Resuelto";
+        sol.FechaResolucion = DateTime.Now;
+        await _context.SaveChangesAsync();
+        _solicitudesPendientes = _solicitudesSoporte.Count(s => s.Estado == "Pendiente");
+        _mostrarModalSolicitud = false;
+        StateHasChanged();
+    }
+
+    private async Task CambiarEstadoSolicitud(SolicitudSoporteIA sol, string nuevoEstado)
+    {
+        sol.Estado = nuevoEstado;
+        if (nuevoEstado == "Resuelto")
+            sol.FechaResolucion = DateTime.Now;
+        await _context.SaveChangesAsync();
+        _solicitudesPendientes = _solicitudesSoporte.Count(s => s.Estado == "Pendiente");
+        StateHasChanged();
+    }
+}

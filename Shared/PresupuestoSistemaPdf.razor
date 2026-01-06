@@ -1,0 +1,694 @@
+@using SistemIA.Models
+
+<style>
+    .presupuesto-pdf {
+        background: #fff;
+        color: #1f2937;
+        font-family: 'Segoe UI', Tahoma, sans-serif;
+        font-size: 13px;
+        line-height: 1.4;
+    }
+    .presupuesto-pdf .header-empresa {
+        border-bottom: 3px solid #2563eb;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+    }
+    .presupuesto-pdf .logo-empresa {
+        max-height: 70px;
+        max-width: 140px;
+    }
+    .presupuesto-pdf .empresa-nombre {
+        color: #1e40af;
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .presupuesto-pdf .empresa-datos {
+        color: #4b5563;
+        font-size: 0.85rem;
+    }
+    .presupuesto-pdf .titulo-documento {
+        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+        color: #fff;
+        padding: 12px 20px;
+        border-radius: 8px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .presupuesto-pdf .titulo-documento h3 {
+        margin: 0;
+        font-size: 1.3rem;
+        font-weight: 600;
+        letter-spacing: 1px;
+    }
+    .presupuesto-pdf .titulo-documento .subtitulo {
+        font-size: 0.85rem;
+        opacity: 0.9;
+    }
+    .presupuesto-pdf .info-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 15px;
+    }
+    .presupuesto-pdf .info-card-header {
+        background: #f3f4f6;
+        padding: 8px 12px;
+        font-weight: 600;
+        border-bottom: 1px solid #e5e7eb;
+        font-size: 0.9rem;
+    }
+    .presupuesto-pdf .info-card-body {
+        padding: 12px;
+    }
+    .presupuesto-pdf .modulos-section {
+        border: 2px solid #1f2937;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    .presupuesto-pdf .modulos-header {
+        background: #1f2937;
+        color: #fff;
+        padding: 10px 15px;
+        font-weight: 600;
+    }
+    .presupuesto-pdf .modulos-body {
+        padding: 15px;
+        background: #f9fafb;
+    }
+    .presupuesto-pdf .modulos-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-bottom: 15px;
+    }
+    .presupuesto-pdf .modulo-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 10px 12px;
+    }
+    .presupuesto-pdf .modulo-titulo {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #1f2937;
+        margin-bottom: 4px;
+    }
+    .presupuesto-pdf .modulo-desc {
+        font-size: 0.78rem;
+        color: #6b7280;
+        line-height: 1.3;
+    }
+    .presupuesto-pdf .modulo-item {
+        display: inline-block;
+        width: 32%;
+        margin-bottom: 8px;
+        font-size: 0.85rem;
+    }
+    .presupuesto-pdf .modulo-check {
+        color: #059669;
+        margin-right: 6px;
+    }
+    .presupuesto-pdf .caracteristicas-extra {
+        background: #f3f4f6;
+        border-radius: 6px;
+        padding: 12px;
+        margin-top: 10px;
+    }
+    .presupuesto-pdf .caracteristica-item {
+        font-size: 0.85rem;
+        color: #374151;
+        margin-bottom: 6px;
+    }
+    .presupuesto-pdf .caracteristica-item:last-child {
+        margin-bottom: 0;
+    }
+    .presupuesto-pdf .capacidad-badge {
+        display: inline-block;
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    .presupuesto-pdf .opcion-card {
+        border: 2px solid #374151;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    .presupuesto-pdf .opcion-header {
+        padding: 10px 15px;
+        font-weight: 600;
+        color: #fff;
+        background: #374151;
+    }
+    .presupuesto-pdf .precio-tabla {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .presupuesto-pdf .precio-tabla th {
+        background: #f3f4f6;
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 2px solid #e5e7eb;
+        font-size: 0.85rem;
+    }
+    .presupuesto-pdf .precio-tabla td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .presupuesto-pdf .precio-tabla .text-end { text-align: right; }
+    .presupuesto-pdf .precio-tabla .total-row {
+        background: #f0fdf4;
+        font-weight: 700;
+        font-size: 1.1rem;
+    }
+    .presupuesto-pdf .precio-tabla .total-row.leasing { background: #ecfeff; }
+    .presupuesto-pdf .footer-presupuesto {
+        margin-top: 25px;
+        padding-top: 15px;
+        border-top: 2px solid #e5e7eb;
+        text-align: center;
+        color: #6b7280;
+        font-size: 0.85rem;
+    }
+    .presupuesto-pdf .vigencia-destacada {
+        display: inline-block;
+        background: #fef3c7;
+        border: 1px solid #d97706;
+        color: #92400e;
+        padding: 6px 15px;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    .presupuesto-pdf .condiciones-section {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 20px;
+    }
+    @@media print {
+        .presupuesto-pdf { padding: 0 !important; }
+    }
+</style>
+
+<div class="presupuesto-pdf p-4">
+    <!-- Encabezado Empresa -->
+    <div class="header-empresa d-flex align-items-center">
+        <div class="me-4">
+            @if (Sucursal?.Logo != null && Sucursal.Logo.Length > 0)
+            {
+                <img src="data:image/png;base64,@Convert.ToBase64String(Sucursal.Logo)" 
+                     alt="Logo" class="logo-empresa" />
+            }
+            else
+            {
+                <div style="width: 100px; height: 60px; background: #e5e7eb; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-building fa-2x" style="color: #9ca3af;"></i>
+                </div>
+            }
+        </div>
+        <div class="flex-grow-1">
+            <div class="empresa-nombre">@(Sucursal?.NombreEmpresa ?? "EMPRESA")</div>
+            <div class="empresa-datos">
+                <strong>RUC:</strong> @(Sucursal?.RUC ?? "-")-@(Sucursal?.DV ?? 0) &nbsp;|&nbsp;
+                <strong>Tel:</strong> @(Sucursal?.Telefono ?? "-") &nbsp;|&nbsp;
+                <strong>Email:</strong> @(Sucursal?.Correo ?? "-")<br/>
+                <i class="fas fa-map-marker-alt me-1"></i>@(Sucursal?.Direccion ?? "-")
+            </div>
+        </div>
+        <div class="text-end">
+            <div style="font-size: 0.8rem; color: #6b7280;">Presupuesto N°</div>
+            <div style="font-size: 1.8rem; font-weight: 700; color: #1e40af;">@Presupuesto.NumeroPresupuesto.ToString("D4")</div>
+        </div>
+    </div>
+
+    <!-- Título del Documento -->
+    <div class="titulo-documento">
+        <h3><i class="fas fa-file-invoice-dollar me-2"></i>PROPUESTA COMERCIAL</h3>
+        <div class="subtitulo">Sistema de Gestión Empresarial - SistemIA</div>
+    </div>
+
+    <!-- Información del Presupuesto y Cliente -->
+    <div class="row mb-3">
+        <div class="col-6 pe-2">
+            <div class="info-card h-100">
+                <div class="info-card-header">
+                    <i class="fas fa-calendar-alt me-2"></i>Datos del Presupuesto
+                </div>
+                <div class="info-card-body">
+                    <table style="width: 100%; font-size: 0.9rem;">
+                        <tr>
+                            <td style="padding: 4px 0; color: #6b7280;">Fecha Emisión:</td>
+                            <td style="padding: 4px 0; font-weight: 600;">@Presupuesto.FechaEmision.ToString("dd/MM/yyyy")</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; color: #6b7280;">Válido hasta:</td>
+                            <td style="padding: 4px 0; font-weight: 600; color: #b45309;">@Presupuesto.FechaVigencia.ToString("dd/MM/yyyy")</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; color: #6b7280;">Tipo de Cambio:</td>
+                            <td style="padding: 4px 0; font-weight: 600;">₲ @Presupuesto.TipoCambio.ToString("N0") / USD</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 ps-2">
+            <div class="info-card h-100">
+                <div class="info-card-header">
+                    <i class="fas fa-building me-2"></i>Cliente
+                </div>
+                <div class="info-card-body">
+                    <div style="font-weight: 700; font-size: 1rem; margin-bottom: 4px;">@Presupuesto.NombreCliente</div>
+                    @if (!string.IsNullOrEmpty(Presupuesto.RucCliente))
+                    {
+                        <div style="font-size: 0.85rem; color: #4b5563;">RUC: @Presupuesto.RucCliente</div>
+                    }
+                    @if (!string.IsNullOrEmpty(Presupuesto.TelefonoCliente))
+                    {
+                        <div style="font-size: 0.85rem; color: #4b5563;"><i class="fas fa-phone me-1"></i>@Presupuesto.TelefonoCliente</div>
+                    }
+                    @if (!string.IsNullOrEmpty(Presupuesto.EmailCliente))
+                    {
+                        <div style="font-size: 0.85rem; color: #4b5563;"><i class="fas fa-envelope me-1"></i>@Presupuesto.EmailCliente</div>
+                    }
+                    @if (!string.IsNullOrEmpty(Presupuesto.ContactoCliente))
+                    {
+                        <div style="font-size: 0.85rem; color: #6b7280;">Contacto: @Presupuesto.ContactoCliente</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Módulos Incluidos -->
+    <div class="modulos-section">
+        <div class="modulos-header">
+            <i class="fas fa-cubes me-2"></i>Funcionalidades del Sistema Incluidas
+        </div>
+        <div class="modulos-body">
+            <div class="modulos-grid">
+                @if (Presupuesto.ModuloVentas) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-shopping-cart modulo-check"></i>Ventas y Facturación</div>
+                        <div class="modulo-desc">Facturación completa, presupuestos, notas de crédito, control de precios diferenciados, historial de ventas y reportes.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloCompras) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-truck modulo-check"></i>Compras y Proveedores</div>
+                        <div class="modulo-desc">Registro de compras, gestión de proveedores, cuentas por pagar, control de pagos y análisis de compras.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloInventario) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-boxes modulo-check"></i>Inventario y Stock</div>
+                        <div class="modulo-desc">Control de stock en tiempo real, múltiples depósitos, transferencias, ajustes de inventario, alertas de stock bajo y reportes valorizados.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloClientes) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-users modulo-check"></i>Clientes y Cuentas por Cobrar</div>
+                        <div class="modulo-desc">Gestión completa de clientes, créditos, cobranzas, plan de cuotas, historial de pagos y reportes de morosidad.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloCaja) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-cash-register modulo-check"></i>Caja y Arqueos</div>
+                        <div class="modulo-desc">Apertura/cierre de caja, múltiples turnos, composición de billetes, arqueo diario y control de ingresos/egresos.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloSifen) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-file-invoice modulo-check"></i>Facturación Electrónica SIFEN</div>
+                        <div class="modulo-desc">Integración completa con el SET: generación de XML, firma digital, envío/consulta de lotes, KuDE y gestión de eventos.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloInformes) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-chart-bar modulo-check"></i>Informes y Reportes</div>
+                        <div class="modulo-desc">Reportes de ventas, compras, stock, rentabilidad, gráficos de tendencias, exportación a Excel/PDF y envío automático por correo.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloUsuarios) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-user-shield modulo-check"></i>Usuarios y Permisos</div>
+                        <div class="modulo-desc">Control de acceso por roles, permisos granulares por módulo/función, auditoría de cambios y registro de actividad.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloCorreo) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-envelope modulo-check"></i>Envío de Correos</div>
+                        <div class="modulo-desc">Envío automático de facturas, informes programados, notificaciones de cobranza y recordatorios de vencimiento.</div>
+                    </div>
+                }
+                @if (Presupuesto.ModuloAsistenteIA) 
+                { 
+                    <div class="modulo-card">
+                        <div class="modulo-titulo"><i class="fas fa-robot modulo-check"></i>Asistente IA Integrado</div>
+                        <div class="modulo-desc">Chatbot de ayuda contextual, guías paso a paso, soporte en línea y aprendizaje continuo del sistema.</div>
+                    </div>
+                }
+            </div>
+            
+            <!-- Características adicionales -->
+            <div class="caracteristicas-extra">
+                <div class="caracteristica-item">
+                    <i class="fas fa-globe me-2" style="color: #3b82f6;"></i>
+                    <strong>Aplicación Web Responsive:</strong> Acceda desde cualquier dispositivo (PC, tablet, smartphone) con navegador web.
+                </div>
+                <div class="caracteristica-item">
+                    <i class="fas fa-mobile-alt me-2" style="color: #059669;"></i>
+                    <strong>Cámara como Escáner:</strong> Lea códigos de barras con la cámara del celular para agilizar ventas e inventario.
+                </div>
+                <div class="caracteristica-item">
+                    <i class="fas fa-cloud me-2" style="color: #8b5cf6;"></i>
+                    <strong>Acceso Remoto:</strong> Trabaje desde cualquier ubicación con conexión a internet, configuración LAN/WAN disponible.
+                </div>
+                <div class="caracteristica-item" style="margin-top: 8px; padding: 8px 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 0.82rem;">
+                    <i class="fas fa-exclamation-triangle me-2" style="color: #856404;"></i>
+                    <strong>Nota:</strong> Para el acceso remoto a través de Internet, se requiere instalación de <strong>VPN Mikrotik</strong> (costo adicional). 
+                    Se debe solicitar al proveedor de Internet la <strong>IP pública</strong> del servicio.
+                </div>
+            </div>
+            
+            <div class="text-center pt-3" style="border-top: 1px dashed #d1d5db; margin-top: 15px;">
+                <span class="capacidad-badge me-3" style="background: #dbeafe; color: #1e40af;">
+                    <i class="fas fa-store me-1"></i>@Presupuesto.CantidadSucursalesIncluidas Sucursal(es)
+                </span>
+                <span class="capacidad-badge me-3" style="background: #d1fae5; color: #065f46;">
+                    <i class="fas fa-users me-1"></i>@Presupuesto.CantidadUsuariosIncluidos Usuarios
+                </span>
+                <span class="capacidad-badge" style="background: #e5e7eb; color: #374151;">
+                    <i class="fas fa-cash-register me-1"></i>@Presupuesto.CantidadCajasIncluidas Caja(s)
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Items/Productos Adicionales -->
+    @if (Items != null && Items.Any())
+    {
+        <div class="opcion-card">
+            <div class="opcion-header">
+                <i class="fas fa-box-open me-2"></i>PRODUCTOS / SERVICIOS ADICIONALES
+            </div>
+            <div style="padding: 15px;">
+                <table class="precio-tabla">
+                    <thead>
+                        <tr>
+                            <th style="width: 8%">#</th>
+                            <th style="width: 37%">Descripción</th>
+                            <th class="text-end" style="width: 8%">Cant.</th>
+                            <th class="text-end" style="width: 15%">P.Unit USD</th>
+                            <th class="text-end" style="width: 16%">Subtotal USD</th>
+                            <th class="text-end" style="width: 16%">Subtotal Gs.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Items.Where(i => !i.EsOpcional).OrderBy(i => i.NumeroLinea))
+                        {
+                            <tr>
+                                <td>@item.NumeroLinea</td>
+                                <td>
+                                    <strong>@item.Descripcion</strong>
+                                    @if (!string.IsNullOrEmpty(item.DescripcionAdicional))
+                                    {
+                                        <br/><small style="color: #6b7280;">@item.DescripcionAdicional</small>
+                                    }
+                                </td>
+                                <td class="text-end">@item.Cantidad.ToString("N0")</td>
+                                <td class="text-end">$ @item.PrecioUnitarioUsd.ToString("N2")</td>
+                                <td class="text-end">$ @item.SubtotalUsd.ToString("N2")</td>
+                                <td class="text-end">₲ @item.SubtotalGs.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td colspan="4"><strong>TOTAL PRODUCTOS/SERVICIOS</strong></td>
+                            <td class="text-end"><strong>$ @TotalItemsUsd.ToString("N2")</strong></td>
+                            <td class="text-end"><strong>₲ @TotalItemsGs.ToString("N0")</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+                
+                @if (Items.Any(i => i.EsOpcional))
+                {
+                    <div style="margin-top: 15px; padding: 10px; background: #fef3c7; border-radius: 6px;">
+                        <div style="font-weight: 600; margin-bottom: 8px; color: #92400e;">
+                            <i class="fas fa-star me-1"></i>Items Opcionales (no incluidos en el total):
+                        </div>
+                        @foreach (var item in Items.Where(i => i.EsOpcional).OrderBy(i => i.NumeroLinea))
+                        {
+                            <div style="font-size: 0.85rem; margin-bottom: 4px; color: #78350f;">
+                                • @item.Descripcion - <strong>$ @item.SubtotalUsd.ToString("N2")</strong> / ₲ @item.SubtotalGs.ToString("N0")
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Opción 1: Pago Contado -->
+    <div class="opcion-card opcion-contado">
+        <div class="opcion-header">
+            <i class="fas fa-money-bill-wave me-2"></i>OPCIÓN 1: PAGO AL CONTADO (Licencia Única)
+        </div>
+        <div style="padding: 15px;">
+            <table class="precio-tabla">
+                <thead>
+                    <tr>
+                        <th style="width: 55%">Concepto</th>
+                        <th class="text-end" style="width: 22%">USD</th>
+                        <th class="text-end" style="width: 23%">Guaraníes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><i class="fas fa-laptop-code me-2" style="color: #059669;"></i>Licencia del Sistema (uso permanente)</td>
+                        <td class="text-end">$ @Presupuesto.PrecioContadoUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.PrecioContadoGs.ToString("N0")</td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-cogs me-2" style="color: #6b7280;"></i>Implementación y Configuración</td>
+                        <td class="text-end">$ @Presupuesto.CostoImplementacionUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.CostoImplementacionGs.ToString("N0")</td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-chalkboard-teacher me-2" style="color: #6b7280;"></i>Capacitación (@Presupuesto.HorasCapacitacion horas)</td>
+                        <td class="text-end">$ @Presupuesto.CostoCapacitacionUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.CostoCapacitacionGs.ToString("N0")</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td><strong><i class="fas fa-calculator me-2"></i>TOTAL CONTADO</strong></td>
+                        <td class="text-end"><strong>$ @TotalContadoUsd.ToString("N2")</strong></td>
+                        <td class="text-end"><strong>₲ @TotalContadoGs.ToString("N0")</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Opción 2: Leasing -->
+    <div class="opcion-card opcion-leasing">
+        <div class="opcion-header">
+            <i class="fas fa-calendar-alt me-2"></i>OPCIÓN 2: MODO LEASING / SUSCRIPCIÓN
+        </div>
+        <div style="padding: 15px;">
+            <table class="precio-tabla">
+                <thead>
+                    <tr>
+                        <th style="width: 55%">Concepto</th>
+                        <th class="text-end" style="width: 22%">USD</th>
+                        <th class="text-end" style="width: 23%">Guaraníes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><i class="fas fa-hand-holding-usd me-2" style="color: #0891b2;"></i>Entrada inicial</td>
+                        <td class="text-end">$ @Presupuesto.EntradaLeasingUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.EntradaLeasingGs.ToString("N0")</td>
+                    </tr>
+                    <tr>
+                        @if (Presupuesto.CantidadCuotasLeasing > 0)
+                        {
+                            <td><i class="fas fa-sync-alt me-2" style="color: #0891b2;"></i>Cuota mensual (x @Presupuesto.CantidadCuotasLeasing meses)</td>
+                        }
+                        else
+                        {
+                            <td><i class="fas fa-infinity me-2" style="color: #0891b2;"></i>Suscripción mensual (período flexible)</td>
+                        }
+                        <td class="text-end">$ @Presupuesto.PrecioLeasingMensualUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.PrecioLeasingMensualGs.ToString("N0")</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    @if (Presupuesto.CantidadCuotasLeasing > 0)
+                    {
+                        <tr class="total-row leasing">
+                            <td><strong><i class="fas fa-calculator me-2"></i>TOTAL LEASING (@Presupuesto.CantidadCuotasLeasing cuotas)</strong></td>
+                            <td class="text-end"><strong>$ @TotalLeasingUsd.ToString("N2")</strong></td>
+                            <td class="text-end"><strong>₲ @TotalLeasingGs.ToString("N0")</strong></td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr class="total-row leasing">
+                            <td><strong><i class="fas fa-infinity me-2"></i>SUSCRIPCIÓN MENSUAL FLEXIBLE</strong></td>
+                            <td class="text-end" colspan="2" style="font-size: 0.85rem; color: #0891b2;">
+                                Sin compromiso de permanencia
+                            </td>
+                        </tr>
+                    }
+                </tfoot>
+            </table>
+            <div style="margin-top: 10px; padding: 8px 12px; background: #f0f9ff; border-radius: 4px; font-size: 0.85rem; color: #0369a1;">
+                <i class="fas fa-info-circle me-1"></i>
+                @if (Presupuesto.CantidadCuotasLeasing > 0)
+                {
+                    <span>El modo leasing incluye soporte y actualizaciones durante el contrato. Al finalizar, la licencia es permanente.</span>
+                }
+                else
+                {
+                    <span>Suscripción mensual flexible: incluye soporte y actualizaciones continuas mientras esté activa. Puede cancelar en cualquier momento.</span>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Mantenimiento Mensual -->
+    <div class="opcion-card opcion-mantenimiento">
+        <div class="opcion-header">
+            <i class="fas fa-tools me-2"></i>MANTENIMIENTO Y SOPORTE MENSUAL (Opcional para Contado)
+        </div>
+        <div style="padding: 15px;">
+            <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 10px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 1.5rem; font-weight: bold; color: #b45309;">$ @Presupuesto.CostoMantenimientoMensualUsd.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; color: #92400e;">por mes</div>
+                </div>
+                <div style="font-size: 1.5rem; color: #d97706;">ó</div>
+                <div style="text-align: center;">
+                    <div style="font-size: 1.5rem; font-weight: bold; color: #b45309;">₲ @Presupuesto.CostoMantenimientoMensualGs.ToString("N0")</div>
+                    <div style="font-size: 0.8rem; color: #92400e;">por mes</div>
+                </div>
+            </div>
+            <div style="padding: 10px; background: #fef3c7; border-radius: 6px; font-size: 0.85rem; color: #92400e;">
+                <i class="fas fa-star me-1"></i>
+                <strong>Incluye:</strong> Soporte técnico prioritario, actualizaciones del sistema, backup remoto diario y monitoreo.
+            </div>
+        </div>
+    </div>
+
+    <!-- Costos Adicionales -->
+    <div class="opcion-card opcion-adicionales">
+        <div class="opcion-header">
+            <i class="fas fa-plus-circle me-2"></i>COSTOS ADICIONALES (Bajo Demanda)
+        </div>
+        <div style="padding: 15px;">
+            <table class="precio-tabla">
+                <thead>
+                    <tr>
+                        <th style="width: 55%">Concepto</th>
+                        <th class="text-end" style="width: 22%">USD</th>
+                        <th class="text-end" style="width: 23%">Guaraníes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><i class="fas fa-building me-2" style="color: #6b7280;"></i>Sucursal adicional</td>
+                        <td class="text-end">$ @Presupuesto.CostoSucursalAdicionalUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.CostoSucursalAdicionalGs.ToString("N0")</td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-user-plus me-2" style="color: #6b7280;"></i>Usuario adicional</td>
+                        <td class="text-end">$ @Presupuesto.CostoUsuarioAdicionalUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.CostoUsuarioAdicionalGs.ToString("N0")</td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-code me-2" style="color: #6b7280;"></i>Hora de desarrollo / personalización</td>
+                        <td class="text-end">$ @Presupuesto.CostoHoraDesarrolloUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.CostoHoraDesarrolloGs.ToString("N0")</td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-car me-2" style="color: #6b7280;"></i>Visita técnica presencial</td>
+                        <td class="text-end">$ @Presupuesto.CostoVisitaTecnicaUsd.ToString("N2")</td>
+                        <td class="text-end">₲ @Presupuesto.CostoVisitaTecnicaGs.ToString("N0")</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Condiciones -->
+    @if (!string.IsNullOrEmpty(Presupuesto.CondicionesPago) || !string.IsNullOrEmpty(Presupuesto.Observaciones))
+    {
+        <div class="condiciones-section">
+            <div style="font-weight: 600; margin-bottom: 10px; color: #1f2937;">
+                <i class="fas fa-file-contract me-2"></i>Condiciones y Observaciones
+            </div>
+            @if (!string.IsNullOrEmpty(Presupuesto.CondicionesPago))
+            {
+                <p style="margin-bottom: 8px;"><strong style="color: #374151;">Condiciones de Pago:</strong> <span style="color: #4b5563;">@Presupuesto.CondicionesPago</span></p>
+            }
+            @if (!string.IsNullOrEmpty(Presupuesto.Garantias))
+            {
+                <p style="margin-bottom: 8px;"><strong style="color: #374151;">Garantías:</strong> <span style="color: #4b5563;">@Presupuesto.Garantias</span></p>
+            }
+            @if (!string.IsNullOrEmpty(Presupuesto.Observaciones))
+            {
+                <p style="margin-bottom: 0;"><strong style="color: #374151;">Observaciones:</strong> <span style="color: #4b5563;">@Presupuesto.Observaciones</span></p>
+            }
+        </div>
+    }
+
+    <!-- Pie de página -->
+    <div class="footer-section">
+        <div style="text-align: center; padding: 15px 0; border-top: 2px solid #e5e7eb; margin-top: 20px;">
+            <p style="margin-bottom: 5px; font-size: 0.9rem; color: #374151;">
+                <i class="fas fa-clock me-1"></i>
+                Este presupuesto tiene validez hasta el <strong style="color: #dc2626;">@Presupuesto.FechaVigencia.ToString("dd/MM/yyyy")</strong>
+            </p>
+            <p style="margin-bottom: 0; font-size: 0.85rem; color: #6b7280;">
+                <i class="fas fa-phone me-1"></i>@(Sucursal?.Telefono ?? "") 
+                <span style="margin: 0 10px;">|</span>
+                <i class="fas fa-envelope me-1"></i>@(Sucursal?.Correo ?? "")
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public PresupuestoSistema Presupuesto { get; set; } = new();
+
+    [Parameter]
+    public Sucursal? Sucursal { get; set; }
+
+    [Parameter]
+    public List<PresupuestoSistemaDetalle>? Items { get; set; }
+
+    private decimal TotalContadoUsd => Presupuesto.PrecioContadoUsd + Presupuesto.CostoImplementacionUsd + Presupuesto.CostoCapacitacionUsd + TotalItemsUsd;
+    private decimal TotalContadoGs => Presupuesto.PrecioContadoGs + Presupuesto.CostoImplementacionGs + Presupuesto.CostoCapacitacionGs + TotalItemsGs;
+    private decimal TotalLeasingUsd => Presupuesto.EntradaLeasingUsd + (Presupuesto.PrecioLeasingMensualUsd * Presupuesto.CantidadCuotasLeasing);
+    private decimal TotalLeasingGs => Presupuesto.EntradaLeasingGs + (Presupuesto.PrecioLeasingMensualGs * Presupuesto.CantidadCuotasLeasing);
+    
+    private decimal TotalItemsUsd => Items?.Where(i => !i.EsOpcional || i.Incluido).Sum(i => i.SubtotalUsd) ?? 0;
+    private decimal TotalItemsGs => Items?.Where(i => !i.EsOpcional || i.Incluido).Sum(i => i.SubtotalGs) ?? 0;
+}

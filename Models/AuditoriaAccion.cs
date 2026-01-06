@@ -13,19 +13,18 @@ namespace SistemIA.Models
         public int IdAuditoria { get; set; }
 
         /// <summary>
-        /// ID del usuario que realizó la acción
+        /// ID del usuario que realizó la acción (null si es sistema)
         /// </summary>
-        [Required]
-        public int IdUsuario { get; set; }
+        public int? IdUsuario { get; set; }
 
         [ForeignKey(nameof(IdUsuario))]
-        public Usuario Usuario { get; set; } = null!;
+        public Usuario? Usuario { get; set; }
 
         /// <summary>
         /// Nombre del usuario en el momento de la acción (para histórico)
         /// </summary>
-        [Required, StringLength(200)]
-        public string NombreUsuario { get; set; } = string.Empty;
+        [StringLength(200)]
+        public string? NombreUsuario { get; set; }
 
         /// <summary>
         /// Rol del usuario en el momento de la acción
@@ -96,6 +95,45 @@ namespace SistemIA.Models
         /// </summary>
         [StringLength(500)]
         public string? Navegador { get; set; }
+
+        // ========== CONTEXTO DE OPERACIÓN ==========
+        
+        /// <summary>
+        /// Fecha/hora del equipo del usuario
+        /// </summary>
+        public DateTime? FechaHoraEquipo { get; set; }
+        
+        /// <summary>
+        /// Fecha de caja activa al momento de la acción
+        /// </summary>
+        public DateTime? FechaCaja { get; set; }
+        
+        /// <summary>
+        /// Turno activo al momento de la acción
+        /// </summary>
+        public int? Turno { get; set; }
+        
+        /// <summary>
+        /// ID de la sucursal donde se realizó la acción
+        /// </summary>
+        public int? IdSucursal { get; set; }
+        
+        /// <summary>
+        /// Nombre de la sucursal (para histórico)
+        /// </summary>
+        [StringLength(200)]
+        public string? NombreSucursal { get; set; }
+        
+        /// <summary>
+        /// ID de la caja donde se realizó la acción
+        /// </summary>
+        public int? IdCaja { get; set; }
+        
+        /// <summary>
+        /// Nombre de la caja (para histórico)
+        /// </summary>
+        [StringLength(100)]
+        public string? NombreCaja { get; set; }
 
         /// <summary>
         /// Si la acción fue exitosa

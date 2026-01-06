@@ -2,8 +2,15 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject SistemIA.Services.BackupCodigoFuenteService BackupCodigoService
+@inject AppDbContext _context
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ProtectedSessionStorage SessionStorage
+@inject AuthenticationStateProvider AuthStateProvider
+@inject SistemIA.Services.ITrackingService TrackingService
 @implements IDisposable
 @using SistemIA.Shared
+@using System.Security.Claims
 
 <div class="page @(_isSidebarOpen ? "sidebar-open" : "")" @ontouchstart="OnTouchStart" @ontouchend="OnTouchEnd">
     <div class="sidebar @(_isSidebarCollapsed ? "" : "open")" @onmouseenter="OnSidebarMouseEnter" @onmouseleave="OnSidebarMouseLeave">
@@ -53,6 +60,9 @@
     }
 </div>
 
+@* Asistente IA flotante - disponible en todo el sistema *@
+<ChatAsistente IdUsuario="_idUsuarioActual" NombreUsuario="@_nombreUsuarioActual" />
+
 @code {
     private bool _isSidebarOpen = true;
     private bool _isSidebarCollapsed = true; // Inicia colapsado (solo iconos)
@@ -61,12 +71,70 @@
     private Timer? _collapseTimer;
     private int _touchStartX = 0;
     private int _touchStartY = 0;
+    private int? _idUsuarioActual;
+    private string _nombreUsuarioActual = "Usuario";
+    private string? _sessionId;
 
-    protected override void OnAfterRender(bool firstRender)
+    protected override void OnInitialized()
+    {
+        // Suscribirse a cambios de navegación para tracking
+        Nav.LocationChanged += OnLocationChanged;
+        _sessionId = Guid.NewGuid().ToString("N")[..16]; // ID de sesión corto
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        try
+        {
+            // Registrar navegación
+            await TrackingService.RegistrarNavegacionAsync(
+                e.Location,
+                _idUsuarioActual,
+                _nombreUsuarioActual,
+                _sessionId);
+        }
+        catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            // Inicializar el estado del sidebar
+            // Cargar datos del usuario para el asistente IA usando AuthenticationStateProvider
+            try
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var user = authState.User;
+                
+                if (user.Identity?.IsAuthenticated == true)
+                {
+                    // Obtener ID del usuario desde Claims
+                    var idUsuarioClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                    
+                    if (int.TryParse(idUsuarioClaim, out int idUsuario))
+                    {
+                        _idUsuarioActual = idUsuario;
+                    }
+                    
+                    // Obtener nombre desde el claim GivenName (nombres) guardado en login
+                    var nombreClaim = user.FindFirst(ClaimTypes.GivenName)?.Value;
+                    if (!string.IsNullOrEmpty(nombreClaim))
+                    {
+                        // Usar solo el primer nombre
+                        _nombreUsuarioActual = nombreClaim.Split(' ')[0];
+                    }
+                    else
+                    {
+                        // Fallback: usar ClaimTypes.Name
+                        var nombreUsuarioClaim = user.FindFirst(ClaimTypes.Name)?.Value;
+                        if (!string.IsNullOrEmpty(nombreUsuarioClaim))
+                        {
+                            _nombreUsuarioActual = nombreUsuarioClaim.Split(' ')[0];
+                        }
+                    }
+                }
+            }
+            catch { }
             StateHasChanged();
         }
     }
@@ -149,6 +217,7 @@
     public void Dispose()
     {
         _collapseTimer?.Dispose();
+        Nav.LocationChanged -= OnLocationChanged;
     }
 
     private async Task LogoutAsync()

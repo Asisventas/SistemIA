@@ -74,6 +74,16 @@ if (Test-Path $certSource) {
     Write-Host "  Carpeta Certificados copiada" -ForegroundColor Green
 }
 
+# Copiar modelos de reconocimiento facial
+$faceModelsSource = Join-Path $projectPath "face_recognition_models"
+if (Test-Path $faceModelsSource) {
+    $faceModelsDest = Join-Path $publishPath "face_recognition_models"
+    Copy-Item -Path $faceModelsSource -Destination $faceModelsDest -Recurse -Force
+    Write-Host "  Modelos de reconocimiento facial copiados" -ForegroundColor Green
+} else {
+    Write-Host "  [AVISO] Carpeta face_recognition_models no encontrada" -ForegroundColor Yellow
+}
+
 # Crear archivo de versión
 Write-Host "[4/5] Creando archivo de versión..." -ForegroundColor Yellow
 $versionInfo = @{

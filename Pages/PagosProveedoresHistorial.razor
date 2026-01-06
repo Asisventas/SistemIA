@@ -13,10 +13,15 @@
 
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="mb-0">
-            <i class="bi bi-clock-history text-warning me-2"></i>
-            Historial de Pagos a Proveedores
-        </h3>
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-outline-secondary" @onclick="Volver">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+            <h3 class="mb-0">
+                <i class="bi bi-clock-history text-warning me-2"></i>
+                Historial de Pagos a Proveedores
+            </h3>
+        </div>
         <a href="/pagos-proveedores" class="btn btn-primary">
             <i class="bi bi-plus-circle me-1"></i>Registrar Nuevo Pago
         </a>
@@ -79,36 +84,44 @@
     </div>
 
     <!-- Resumen -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card shadow-sm">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-2">Total Pagado</h6>
-                    <h4 class="mb-0 text-success">@totalPagado.ToString("N0") Gs.</h4>
+    <div class="row mb-4 g-2">
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <h6 class="text-muted mb-2 small">Total Factura</h6>
+                    <h5 class="mb-0 text-primary">@totalFactura.ToString("N0") Gs.</h5>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card shadow-sm">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-2">Total Pendiente</h6>
-                    <h4 class="mb-0 text-warning">@totalPendiente.ToString("N0") Gs.</h4>
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <h6 class="text-muted mb-2 small">Total Pagado</h6>
+                    <h5 class="mb-0 text-success">@totalPagado.ToString("N0") Gs.</h5>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card shadow-sm">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-2">Total Anulado</h6>
-                    <h4 class="mb-0 text-danger">@totalAnulado.ToString("N0") Gs.</h4>
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <h6 class="text-muted mb-2 small">Total Pendiente</h6>
+                    <h5 class="mb-0 text-warning">@totalPendiente.ToString("N0") Gs.</h5>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card shadow-sm">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-2">Cantidad</h6>
-                    <h4 class="mb-0">@pagosFiltrados.Count</h4>
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <h6 class="text-muted mb-2 small">Total Anulado</h6>
+                    <h5 class="mb-0 text-danger">@totalAnulado.ToString("N0") Gs.</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <h6 class="text-muted mb-2 small">Cantidad</h6>
+                    <h5 class="mb-0">@pagosFiltrados.Count</h5>
                 </div>
             </div>
         </div>
@@ -244,6 +257,11 @@
     private List<PagoProveedor> pagosFiltrados = new();
     private List<Moneda> monedas = new();
 
+    private void Volver()
+    {
+        Nav.NavigateTo("/pagos-proveedores");
+    }
+
     // Filtros
     private int? filtroIdPago = null;
     private int? filtroIdCompra = null;
@@ -254,6 +272,7 @@
     private string filtroEstado = "";
 
     // Totales
+    private decimal totalFactura = 0;
     private decimal totalPagado = 0;
     private decimal totalPendiente = 0;
     private decimal totalAnulado = 0;
@@ -282,6 +301,7 @@
         await using var ctx = await DbFactory.CreateDbContextAsync();
         
         pagos = await ctx.PagosProveedores
+            .Include(p => p.Compra)
             .Include(p => p.Proveedor)
             .Include(p => p.Usuario)
             .Include(p => p.Moneda)
@@ -337,7 +357,13 @@
             query = query.Where(p => p.Estado == filtroEstado);
         }
 
-        pagosFiltrados = query.ToList();
+        // Ordenar por fecha de pago descendente (más recientes primero)
+        pagosFiltrados = query.OrderByDescending(p => p.FechaPago)
+                              .ThenByDescending(p => p.IdPagoProveedor)
+                              .ToList();
+        
+        // Recalcular totales sobre los pagos filtrados
+        CalcularTotalesFiltrados();
     }
 
     private void LimpiarFiltros()
@@ -360,9 +386,24 @@
 
     private void CalcularTotales()
     {
-        totalPagado = pagos.Where(p => p.Estado == "Pagado").Sum(p => p.MontoTotal);
-        totalPendiente = pagos.Where(p => p.Estado == "Pendiente").Sum(p => p.MontoTotal);
-        totalAnulado = pagos.Where(p => p.Estado == "Anulado").Sum(p => p.MontoTotal);
+        // Estos son totales generales, se recalculan en CalcularTotalesFiltrados
+    }
+
+    private void CalcularTotalesFiltrados()
+    {
+        // Calcular totales sobre los pagos filtrados
+        totalPagado = pagosFiltrados.Where(p => p.Estado == "Pagado").Sum(p => p.MontoTotal);
+        totalPendiente = pagosFiltrados.Where(p => p.Estado == "Pendiente").Sum(p => p.MontoTotal);
+        totalAnulado = pagosFiltrados.Where(p => p.Estado == "Anulado").Sum(p => p.MontoTotal);
+        
+        // Calcular total de facturas asociadas (sin duplicar)
+        var comprasUnicas = pagosFiltrados
+            .Where(p => p.Compra != null)
+            .Select(p => p.Compra!)
+            .DistinctBy(c => c.IdCompra)
+            .ToList();
+        
+        totalFactura = comprasUnicas.Sum(c => c.Total);
     }
 
     private async Task ImprimirRecibo(int idPago)

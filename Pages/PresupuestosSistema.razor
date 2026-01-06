@@ -1,0 +1,1610 @@
+@page "/configuracion/presupuestos-sistema"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Services
+@using System.Globalization
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ICorreoService CorreoService
+@inject PdfPresupuestoSistemaService PdfPresupuestoService
+@inject ISucursalProvider SucursalProvider
+@inject ITipoCambioService TipoCambioService
+@inject ISaAuthenticationService SaAuth
+
+<PageTitle>Presupuestos del Sistema</PageTitle>
+
+<style>
+    /* Estilos adaptados para temas claro/oscuro */
+    .presupuesto-card {
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+        border-color: var(--bar-border);
+    }
+    .presupuesto-card .card-header {
+        border-color: var(--bar-border);
+    }
+    .presupuesto-table {
+        color: var(--text-primary);
+    }
+    .presupuesto-table thead th {
+        background-color: var(--bar-bg);
+        color: var(--text-primary);
+        border-color: var(--bar-border);
+    }
+    .presupuesto-table tbody td {
+        border-color: var(--bar-border);
+        color: var(--text-primary);
+    }
+    .presupuesto-table tbody tr:hover {
+        background-color: var(--bar-bg);
+    }
+    /* Badges con mejor contraste */
+    .badge-estado {
+        font-weight: 600;
+        padding: 0.4em 0.8em;
+    }
+    .badge-estado.borrador { background-color: #6b7280; color: #fff; }
+    .badge-estado.enviado { background-color: #0891b2; color: #fff; }
+    .badge-estado.aceptado { background-color: #059669; color: #fff; }
+    .badge-estado.rechazado { background-color: #dc2626; color: #fff; }
+    .badge-estado.vencido { background-color: #d97706; color: #fff; }
+    /* Texto muted adaptado */
+    .text-muted-theme { color: var(--text-muted); }
+    /* Alertas adaptadas al tema */
+    html[data-theme="oscuro"] .alert-success { background-color: #064e3b; border-color: #059669; color: #d1fae5; }
+    html[data-theme="oscuro"] .alert-info { background-color: #164e63; border-color: #0891b2; color: #cffafe; }
+    html[data-theme="oscuro"] .alert-warning { background-color: #78350f; border-color: #d97706; color: #fef3c7; }
+    html[data-theme="oscuro"] .alert-danger { background-color: #7f1d1d; border-color: #dc2626; color: #fee2e2; }
+    /* Form controls en tema oscuro */
+    html[data-theme="oscuro"] .form-control,
+    html[data-theme="oscuro"] .form-select {
+        background-color: #1e293b;
+        border-color: #374151;
+        color: var(--text-primary);
+    }
+    html[data-theme="oscuro"] .form-control:focus,
+    html[data-theme="oscuro"] .form-select:focus {
+        background-color: #1e293b;
+        border-color: #3b82f6;
+        color: var(--text-primary);
+    }
+    html[data-theme="oscuro"] .form-control::placeholder {
+        color: #6b7280;
+    }
+    html[data-theme="oscuro"] .input-group-text {
+        background-color: #374151;
+        border-color: #374151;
+        color: var(--text-muted);
+    }
+    /* Card headers con colores que funcionan en ambos temas */
+    .card-header-primary { background-color: #2563eb; color: #fff; }
+    .card-header-success { background-color: #059669; color: #fff; }
+    .card-header-info { background-color: #0891b2; color: #fff; }
+    .card-header-warning { background-color: #d97706; color: #fff; }
+    .card-header-secondary { background-color: #4b5563; color: #fff; }
+    .card-header-dark { background-color: #1f2937; color: #fff; }
+    /* Modal en tema oscuro */
+    html[data-theme="oscuro"] .modal-content {
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+        border-color: #374151;
+    }
+    html[data-theme="oscuro"] .modal-header {
+        border-color: #374151;
+    }
+    html[data-theme="oscuro"] .modal-footer {
+        border-color: #374151;
+    }
+    /* Tabla con fila warning adaptada */
+    html[data-theme="oscuro"] .table-warning {
+        background-color: rgba(217, 119, 6, 0.2) !important;
+    }
+    html[data-theme="oscuro"] .table-warning td {
+        color: #fef3c7;
+    }
+    /* Botones outline en tema oscuro */
+    html[data-theme="oscuro"] .btn-outline-primary { border-color: #3b82f6; color: #60a5fa; }
+    html[data-theme="oscuro"] .btn-outline-primary:hover { background-color: #3b82f6; color: #fff; }
+    html[data-theme="oscuro"] .btn-outline-secondary { border-color: #6b7280; color: #9ca3af; }
+    html[data-theme="oscuro"] .btn-outline-secondary:hover { background-color: #6b7280; color: #fff; }
+    html[data-theme="oscuro"] .btn-outline-success { border-color: #10b981; color: #34d399; }
+    html[data-theme="oscuro"] .btn-outline-success:hover { background-color: #10b981; color: #fff; }
+    html[data-theme="oscuro"] .btn-outline-danger { border-color: #ef4444; color: #f87171; }
+    html[data-theme="oscuro"] .btn-outline-danger:hover { background-color: #ef4444; color: #fff; }
+    html[data-theme="oscuro"] .btn-outline-warning { border-color: #f59e0b; color: #fbbf24; }
+    html[data-theme="oscuro"] .btn-outline-warning:hover { background-color: #f59e0b; color: #000; }
+    html[data-theme="oscuro"] .btn-outline-info { border-color: #06b6d4; color: #22d3ee; }
+    html[data-theme="oscuro"] .btn-outline-info:hover { background-color: #06b6d4; color: #fff; }
+    /* Labels de formulario */
+    .form-label-theme { color: var(--text-primary); }
+    .small-muted-theme { color: var(--text-muted); font-size: 0.875em; }
+    /* Fila sin presupuestos */
+    .empty-row { color: var(--text-muted); }
+    /* Texto muted en tema oscuro */
+    html[data-theme="oscuro"] .text-muted { color: #9ca3af !important; }
+    html[data-theme="oscuro"] .form-label { color: var(--text-primary); }
+    html[data-theme="oscuro"] .form-check-label { color: var(--text-primary); }
+    /* Card body en tema oscuro */
+    html[data-theme="oscuro"] .presupuesto-card .card-body { background-color: var(--bg-surface); }
+    /* Texto primario y secundario */
+    html[data-theme="oscuro"] strong { color: var(--text-primary); }
+    html[data-theme="oscuro"] .fw-bold { color: var(--text-primary); }
+</style>
+
+<SaProtection TituloPagina="Presupuestos Comerciales del Sistema" UrlRetorno="/">
+    <div class="container-fluid py-3">
+        <!-- Encabezado -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="mb-0">
+                <i class="fas fa-file-invoice-dollar text-primary me-2"></i>
+                Presupuestos Comerciales del Sistema
+            </h3>
+            <div>
+                <button class="btn btn-success" @onclick="NuevoPresupuesto">
+                    <i class="fas fa-plus me-1"></i>Nuevo Presupuesto
+                </button>
+            </div>
+        </div>
+
+        @if (editando)
+        {
+            <!-- FORMULARIO DE EDICIÓN -->
+            <div class="row">
+                <div class="col-lg-8">
+                    <!-- Datos del Cliente -->
+                    <div class="card mb-3 shadow-sm presupuesto-card">
+                        <div class="card-header card-header-primary">
+                            <h6 class="mb-0"><i class="fas fa-building me-2"></i>Datos del Cliente Potencial</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-8">
+                                    <label class="form-label small text-muted">Empresa / Razón Social *</label>
+                                    <input type="text" class="form-control" @bind="presupuestoActual.NombreCliente" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">RUC</label>
+                                    <input type="text" class="form-control" @bind="presupuestoActual.RucCliente" />
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label small text-muted">Dirección</label>
+                                    <input type="text" class="form-control" @bind="presupuestoActual.DireccionCliente" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">Teléfono</label>
+                                    <input type="text" class="form-control" @bind="presupuestoActual.TelefonoCliente" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">Email</label>
+                                    <input type="email" class="form-control" @bind="presupuestoActual.EmailCliente" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">Contacto</label>
+                                    <input type="text" class="form-control" @bind="presupuestoActual.ContactoCliente" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Precios Contado -->
+                    <div class="card mb-3 shadow-sm presupuesto-card">
+                        <div class="card-header card-header-success">
+                            <h6 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Precio Contado (Licencia Única)</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Tipo de Cambio (USD→GS)</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" step="1" 
+                                               @bind="presupuestoActual.TipoCambio" @bind:after="RecalcularPreciosDesdeUsd" />
+                                        <button class="btn btn-outline-info" type="button" @onclick="ObtenerTipoCambioActual" 
+                                                title="Obtener cotización actual del dólar">
+                                            <i class="fas fa-sync-alt @(cargandoTipoCambio ? "fa-spin" : "")"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted-theme"><i class="fas fa-info-circle me-1"></i>Click en <i class="fas fa-sync-alt"></i> para cotización actual</small>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Dirección de cálculo</label>
+                                    <select class="form-select" @bind="direccionCalculo">
+                                        <option value="USD">USD → Gs (desde dólares)</option>
+                                        <option value="GS">Gs → USD (desde guaraníes)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Licencia (USD)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" step="0.01" 
+                                               @bind="presupuestoActual.PrecioContadoUsd" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Licencia (Gs.)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">₲</span>
+                                        <input type="number" class="form-control" step="1000" 
+                                               @bind="presupuestoActual.PrecioContadoGs" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">Implementación (USD)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" step="0.01" 
+                                               @bind="presupuestoActual.CostoImplementacionUsd" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">Implementación (Gs.)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">₲</span>
+                                        <input type="number" class="form-control" step="1000" 
+                                               @bind="presupuestoActual.CostoImplementacionGs" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">Horas Capacitación</label>
+                                    <input type="number" class="form-control" @bind="presupuestoActual.HorasCapacitacion" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">Capacitación (USD)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" step="0.01" 
+                                               @bind="presupuestoActual.CostoCapacitacionUsd" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">Capacitación (Gs.)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">₲</span>
+                                        <input type="number" class="form-control" step="1000" 
+                                               @bind="presupuestoActual.CostoCapacitacionGs" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                            </div>
+                            <hr />
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="alert alert-success mb-0">
+                                        <strong>TOTAL CONTADO USD:</strong> 
+                                        <span class="fs-4 fw-bold">$ @TotalContadoUsd.ToString("N2")</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="alert alert-success mb-0">
+                                        <strong>TOTAL CONTADO Gs.:</strong> 
+                                        <span class="fs-4 fw-bold">₲ @TotalContadoGs.ToString("N0")</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Precios Leasing -->
+                    <div class="card mb-3 shadow-sm presupuesto-card">
+                        <div class="card-header card-header-info">
+                            <h6 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Modo Leasing / Suscripción</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Cantidad de Cuotas</label>
+                                    <input type="number" class="form-control" min="0" @bind="presupuestoActual.CantidadCuotasLeasing" />
+                                    <small class="text-muted-theme"><i class="fas fa-info-circle me-1"></i>0 = período ilimitado</small>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Entrada (USD)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" step="0.01" 
+                                               @bind="presupuestoActual.EntradaLeasingUsd" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Cuota Mensual (USD)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" step="0.01" 
+                                               @bind="presupuestoActual.PrecioLeasingMensualUsd" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Cuota Mensual (Gs.)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">₲</span>
+                                        <input type="number" class="form-control" step="1000" 
+                                               @bind="presupuestoActual.PrecioLeasingMensualGs" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                            </div>
+                            <hr />
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="alert alert-info mb-0">
+                                        @if (presupuestoActual.CantidadCuotasLeasing > 0)
+                                        {
+                                            <strong>TOTAL LEASING USD:</strong> 
+                                            <span class="fs-5 fw-bold">$ @TotalLeasingUsd.ToString("N2")</span>
+                                            <br/><small>(@presupuestoActual.CantidadCuotasLeasing cuotas de $ @presupuestoActual.PrecioLeasingMensualUsd.ToString("N2"))</small>
+                                        }
+                                        else
+                                        {
+                                            <strong>CUOTA MENSUAL USD:</strong> 
+                                            <span class="fs-5 fw-bold">$ @presupuestoActual.PrecioLeasingMensualUsd.ToString("N2")</span>
+                                            <br/><small><i class="fas fa-infinity me-1"></i>Suscripción sin plazo fijo</small>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="alert alert-info mb-0">
+                                        @if (presupuestoActual.CantidadCuotasLeasing > 0)
+                                        {
+                                            <strong>TOTAL LEASING Gs.:</strong> 
+                                            <span class="fs-5 fw-bold">₲ @TotalLeasingGs.ToString("N0")</span>
+                                            <br/><small>(@presupuestoActual.CantidadCuotasLeasing cuotas de ₲ @presupuestoActual.PrecioLeasingMensualGs.ToString("N0"))</small>
+                                        }
+                                        else
+                                        {
+                                            <strong>CUOTA MENSUAL Gs.:</strong> 
+                                            <span class="fs-5 fw-bold">₲ @presupuestoActual.PrecioLeasingMensualGs.ToString("N0")</span>
+                                            <br/><small><i class="fas fa-infinity me-1"></i>Suscripción sin plazo fijo</small>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mantenimiento Mensual -->
+                    <div class="card mb-3 shadow-sm presupuesto-card">
+                        <div class="card-header card-header-warning">
+                            <h6 class="mb-0"><i class="fas fa-tools me-2"></i>Mantenimiento y Soporte Mensual</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small text-muted">Mantenimiento Mensual (USD)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" step="0.01" 
+                                               @bind="presupuestoActual.CostoMantenimientoMensualUsd" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small text-muted">Mantenimiento Mensual (Gs.)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">₲</span>
+                                        <input type="number" class="form-control" step="1000" 
+                                               @bind="presupuestoActual.CostoMantenimientoMensualGs" @bind:after="RecalcularPrecios" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-2 small text-muted">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Incluye: Soporte técnico prioritario, actualizaciones del sistema, backup remoto diario.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Costos Adicionales -->
+                    <div class="card mb-3 shadow-sm presupuesto-card">
+                        <div class="card-header card-header-secondary">
+                            <h6 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Costos Adicionales / Opcionales</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Sucursal Adicional (USD)</label>
+                                    <input type="number" class="form-control" step="0.01" 
+                                           @bind="presupuestoActual.CostoSucursalAdicionalUsd" @bind:after="RecalcularPrecios" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Sucursal Adicional (Gs.)</label>
+                                    <input type="number" class="form-control" step="1000" 
+                                           @bind="presupuestoActual.CostoSucursalAdicionalGs" @bind:after="RecalcularPrecios" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Usuario Adicional (USD)</label>
+                                    <input type="number" class="form-control" step="0.01" 
+                                           @bind="presupuestoActual.CostoUsuarioAdicionalUsd" @bind:after="RecalcularPrecios" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Usuario Adicional (Gs.)</label>
+                                    <input type="number" class="form-control" step="1000" 
+                                           @bind="presupuestoActual.CostoUsuarioAdicionalGs" @bind:after="RecalcularPrecios" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Hora Desarrollo (USD)</label>
+                                    <input type="number" class="form-control" step="0.01" 
+                                           @bind="presupuestoActual.CostoHoraDesarrolloUsd" @bind:after="RecalcularPrecios" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Hora Desarrollo (Gs.)</label>
+                                    <input type="number" class="form-control" step="1000" 
+                                           @bind="presupuestoActual.CostoHoraDesarrolloGs" @bind:after="RecalcularPrecios" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Visita Técnica (USD)</label>
+                                    <input type="number" class="form-control" step="0.01" 
+                                           @bind="presupuestoActual.CostoVisitaTecnicaUsd" @bind:after="RecalcularPrecios" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Visita Técnica (Gs.)</label>
+                                    <input type="number" class="form-control" step="1000" 
+                                           @bind="presupuestoActual.CostoVisitaTecnicaGs" @bind:after="RecalcularPrecios" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Items/Productos Adicionales -->
+                    <div class="card mb-3 shadow-sm">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="bi bi-box-seam me-2"></i>Items / Productos Adicionales</h6>
+                            <button type="button" class="btn btn-sm btn-success" @onclick="AgregarItem">
+                                <i class="bi bi-plus-circle me-1"></i>Agregar
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            @if (itemsPresupuesto.Any())
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 5%">#</th>
+                                                <th style="width: 30%">Descripción</th>
+                                                <th style="width: 8%">Cant.</th>
+                                                <th style="width: 12%">Precio USD</th>
+                                                <th style="width: 15%">Precio Gs.</th>
+                                                <th style="width: 12%">Subtotal USD</th>
+                                                <th style="width: 8%">Tipo</th>
+                                                <th style="width: 10%"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in itemsPresupuesto.OrderBy(i => i.NumeroLinea))
+                                            {
+                                                <tr class="@(item.EsOpcional ? "table-warning" : "")">
+                                                    <td>@item.NumeroLinea</td>
+                                                    <td>
+                                                        <input type="text" class="form-control form-control-sm" 
+                                                               @bind="item.Descripcion" @bind:after="() => RecalcularItem(item)" 
+                                                               placeholder="Descripción del item" />
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control form-control-sm" 
+                                                               step="1" min="1" @bind="item.Cantidad" 
+                                                               @bind:after="() => RecalcularItem(item)" />
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control form-control-sm" 
+                                                               step="0.01" @bind="item.PrecioUnitarioUsd" 
+                                                               @bind:after="() => RecalcularItemDesdeUsd(item)" />
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control form-control-sm" 
+                                                               step="1000" @bind="item.PrecioUnitarioGs" 
+                                                               @bind:after="() => RecalcularItem(item)" />
+                                                    </td>
+                                                    <td class="text-end fw-bold">
+                                                        $ @item.SubtotalUsd.ToString("N2")
+                                                    </td>
+                                                    <td>
+                                                        <select class="form-select form-select-sm" @bind="item.TipoItem">
+                                                            <option value="Producto">Producto</option>
+                                                            <option value="Servicio">Servicio</option>
+                                                            <option value="Hardware">Hardware</option>
+                                                            <option value="Otro">Otro</option>
+                                                        </select>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <div class="btn-group btn-group-sm">
+                                                            <button type="button" class="btn btn-outline-warning" 
+                                                                    @onclick="() => ToggleOpcional(item)" 
+                                                                    title="@(item.EsOpcional ? "Marcar como incluido" : "Marcar como opcional")">
+                                                                <i class="bi @(item.EsOpcional ? "bi-star-fill" : "bi-star")"></i>
+                                                            </button>
+                                                            <button type="button" class="btn btn-outline-danger" 
+                                                                    @onclick="() => EliminarItem(item)" title="Eliminar">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot class="table-success">
+                                            <tr>
+                                                <td colspan="5" class="text-end fw-bold">TOTAL ITEMS:</td>
+                                                <td class="text-end fw-bold">$ @TotalItemsUsd.ToString("N2")</td>
+                                                <td colspan="2" class="text-end fw-bold">₲ @TotalItemsGs.ToString("N0")</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                    <p class="mb-2">No hay items adicionales</p>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AgregarItem">
+                                        <i class="bi bi-plus-circle me-1"></i>Agregar primer item
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Observaciones -->
+                    <div class="card mb-3 shadow-sm">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-sticky-note me-2"></i>Observaciones y Condiciones</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label small text-muted">Observaciones</label>
+                                    <textarea class="form-control" rows="3" @bind="presupuestoActual.Observaciones" 
+                                              placeholder="Notas adicionales para este presupuesto..."></textarea>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small text-muted">Condiciones de Pago</label>
+                                    <textarea class="form-control" rows="2" @bind="presupuestoActual.CondicionesPago"></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small text-muted">Vigencia de Propuesta</label>
+                                    <input type="date" class="form-control" @bind="presupuestoActual.FechaVigencia" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small text-muted">Estado</label>
+                                    <select class="form-select" @bind="presupuestoActual.Estado">
+                                        <option value="Borrador">Borrador</option>
+                                        <option value="Enviado">Enviado</option>
+                                        <option value="Aceptado">Aceptado</option>
+                                        <option value="Rechazado">Rechazado</option>
+                                        <option value="Vencido">Vencido</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel Derecho - Módulos y Resumen -->
+                <div class="col-lg-4">
+                    <!-- Módulos Incluidos -->
+                    <div class="card mb-3 shadow-sm presupuesto-card">
+                        <div class="card-header card-header-dark">
+                            <h6 class="mb-0"><i class="fas fa-cubes me-2"></i>Módulos Incluidos</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloVentas" />
+                                <label class="form-check-label"><i class="fas fa-shopping-cart text-success me-2"></i>Ventas y Facturación</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloCompras" />
+                                <label class="form-check-label"><i class="fas fa-truck text-info me-2"></i>Compras y Proveedores</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloInventario" />
+                                <label class="form-check-label"><i class="fas fa-boxes text-warning me-2"></i>Inventario y Stock</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloClientes" />
+                                <label class="form-check-label"><i class="fas fa-users text-primary me-2"></i>Clientes y CxC</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloCaja" />
+                                <label class="form-check-label"><i class="fas fa-cash-register text-danger me-2"></i>Caja y Arqueos</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloSifen" />
+                                <label class="form-check-label"><i class="fas fa-file-invoice text-success me-2"></i>Facturación Electrónica SIFEN</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloInformes" />
+                                <label class="form-check-label"><i class="fas fa-chart-bar text-info me-2"></i>Informes y Reportes</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloUsuarios" />
+                                <label class="form-check-label"><i class="fas fa-user-shield text-secondary me-2"></i>Usuarios y Permisos</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloCorreo" />
+                                <label class="form-check-label"><i class="fas fa-envelope text-warning me-2"></i>Envío de Correos</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" @bind="presupuestoActual.ModuloAsistenteIA" />
+                                <label class="form-check-label"><i class="fas fa-robot text-primary me-2"></i>Asistente IA</label>
+                            </div>
+                            <hr />
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">Sucursales</label>
+                                    <input type="number" class="form-control form-control-sm" @bind="presupuestoActual.CantidadSucursalesIncluidas" />
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">Usuarios</label>
+                                    <input type="number" class="form-control form-control-sm" @bind="presupuestoActual.CantidadUsuariosIncluidos" />
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">Cajas</label>
+                                    <input type="number" class="form-control form-control-sm" @bind="presupuestoActual.CantidadCajasIncluidas" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Aviso de Modificaciones -->
+                    <div class="alert alert-warning shadow-sm">
+                        <h6 class="alert-heading">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Importante
+                        </h6>
+                        <hr class="my-2" />
+                        <p class="mb-2 small">Las <strong>modificaciones o personalizaciones</strong> al sistema que no estén contempladas en los módulos estándar tendrán un <strong>costo adicional</strong> por hora de desarrollo.</p>
+                        <p class="mb-0 small">Costo hora desarrollo: <strong>$ @presupuestoActual.CostoHoraDesarrolloUsd.ToString("N2")</strong> / <strong>₲ @presupuestoActual.CostoHoraDesarrolloGs.ToString("N0")</strong></p>
+                    </div>
+
+                    <!-- Acciones -->
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-primary btn-lg" @onclick="GuardarPresupuesto">
+                                    <i class="fas fa-save me-2"></i>Guardar Presupuesto
+                                </button>
+                                <button class="btn btn-outline-info" @onclick="VistaPrevia">
+                                    <i class="fas fa-eye me-2"></i>Vista Previa PDF
+                                </button>
+                                <button class="btn btn-outline-success" @onclick="DescargarPdf" disabled="@(presupuestoActual.IdPresupuesto == 0)">
+                                    <i class="fas fa-file-pdf me-2"></i>Descargar PDF
+                                </button>
+                                <button class="btn btn-outline-warning" @onclick="() => AbrirModalEnvioCorreo(presupuestoActual)" disabled="@(presupuestoActual.IdPresupuesto == 0)">
+                                    <i class="fas fa-paper-plane me-2"></i>Enviar por Email
+                                </button>
+                                <button class="btn btn-outline-secondary" @onclick="CancelarEdicion">
+                                    <i class="fas fa-times me-2"></i>Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- LISTADO DE PRESUPUESTOS -->
+            <div class="card mb-3 shadow-sm presupuesto-card">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">
+                        <i class="bi bi-funnel me-2"></i>Filtros de Búsqueda
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted">Cliente</label>
+                            <input type="text" class="form-control" placeholder="Nombre o RUC" @bind="filtroCliente" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Desde</label>
+                            <input type="date" class="form-control" @bind="filtroDesde" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Hasta</label>
+                            <input type="date" class="form-control" @bind="filtroHasta" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">Estado</label>
+                            <select class="form-select" @bind="filtroEstado">
+                                <option value="">Todos</option>
+                                <option value="Borrador">Borrador</option>
+                                <option value="Enviado">Enviado</option>
+                                <option value="Aceptado">Aceptado</option>
+                                <option value="Rechazado">Rechazado</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted">Acciones</label>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-primary" @onclick="BuscarPresupuestos" title="Buscar presupuestos">
+                                    <i class="bi bi-search me-1"></i>Buscar
+                                </button>
+                                <button class="btn btn-outline-secondary" @onclick="LimpiarFiltros" title="Limpiar filtros">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card shadow-sm presupuesto-card">
+                <div class="card-header bg-white border-bottom">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-table me-2"></i>Presupuestos Generados</h6>
+                        <small class="text-muted-theme">
+                            @presupuestosFiltrados.Count de @presupuestos.Count presupuesto(s)
+                            @if (presupuestosFiltrados.Any())
+                            {
+                                <span class="ms-2">| Total: <strong class="text-success">$ @presupuestosFiltrados.Sum(p => p.PrecioContadoUsd + p.CostoImplementacionUsd + p.CostoCapacitacionUsd).ToString("N2")</strong></span>
+                            }
+                        </small>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 presupuesto-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 5%"><i class="bi bi-hash me-1"></i>Nº</th>
+                                <th>Cliente</th>
+                                <th class="text-center">Fecha</th>
+                                <th class="text-end">Total USD</th>
+                                <th class="text-end">Total Gs.</th>
+                                <th class="text-center">Estado</th>
+                                <th class="text-center">Vigencia</th>
+                                <th style="width: 15%" class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!presupuestosFiltrados.Any())
+                            {
+                                <tr>
+                                    <td colspan="8" class="text-center empty-row py-4">
+                                        <i class="bi bi-inbox fa-2x mb-2 d-block" style="font-size: 2rem;"></i>
+                                        @if (!presupuestos.Any())
+                                        {
+                                            <span>No hay presupuestos creados. Haz clic en <strong>"Nuevo Presupuesto"</strong> para comenzar.</span>
+                                        }
+                                        else
+                                        {
+                                            <span>No se encontraron presupuestos con los filtros aplicados.</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            @foreach (var p in presupuestosFiltrados)
+                            {
+                                var totalContadoUsd = p.PrecioContadoUsd + p.CostoImplementacionUsd + p.CostoCapacitacionUsd;
+                                var totalContadoGs = p.PrecioContadoGs + p.CostoImplementacionGs + p.CostoCapacitacionGs;
+                                var vencido = p.FechaVigencia < DateTime.Today && p.Estado != "Aceptado" && p.Estado != "Rechazado";
+                                
+                                <tr class="@(vencido ? "table-warning" : "")">
+                                    <td><span class="badge bg-secondary">@p.NumeroPresupuesto</span></td>
+                                    <td>
+                                        <strong>@p.NombreCliente</strong>
+                                        @if (!string.IsNullOrEmpty(p.RucCliente))
+                                        {
+                                            <br/><small class="text-muted-theme">RUC: @p.RucCliente</small>
+                                        }
+                                    </td>
+                                    <td class="text-center">@p.FechaEmision.ToString("dd/MM/yyyy")</td>
+                                    <td class="text-end fw-bold text-success">$ @totalContadoUsd.ToString("N2")</td>
+                                    <td class="text-end">₲ @totalContadoGs.ToString("N0")</td>
+                                    <td class="text-center">
+                                        <span class="badge badge-estado @p.Estado.ToLower()">@p.Estado</span>
+                                    </td>
+                                    <td class="text-center">
+                                        @if (vencido)
+                                        {
+                                            <span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Vencido</span>
+                                        }
+                                        else
+                                        {
+                                            @p.FechaVigencia.ToString("dd/MM/yyyy")
+                                        }
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="Editar" @onclick="() => EditarPresupuesto(p)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-outline-secondary" title="Imprimir" @onclick="() => ImprimirPresupuesto(p)">
+                                                <i class="bi bi-printer"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info" title="Ver PDF" @onclick="() => VerPdf(p.IdPresupuesto)">
+                                                <i class="bi bi-file-earmark-pdf"></i>
+                                            </button>
+                                            <button class="btn btn-outline-success" title="Enviar Email" 
+                                                    @onclick="() => AbrirModalEnvioCorreo(p)"
+                                                    disabled="@string.IsNullOrEmpty(p.EmailCliente)">
+                                                <i class="bi bi-envelope"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="Eliminar" @onclick="() => EliminarPresupuesto(p)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@* Modal Vista Previa *@
+@if (mostrarVistaPrevia)
+{
+    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);" @onclick="CerrarVistaPrevia">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-eye me-2"></i>Vista Previa del Presupuesto</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarVistaPrevia"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <PresupuestoSistemaPdf Presupuesto="presupuestoActual" Sucursal="sucursal" Items="itemsPresupuesto" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarVistaPrevia">Cerrar</button>
+                    <button class="btn btn-outline-secondary" @onclick="() => ImprimirPresupuesto(presupuestoActual)">
+                        <i class="fas fa-print me-1"></i>Imprimir
+                    </button>
+                    <button class="btn btn-primary" @onclick="DescargarPdf">
+                        <i class="fas fa-download me-1"></i>Descargar PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal Enviar por Correo *@
+@if (mostrarModalCorreo)
+{
+    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);" @onclick="CerrarModalCorreo">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="fas fa-envelope me-2"></i>Enviar Presupuesto por Correo</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalCorreo"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Presupuesto:</label>
+                        <p class="mb-0">#@presupuestoParaEnviar?.NumeroPresupuesto - @presupuestoParaEnviar?.NombreCliente</p>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Correo destino: *</label>
+                        <input type="email" class="form-control" @bind="correoDestino" placeholder="ejemplo@empresa.com" />
+                        @if (!string.IsNullOrEmpty(presupuestoParaEnviar?.EmailCliente))
+                        {
+                            <small class="text-muted">Email del cliente: @presupuestoParaEnviar.EmailCliente</small>
+                        }
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Asunto:</label>
+                        <input type="text" class="form-control" @bind="asuntoCorreo" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Mensaje adicional:</label>
+                        <textarea class="form-control" rows="3" @bind="mensajeCorreo" 
+                                  placeholder="Escriba un mensaje personalizado (opcional)..."></textarea>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(mensajeEnvio))
+                    {
+                        <div class="alert @(envioExitoso ? "alert-success" : "alert-danger") py-2">
+                            @mensajeEnvio
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalCorreo" disabled="@enviandoCorreo">
+                        Cancelar
+                    </button>
+                    <button type="button" class="btn btn-success" @onclick="EnviarCorreoConPdf" disabled="@enviandoCorreo">
+                        @if (enviandoCorreo)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Enviando...</span>
+                        }
+                        else
+                        {
+                            <i class="fas fa-paper-plane me-1"></i>
+                            <span>Enviar PDF</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+</SaProtection>
+
+@code {
+    // Tipo de cambio
+    private string direccionCalculo = "USD"; // "USD" = USD→GS, "GS" = GS→USD
+    private bool cargandoTipoCambio = false;
+
+    // Filtros
+    private string filtroCliente = "";
+    private DateTime? filtroDesde;
+    private DateTime? filtroHasta;
+    private string filtroEstado = "";
+    private List<PresupuestoSistema> presupuestosFiltrados = new();
+
+    // Datos
+    private List<PresupuestoSistema> presupuestos = new();
+    private PresupuestoSistema presupuestoActual = new();
+    private Sucursal? sucursal;
+    private bool editando = false;
+    private bool mostrarVistaPrevia = false;
+
+    // Items/Productos del presupuesto
+    private List<PresupuestoSistemaDetalle> itemsPresupuesto = new();
+    private decimal TotalItemsUsd => itemsPresupuesto.Where(i => !i.EsOpcional || i.Incluido).Sum(i => i.SubtotalUsd);
+    private decimal TotalItemsGs => itemsPresupuesto.Where(i => !i.EsOpcional || i.Incluido).Sum(i => i.SubtotalGs);
+
+    // Modal Correo
+    private bool mostrarModalCorreo = false;
+    private PresupuestoSistema? presupuestoParaEnviar;
+    private string correoDestino = "";
+    private string asuntoCorreo = "";
+    private string mensajeCorreo = "";
+    private string mensajeEnvio = "";
+    private bool envioExitoso = false;
+    private bool enviandoCorreo = false;
+
+    // Propiedades calculadas
+    private decimal TotalContadoUsd => presupuestoActual.PrecioContadoUsd + presupuestoActual.CostoImplementacionUsd + presupuestoActual.CostoCapacitacionUsd;
+    private decimal TotalContadoGs => presupuestoActual.PrecioContadoGs + presupuestoActual.CostoImplementacionGs + presupuestoActual.CostoCapacitacionGs;
+    private decimal TotalLeasingUsd => presupuestoActual.EntradaLeasingUsd + (presupuestoActual.PrecioLeasingMensualUsd * presupuestoActual.CantidadCuotasLeasing);
+    private decimal TotalLeasingGs => presupuestoActual.EntradaLeasingGs + (presupuestoActual.PrecioLeasingMensualGs * presupuestoActual.CantidadCuotasLeasing);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        sucursal = await ctx.Sucursal.FirstOrDefaultAsync();
+        presupuestos = await ctx.PresupuestosSistema
+            .OrderByDescending(p => p.FechaEmision)
+            .ToListAsync();
+        presupuestosFiltrados = presupuestos.ToList();
+    }
+
+    private void BuscarPresupuestos()
+    {
+        var resultado = presupuestos.AsEnumerable();
+        
+        if (!string.IsNullOrWhiteSpace(filtroCliente))
+        {
+            var filtro = filtroCliente.ToLower();
+            resultado = resultado
+                .Where(p => (p.NombreCliente?.ToLower().Contains(filtro) ?? false) 
+                         || (p.RucCliente?.ToLower().Contains(filtro) ?? false));
+        }
+        
+        if (filtroDesde.HasValue)
+            resultado = resultado.Where(p => p.FechaEmision.Date >= filtroDesde.Value.Date);
+        
+        if (filtroHasta.HasValue)
+            resultado = resultado.Where(p => p.FechaEmision.Date <= filtroHasta.Value.Date);
+        
+        if (!string.IsNullOrEmpty(filtroEstado))
+            resultado = resultado.Where(p => p.Estado == filtroEstado);
+        
+        presupuestosFiltrados = resultado.ToList();
+    }
+
+    private void LimpiarFiltros()
+    {
+        filtroCliente = "";
+        filtroDesde = null;
+        filtroHasta = null;
+        filtroEstado = "";
+        presupuestosFiltrados = presupuestos.ToList();
+    }
+
+    private async Task NuevoPresupuesto()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var ultimoNumero = await ctx.PresupuestosSistema.MaxAsync(p => (int?)p.NumeroPresupuesto) ?? 0;
+        
+        presupuestoActual = new PresupuestoSistema
+        {
+            NumeroPresupuesto = ultimoNumero + 1,
+            FechaEmision = DateTime.Now,
+            FechaVigencia = DateTime.Now.AddDays(30),
+            TipoCambio = 7500m,
+            // Valores por defecto sugeridos
+            PrecioContadoUsd = 800m,
+            CostoImplementacionUsd = 150m,
+            CostoCapacitacionUsd = 100m,
+            CostoMantenimientoMensualUsd = 50m,
+            PrecioLeasingMensualUsd = 100m,
+            EntradaLeasingUsd = 200m,
+            CantidadCuotasLeasing = 12,
+            CostoSucursalAdicionalUsd = 200m,
+            CostoUsuarioAdicionalUsd = 30m,
+            CostoHoraDesarrolloUsd = 25m,
+            CostoVisitaTecnicaUsd = 50m,
+            HorasCapacitacion = 8,
+            CantidadSucursalesIncluidas = 1,
+            CantidadUsuariosIncluidos = 5,
+            CantidadCajasIncluidas = 2,
+            IdSucursal = sucursal?.Id ?? 1,
+            CondicionesPago = "50% anticipo, 50% a la entrega del sistema."
+        };
+        itemsPresupuesto = new List<PresupuestoSistemaDetalle>();
+        RecalcularPreciosDesdeUsd();
+        editando = true;
+    }
+
+    private async Task ObtenerTipoCambioActual()
+    {
+        try
+        {
+            cargandoTipoCambio = true;
+            StateHasChanged();
+            
+            var tipoCambio = await TipoCambioService.ObtenerTipoCambioAsync("USD", "PYG");
+            if (tipoCambio > 0)
+            {
+                presupuestoActual.TipoCambio = tipoCambio;
+                RecalcularPreciosDesdeUsd();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", $"Error obteniendo tipo de cambio: {ex.Message}");
+        }
+        finally
+        {
+            cargandoTipoCambio = false;
+            StateHasChanged();
+        }
+    }
+
+    private void RecalcularPrecios()
+    {
+        var tc = presupuestoActual.TipoCambio;
+        if (tc <= 0) tc = 7500; // Default
+        
+        if (direccionCalculo == "USD")
+        {
+            // USD → GS
+            presupuestoActual.PrecioContadoGs = Math.Round(presupuestoActual.PrecioContadoUsd * tc, 0);
+            presupuestoActual.CostoImplementacionGs = Math.Round(presupuestoActual.CostoImplementacionUsd * tc, 0);
+            presupuestoActual.CostoCapacitacionGs = Math.Round(presupuestoActual.CostoCapacitacionUsd * tc, 0);
+            presupuestoActual.CostoMantenimientoMensualGs = Math.Round(presupuestoActual.CostoMantenimientoMensualUsd * tc, 0);
+            presupuestoActual.PrecioLeasingMensualGs = Math.Round(presupuestoActual.PrecioLeasingMensualUsd * tc, 0);
+            presupuestoActual.EntradaLeasingGs = Math.Round(presupuestoActual.EntradaLeasingUsd * tc, 0);
+            presupuestoActual.CostoSucursalAdicionalGs = Math.Round(presupuestoActual.CostoSucursalAdicionalUsd * tc, 0);
+            presupuestoActual.CostoUsuarioAdicionalGs = Math.Round(presupuestoActual.CostoUsuarioAdicionalUsd * tc, 0);
+            presupuestoActual.CostoHoraDesarrolloGs = Math.Round(presupuestoActual.CostoHoraDesarrolloUsd * tc, 0);
+            presupuestoActual.CostoVisitaTecnicaGs = Math.Round(presupuestoActual.CostoVisitaTecnicaUsd * tc, 0);
+        }
+        else
+        {
+            // GS → USD
+            presupuestoActual.PrecioContadoUsd = Math.Round(presupuestoActual.PrecioContadoGs / tc, 2);
+            presupuestoActual.CostoImplementacionUsd = Math.Round(presupuestoActual.CostoImplementacionGs / tc, 2);
+            presupuestoActual.CostoCapacitacionUsd = Math.Round(presupuestoActual.CostoCapacitacionGs / tc, 2);
+            presupuestoActual.CostoMantenimientoMensualUsd = Math.Round(presupuestoActual.CostoMantenimientoMensualGs / tc, 2);
+            presupuestoActual.PrecioLeasingMensualUsd = Math.Round(presupuestoActual.PrecioLeasingMensualGs / tc, 2);
+            presupuestoActual.EntradaLeasingUsd = Math.Round(presupuestoActual.EntradaLeasingGs / tc, 2);
+            presupuestoActual.CostoSucursalAdicionalUsd = Math.Round(presupuestoActual.CostoSucursalAdicionalGs / tc, 2);
+            presupuestoActual.CostoUsuarioAdicionalUsd = Math.Round(presupuestoActual.CostoUsuarioAdicionalGs / tc, 2);
+            presupuestoActual.CostoHoraDesarrolloUsd = Math.Round(presupuestoActual.CostoHoraDesarrolloGs / tc, 2);
+            presupuestoActual.CostoVisitaTecnicaUsd = Math.Round(presupuestoActual.CostoVisitaTecnicaGs / tc, 2);
+        }
+    }
+
+    private void RecalcularPreciosDesdeUsd()
+    {
+        direccionCalculo = "USD";
+        RecalcularPrecios();
+    }
+
+    private async Task EditarPresupuesto(PresupuestoSistema p)
+    {
+        presupuestoActual = p;
+        
+        // Cargar items del presupuesto
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        itemsPresupuesto = await ctx.PresupuestosSistemaDetalles
+            .Where(d => d.IdPresupuesto == p.IdPresupuesto)
+            .OrderBy(d => d.NumeroLinea)
+            .ToListAsync();
+        
+        editando = true;
+    }
+
+    private async Task GuardarPresupuesto()
+    {
+        if (string.IsNullOrWhiteSpace(presupuestoActual.NombreCliente))
+        {
+            await JS.InvokeVoidAsync("alert", "El nombre del cliente es obligatorio.");
+            return;
+        }
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            presupuestoActual.FechaModificacion = DateTime.Now;
+
+            if (presupuestoActual.IdPresupuesto == 0)
+            {
+                presupuestoActual.FechaCreacion = DateTime.Now;
+                ctx.PresupuestosSistema.Add(presupuestoActual);
+                await ctx.SaveChangesAsync();
+                
+                // Guardar items nuevos
+                foreach (var item in itemsPresupuesto)
+                {
+                    item.IdPresupuesto = presupuestoActual.IdPresupuesto;
+                    ctx.PresupuestosSistemaDetalles.Add(item);
+                }
+            }
+            else
+            {
+                ctx.PresupuestosSistema.Update(presupuestoActual);
+                
+                // Eliminar items existentes y agregar nuevos
+                var itemsExistentes = await ctx.PresupuestosSistemaDetalles
+                    .Where(d => d.IdPresupuesto == presupuestoActual.IdPresupuesto)
+                    .ToListAsync();
+                ctx.PresupuestosSistemaDetalles.RemoveRange(itemsExistentes);
+                
+                foreach (var item in itemsPresupuesto)
+                {
+                    item.IdDetalle = 0; // Reset para nuevo insert
+                    item.IdPresupuesto = presupuestoActual.IdPresupuesto;
+                    ctx.PresupuestosSistemaDetalles.Add(item);
+                }
+            }
+
+            await ctx.SaveChangesAsync();
+            await CargarDatos();
+            await JS.InvokeVoidAsync("alert", "Presupuesto guardado correctamente.");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al guardar: " + ex.Message);
+        }
+    }
+
+    private void CancelarEdicion()
+    {
+        editando = false;
+        presupuestoActual = new();
+        itemsPresupuesto = new();
+    }
+
+    private void VistaPrevia()
+    {
+        mostrarVistaPrevia = true;
+    }
+
+    private void CerrarVistaPrevia()
+    {
+        mostrarVistaPrevia = false;
+    }
+
+    private async Task DescargarPdf()
+    {
+        if (presupuestoActual.IdPresupuesto == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Primero guarde el presupuesto.");
+            return;
+        }
+        Nav.NavigateTo("/pdf/presupuesto-sistema/" + presupuestoActual.IdPresupuesto, true);
+    }
+
+    private void VerPdf(int id)
+    {
+        Nav.NavigateTo("/pdf/presupuesto-sistema/" + id, true);
+    }
+
+    // ========== MODAL CORREO ==========
+    private void AbrirModalEnvioCorreo(PresupuestoSistema p)
+    {
+        presupuestoParaEnviar = p;
+        correoDestino = p.EmailCliente ?? "";
+        asuntoCorreo = $"Presupuesto #{p.NumeroPresupuesto} - SistemIA";
+        mensajeCorreo = $"Estimado/a {p.NombreCliente},\n\nAdjunto encontrará el presupuesto solicitado para el sistema SistemIA.\n\nQuedamos a su disposición para cualquier consulta.\n\nSaludos cordiales.";
+        mensajeEnvio = "";
+        envioExitoso = false;
+        mostrarModalCorreo = true;
+    }
+
+    private void CerrarModalCorreo()
+    {
+        mostrarModalCorreo = false;
+        presupuestoParaEnviar = null;
+        mensajeEnvio = "";
+        envioExitoso = false;
+    }
+
+    private async Task EnviarCorreoConPdf()
+    {
+        if (presupuestoParaEnviar == null) return;
+        if (string.IsNullOrWhiteSpace(correoDestino))
+        {
+            mensajeEnvio = "Debe ingresar un correo destino.";
+            envioExitoso = false;
+            return;
+        }
+
+        enviandoCorreo = true;
+        mensajeEnvio = "";
+        StateHasChanged();
+
+        try
+        {
+            // Generar PDF usando QuestPDF (mismo diseño que la vista previa)
+            var nombreArchivo = $"Presupuesto_{presupuestoParaEnviar.NumeroPresupuesto}_{DateTime.Now:yyyyMMdd}.pdf";
+            var pdfBytes = await PdfPresupuestoService.GenerarPdfPresupuesto(presupuestoParaEnviar.IdPresupuesto);
+
+            // Obtener configuración de correo
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var sucId = SucursalProvider.GetSucursalId() ?? 1;
+            var config = await ctx.ConfiguracionesCorreo.FirstOrDefaultAsync(c => c.IdSucursal == sucId && c.Activo);
+            
+            if (config == null)
+            {
+                mensajeEnvio = "No hay configuración de correo activa para esta sucursal.";
+                envioExitoso = false;
+                return;
+            }
+
+            // Enviar correo con adjunto
+            var adjuntos = new List<(string nombre, byte[] contenido, string mimeType)>
+            {
+                (nombreArchivo, pdfBytes, "application/pdf")
+            };
+            
+            var resultado = await CorreoService.EnviarCorreoAsync(
+                config,
+                correoDestino,
+                asuntoCorreo,
+                mensajeCorreo.Replace("\n", "<br/>"),
+                adjuntos);
+
+            if (resultado.Exito)
+            {
+                // Actualizar estado del presupuesto
+                presupuestoParaEnviar.Estado = "Enviado";
+                presupuestoParaEnviar.FechaEnvio = DateTime.Now;
+                ctx.PresupuestosSistema.Update(presupuestoParaEnviar);
+                await ctx.SaveChangesAsync();
+
+                mensajeEnvio = "Presupuesto enviado correctamente.";
+                envioExitoso = true;
+                await CargarDatos();
+            }
+            else
+            {
+                mensajeEnvio = "Error al enviar: " + resultado.Mensaje;
+                envioExitoso = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeEnvio = "Error: " + ex.Message;
+            envioExitoso = false;
+        }
+        finally
+        {
+            enviandoCorreo = false;
+            StateHasChanged();
+        }
+    }
+
+    // ========== IMPRESIÓN PROFESIONAL ==========
+    private async Task ImprimirPresupuesto(PresupuestoSistema p)
+    {
+        // Cargar items del presupuesto
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var itemsParaImprimir = await ctx.PresupuestosSistemaDetalles
+            .AsNoTracking()
+            .Where(d => d.IdPresupuesto == p.IdPresupuesto)
+            .OrderBy(d => d.NumeroLinea)
+            .ToListAsync();
+
+        var html = await GenerarHtmlPresupuesto(p, itemsParaImprimir);
+        
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset=\"utf-8\"/>");
+        head.AppendLine("<title>Presupuesto #" + p.NumeroPresupuesto + "</title>");
+        head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: A4 portrait; margin: 10mm 10mm; } }");
+        head.AppendLine("body{font-size:11px;color:#111;}");
+        head.AppendLine(".factura-header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+        head.AppendLine(".factura-header .logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+        head.AppendLine(".factura-header .logo-wrap{width:140px;display:flex;align-items:center;justify-content:center;}");
+        head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
+        head.AppendLine(".factura-header .empresa .small{color:#555;}");
+        head.AppendLine(".tabla th,.tabla td{padding:.35rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
+        head.AppendLine(".right{text-align:right}");
+        head.AppendLine(".muted{color:#666}");
+        head.AppendLine(".section-title{background:#f3f4f6;padding:8px 12px;font-weight:bold;margin:16px 0 8px 0;border-radius:4px;}");
+        head.AppendLine(".precio-box{background:#e0f2fe;padding:12px;border-radius:6px;margin:8px 0;}");
+        head.AppendLine("</style>");
+
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), html);
+    }
+
+    private async Task<string> GenerarHtmlPresupuesto(PresupuestoSistema p, List<PresupuestoSistemaDetalle>? items = null)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+        var sucIdSel = SucursalProvider.GetSucursalId();
+        if (sucIdSel.HasValue)
+        {
+            var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+            if (s2 != null) suc = s2;
+        }
+
+        string empresa = suc?.NombreEmpresa ?? "SistemIA";
+        string sucursalNombre = suc?.NombreSucursal ?? "";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+        string? logoDataUri = null;
+        if (suc?.Logo != null && suc.Logo.Length > 0)
+            logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class=\"container-fluid\">");
+
+        // CABECERA PROFESIONAL
+        sb.AppendLine("  <div class=\"factura-header\">");
+        sb.AppendLine("    <div class=\"logo-wrap\">");
+        if (!string.IsNullOrEmpty(logoDataUri))
+            sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+        else
+            sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:10px;color:#999;min-height:40px;min-width:100px;\">LOGO</div>");
+        sb.AppendLine("    </div>");
+        sb.AppendLine("    <div class=\"empresa\">");
+        sb.AppendLine($"      <h2>{System.Net.WebUtility.HtmlEncode(empresa)}</h2>");
+        sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+        if (!string.IsNullOrEmpty(sucursalNombre))
+            sb.AppendLine($"      <div class=\"small\">{System.Net.WebUtility.HtmlEncode(sucursalNombre)}</div>");
+        sb.AppendLine("    </div>");
+        sb.AppendLine("    <div class=\"ms-auto text-end\">");
+        sb.AppendLine($"      <div class=\"fw-bold\" style=\"font-size:20px\">PRESUPUESTO #{p.NumeroPresupuesto}</div>");
+        sb.AppendLine($"      <div>Fecha: {p.FechaEmision:dd/MM/yyyy}</div>");
+        var diasVigencia = (p.FechaVigencia - p.FechaEmision).Days;
+        sb.AppendLine($"      <div class=\"small muted\">Vigencia: {diasVigencia} días (hasta {p.FechaVigencia:dd/MM/yyyy})</div>");
+        sb.AppendLine("    </div>");
+        sb.AppendLine("  </div>");
+
+        // DATOS DEL CLIENTE
+        sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-person\"></i> DATOS DEL CLIENTE</div>");
+        sb.AppendLine("  <table class=\"table table-sm tabla mb-3\" style=\"width:auto\">");
+        sb.AppendLine($"    <tr><td class=\"fw-bold\">Cliente:</td><td>{System.Net.WebUtility.HtmlEncode(p.NombreCliente)}</td></tr>");
+        if (!string.IsNullOrEmpty(p.ContactoCliente))
+            sb.AppendLine($"    <tr><td class=\"fw-bold\">Contacto:</td><td>{System.Net.WebUtility.HtmlEncode(p.ContactoCliente)}</td></tr>");
+        if (!string.IsNullOrEmpty(p.RucCliente))
+            sb.AppendLine($"    <tr><td class=\"fw-bold\">RUC:</td><td>{System.Net.WebUtility.HtmlEncode(p.RucCliente)}</td></tr>");
+        if (!string.IsNullOrEmpty(p.TelefonoCliente))
+            sb.AppendLine($"    <tr><td class=\"fw-bold\">Teléfono:</td><td>{System.Net.WebUtility.HtmlEncode(p.TelefonoCliente)}</td></tr>");
+        if (!string.IsNullOrEmpty(p.EmailCliente))
+            sb.AppendLine($"    <tr><td class=\"fw-bold\">Email:</td><td>{System.Net.WebUtility.HtmlEncode(p.EmailCliente)}</td></tr>");
+        sb.AppendLine("  </table>");
+
+        // MÓDULOS INCLUIDOS
+        sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-box\"></i> MÓDULOS INCLUIDOS</div>");
+        sb.AppendLine("  <div class=\"row mb-3\">");
+        var modulos = new List<(string nombre, bool incluido)>
+        {
+            ("Ventas", p.ModuloVentas), ("Compras", p.ModuloCompras), ("Inventario", p.ModuloInventario),
+            ("Caja", p.ModuloCaja), ("Clientes", p.ModuloClientes), ("Usuarios", p.ModuloUsuarios),
+            ("Informes", p.ModuloInformes), ("SIFEN", p.ModuloSifen), ("Correo", p.ModuloCorreo),
+            ("Asistente IA", p.ModuloAsistenteIA)
+        };
+        foreach (var m in modulos.Where(x => x.incluido))
+        {
+            sb.AppendLine($"    <div class=\"col-4\"><i class=\"bi bi-check-circle-fill text-success\"></i> {m.nombre}</div>");
+        }
+        sb.AppendLine("  </div>");
+
+        // PRECIOS
+        sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-currency-dollar\"></i> PRECIOS</div>");
+        
+        // Calcular totales incluyendo items
+        var totalItemsUsdCalc = items?.Where(i => !i.EsOpcional || i.Incluido).Sum(i => i.SubtotalUsd) ?? 0;
+        var totalItemsGsCalc = items?.Where(i => !i.EsOpcional || i.Incluido).Sum(i => i.SubtotalGs) ?? 0;
+        var totalContadoUsd = p.PrecioContadoUsd + p.CostoImplementacionUsd + p.CostoCapacitacionUsd + totalItemsUsdCalc;
+        var totalContadoGs = p.PrecioContadoGs + p.CostoImplementacionGs + p.CostoCapacitacionGs + totalItemsGsCalc;
+
+        // Opción Contado
+        if (p.PrecioContadoUsd > 0)
+        {
+            sb.AppendLine("  <div class=\"precio-box\">");
+            sb.AppendLine("    <div class=\"fw-bold mb-2\">OPCIÓN CONTADO</div>");
+            sb.AppendLine($"    <div class=\"row\"><div class=\"col-6\">Precio Software:</div><div class=\"col-6 text-end\">$ {p.PrecioContadoUsd:N2}</div></div>");
+            if (p.CostoImplementacionUsd > 0)
+                sb.AppendLine($"    <div class=\"row\"><div class=\"col-6\">Implementación:</div><div class=\"col-6 text-end\">$ {p.CostoImplementacionUsd:N2}</div></div>");
+            if (p.CostoCapacitacionUsd > 0)
+                sb.AppendLine($"    <div class=\"row\"><div class=\"col-6\">Capacitación:</div><div class=\"col-6 text-end\">$ {p.CostoCapacitacionUsd:N2}</div></div>");
+            if (totalItemsUsdCalc > 0)
+                sb.AppendLine($"    <div class=\"row\"><div class=\"col-6\">Items/Productos:</div><div class=\"col-6 text-end\">$ {totalItemsUsdCalc:N2}</div></div>");
+            sb.AppendLine($"    <div class=\"row\" style=\"border-top:1px solid #999;padding-top:6px;margin-top:6px\"><div class=\"col-6 fw-bold\">TOTAL USD:</div><div class=\"col-6 text-end fw-bold\">$ {totalContadoUsd:N2}</div></div>");
+            sb.AppendLine($"    <div class=\"row\"><div class=\"col-6 fw-bold\">TOTAL Gs:</div><div class=\"col-6 text-end fw-bold\">Gs {totalContadoGs:N0}</div></div>");
+            sb.AppendLine("  </div>");
+        }
+
+        // Opción Leasing
+        if (p.PrecioLeasingMensualUsd > 0)
+        {
+            sb.AppendLine("  <div class=\"precio-box\" style=\"background:#fef3c7\">");
+            sb.AppendLine("    <div class=\"fw-bold mb-2\">OPCIÓN LEASING</div>");
+            sb.AppendLine($"    <div class=\"row\"><div class=\"col-6\">Cuota Mensual USD:</div><div class=\"col-6 text-end fw-bold\">$ {p.PrecioLeasingMensualUsd:N2}</div></div>");
+            sb.AppendLine($"    <div class=\"row\"><div class=\"col-6\">Cuota Mensual Gs:</div><div class=\"col-6 text-end fw-bold\">Gs {p.PrecioLeasingMensualGs:N0}</div></div>");
+            if (p.EntradaLeasingUsd > 0)
+                sb.AppendLine($"    <div class=\"row\"><div class=\"col-6\">Entrada:</div><div class=\"col-6 text-end\">$ {p.EntradaLeasingUsd:N2} / Gs {p.EntradaLeasingGs:N0}</div></div>");
+            sb.AppendLine($"    <div class=\"row\"><div class=\"col-6\">Plazo:</div><div class=\"col-6 text-end\">{p.CantidadCuotasLeasing} cuotas</div></div>");
+            sb.AppendLine("  </div>");
+        }
+
+        // Costos adicionales
+        sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-plus-circle\"></i> COSTOS ADICIONALES</div>");
+        sb.AppendLine("  <table class=\"table table-sm tabla\">");
+        sb.AppendLine("    <thead><tr><th>Concepto</th><th class=\"right\">USD</th><th class=\"right\">Guaraníes</th></tr></thead>");
+        sb.AppendLine("    <tbody>");
+        if (p.CostoImplementacionUsd > 0)
+            sb.AppendLine($"    <tr><td>Implementación</td><td class=\"right\">$ {p.CostoImplementacionUsd:N2}</td><td class=\"right\">Gs {p.CostoImplementacionGs:N0}</td></tr>");
+        if (p.CostoCapacitacionUsd > 0)
+            sb.AppendLine($"    <tr><td>Capacitación ({p.HorasCapacitacion} hs)</td><td class=\"right\">$ {p.CostoCapacitacionUsd:N2}</td><td class=\"right\">Gs {p.CostoCapacitacionGs:N0}</td></tr>");
+        if (p.CostoMantenimientoMensualUsd > 0)
+            sb.AppendLine($"    <tr><td>Mantenimiento Mensual</td><td class=\"right\">$ {p.CostoMantenimientoMensualUsd:N2}</td><td class=\"right\">Gs {p.CostoMantenimientoMensualGs:N0}</td></tr>");
+        if (p.CostoSucursalAdicionalUsd > 0)
+            sb.AppendLine($"    <tr><td>Sucursal Adicional</td><td class=\"right\">$ {p.CostoSucursalAdicionalUsd:N2}</td><td class=\"right\">Gs {p.CostoSucursalAdicionalGs:N0}</td></tr>");
+        if (p.CostoUsuarioAdicionalUsd > 0)
+            sb.AppendLine($"    <tr><td>Usuario Adicional</td><td class=\"right\">$ {p.CostoUsuarioAdicionalUsd:N2}</td><td class=\"right\">Gs {p.CostoUsuarioAdicionalGs:N0}</td></tr>");
+        if (p.CostoHoraDesarrolloUsd > 0)
+            sb.AppendLine($"    <tr><td>Hora de Desarrollo</td><td class=\"right\">$ {p.CostoHoraDesarrolloUsd:N2}</td><td class=\"right\">Gs {p.CostoHoraDesarrolloGs:N0}</td></tr>");
+        if (p.CostoVisitaTecnicaUsd > 0)
+            sb.AppendLine($"    <tr><td>Visita Técnica</td><td class=\"right\">$ {p.CostoVisitaTecnicaUsd:N2}</td><td class=\"right\">Gs {p.CostoVisitaTecnicaGs:N0}</td></tr>");
+        sb.AppendLine("    </tbody>");
+        sb.AppendLine("  </table>");
+
+        // ITEMS/PRODUCTOS ADICIONALES
+        if (items != null && items.Any())
+        {
+            sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-list-task\"></i> PRODUCTOS / ITEMS ADICIONALES</div>");
+            sb.AppendLine("  <table class=\"table table-sm tabla\">");
+            sb.AppendLine("    <thead><tr><th style=\"width:40%\">Descripción</th><th class=\"right\" style=\"width:10%\">Cant.</th><th class=\"right\" style=\"width:15%\">P.Unit USD</th><th class=\"right\" style=\"width:15%\">Subtotal USD</th><th class=\"right\" style=\"width:20%\">Subtotal Gs</th></tr></thead>");
+            sb.AppendLine("    <tbody>");
+            foreach (var item in items.Where(i => !i.EsOpcional || i.Incluido).OrderBy(i => i.NumeroLinea))
+            {
+                var descHtml = System.Net.WebUtility.HtmlEncode(item.Descripcion ?? "");
+                if (!string.IsNullOrEmpty(item.DescripcionAdicional))
+                    descHtml += $"<br/><small class=\"muted\">{System.Net.WebUtility.HtmlEncode(item.DescripcionAdicional)}</small>";
+                sb.AppendLine($"    <tr><td>{descHtml}</td><td class=\"right\">{item.Cantidad:N2} {item.Unidad}</td><td class=\"right\">$ {item.PrecioUnitarioUsd:N2}</td><td class=\"right\">$ {item.SubtotalUsd:N2}</td><td class=\"right\">Gs {item.SubtotalGs:N0}</td></tr>");
+            }
+            var totalItemsUsd = items.Where(i => !i.EsOpcional || i.Incluido).Sum(i => i.SubtotalUsd);
+            var totalItemsGs = items.Where(i => !i.EsOpcional || i.Incluido).Sum(i => i.SubtotalGs);
+            sb.AppendLine($"    <tr style=\"font-weight:bold;background:#f3f4f6\"><td colspan=\"3\">TOTAL ITEMS</td><td class=\"right\">$ {totalItemsUsd:N2}</td><td class=\"right\">Gs {totalItemsGs:N0}</td></tr>");
+            sb.AppendLine("    </tbody>");
+            sb.AppendLine("  </table>");
+        }
+
+        // Configuración incluida
+        sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-gear\"></i> CONFIGURACIÓN INCLUIDA</div>");
+        sb.AppendLine($"  <p><strong>Sucursales:</strong> {p.CantidadSucursalesIncluidas} &nbsp; | &nbsp; <strong>Usuarios:</strong> {p.CantidadUsuariosIncluidos} &nbsp; | &nbsp; <strong>Cajas:</strong> {p.CantidadCajasIncluidas}</p>");
+
+        // Condiciones de pago
+        if (!string.IsNullOrWhiteSpace(p.CondicionesPago))
+        {
+            sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-credit-card\"></i> CONDICIONES DE PAGO</div>");
+            sb.AppendLine($"  <p>{System.Net.WebUtility.HtmlEncode(p.CondicionesPago).Replace("\n", "<br/>")}</p>");
+        }
+
+        // Garantías
+        if (!string.IsNullOrWhiteSpace(p.Garantias))
+        {
+            sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-shield-check\"></i> GARANTÍAS</div>");
+            sb.AppendLine($"  <p>{System.Net.WebUtility.HtmlEncode(p.Garantias).Replace("\n", "<br/>")}</p>");
+        }
+
+        // Observaciones
+        if (!string.IsNullOrWhiteSpace(p.Observaciones))
+        {
+            sb.AppendLine("  <div class=\"section-title\"><i class=\"bi bi-chat-text\"></i> OBSERVACIONES</div>");
+            sb.AppendLine($"  <p>{System.Net.WebUtility.HtmlEncode(p.Observaciones).Replace("\n", "<br/>")}</p>");
+        }
+
+        // Tipo de cambio
+        sb.AppendLine($"  <p class=\"small muted mt-4\">Tipo de cambio aplicado: 1 USD = Gs {p.TipoCambio:N0}</p>");
+
+        sb.AppendLine("</div>");
+        return sb.ToString();
+    }
+
+    private async Task EliminarPresupuesto(PresupuestoSistema p)
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            "¿Eliminar presupuesto #" + p.NumeroPresupuesto + " de " + p.NombreCliente + "?");
+
+        if (!confirmar) return;
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            ctx.PresupuestosSistema.Remove(p);
+            await ctx.SaveChangesAsync();
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al eliminar: " + ex.Message);
+        }
+    }
+
+    // ========== GESTIÓN DE ITEMS/PRODUCTOS ==========
+    private void AgregarItem()
+    {
+        var nuevoNumero = itemsPresupuesto.Any() ? itemsPresupuesto.Max(i => i.NumeroLinea) + 1 : 1;
+        var nuevoItem = new PresupuestoSistemaDetalle
+        {
+            NumeroLinea = nuevoNumero,
+            Descripcion = "",
+            Cantidad = 1,
+            Unidad = "Unidad",
+            PrecioUnitarioUsd = 0,
+            PrecioUnitarioGs = 0,
+            TipoItem = "Producto",
+            Incluido = true
+        };
+        itemsPresupuesto.Add(nuevoItem);
+    }
+
+    private void EliminarItem(PresupuestoSistemaDetalle item)
+    {
+        itemsPresupuesto.Remove(item);
+        // Renumerar líneas
+        var numero = 1;
+        foreach (var i in itemsPresupuesto.OrderBy(x => x.NumeroLinea))
+        {
+            i.NumeroLinea = numero++;
+        }
+    }
+
+    private void RecalcularItem(PresupuestoSistemaDetalle item)
+    {
+        item.CalcularSubtotales();
+    }
+
+    private void RecalcularItemDesdeUsd(PresupuestoSistemaDetalle item)
+    {
+        item.CalcularPrecioGs(presupuestoActual.TipoCambio);
+    }
+
+    private void ToggleOpcional(PresupuestoSistemaDetalle item)
+    {
+        item.EsOpcional = !item.EsOpcional;
+        if (item.EsOpcional)
+            item.Incluido = false;
+        else
+            item.Incluido = true;
+    }
+
+    private string GetEstadoBadgeClass(string estado) => estado switch
+    {
+        "Borrador" => "bg-secondary",
+        "Enviado" => "bg-info",
+        "Aceptado" => "bg-success",
+        "Rechazado" => "bg-danger",
+        "Vencido" => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
+}

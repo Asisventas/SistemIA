@@ -1,0 +1,1519 @@
+@using SistemIA.Models.AsistenteIA
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@inject IAsistenteIAService AsistenteService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject ICorreoService CorreoService
+@inject ChatStateService ChatState
+@inject ITrackingService TrackingService
+@implements IDisposable
+
+<div class="chat-asistente @(EstaAbierto ? "abierto" : "")" @onclick:stopPropagation="true">
+    @* Botón flotante *@
+    <button class="btn-chat-toggle @(EstaAbierto ? "activo" : "")" @onclick="ToggleChat" title="Asistente IA">
+        <i class="bi @(EstaAbierto ? "bi-x-lg" : "bi-robot")"></i>
+        @if (!EstaAbierto && mensajesSinLeer > 0)
+        {
+            <span class="badge-notificacion">@mensajesSinLeer</span>
+        }
+    </button>
+
+    @* Panel de chat *@
+    @if (EstaAbierto)
+    {
+        <div class="chat-panel @(EstaExpandido ? "expandido" : "")">
+            @* Encabezado *@
+            <div class="chat-header">
+                <div class="d-flex align-items-center">
+                    <div class="avatar-ia me-2">
+                        <i class="bi bi-robot"></i>
+                    </div>
+                    <div>
+                        <h6 class="mb-0">Asistente SistemIA</h6>
+                        <small class="text-success"><i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>En línea</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <button class="btn btn-sm btn-link text-light" @onclick="ToggleExpandir" title="@(EstaExpandido ? "Contraer" : "Expandir")">
+                        <i class="bi @(EstaExpandido ? "bi-arrows-angle-contract" : "bi-arrows-angle-expand")"></i>
+                    </button>
+                    <button class="btn btn-sm btn-link text-light" @onclick="LimpiarChat" title="Limpiar conversación">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+
+            @* Mensajes *@
+            <div class="chat-mensajes" @ref="contenedorMensajes">
+                @foreach (var msg in mensajes)
+                {
+                    <div class="mensaje @(msg.EsUsuario ? "usuario" : "asistente")">
+                        @if (!msg.EsUsuario)
+                        {
+                            <div class="avatar-msg">
+                                <i class="bi bi-robot"></i>
+                            </div>
+                        }
+                        <div class="contenido-msg">
+                            <div class="texto-msg">
+                                @((MarkupString)FormatearMensaje(msg.Texto))
+                            </div>
+                            @if (msg.RutaNavegacion != null)
+                            {
+                                <button class="btn btn-sm btn-outline-primary mt-2" @onclick="() => Navegar(msg.RutaNavegacion)">
+                                    <i class="bi @(msg.Icono ?? "bi-arrow-right") me-1"></i>Ir ahora
+                                </button>
+                            }
+                            @* Botón para enviar a soporte *@
+                            @if (msg.MostrarOpcionSoporte)
+                            {
+                                <div class="soporte-options mt-2">
+                                    <button class="btn btn-sm btn-outline-warning" @onclick="() => IniciarReporteSoporte(msg.PreguntaOriginal ?? string.Empty)">
+                                        <i class="bi bi-envelope-exclamation me-1"></i>Enviar a Soporte
+                                    </button>
+                                </div>
+                            }
+                            @if (msg.Sugerencias?.Any() == true)
+                            {
+                                <div class="sugerencias mt-2">
+                                    @foreach (var sug in msg.Sugerencias.Take(4))
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary me-1 mb-1" @onclick="() => EnviarSugerencia(sug)">
+                                            @sug
+                                        </button>
+                                    }
+                                </div>
+                            }
+                            <small class="hora-msg">@msg.Hora.ToString("HH:mm")</small>
+                        </div>
+                        @if (msg.EsUsuario)
+                        {
+                            <div class="avatar-msg usuario">
+                                <i class="bi bi-person"></i>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* Formulario de Reporte a Soporte *@
+                @if (mostrarFormularioSoporte)
+                {
+                    <div class="mensaje asistente">
+                        <div class="avatar-msg">
+                            <i class="bi bi-envelope-exclamation"></i>
+                        </div>
+                        <div class="contenido-msg formulario-soporte">
+                            <div class="texto-msg">
+                                <strong><i class="bi bi-headset me-1"></i>Reportar a Soporte Técnico</strong>
+                                <div class="mt-2">
+                                    <label class="small text-muted">Describe tu problema:</label>
+                                    <textarea class="form-control form-control-sm" rows="3" 
+                                              @bind="descripcionSoporte" 
+                                              placeholder="Explica qué estabas haciendo y qué problema encontraste..."></textarea>
+                                </div>
+                                
+                                @* Capturas de pantalla con comentarios *@
+                                <div class="mt-2">
+                                    <div class="d-flex gap-2 flex-wrap align-items-center">
+                                        @if (habilitarCapturaPantalla)
+                                        {
+                                            <button class="btn btn-sm btn-outline-info" 
+                                                    @onclick="CapturarPantalla" disabled="@capturandoPantalla">
+                                                @if (capturandoPantalla)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm"></span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-camera me-1"></i>
+                                                }
+                                                Capturar Pantalla
+                                            </button>
+                                            @if (capturas.Count > 0)
+                                            {
+                                                <span class="badge bg-info">@capturas.Count captura(s)</span>
+                                            }
+                                        }
+                                        @if (habilitarGrabacionVideo)
+                                        {
+                                            <button class="btn btn-sm @(grabandoVideo ? "btn-danger" : "btn-outline-warning")" 
+                                                    @onclick="ToggleGrabacionVideo">
+                                                <i class="bi @(grabandoVideo ? "bi-stop-fill" : "bi-camera-video") me-1"></i>
+                                                @(grabandoVideo ? $"Detener ({segundosGrabacion}s)" : "Grabar Video")
+                                            </button>
+                                            @if (videos.Count > 0)
+                                            {
+                                                <span class="badge bg-warning text-dark">@videos.Count video(s)</span>
+                                            }
+                                        }
+                                    </div>
+                                    
+                                    @* Lista de capturas con comentarios *@
+                                    @if (capturas.Count > 0)
+                                    {
+                                        <div class="mt-2 capturas-lista">
+                                            @for (int idx = 0; idx < capturas.Count; idx++)
+                                            {
+                                                var captura = capturas[idx];
+                                                var index = idx;
+                                                <div class="captura-item mb-2 p-2 border rounded bg-light">
+                                                    <div class="d-flex gap-2">
+                                                        <img src="@captura.Base64" class="rounded" style="max-height: 60px; max-width: 80px; object-fit: cover;" />
+                                                        <div class="flex-grow-1">
+                                                            <input type="text" class="form-control form-control-sm" 
+                                                                   placeholder="Comentario de la captura..." 
+                                                                   @bind="captura.Comentario" />
+                                                            <small class="text-muted">@captura.Fecha.ToString("HH:mm:ss")</small>
+                                                        </div>
+                                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarCaptura(index)" title="Eliminar">
+                                                            <i class="bi bi-x"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+
+                                    @* Lista de videos con comentarios *@
+                                    @if (videos.Count > 0)
+                                    {
+                                        <div class="mt-2 videos-lista">
+                                            @for (int idx = 0; idx < videos.Count; idx++)
+                                            {
+                                                var video = videos[idx];
+                                                var index = idx;
+                                                <div class="video-item mb-2 p-2 border rounded bg-light">
+                                                    <div class="d-flex gap-2 align-items-center">
+                                                        <div class="video-thumb" style="width: 80px; height: 60px; background: #333; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+                                                            <i class="bi bi-play-circle text-white" style="font-size: 1.5rem;"></i>
+                                                        </div>
+                                                        <div class="flex-grow-1">
+                                                            <input type="text" class="form-control form-control-sm" 
+                                                                   placeholder="Comentario del video..." 
+                                                                   @bind="video.Comentario" />
+                                                            <small class="text-muted">@video.Duracion seg - @video.Fecha.ToString("HH:mm:ss")</small>
+                                                        </div>
+                                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarVideo(index)" title="Eliminar">
+                                                            <i class="bi bi-x"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="mt-3 d-flex gap-2">
+                                    <button class="btn btn-sm btn-primary" @onclick="EnviarReporteSoporte" disabled="@enviandoSoporte">
+                                        @if (enviandoSoporte)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-send me-1"></i>
+                                        }
+                                        Enviar Reporte
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelarReporteSoporte">
+                                        <i class="bi bi-x me-1"></i>Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @if (escribiendo)
+                {
+                    <div class="mensaje asistente">
+                        <div class="avatar-msg">
+                            <i class="bi bi-robot"></i>
+                        </div>
+                        <div class="contenido-msg">
+                            <div class="escribiendo">
+                                <span></span><span></span><span></span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* Input *@
+            <div class="chat-input">
+                <button class="btn btn-voz @(grabandoVoz ? "grabando" : "")" 
+                        @onclick="ToggleVoz" 
+                        title="@(grabandoVoz ? "Detener grabación" : "Hablar")"
+                        disabled="@(!vozDisponible || enviando)">
+                    <i class="bi @(grabandoVoz ? "bi-mic-fill" : "bi-mic")"></i>
+                </button>
+                <input type="text" 
+                       class="form-control" 
+                       placeholder="@(grabandoVoz ? "Escuchando..." : "Escribe tu consulta...")"
+                       @bind="consultaActual"
+                       @bind:event="oninput"
+                       @onkeypress="OnKeyPress"
+                       disabled="@(enviando || grabandoVoz)" />
+                <button class="btn btn-primary" @onclick="EnviarConsulta" disabled="@(enviando || string.IsNullOrWhiteSpace(consultaActual))">
+                    <i class="bi bi-send"></i>
+                </button>
+                @* Botón de reportar problema/soporte *@
+                <button class="btn btn-soporte @(mostrarFormularioSoporte ? "activo" : "")" 
+                        @onclick="() => IniciarReporteSoporte(consultaActual ?? string.Empty)"
+                        title="Reportar problema a soporte">
+                    <i class="bi bi-headset"></i>
+                </button>
+                <button class="btn btn-voz-salida @(vozActiva ? "activo" : "")" 
+                        @onclick="ToggleVozSalida" 
+                        title="@(vozActiva ? "Desactivar voz" : "Activar voz de respuesta")"
+                        disabled="@(!vozDisponible)">
+                    <i class="bi @(vozActiva ? "bi-volume-up-fill" : "bi-volume-mute")"></i>
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .chat-asistente {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .btn-chat-toggle {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        transition: all 0.3s ease;
+        position: relative;
+    }
+
+    .btn-chat-toggle:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    }
+
+    .btn-chat-toggle.activo {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+
+    .badge-notificacion {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        background: #f5576c;
+        color: white;
+        border-radius: 50%;
+        width: 22px;
+        height: 22px;
+        font-size: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .chat-panel {
+        position: absolute;
+        bottom: 70px;
+        right: 0;
+        width: 380px;
+        max-width: calc(100vw - 40px);
+        height: 520px;
+        max-height: calc(100vh - 100px);
+        background: var(--bg-surface, #fff);
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: slideUp 0.3s ease;
+        transition: width 0.3s ease, height 0.3s ease, max-width 0.3s ease, max-height 0.3s ease;
+    }
+
+    /* Modo expandido */
+    .chat-panel.expandido {
+        width: 600px;
+        max-width: calc(100vw - 60px);
+        height: 700px;
+        max-height: calc(100vh - 100px);
+    }
+
+    /* En pantallas más grandes, expandir aún más */
+    @@media (min-width: 1200px) {
+        .chat-panel.expandido {
+            width: 700px;
+            height: 750px;
+        }
+    }
+
+    @@media (min-width: 1600px) {
+        .chat-panel.expandido {
+            width: 800px;
+            height: 800px;
+        }
+    }
+
+    @@keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .chat-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .avatar-ia {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+
+    .chat-mensajes {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        background: var(--bg-page, #f8f9fa);
+    }
+
+    .mensaje {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        animation: fadeIn 0.3s ease;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .mensaje.usuario {
+        flex-direction: row-reverse;
+    }
+
+    .avatar-msg {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+    }
+
+    .avatar-msg.usuario {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    }
+
+    .contenido-msg {
+        max-width: 75%;
+    }
+
+    .texto-msg {
+        background: var(--bg-surface, #fff);
+        padding: 12px 16px;
+        border-radius: 18px;
+        border-top-left-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        color: var(--text-primary, #333);
+        line-height: 1.4;
+    }
+
+    .mensaje.usuario .texto-msg {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-top-left-radius: 18px;
+        border-top-right-radius: 4px;
+    }
+
+    .texto-msg strong {
+        color: #667eea;
+    }
+
+    .mensaje.usuario .texto-msg strong {
+        color: #fff;
+    }
+
+    .hora-msg {
+        display: block;
+        text-align: right;
+        color: var(--text-muted, #888);
+        font-size: 0.7rem;
+        margin-top: 4px;
+    }
+
+    .sugerencias {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .sugerencias .btn {
+        font-size: 0.75rem;
+        padding: 4px 10px;
+        border-radius: 20px;
+    }
+
+    .escribiendo {
+        display: flex;
+        gap: 4px;
+        padding: 8px 12px;
+    }
+
+    .escribiendo span {
+        width: 8px;
+        height: 8px;
+        background: #667eea;
+        border-radius: 50%;
+        animation: bounce 1.4s infinite ease-in-out both;
+    }
+
+    .escribiendo span:nth-child(1) { animation-delay: -0.32s; }
+    .escribiendo span:nth-child(2) { animation-delay: -0.16s; }
+
+    @@keyframes bounce {
+        0%, 80%, 100% { transform: scale(0); }
+        40% { transform: scale(1); }
+    }
+
+    .chat-input {
+        padding: 12px;
+        background: var(--bg-surface, #fff);
+        border-top: 1px solid var(--bar-border, #e9ecef);
+        display: flex;
+        gap: 8px;
+    }
+
+    .chat-input .form-control {
+        border-radius: 20px;
+        padding-left: 16px;
+        background: var(--bg-page, #f8f9fa);
+        border: 1px solid var(--bar-border, #dee2e6);
+    }
+
+    .chat-input .form-control:focus {
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.25);
+        border-color: #667eea;
+    }
+
+    .chat-input .btn {
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+    }
+
+    .chat-input .btn:hover:not(:disabled) {
+        transform: scale(1.05);
+    }
+
+    .chat-input .btn:disabled {
+        opacity: 0.5;
+    }
+
+    /* Botones de voz */
+    .btn-voz, .btn-voz-salida, .btn-soporte {
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-page, #f0f0f0);
+        border: 1px solid var(--bar-border, #dee2e6);
+        color: var(--text-primary, #333);
+        transition: all 0.3s ease;
+    }
+
+    .btn-voz:hover:not(:disabled), .btn-voz-salida:hover:not(:disabled), .btn-soporte:hover:not(:disabled) {
+        background: #667eea;
+        color: white;
+        border-color: #667eea;
+    }
+
+    .btn-voz.grabando {
+        background: #f5576c;
+        color: white;
+        border-color: #f5576c;
+        animation: pulseRec 1.5s infinite;
+    }
+
+    .btn-voz-salida.activo {
+        background: #11998e;
+        color: white;
+        border-color: #11998e;
+    }
+
+    .btn-soporte:hover, .btn-soporte.activo {
+        background: #f5a623;
+        color: white;
+        border-color: #f5a623;
+    }
+
+    @@keyframes pulseRec {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(245, 87, 108, 0.7); }
+        50% { box-shadow: 0 0 0 10px rgba(245, 87, 108, 0); }
+    }
+
+    /* Responsive */
+    @@media (max-width: 480px) {
+        .chat-panel {
+            width: calc(100vw - 20px);
+            right: -10px;
+            bottom: 65px;
+            height: calc(100vh - 80px);
+            border-radius: 12px;
+        }
+        
+        /* En móvil, el modo expandido ocupa toda la pantalla */
+        .chat-panel.expandido {
+            width: calc(100vw - 10px);
+            max-width: none;
+            height: calc(100vh - 70px);
+            max-height: none;
+            right: -15px;
+            bottom: 60px;
+            border-radius: 8px;
+        }
+    }
+
+    /* Formulario de soporte */
+    .formulario-soporte .texto-msg {
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+        border: 1px solid #ffc107;
+        max-width: 100% !important;
+        width: 100%;
+    }
+
+    .formulario-soporte {
+        max-width: 100% !important;
+        width: 100%;
+    }
+
+    .formulario-soporte .form-control {
+        font-size: 0.85rem;
+    }
+
+    .formulario-soporte .btn {
+        font-size: 0.8rem;
+    }
+
+    .soporte-options .btn {
+        font-size: 0.75rem;
+    }
+
+    /* Video capturado */
+    .formulario-soporte video {
+        max-height: 100px;
+        border-radius: 4px;
+    }
+
+    /* Badge de grabando */
+    .btn.btn-danger .bi-stop-fill {
+        animation: pulseRec 1s infinite;
+    }
+</style>
+
+@code {
+    [Parameter] public int? IdUsuario { get; set; }
+    [Parameter] public string NombreUsuario { get; set; } = "Usuario";
+    [Parameter] public EventCallback<bool> OnEstadoCambiado { get; set; }
+
+    private bool EstaAbierto = false;
+    private bool EstaExpandido = false;
+    private string consultaActual = "";
+    private bool enviando = false;
+    private bool escribiendo = false;
+    private int mensajesSinLeer = 0;
+    private ElementReference contenedorMensajes;
+    
+    // Variables para voz
+    private bool vozDisponible = false;
+    private bool grabandoVoz = false;
+    private bool vozActiva = false;
+    private DotNetObjectReference<ChatAsistente>? dotNetRef;
+    
+    // Para detectar cambio de nombre
+    private string _nombreAnterior = "Usuario";
+    private bool _saludoInicial = true;
+
+    // Variables para soporte
+    private bool mostrarFormularioSoporte = false;
+    private string descripcionSoporte = "";
+    private string? preguntaOriginalSoporte;
+    private bool enviandoSoporte = false;
+    private bool habilitarCapturaPantalla = true;
+    private bool habilitarGrabacionVideo = true;
+    private bool habilitarEnvioSoporte = true;
+    private string? correoSoporte;
+    private int maxSegundosVideo = 30;
+
+    // Captura de pantalla (múltiples con comentarios)
+    private bool capturandoPantalla = false;
+    private List<CapturaConComentario> capturas = new();
+    private string comentarioCapturaNueva = "";
+
+    // Grabación de video (múltiples con comentarios)
+    private bool grabandoVideo = false;
+    private List<VideoConComentario> videos = new();
+    private string comentarioVideoNuevo = "";
+
+    // Clases auxiliares para capturas y videos con comentarios
+    private class CapturaConComentario
+    {
+        public string Base64 { get; set; } = "";
+        public string Comentario { get; set; } = "";
+        public DateTime Fecha { get; set; } = DateTime.Now;
+    }
+
+    private class VideoConComentario
+    {
+        public string Base64 { get; set; } = "";
+        public string Comentario { get; set; } = "";
+        public int Duracion { get; set; }
+        public DateTime Fecha { get; set; } = DateTime.Now;
+    }
+
+    // Variables temporales para compatibilidad
+    private string? videoBase64Temp;
+    private int segundosGrabacion = 0;
+    private System.Timers.Timer? timerGrabacion;
+    
+    // Usar el servicio de estado para persistir mensajes entre navegaciones
+    private List<MensajeChatState> mensajes => ChatState.Mensajes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        dotNetRef = DotNetObjectReference.Create(this);
+        _nombreAnterior = NombreUsuario;
+
+        // Cargar configuración del asistente
+        await CargarConfiguracionAsistente();
+        
+        // Restaurar estado del chat o inicializar con saludo
+        EstaAbierto = ChatState.EstaAbierto;
+        EstaExpandido = ChatState.EstaExpandido;
+        mensajesSinLeer = ChatState.MensajesSinLeer;
+        
+        // Inicializar con saludo solo si no hay mensajes previos
+        var saludo = AsistenteService.ObtenerSaludoPersonalizado(NombreUsuario);
+        ChatState.InicializarSiVacio(NombreUsuario, saludo, new List<string>
+        {
+            "¿Cómo crear una venta?",
+            "Ver informes",
+            "Abrir caja",
+            "¿Qué es SIFEN?"
+        });
+    }
+
+    private async Task CargarConfiguracionAsistente()
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var config = await ctx.ConfiguracionesAsistenteIA.FirstOrDefaultAsync();
+            if (config != null)
+            {
+                habilitarCapturaPantalla = config.HabilitarCapturaPantalla;
+                habilitarGrabacionVideo = config.HabilitarGrabacionVideo;
+                habilitarEnvioSoporte = config.HabilitarEnvioSoporte;
+                correoSoporte = config.CorreoSoporte;
+                maxSegundosVideo = config.MaxSegundosVideo;
+            }
+        }
+        catch { }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Si el nombre cambió y es diferente al valor por defecto "Usuario"
+        if (_nombreAnterior != NombreUsuario && NombreUsuario != "Usuario" && _saludoInicial)
+        {
+            _nombreAnterior = NombreUsuario;
+            _saludoInicial = false;
+            
+            // Actualizar el primer mensaje de saludo con el nombre correcto
+            if (mensajes.Count > 0 && !mensajes[0].EsUsuario)
+            {
+                var nuevoSaludo = AsistenteService.ObtenerSaludoPersonalizado(NombreUsuario);
+                mensajes[0].Texto = nuevoSaludo;
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Verificar si la API de voz está disponible
+            vozDisponible = await JS.InvokeAsync<bool>("chatVoz.verificarDisponibilidad");
+            
+            // Restaurar estado expandido desde localStorage
+            try
+            {
+                var expandidoGuardado = await JS.InvokeAsync<string?>("localStorage.getItem", "chat_expandido");
+                if (expandidoGuardado == "true")
+                {
+                    EstaExpandido = true;
+                    ChatState.EstaExpandido = true;
+                }
+            }
+            catch { }
+            
+            StateHasChanged();
+            
+            // Scroll al final si hay mensajes previos
+            if (mensajes.Count > 1)
+            {
+                await ScrollAlFinal();
+            }
+        }
+    }
+
+    private void ToggleChat()
+    {
+        EstaAbierto = !EstaAbierto;
+        ChatState.EstaAbierto = EstaAbierto; // Persistir estado
+        if (EstaAbierto)
+        {
+            mensajesSinLeer = 0;
+            ChatState.MensajesSinLeer = 0;
+        }
+        OnEstadoCambiado.InvokeAsync(EstaAbierto);
+    }
+
+    private async Task ToggleExpandir()
+    {
+        EstaExpandido = !EstaExpandido;
+        ChatState.EstaExpandido = EstaExpandido;
+        
+        // Guardar en localStorage para persistir entre sesiones
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "chat_expandido", EstaExpandido.ToString().ToLower());
+        }
+        catch { }
+        
+        StateHasChanged();
+        await ScrollAlFinal();
+    }
+
+    private async Task OnKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(consultaActual))
+        {
+            await EnviarConsulta();
+        }
+    }
+
+    private async Task ToggleVoz()
+    {
+        if (!vozDisponible) return;
+        
+        if (grabandoVoz)
+        {
+            // Detener grabación
+            await JS.InvokeVoidAsync("chatVoz.detenerReconocimiento");
+            grabandoVoz = false;
+        }
+        else
+        {
+            // Iniciar grabación
+            grabandoVoz = true;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("chatVoz.iniciarReconocimiento", dotNetRef);
+        }
+    }
+
+    private void ToggleVozSalida()
+    {
+        vozActiva = !vozActiva;
+    }
+
+    [JSInvokable]
+    public async Task RecibirTextoVoz(string texto)
+    {
+        grabandoVoz = false;
+        if (!string.IsNullOrWhiteSpace(texto))
+        {
+            consultaActual = texto;
+            StateHasChanged();
+            await EnviarConsulta();
+        }
+        else
+        {
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void ErrorVoz(string error)
+    {
+        grabandoVoz = false;
+        StateHasChanged();
+    }
+
+    private async Task EnviarConsulta()
+    {
+        if (string.IsNullOrWhiteSpace(consultaActual) || enviando) return;
+
+        var consulta = consultaActual.Trim();
+        consultaActual = "";
+        enviando = true;
+
+        // Agregar mensaje del usuario
+        ChatState.AgregarMensaje(new MensajeChatState { Texto = consulta, EsUsuario = true });
+        StateHasChanged();
+        await ScrollAlFinal();
+        
+        // Mostrar indicador de escritura
+        escribiendo = true;
+        StateHasChanged();
+        await ScrollAlFinal();
+        await Task.Delay(500 + new Random().Next(500)); // Simular "pensando"
+        
+        try
+        {
+            // Preparar historial para contexto (convertir a formato del servicio)
+            var historialParaServicio = mensajes
+                .Select(m => new SistemIA.Services.MensajeChat
+                {
+                    EsUsuario = m.EsUsuario,
+                    Texto = m.Texto,
+                    Hora = m.Hora
+                })
+                .ToList();
+
+            var respuesta = await AsistenteService.ProcesarConsultaAsync(
+                consulta, 
+                IdUsuario, 
+                NavigationManager.Uri,
+                historialParaServicio);
+
+            // Registrar consulta en el sistema de tracking
+            _ = TrackingService.RegistrarConsultaIAAsync(
+                consulta: consulta,
+                respuestaTipo: respuesta.TipoRespuesta,
+                exitosa: respuesta.Exito,
+                idUsuario: IdUsuario,
+                nombreUsuario: NombreUsuario);
+
+            escribiendo = false;
+
+            // Detectar si no encontró respuesta (para ofrecer soporte)
+            bool sinRespuesta = !respuesta.Exito || 
+                               respuesta.Mensaje.Contains("No encontré información") ||
+                               respuesta.Mensaje.Contains("no tengo información") ||
+                               respuesta.TipoRespuesta == "sin_respuesta";
+            
+            var mensajeRespuesta = new MensajeChatState
+            {
+                Texto = respuesta.Mensaje,
+                EsUsuario = false,
+                RutaNavegacion = respuesta.RutaNavegacion,
+                Icono = respuesta.Icono,
+                Sugerencias = respuesta.Sugerencias,
+                MostrarOpcionSoporte = sinRespuesta && habilitarEnvioSoporte && !string.IsNullOrEmpty(correoSoporte),
+                PreguntaOriginal = consulta
+            };
+            ChatState.AgregarMensaje(mensajeRespuesta);
+            
+            // Leer respuesta en voz alta si está activado
+            if (vozActiva && vozDisponible)
+            {
+                var textoLimpio = LimpiarTextoParaVoz(respuesta.Mensaje);
+                await JS.InvokeVoidAsync("chatVoz.hablar", textoLimpio);
+            }
+        }
+        catch (Exception)
+        {
+            escribiendo = false;
+            ChatState.AgregarMensaje(new MensajeChatState
+            {
+                Texto = $"Disculpa {NombreUsuario}, ocurrió un error al procesar tu consulta. Por favor intenta de nuevo.",
+                EsUsuario = false,
+                MostrarOpcionSoporte = habilitarEnvioSoporte && !string.IsNullOrEmpty(correoSoporte),
+                PreguntaOriginal = consulta
+            });
+        }
+        finally
+        {
+            enviando = false;
+            StateHasChanged();
+            await ScrollAlFinal();
+        }
+    }
+
+    private async Task EnviarSugerencia(string sugerencia)
+    {
+        consultaActual = sugerencia;
+        await EnviarConsulta();
+    }
+
+    private void Navegar(string ruta)
+    {
+        NavigationManager.NavigateTo(ruta);
+        EstaAbierto = false;
+    }
+
+    private void LimpiarChat()
+    {
+        ChatState.LimpiarMensajes();
+        var saludo = AsistenteService.ObtenerSaludoPersonalizado(NombreUsuario);
+        ChatState.AgregarMensaje(new MensajeChatState
+        {
+            Texto = saludo,
+            EsUsuario = false,
+            Sugerencias = new List<string>
+            {
+                "¿Cómo crear una venta?",
+                "Ver informes",
+                "Abrir caja",
+                "¿Qué es SIFEN?"
+            }
+        });
+    }
+
+    private async Task ScrollAlFinal()
+    {
+        await Task.Delay(50);
+        try
+        {
+            await JS.InvokeVoidAsync("chatVoz.scrollAlFinal", contenedorMensajes);
+        }
+        catch { }
+    }
+
+    private string LimpiarTextoParaVoz(string texto)
+    {
+        // Remover formato markdown
+        texto = System.Text.RegularExpressions.Regex.Replace(texto, @"\*\*(.+?)\*\*", "$1");
+        texto = System.Text.RegularExpressions.Regex.Replace(texto, @"\*(.+?)\*", "$1");
+        texto = texto.Replace("📌", "").Replace("💡", "").Replace("✅", "").Replace("❌", "");
+        texto = texto.Replace("👉", "").Replace("🔹", "").Replace("📊", "").Replace("📋", "");
+        return texto.Trim();
+    }
+
+    private string FormatearMensaje(string texto)
+    {
+        // Convertir **texto** a <strong>texto</strong>
+        texto = System.Text.RegularExpressions.Regex.Replace(
+            texto, 
+            @"\*\*(.+?)\*\*", 
+            "<strong>$1</strong>");
+        
+        // Convertir saltos de línea
+        texto = texto.Replace("\n", "<br/>");
+        
+        return texto;
+    }
+
+    // ========== MÉTODOS DE SOPORTE ==========
+    
+    private void IniciarReporteSoporte(string preguntaOriginal)
+    {
+        preguntaOriginalSoporte = preguntaOriginal;
+        descripcionSoporte = "";
+        capturas.Clear();
+        videos.Clear();
+        mostrarFormularioSoporte = true;
+        StateHasChanged();
+    }
+
+    private void CancelarReporteSoporte()
+    {
+        mostrarFormularioSoporte = false;
+        preguntaOriginalSoporte = "";
+        descripcionSoporte = "";
+        capturas.Clear();
+        videos.Clear();
+        grabandoVideo = false;
+        if (timerGrabacion != null)
+        {
+            timerGrabacion.Stop();
+            timerGrabacion.Dispose();
+            timerGrabacion = null;
+        }
+        StateHasChanged();
+    }
+
+    private async Task CapturarPantalla()
+    {
+        if (capturandoPantalla) return;
+        
+        capturandoPantalla = true;
+        StateHasChanged();
+
+        try
+        {
+            // Llamar a JavaScript para capturar la pantalla
+            var base64 = await JS.InvokeAsync<string>("soporteCaptura.capturarPantalla");
+            
+            if (!string.IsNullOrEmpty(base64))
+            {
+                capturas.Add(new CapturaConComentario
+                {
+                    Base64 = base64,
+                    Comentario = "",
+                    Fecha = DateTime.Now
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al capturar pantalla: {ex.Message}");
+        }
+        finally
+        {
+            capturandoPantalla = false;
+            StateHasChanged();
+        }
+    }
+
+    private void EliminarCaptura(int index)
+    {
+        if (index >= 0 && index < capturas.Count)
+        {
+            capturas.RemoveAt(index);
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleGrabacionVideo()
+    {
+        if (grabandoVideo)
+        {
+            // Detener grabación
+            await DetenerGrabacion();
+        }
+        else
+        {
+            // Iniciar grabación
+            await IniciarGrabacion();
+        }
+    }
+
+    private async Task IniciarGrabacion()
+    {
+        try
+        {
+            var resultado = await JS.InvokeAsync<bool>("soporteCaptura.iniciarGrabacion");
+            if (resultado)
+            {
+                grabandoVideo = true;
+                segundosGrabacion = 0;
+                
+                // Timer para mostrar segundos y auto-detener
+                timerGrabacion = new System.Timers.Timer(1000);
+                timerGrabacion.Elapsed += async (s, e) =>
+                {
+                    segundosGrabacion++;
+                    if (segundosGrabacion >= maxSegundosVideo)
+                    {
+                        await InvokeAsync(async () => await DetenerGrabacion());
+                    }
+                    await InvokeAsync(StateHasChanged);
+                };
+                timerGrabacion.Start();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al iniciar grabación: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private async Task DetenerGrabacion()
+    {
+        var duracion = segundosGrabacion;
+        
+        if (timerGrabacion != null)
+        {
+            timerGrabacion.Stop();
+            timerGrabacion.Dispose();
+            timerGrabacion = null;
+        }
+
+        try
+        {
+            var base64 = await JS.InvokeAsync<string>("soporteCaptura.detenerGrabacion");
+            if (!string.IsNullOrEmpty(base64))
+            {
+                videos.Add(new VideoConComentario
+                {
+                    Base64 = base64,
+                    Comentario = "",
+                    Duracion = duracion,
+                    Fecha = DateTime.Now
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al detener grabación: {ex.Message}");
+        }
+        
+        grabandoVideo = false;
+        segundosGrabacion = 0;
+        StateHasChanged();
+    }
+
+    private void EliminarVideo(int index)
+    {
+        if (index >= 0 && index < videos.Count)
+        {
+            videos.RemoveAt(index);
+            StateHasChanged();
+        }
+    }
+
+    private async Task EnviarReporteSoporte()
+    {
+        if (enviandoSoporte) return;
+        if (string.IsNullOrWhiteSpace(descripcionSoporte))
+        {
+            return;
+        }
+
+        enviandoSoporte = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            // Obtener información del navegador
+            var infoNavegador = await JS.InvokeAsync<string>("soporteCaptura.obtenerInfoNavegador");
+
+            // Obtener contexto de tracking (acciones recientes + errores)
+            var contextoTracking = TrackingService.GenerarContextoSoporte(null, IdUsuario);
+
+            // Serializar capturas y videos con sus comentarios a JSON
+            var capturasJson = capturas.Count > 0 
+                ? System.Text.Json.JsonSerializer.Serialize(capturas.Select(c => new { c.Comentario, c.Fecha }))
+                : null;
+            var videosJson = videos.Count > 0
+                ? System.Text.Json.JsonSerializer.Serialize(videos.Select(v => new { v.Comentario, v.Duracion, v.Fecha }))
+                : null;
+
+            // Guardar primera captura y video en campos legacy (compatibilidad)
+            var primeraCaptura = capturas.FirstOrDefault()?.Base64;
+            var primerVideo = videos.FirstOrDefault()?.Base64;
+
+            // Crear solicitud de soporte
+            var solicitud = new SolicitudSoporteIA
+            {
+                Fecha = DateTime.Now,
+                IdUsuario = IdUsuario,
+                NombreUsuario = NombreUsuario ?? "Desconocido",
+                PaginaOrigen = NavigationManager.Uri,
+                PreguntaOriginal = preguntaOriginalSoporte,
+                DescripcionProblema = GenerarDescripcionConComentarios(),
+                ScreenshotBase64 = primeraCaptura,
+                VideoBase64 = primerVideo,
+                InfoNavegador = infoNavegador,
+                ContextoAcciones = contextoTracking,
+                Estado = "Pendiente",
+                CorreoEnviado = false
+            };
+
+            context.SolicitudesSoporteIA.Add(solicitud);
+            await context.SaveChangesAsync();
+
+            // Intentar enviar correo
+            if (!string.IsNullOrEmpty(correoSoporte))
+            {
+                try
+                {
+                    var asunto = $"[SistemIA Soporte] Nueva solicitud #{solicitud.IdSolicitud}";
+                    var cuerpoHtml = GenerarCuerpoCorreoSoporteMultiple(solicitud, capturas, videos);
+                    
+                    // Preparar adjuntos (todas las capturas y videos)
+                    var adjuntos = new List<(string nombre, byte[] contenido, string mimeType)>();
+                    
+                    // Agregar todas las capturas
+                    for (int i = 0; i < capturas.Count; i++)
+                    {
+                        var cap = capturas[i];
+                        var bytes = Convert.FromBase64String(cap.Base64.Contains(",") 
+                            ? cap.Base64.Split(',')[1] 
+                            : cap.Base64);
+                        var nombre = capturas.Count == 1 ? "screenshot.png" : $"screenshot_{i + 1}.png";
+                        adjuntos.Add((nombre, bytes, "image/png"));
+                    }
+                    
+                    // Agregar todos los videos
+                    for (int i = 0; i < videos.Count; i++)
+                    {
+                        var vid = videos[i];
+                        var bytes = Convert.FromBase64String(vid.Base64.Contains(",") 
+                            ? vid.Base64.Split(',')[1] 
+                            : vid.Base64);
+                        var nombre = videos.Count == 1 ? "video.webm" : $"video_{i + 1}.webm";
+                        adjuntos.Add((nombre, bytes, "video/webm"));
+                    }
+
+                    // Enviar correo usando el servicio del sistema
+                    var config = await context.ConfiguracionesCorreo
+                        .Where(c => c.Activo)
+                        .FirstOrDefaultAsync();
+
+                    if (config != null)
+                    {
+                        await CorreoService.EnviarCorreoAsync(
+                            config,
+                            correoSoporte,
+                            asunto,
+                            cuerpoHtml,
+                            adjuntos);
+
+                        solicitud.CorreoEnviado = true;
+                        await context.SaveChangesAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error al enviar correo de soporte: {ex.Message}");
+                    // El correo falló pero la solicitud ya está guardada
+                }
+            }
+
+            // Mostrar mensaje de confirmación en el chat
+            ChatState.AgregarMensaje(new MensajeChatState
+            {
+                Texto = $"✅ **¡Solicitud de soporte enviada!**\n\nHemos registrado tu consulta con el número **#{solicitud.IdSolicitud}**.\n\nNuestro equipo de soporte la revisará pronto. {(solicitud.CorreoEnviado ? "También se ha enviado una notificación por correo." : "")}",
+                EsUsuario = false
+            });
+
+            CancelarReporteSoporte();
+            await ScrollAlFinal();
+        }
+        catch (Exception ex)
+        {
+            ChatState.AgregarMensaje(new MensajeChatState
+            {
+                Texto = $"❌ Ocurrió un error al enviar la solicitud de soporte. Por favor intenta nuevamente.\n\nError: {ex.Message}",
+                EsUsuario = false
+            });
+        }
+        finally
+        {
+            enviandoSoporte = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GenerarCuerpoCorreoSoporte(SolicitudSoporteIA solicitud)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(@"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+        .content { background: #f8f9fa; padding: 20px; border: 1px solid #e9ecef; }
+        .field { margin-bottom: 15px; }
+        .label { font-weight: 600; color: #6366f1; }
+        .value { background: white; padding: 10px; border-radius: 4px; margin-top: 5px; }
+        .footer { background: #e9ecef; padding: 15px; border-radius: 0 0 8px 8px; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h2 style='margin: 0;'>🎫 Nueva Solicitud de Soporte</h2>
+            <p style='margin: 5px 0 0;'>Ticket #");
+        sb.Append(solicitud.IdSolicitud);
+        sb.Append(@"</p>
+        </div>
+        <div class='content'>
+            <div class='field'>
+                <div class='label'>📅 Fecha y Hora:</div>
+                <div class='value'>");
+        sb.Append(solicitud.Fecha.ToString("dd/MM/yyyy HH:mm:ss"));
+        sb.Append(@"</div>
+            </div>
+            <div class='field'>
+                <div class='label'>👤 Usuario:</div>
+                <div class='value'>");
+        sb.Append(solicitud.NombreUsuario);
+        sb.Append(" (ID: ");
+        sb.Append(solicitud.IdUsuario);
+        sb.Append(@")</div>
+            </div>
+            <div class='field'>
+                <div class='label'>📍 Página de Origen:</div>
+                <div class='value'>");
+        sb.Append(solicitud.PaginaOrigen);
+        sb.Append(@"</div>
+            </div>
+            <div class='field'>
+                <div class='label'>❓ Pregunta Original:</div>
+                <div class='value'>");
+        sb.Append(solicitud.PreguntaOriginal);
+        sb.Append(@"</div>
+            </div>
+            <div class='field'>
+                <div class='label'>📝 Descripción del Problema:</div>
+                <div class='value'>");
+        sb.Append(solicitud.DescripcionProblema);
+        sb.Append(@"</div>
+            </div>
+            <div class='field'>
+                <div class='label'>🖥️ Información del Navegador:</div>
+                <div class='value'>");
+        sb.Append(solicitud.InfoNavegador);
+        sb.Append(@"</div>
+            </div>
+            <div class='field'>
+                <div class='label'>📎 Adjuntos:</div>
+                <div class='value'>");
+        sb.Append(!string.IsNullOrEmpty(solicitud.ScreenshotBase64) ? "✅ Screenshot adjunto" : "❌ Sin screenshot");
+        sb.Append("<br/>");
+        sb.Append(!string.IsNullOrEmpty(solicitud.VideoBase64) ? "✅ Video adjunto" : "❌ Sin video");
+        sb.Append(@"</div>
+            </div>");
+
+        // Agregar contexto de acciones si existe
+        if (!string.IsNullOrEmpty(solicitud.ContextoAcciones))
+        {
+            sb.Append(@"
+            <div class='field' style='margin-top: 20px; border-top: 2px solid #6366f1; padding-top: 15px;'>
+                <div class='label'>🔍 Contexto de Diagnóstico (Historial de Acciones):</div>
+                <div class='value' style='font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px;'>");
+            sb.Append(System.Web.HttpUtility.HtmlEncode(solicitud.ContextoAcciones));
+            sb.Append(@"</div>
+            </div>");
+        }
+
+        sb.Append(@"
+        </div>
+        <div class='footer'>
+            <p>Este correo fue generado automáticamente por el sistema de soporte de SistemIA.</p>
+            <p>Para gestionar esta solicitud, acceda al panel de administración del Asistente IA.</p>
+        </div>
+    </div>
+</body>
+</html>");
+        return sb.ToString();
+    }
+
+    private string GenerarDescripcionConComentarios()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(descripcionSoporte);
+        
+        if (capturas.Any(c => !string.IsNullOrWhiteSpace(c.Comentario)))
+        {
+            sb.AppendLine();
+            sb.AppendLine("=== COMENTARIOS DE CAPTURAS ===");
+            for (int i = 0; i < capturas.Count; i++)
+            {
+                var cap = capturas[i];
+                if (!string.IsNullOrWhiteSpace(cap.Comentario))
+                {
+                    sb.AppendLine($"📷 Captura {i + 1} ({cap.Fecha:HH:mm:ss}): {cap.Comentario}");
+                }
+            }
+        }
+        
+        if (videos.Any(v => !string.IsNullOrWhiteSpace(v.Comentario)))
+        {
+            sb.AppendLine();
+            sb.AppendLine("=== COMENTARIOS DE VIDEOS ===");
+            for (int i = 0; i < videos.Count; i++)
+            {
+                var vid = videos[i];
+                if (!string.IsNullOrWhiteSpace(vid.Comentario))
+                {
+                    sb.AppendLine($"🎥 Video {i + 1} ({vid.Duracion}s - {vid.Fecha:HH:mm:ss}): {vid.Comentario}");
+                }
+            }
+        }
+        
+        return sb.ToString();
+    }
+
+    private string GenerarCuerpoCorreoSoporteMultiple(SolicitudSoporteIA solicitud, System.Collections.Generic.List<CapturaConComentario> caps, System.Collections.Generic.List<VideoConComentario> vids)
+    {
+        // Incluir comentarios de capturas/videos en la descripción
+        var descripcionExtendida = GenerarDescripcionConComentarios();
+        
+        // Agregar resumen de adjuntos a la descripción
+        var adjuntosResumen = new System.Text.StringBuilder();
+        adjuntosResumen.AppendLine();
+        adjuntosResumen.AppendLine("--- ADJUNTOS ---");
+        
+        if (caps.Count > 0)
+        {
+            adjuntosResumen.AppendLine(string.Format("📷 {0} captura(s) de pantalla", caps.Count));
+            for (int i = 0; i < caps.Count; i++)
+            {
+                var c = caps[i];
+                var com = !string.IsNullOrWhiteSpace(c.Comentario) ? " - " + c.Comentario : "";
+                adjuntosResumen.AppendLine(string.Format("   • screenshot_{0}.png ({1:HH:mm:ss}){2}", i + 1, c.Fecha, com));
+            }
+        }
+        if (vids.Count > 0)
+        {
+            adjuntosResumen.AppendLine(string.Format("🎥 {0} video(s)", vids.Count));
+            for (int i = 0; i < vids.Count; i++)
+            {
+                var v = vids[i];
+                var com = !string.IsNullOrWhiteSpace(v.Comentario) ? " - " + v.Comentario : "";
+                adjuntosResumen.AppendLine(string.Format("   • video_{0}.webm ({1}s - {2:HH:mm:ss}){3}", i + 1, v.Duracion, v.Fecha, com));
+            }
+        }
+        
+        // Combinar descripción con resumen de adjuntos
+        solicitud.DescripcionProblema = descripcionExtendida + adjuntosResumen.ToString();
+        
+        // Usar el método original que ya funciona
+        return GenerarCuerpoCorreoSoporte(solicitud);
+    }
+
+    public void Dispose()
+    {
+        dotNetRef?.Dispose();
+        timerGrabacion?.Dispose();
+    }
+}

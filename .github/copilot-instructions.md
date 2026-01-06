@@ -89,6 +89,46 @@ wwwroot/css/     → Estilos (site.css es el principal)
 
 ## 🗃️ Entity Framework Core - REGLAS CRÍTICAS
 
+### 🚫 PROHIBIDO: Crear o Alterar Tablas por SQL Directo
+> **NUNCA crear tablas, agregar columnas o modificar estructura de BD usando scripts SQL directos.**
+> 
+> Los cambios de estructura SIEMPRE deben hacerse mediante **migraciones EF Core** para que:
+> 1. Se apliquen automáticamente en los clientes al actualizar
+> 2. Queden registrados en el historial de migraciones
+> 3. Sean reversibles con `Down()`
+
+```powershell
+# ❌ PROHIBIDO - No crear tablas así
+sqlcmd -Q "CREATE TABLE MiTabla (...)"
+
+# ❌ PROHIBIDO - No alterar tablas así  
+sqlcmd -Q "ALTER TABLE MiTabla ADD Columna INT"
+
+# ✅ CORRECTO - Usar migraciones EF Core
+# 1. Modificar el modelo en Models/
+# 2. Crear migración: dotnet ef migrations add Agregar_Columna_MiTabla
+# 3. Aplicar: dotnet ef database update
+```
+
+### Migraciones Idempotentes (Para Tablas que Podrían Existir)
+Si necesitas crear una migración que funcione tanto en BD nuevas como existentes:
+```csharp
+// En el método Up() de la migración:
+migrationBuilder.Sql(@"
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MiTabla')
+    BEGIN
+        CREATE TABLE [MiTabla] (...);
+    END
+");
+
+migrationBuilder.Sql(@"
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('MiTabla') AND name = 'NuevaColumna')
+    BEGIN
+        ALTER TABLE [MiTabla] ADD [NuevaColumna] nvarchar(100) NULL;
+    END
+");
+```
+
 ### ⚠️ NUNCA usar `--no-build` al CREAR migraciones
 ```powershell
 # ✅ CORRECTO - Crear migración (SIN --no-build)
@@ -112,6 +152,7 @@ dotnet ef migrations add NombreMigracion --no-build
 - **Solo datos (UPDATE/INSERT)**: Usar `migrationBuilder.Sql()` en Up() y Down()
 - **Verificar antes de aplicar**: Revisar el archivo generado en `Migrations/`
 - **Migraciones de datos**: No requieren cambios en modelos, solo SQL directo
+- **Scripts SQL auxiliares**: Solo para insertar datos de catálogo, NUNCA para DDL
 
 ## ⚠️ Consideraciones Importantes
 
@@ -787,10 +828,639 @@ UsuarioSmtp: tucorreo@gmail.com
 ContrasenaSmtp: xxxx xxxx xxxx xxxx (app password)
 ```
 
----
+### Agregar Nuevo Informe al Sistema de Correos
+Para agregar un nuevo informe que se pueda enviar por correo, seguir estos pasos:
 
-## �🚀 Tareas Disponibles (tasks.json)
+#### 1. Agregar al Enum (`Models/TipoInforme.cs`)
+```csharp
+// En TipoInformeEnum
+[Display(Name = "Mi Nuevo Informe")]
+MiNuevoInforme = 100,  // número único
+```
+
+#### 2. Agregar al Catálogo (`Models/TipoInforme.cs`)
+```csharp
+// En ObtenerInformesCategorizados() → categoría correspondiente
+new(TipoInformeEnum.MiNuevoInforme, "Mi Nuevo Informe", "Descripción", "RecibeMiNuevoInforme"),
+```
+
+#### 3. Agregar campo bool en DestinatarioInforme (`Models/DestinatarioInforme.cs`)
+```csharp
+public bool RecibeMiNuevoInforme { get; set; } = false;
+```
+
+#### 4. Actualizar método `RecibeInforme()` (`Models/DestinatarioInforme.cs`)
+```csharp
+"MiNuevoInforme" => RecibeMiNuevoInforme,
+```
+
+#### 5. Actualizar `TieneHabilitadoInforme()` (`Services/InformeCorreoService.cs`)
+```csharp
+TipoInformeEnum.MiNuevoInforme => dest.RecibeMiNuevoInforme,
+```
+> **Nota:** Si el destinatario tiene `RecibeTodosLosInformes = true`, recibirá automáticamente cualquier informe nuevo.
+
+#### 6. Crear método de generación HTML (`Services/InformeCorreoService.cs`)
+```csharp
+// En GenerarHtmlInformeAsync switch:
+TipoInformeEnum.MiNuevoInforme => await GenerarHtmlMiNuevoInformeAsync(ctx, sucursalId, desde, hasta, nombreEmpresa, nombreSucursal),
+
+// Implementar método:
+private async Task<string> GenerarHtmlMiNuevoInformeAsync(...) { ... }
+```
+
+#### 7. Agregar checkbox en UI (`Pages/ConfiguracionCorreo.razor`)
+```razor
+<div class="form-check small">
+    <input type="checkbox" class="form-check-input" @bind="_destinatarioEditando.RecibeMiNuevoInforme" />
+    <label class="form-check-label">Mi Nuevo Informe</label>
+</div>
+```
+
+#### 8. Crear migración EF Core
+```powershell
+dotnet ef migrations add Agregar_RecibeMiNuevoInforme
+dotnet ef database update
+```
+
+### Envío de Factura por Correo al Cliente
+El sistema determina automáticamente el formato de factura basándose en la configuración de la **Caja** (`Cajas.TipoFacturacion`):
+- **"Factura Electrónica"** → Genera PDF con QR del CDC
+- **"Factura Autoimpresor"** → Genera PDF sin QR (formato tradicional)
+
+La lógica está en `Services/PdfFacturaService.cs`:
+```csharp
+// Usa la caja de la venta para determinar el tipo
+var cajaConfig = await context.Cajas.FirstOrDefaultAsync(c => c.IdCaja == venta.IdCaja);
+var tipoFacturacion = cajaConfig?.TipoFacturacion ?? "AUTOIMPRESOR";
+bool esFacturaElectronica = tipoFacturacion?.ToUpper() == "ELECTRONICA" 
+                         || tipoFacturacion?.ToUpper() == "FACTURA ELECTRONICA";
+```
+
+---
+## 🤖 Asistente IA Integrado
+
+### Descripción
+El sistema incluye un **asistente IA conversacional** integrado que ayuda a los usuarios con preguntas sobre el uso del sistema. Aparece como un chat flotante en todas las páginas.
+
+### Arquitectura
+
+#### Modelos (`Models/AsistenteIA/`)
+```
+ConocimientoBase.cs
+├── BaseConocimiento          # Contenedor principal del conocimiento
+├── IntencionUsuario          # Patrones regex para detectar intenciones
+├── ArticuloConocimiento      # Artículo para JSON
+├── ArticuloConocimientoDB    # Artículo almacenado en BD (editable)
+├── ConversacionAsistente     # Historial de conversaciones
+├── ConfiguracionAsistenteIA  # Configuración (correo soporte, mensajes)
+└── SolicitudSoporteAsistente # Solicitudes de soporte enviadas
+```
+
+#### Servicio Principal (`Services/AsistenteIAService.cs`)
+```csharp
+public interface IAsistenteIAService
+{
+    Task<RespuestaAsistente> ProcesarMensajeAsync(string mensaje, int? idUsuario, string? nombreUsuario, string? paginaActual);
+    Task<bool> AprenderAsync(string contenido, int idUsuario);
+    Task GuardarConversacionAsync(ConversacionAsistente conversacion);
+    Task<List<ConversacionAsistente>> ObtenerHistorialAsync(int? idUsuario, int cantidad = 20);
+}
+```
+
+#### Páginas
+| Página | Ruta | Descripción |
+|--------|------|-------------|
+| `ChatAsistente.razor` | (Componente) | Chat flotante en MainLayout |
+| `AdminAsistenteIA.razor` | `/admin/asistente-ia` | Panel de administración |
+
+### Sistema de Intenciones
+
+El asistente detecta la intención del usuario mediante **patrones regex**:
+
+```csharp
+// En CrearIntencionesIniciales()
+new() {
+    Nombre = "backup",
+    TipoAccion = "explicacion_backup",
+    Patrones = new() { @"backup", @"respaldo", @"copia.+seguridad" }
+}
+```
+
+#### Intenciones Disponibles
+| Intención | TipoAccion | Patrones de Ejemplo |
+|-----------|------------|---------------------|
+| `saludo` | saludo | hola, buenos días, hey |
+| `despedida` | despedida | adiós, chau, hasta luego |
+| `ayuda` | ayuda | ayuda, help, cómo funciona |
+| `navegacion_ventas` | navegacion | ir a ventas, crear venta |
+| `configurar_correo` | explicacion_correo | correo, email, smtp |
+| `configurar_sifen` | explicacion_sifen | sifen, factura electrónica |
+| `backup` | explicacion_backup | backup, respaldo, copia seguridad |
+| `cierre_caja` | explicacion_cierre_caja | cierre caja, arqueo |
+| `nota_credito` | explicacion_nota_credito | nota crédito, devolución |
+| `ajuste_stock` | explicacion_ajuste_stock | ajustar stock, inventario |
+| `cuentas_cobrar` | explicacion_cuentas_cobrar | cuentas por cobrar, deuda cliente |
+| `cuentas_pagar` | explicacion_cuentas_pagar | cuentas por pagar, pagar proveedor |
+| `crear_usuario` | explicacion_usuario | crear usuario, permisos |
+| `actualizacion` | explicacion_actualizacion | actualizar sistema, nueva versión |
+| `presupuesto` | explicacion_presupuesto | presupuesto, cotización |
+
+### Artículos de Conocimiento (BD)
+
+Los artículos se almacenan en `ArticulosConocimiento` y son editables desde el panel de admin:
+
+```csharp
+public class ArticuloConocimientoDB
+{
+    public int IdArticulo { get; set; }
+    public string Categoria { get; set; }        // Ventas, Compras, Sistema...
+    public string? Subcategoria { get; set; }
+    public string Titulo { get; set; }
+    public string Contenido { get; set; }        // Markdown soportado
+    public string? PalabrasClave { get; set; }   // Separadas por coma
+    public string? RutaNavegacion { get; set; }  // Ej: /ventas/explorar
+    public int Prioridad { get; set; }           // 1-10, mayor = más relevante
+    public int VecesUtilizado { get; set; }      // Contador de uso
+}
+```
+
+#### Categorías de Artículos
+- **Ventas**: Crear venta, Anular, NC, Presupuestos
+- **Compras**: Registrar compra, Pagos proveedores
+- **Caja**: Cierre, Turnos
+- **Inventario**: Ajustes stock, Transferencias
+- **Clientes**: Cobros, Cuentas por cobrar
+- **Productos**: Crear producto, Precios diferenciados
+- **Sistema**: Backup, Restaurar, Actualizar
+- **Usuarios**: Crear usuario, Permisos
+- **Configuración**: Empresa, SIFEN, Correo
+
+### Script de Datos Iniciales
+> **OBSOLETO**: Ya no se usa script SQL manual. Ver sección siguiente.
+
+### ⚠️ Sincronización Automática de Artículos IA (IMPORTANTE)
+
+Los artículos de conocimiento de la IA se **sincronizan automáticamente** al iniciar la aplicación.
+
+#### ¿Cómo funciona?
+1. Al iniciar SistemIA, se ejecuta `DataInitializationService.InicializarArticulosAsistenteIAAsync()`
+2. Compara los artículos en código (`ObtenerArticulosIniciales()`) vs los existentes en BD
+3. **Solo agrega los artículos nuevos** (por Título), sin tocar los existentes
+4. Los datos del cliente (conversaciones, artículos personalizados) **se preservan**
+
+#### Agregar Nuevo Artículo para Distribución
+
+**OBLIGATORIO para cada publicación**: Si agregas un artículo nuevo, debe ir en el código.
+
+```csharp
+// En Services/DataInitializationService.cs → ObtenerArticulosIniciales()
+new()
+{
+    Categoria = "MiCategoria",
+    Subcategoria = "SubCategoria",
+    Titulo = "Título del Artículo",  // ← CLAVE ÚNICA para sincronización
+    Contenido = @"Contenido en **Markdown**:
+
+1️⃣ Primer paso
+2️⃣ Segundo paso
+
+💡 **Tip**: Información adicional",
+    PalabrasClave = "palabra1, palabra2, palabra3",
+    RutaNavegacion = "/ruta/navegacion",
+    Icono = "bi-icono",
+    Prioridad = 8,
+    FechaCreacion = ahora,
+    FechaActualizacion = ahora,
+    Activo = true
+},
+```
+
+#### Flujo para Agregar Artículos (NUEVO)
+1. ✅ Agregar el artículo en `DataInitializationService.cs` → `ObtenerArticulosIniciales()`
+2. ✅ Compilar y publicar
+3. ✅ Al actualizar cliente, el artículo se inserta automáticamente si no existe
+
+#### ¿Qué se preserva en el cliente?
+| Dato | ¿Se preserva? |
+|------|---------------|
+| Artículos existentes (sin modificar) | ✅ Sí |
+| Artículos personalizados del cliente | ✅ Sí |
+| Conversaciones históricas | ✅ Sí |
+| Configuración del asistente | ✅ Sí |
+| VecesUtilizado (contador) | ✅ Sí |
+
+#### ¿Qué se sincroniza?
+| Escenario | Acción |
+|-----------|--------|
+| Artículo nuevo en código | Se inserta en BD del cliente |
+| Artículo ya existe (mismo título) | NO se toca |
+| Artículo eliminado del código | Permanece en BD del cliente |
+
+> **⚠️ REGLA DE ORO**: No usar el Panel Admin para artículos "oficiales" que deben distribuirse. 
+> Siempre agregarlos en `ObtenerArticulosIniciales()` para que se propaguen con actualizaciones.
+
+### Agregar Nueva Intención
+
+#### 1. Agregar patrón en `CrearIntencionesIniciales()`
+```csharp
+new() {
+    Nombre = "mi_nueva_intencion",
+    TipoAccion = "explicacion_mi_tema",
+    Patrones = new() { @"palabra1", @"palabra2", @"expresion.+regex" }
+}
+```
+
+#### 2. Agregar manejador en `ProcesarIntencionAsync()`
+```csharp
+case "explicacion_mi_tema":
+    respuesta.Mensaje = $"{nombreUsuario}, para **hacer algo**:\n\n" +
+        "1️⃣ Primer paso\n" +
+        "2️⃣ Segundo paso\n" +
+        "💡 **Tip**: Información adicional";
+    respuesta.TipoRespuesta = "navegacion";
+    respuesta.RutaNavegacion = "/ruta/destino";
+    respuesta.Icono = "bi-icono";
+    respuesta.Sugerencias = new List<string> { "Opción 1", "Opción 2" };
+    break;
+```
+
+### Agregar Nuevo Artículo de Conocimiento
+
+#### Opción 1: En el Código (RECOMENDADA - se propaga a clientes)
+Agregar en `Services/DataInitializationService.cs` → `ObtenerArticulosIniciales()`:
+```csharp
+new()
+{
+    Categoria = "MiCategoria", Subcategoria = "SubCat", Titulo = "Título Único",
+    Contenido = @"Contenido en **Markdown**...",
+    PalabrasClave = "palabra1, palabra2",
+    RutaNavegacion = "/ruta", Icono = "bi-icono", Prioridad = 8,
+    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+},
+```
+
+#### Opción 2: Desde el Panel Admin (NO se propaga a clientes)
+1. Ir a `/admin/asistente-ia`
+2. Pestaña "Artículos de Conocimiento"
+3. Click en "Nuevo Artículo"
+4. Completar: Categoría, Título, Contenido (Markdown), Palabras Clave
+
+> ⚠️ Los artículos creados en Panel Admin solo existen en ESA instalación.
+
+#### Opción 3: SQL Directo (solo para instalación específica)
+```sql
+INSERT INTO ArticulosConocimiento 
+(Categoria, Subcategoria, Titulo, Contenido, PalabrasClave, 
+ RutaNavegacion, Icono, Prioridad, FechaCreacion, FechaActualizacion, Activo, VecesUtilizado)
+VALUES 
+('MiCategoria', 'SubCat', 'Título del Artículo',
+ 'Contenido en **Markdown**:\n\n1. Paso 1\n2. Paso 2',
+ 'palabra1, palabra2, palabra3',
+ '/ruta/navegacion', 'bi-icono', 8, GETDATE(), GETDATE(), 1, 0);
+```
+
+### Configuración del Asistente
+
+La tabla `ConfiguracionesAsistenteIA` almacena:
+```csharp
+public class ConfiguracionAsistenteIA
+{
+    public int IdConfiguracion { get; set; }
+    public string? MensajeBienvenida { get; set; }
+    public string? MensajeSinRespuesta { get; set; }
+    public string? CorreoSoporte { get; set; }
+    public string? NombreSoporte { get; set; }
+    public bool HabilitarVozEntrada { get; set; }
+    public bool HabilitarVozSalida { get; set; }
+    public bool HabilitarCapturaPantalla { get; set; }
+    public bool HabilitarGrabacionVideo { get; set; }
+    public bool HabilitarEnvioSoporte { get; set; }
+    public int MaxSegundosVideo { get; set; }
+}
+```
+
+### Flujo de Procesamiento
+
+```
+Usuario escribe mensaje
+        ↓
+DetectarIntencion() - busca patrones regex
+        ↓
+¿Intención encontrada?
+    Sí → ProcesarIntencionAsync() - respuesta predefinida
+    No → BuscarArticulos() - búsqueda por palabras clave en BD
+        ↓
+¿Artículo encontrado?
+    Sí → Devuelve contenido del artículo
+    No → Mensaje genérico + opción de soporte
+        ↓
+GuardarConversacionAsync() - registra en historial
+```
+
+### Tablas de Base de Datos
+
+| Tabla | Descripción |
+|-------|-------------|
+| `ArticulosConocimiento` | Artículos editables por admin |
+| `ConversacionesAsistente` | Historial de preguntas/respuestas |
+| `ConfiguracionesAsistenteIA` | Configuración general |
+| `SolicitudesSoporteAsistente` | Solicitudes enviadas a soporte |
+
+---
+## 🔄 Sistema de Actualización (SistemIA.Actualizador)
+
+### Descripción
+Proyecto **independiente** que maneja las actualizaciones de SistemIA. Corre en un puerto separado (5096) para poder:
+- Detener SistemIA principal (5095)
+- Actualizar archivos sin que la página se cierre
+- Verificar que la actualización fue exitosa
+- Reiniciar SistemIA
+
+### Arquitectura
+```
+Usuario → SistemIA (5095) → Abre Actualizador (5096)
+                                  ↓
+                             Selecciona ZIP
+                                  ↓
+                             Detiene SistemIA (5095)
+                                  ↓
+                             Copia archivos (con progreso)
+                                  ↓
+                             Inicia SistemIA (5095)
+                                  ↓
+                             Verifica archivos
+                                  ↓
+                             Redirige a SistemIA (5095)
+```
+
+### Ubicación del Proyecto
+- **Proyecto:** `c:\asis\SistemIA.Actualizador\`
+- **Puerto:** 5096 (configurado en Program.cs)
+- **Solución:** Agregado al mismo `.sln` de SistemIA
+
+### Archivos Principales
+```
+SistemIA.Actualizador/
+├── Program.cs              # Config puerto 5096
+├── Pages/
+│   ├── _Host.cshtml        # Layout HTML con estilos
+│   └── Index.razor         # Página principal del actualizador
+├── App.razor               # Router Blazor
+└── _Imports.razor          # Usings
+```
+
+### Funcionalidades de Index.razor
+1. **Detectar ruta SistemIA**: Busca en `C:\SistemIA`, `C:\Program Files\SistemIA`, etc.
+2. **Verificar estado**: Consulta si SistemIA (5095) está activo
+3. **Cargar ZIPs disponibles**: Lista archivos de `Releases/` y Escritorio
+4. **Crear backup**: Opcional, antes de actualizar
+5. **Detener SistemIA**: Usando `sc.exe stop` y/o `Process.Kill()`
+6. **Extraer y copiar**: Extrae ZIP, copia archivos (excepto appsettings)
+7. **Iniciar SistemIA**: Ejecuta `SistemIA.exe`
+8. **Verificar**: Confirma que archivos fueron actualizados recientemente
+
+### Compilar y Publicar
+```powershell
+# Compilar
+dotnet build "c:\asis\SistemIA.Actualizador\SistemIA.Actualizador.csproj"
+
+# Publicar self-contained
+dotnet publish "c:\asis\SistemIA.Actualizador\SistemIA.Actualizador.csproj" -c Release -o "c:\asis\SistemIA.Actualizador\publish" --self-contained true -r win-x64
+
+# Ejecutar en desarrollo
+Set-Location "c:\asis\SistemIA.Actualizador"; dotnet run
+```
+
+### Despliegue en Cliente
+El Actualizador debe publicarse junto con SistemIA, típicamente en:
+```
+C:\SistemIA\
+├── SistemIA.exe           # App principal (puerto 5095)
+├── Actualizador\
+│   └── SistemIA.Actualizador.exe  # Actualizador (puerto 5096)
+└── Releases\
+    └── *.zip              # Paquetes de actualización
+```
+
+### Flujo de Uso
+1. Usuario abre `http://localhost:5096` (Actualizador)
+2. Selecciona paquete ZIP de actualización
+3. Marca opciones (backup, migraciones)
+4. Click "Iniciar Actualización"
+5. Ve progreso en barra y logs
+6. Al terminar, click "Abrir SistemIA" → redirige a 5095
+
+---
+## 🚀 Tareas Disponibles (tasks.json)
 - `build` - Compilar proyecto
 - `watch` - Ejecutar con hot reload
 - `Run Blazor Server (watch)` - Ejecutar en modo desarrollo
 - Varias tareas para migraciones EF Core
+
+---
+## 📝 Sistema de Historial de Cambios - REGISTRO AUTOMÁTICO IA
+
+### ⚠️ IMPORTANTE - La IA DEBE registrar todos los cambios implementados
+
+El sistema cuenta con tablas y servicios para registrar automáticamente los cambios realizados por la IA. Esto permite mantener el contexto entre sesiones y documentar el progreso del sistema.
+
+### Tablas de Base de Datos
+
+#### HistorialCambiosSistema (Cambios del Sistema)
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| IdHistorialCambio | int (PK) | ID único del cambio |
+| Version | string(20) | Versión del sistema (ej: "2.1.0") |
+| FechaCambio | DateTime | Fecha de implementación |
+| TituloCambio | string(200) | Título descriptivo del cambio |
+| **Tema** | string(100) | **TEMA DE CONSULTA** (ej: "Ventas", "SIFEN", "Reportes") |
+| TipoCambio | string(50) | "Nueva Funcionalidad", "Mejora", "Corrección", "Refactorización" |
+| ModuloAfectado | string(100) | Módulo/página afectada |
+| Prioridad | string(20) | "Alta", "Media", "Baja" |
+| DescripcionBreve | string(500) | Descripción corta para listados |
+| DescripcionTecnica | string(max) | Detalles técnicos completos |
+| ArchivosModificados | string(max) | Lista de archivos creados/modificados |
+| **Tags** | string(500) | **ETIQUETAS de búsqueda** (separadas por coma) |
+| **Referencias** | string(500) | **REFERENCIAS** a documentación/tickets |
+| Notas | string(max) | Notas adicionales |
+| ImplementadoPor | string(100) | "Claude Opus 4.5" o usuario |
+| ReferenciaTicket | string(100) | Número de ticket/issue si aplica |
+| IdConversacionIA | int? | FK a ConversacionIAHistorial |
+| Estado | string(30) | "Implementado", "En Progreso", "Pendiente" |
+| RequiereMigracion | bool | Si necesita migración EF Core |
+| NombreMigracion | string(200) | Nombre de la migración generada |
+
+#### ConversacionesIAHistorial (Sesiones de IA)
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| IdConversacionIA | int (PK) | ID de la conversación |
+| FechaInicio | DateTime | Inicio de sesión |
+| FechaFin | DateTime? | Fin de sesión |
+| ModeloIA | string(50) | "Claude Opus 4.5", "GPT-4", etc. |
+| Titulo | string(200) | Título/objetivo de la sesión |
+| ResumenEjecutivo | string(max) | Resumen ejecutivo |
+| ObjetivosSesion | string(max) | Objetivos planteados |
+| ResultadosObtenidos | string(max) | Qué se logró |
+| TareasPendientes | string(max) | Qué quedó pendiente |
+| ModulosTrabajados | string(500) | Módulos afectados |
+| ArchivosCreados | string(max) | Archivos nuevos |
+| ArchivosModificados | string(max) | Archivos editados |
+| MigracionesGeneradas | string(max) | Migraciones creadas |
+| ProblemasResoluciones | string(max) | Problemas encontrados y cómo se resolvieron |
+| DecisionesTecnicas | string(max) | Decisiones de diseño tomadas |
+| Etiquetas | string(500) | Tags de la sesión |
+| Complejidad | string(20) | "Simple", "Moderado", "Complejo" |
+| DuracionMinutos | int? | Duración estimada |
+| CantidadCambios | int | Cantidad de cambios registrados |
+
+### Temas de Consulta (Estándar)
+Usar estos temas para organizar los cambios:
+
+| Tema | Descripción |
+|------|-------------|
+| `Ventas` | Módulo de ventas, facturas, tickets |
+| `Compras` | Módulo de compras, proveedores |
+| `Inventario` | Stock, productos, depósitos |
+| `Clientes` | Gestión de clientes, créditos |
+| `SIFEN` | Facturación electrónica Paraguay |
+| `Reportes` | Informes, listados, exportaciones |
+| `Caja` | Cierres, turnos, arqueos |
+| `Usuarios` | Permisos, seguridad, autenticación |
+| `Configuración` | Parámetros del sistema |
+| `UI/UX` | Interfaz, estilos, usabilidad |
+| `Base de Datos` | Migraciones, índices, optimización |
+| `Correo` | Sistema de correos automáticos |
+| `Asistente IA` | Chatbot integrado |
+| `Actualizador` | Sistema de actualizaciones |
+| `Infraestructura` | Servicios, DI, configuración |
+
+### 🔧 Servicio para Registrar Cambios
+
+Usar `IHistorialCambiosService` inyectado en servicios/páginas:
+
+```csharp
+// Registrar un cambio
+await _historialService.RegistrarCambioAsync(new RegistroCambioDto
+{
+    Titulo = "Agregar filtro por fecha en explorador de ventas",
+    Tema = "Ventas",
+    TipoCambio = "Mejora",
+    ModuloAfectado = "VentasExplorar",
+    Prioridad = "Media",
+    DescripcionBreve = "Se agregó filtro de rango de fechas en el explorador",
+    DescripcionTecnica = "Agregados campos DateTime FechaDesde/FechaHasta con lógica de filtrado...",
+    ArchivosModificados = "Pages/VentasExplorar.razor",
+    Tags = "filtros, fechas, explorador",
+    Referencias = "Solicitud usuario 2024-01-15",
+    ImplementadoPor = "Claude Opus 4.5",
+    RequiereMigracion = false
+});
+
+// Obtener contexto de cambios recientes (para la IA)
+var resumen = await _historialService.ObtenerResumenCambiosRecientesAsync(dias: 30);
+```
+
+### 📋 Cuándo Registrar Cambios (OBLIGATORIO)
+
+La IA **DEBE** registrar cambios al:
+1. ✅ Crear archivos nuevos (páginas, servicios, modelos)
+2. ✅ Modificar archivos existentes con cambios funcionales
+3. ✅ Crear migraciones de base de datos
+4. ✅ Corregir bugs reportados
+5. ✅ Agregar nuevas funcionalidades
+6. ✅ Refactorizar código existente
+7. ✅ Cambiar configuraciones importantes
+
+### 🔍 Consultar Historial para Contexto
+
+Al inicio de una nueva sesión, la IA puede consultar:
+
+```csharp
+// Obtener cambios recientes para entender el contexto
+var cambiosRecientes = await _historialService.ObtenerCambiosRecientesAsync(50, tema: "Ventas");
+
+// Buscar cambios específicos
+var cambios = await _historialService.BuscarCambiosAsync(new BusquedaCambiosDto
+{
+    Tema = "SIFEN",
+    TextoBusqueda = "CDC",
+    FechaDesde = DateTime.Now.AddDays(-30)
+});
+
+// Generar resumen textual
+var resumen = await _historialService.ObtenerResumenCambiosRecientesAsync(dias: 30);
+```
+
+### 📱 Páginas de Exploración
+
+| Página | Ruta | Descripción |
+|--------|------|-------------|
+| HistorialCambiosExplorar | `/sistema/historial-cambios` | Ver todos los cambios del sistema |
+| ConversacionesIAExplorar | `/sistema/conversaciones-ia` | Ver sesiones de IA |
+
+### 💡 Ejemplo de Registro al Final de Sesión
+
+```csharp
+// Al finalizar una sesión de trabajo, registrar todos los cambios:
+var conv = await _historialService.IniciarConversacionAsync(
+    "Implementar módulo de historial de cambios", 
+    "Claude Opus 4.5");
+
+await _historialService.RegistrarCambioAsync(new RegistroCambioDto
+{
+    Titulo = "Crear modelo HistorialCambioSistema",
+    Tema = "Infraestructura",
+    TipoCambio = "Nueva Funcionalidad",
+    ModuloAfectado = "Models",
+    DescripcionBreve = "Modelo para almacenar cambios del sistema",
+    ArchivosModificados = "Models/HistorialCambioSistema.cs",
+    Tags = "historial, cambios, documentación",
+    IdConversacionIA = conv.IdConversacionIA,
+    RequiereMigracion = true,
+    NombreMigracion = "AddHistorialCambios"
+});
+
+await _historialService.FinalizarConversacionAsync(conv.IdConversacionIA,
+    resumenFinal: "Se implementó el módulo completo de historial de cambios",
+    tareasPendientes: "Agregar links en el menú principal");
+```
+
+### 🗄️ Acceso Directo a Base de Datos (Solo lectura para contexto)
+
+Si necesitas consultar directamente para obtener contexto:
+
+```sql
+-- Cambios recientes por tema
+SELECT TOP 20 
+    FechaCambio, TituloCambio, Tema, TipoCambio, ModuloAfectado, DescripcionBreve
+FROM HistorialCambiosSistema
+WHERE Tema = 'Ventas'
+ORDER BY FechaCambio DESC;
+
+-- Conversaciones de IA recientes
+SELECT TOP 10 
+    FechaInicio, Titulo, ResumenEjecutivo, ModulosTrabajados, TareasPendientes
+FROM ConversacionesIAHistorial
+ORDER BY FechaInicio DESC;
+
+-- Buscar por tags
+SELECT * FROM HistorialCambiosSistema
+WHERE Tags LIKE '%sifen%' OR Tags LIKE '%factura%'
+ORDER BY FechaCambio DESC;
+```
+
+### ⚡ Registrar al Finalizar Conversación
+
+> **REGLA:** Al final de cada sesión de trabajo significativa, la IA debe crear un registro resumiendo qué se hizo.
+
+Ejemplo de mensaje al usuario al finalizar:
+```
+✅ **Cambios registrados en el historial:**
+- [Nueva Funcionalidad] Crear página HistorialCambiosExplorar
+- [Nueva Funcionalidad] Crear servicio HistorialCambiosService
+- [Mejora] Agregar campos Tema, Tags, Referencias al modelo
+
+📁 Tema: Infraestructura
+🏷️ Tags: historial, cambios, documentación, IA
+```

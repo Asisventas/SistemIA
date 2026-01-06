@@ -28,6 +28,11 @@ namespace SistemIA.Services
         Task<(bool Exito, string Mensaje)> EnviarCorreoAsync(string destinatario, string asunto, string cuerpoHtml, List<Attachment>? adjuntos = null);
 
         /// <summary>
+        /// Envía un correo usando una configuración específica con adjuntos como bytes
+        /// </summary>
+        Task<(bool Exito, string Mensaje)> EnviarCorreoAsync(ConfiguracionCorreo config, string destinatario, string asunto, string cuerpoHtml, List<(string nombre, byte[] contenido, string mimeType)>? adjuntosBytes = null);
+
+        /// <summary>
         /// Verifica si el servicio de correo está configurado y activo
         /// </summary>
         Task<bool> EstaConfiguradoAsync(int sucursalId);
@@ -225,6 +230,42 @@ namespace SistemIA.Services
             }
         }
 
+        public async Task<(bool Exito, string Mensaje)> EnviarCorreoAsync(
+            ConfiguracionCorreo config, 
+            string destinatario, 
+            string asunto, 
+            string cuerpoHtml, 
+            List<(string nombre, byte[] contenido, string mimeType)>? adjuntosBytes = null)
+        {
+            try
+            {
+                List<Attachment>? adjuntos = null;
+                
+                if (adjuntosBytes != null && adjuntosBytes.Count > 0)
+                {
+                    adjuntos = adjuntosBytes.Select(a => 
+                        new Attachment(new MemoryStream(a.contenido), a.nombre, a.mimeType))
+                        .ToList();
+                }
+
+                var resultado = await EnviarCorreoInternoAsync(config, destinatario, asunto, cuerpoHtml, adjuntos);
+
+                // Limpiar recursos de adjuntos
+                if (adjuntos != null)
+                {
+                    foreach (var adj in adjuntos)
+                        adj.Dispose();
+                }
+
+                return resultado;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al enviar correo con configuración específica");
+                return (false, $"Error: {ex.Message}");
+            }
+        }
+
         private async Task<(bool Exito, string Mensaje)> EnviarCorreoInternoAsync(
             ConfiguracionCorreo config, 
             string destinatario, 
@@ -250,7 +291,7 @@ namespace SistemIA.Services
 
                 // Crear mensaje
                 using var mail = new MailMessage();
-                mail.From = new MailAddress(config.CorreoRemitente, config.NombreRemitente ?? config.CorreoRemitente);
+                mail.From = new MailAddress(config.CorreoRemitenteEfectivo, config.NombreRemitenteEfectivo);
                 mail.To.Add(destinatario);
                 mail.Subject = asunto;
                 mail.Body = cuerpoHtml;
@@ -451,7 +492,7 @@ namespace SistemIA.Services
                     sb.AppendLine("<details style='margin-top:15px;' open>");
                     sb.AppendLine("<summary style='cursor:pointer;color:#1a5f7a;font-weight:bold;'>📊 Top 10 Productos con más movimientos (stock inicio vs actual)</summary>");
                     sb.AppendLine("<table style='font-size:12px;margin-top:10px;'>");
-                    sb.AppendLine("<thead><tr><th>Producto</th><th class='center'>Entradas</th><th class='center'>Salidas</th><th class='center' style='background:#6c757d;color:white;'>Inicio</th><th class='center' style='background:#28a745;color:white;'>Actual</th><th class='center' style='background:#17a2b8;color:white;'>Almac.</th></tr></thead>");
+                    sb.AppendLine("<thead><tr><th>Producto</th><th class='center' style='background:#6c757d;color:white;'>Inicio</th><th class='center'>Entradas</th><th class='center'>Salidas</th><th class='center' style='background:#28a745;color:white;'>Actual</th><th class='center' style='background:#17a2b8;color:white;'>Almac.</th></tr></thead>");
                     sb.AppendLine("<tbody>");
                     foreach (var p in productosMasMovidos)
                     {
@@ -465,9 +506,9 @@ namespace SistemIA.Services
                         var stockInicial = stockPrincipal + p.Salidas - p.Entradas;
                         
                         sb.AppendLine($"<tr><td title='{p.Descripcion}'>{nombreCorto}</td>");
+                        sb.AppendLine($"<td class='center' style='color:#6c757d;font-weight:bold;'>{stockInicial:N0}</td>");
                         sb.AppendLine($"<td class='center entrada'>{(p.Entradas > 0 ? $"+{p.Entradas:N0}" : "-")}</td>");
                         sb.AppendLine($"<td class='center salida'>{(p.Salidas > 0 ? $"-{p.Salidas:N0}" : "-")}</td>");
-                        sb.AppendLine($"<td class='center' style='color:#6c757d;'>{stockInicial:N0}</td>");
                         sb.AppendLine($"<td class='center' style='font-weight:bold;color:{(stockPrincipal <= 0 ? "#dc3545" : "#28a745")};'>{stockPrincipal:N0}</td>");
                         sb.AppendLine($"<td class='center' style='color:#17a2b8;'>{stockAlmacen:N0}</td></tr>");
                     }

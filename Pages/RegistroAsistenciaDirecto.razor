@@ -75,7 +75,22 @@
     {
         try
         {
-            var modeloPath = @"C:\asis\SistemIA\face_recognition_models";
+            // Usar ruta relativa al ejecutable para que funcione en cualquier instalación
+            var baseDir = AppContext.BaseDirectory;
+            var modeloPath = Path.Combine(baseDir, "face_recognition_models");
+            
+            // Fallback a ruta de desarrollo si no existe en la ruta de publicación
+            if (!Directory.Exists(modeloPath))
+            {
+                modeloPath = @"C:\asis\SistemIA\face_recognition_models";
+            }
+            
+            if (!Directory.Exists(modeloPath))
+            {
+                throw new DirectoryNotFoundException($"No se encontró la carpeta de modelos faciales en: {modeloPath}");
+            }
+            
+            Console.WriteLine($"Cargando modelos de reconocimiento facial desde: {modeloPath}");
             faceRecognition = FaceRecognition.Create(modeloPath);
             await CargarEmbeddingsConocidos();
         }
@@ -251,6 +266,12 @@
             }
 
             await using var context = await DbFactory.CreateDbContextAsync();
+            
+            // Obtener la caja activa para el turno y sucursal
+            var cajaActiva = await context.Cajas
+                .Where(c => c.CajaActual == 1)
+                .FirstOrDefaultAsync();
+            
             var ultimaAsistencia = await context.Asistencias
                 .Where(a => a.Id_Usuario == usuario.Id_Usu)
                 .OrderByDescending(a => a.FechaHora)
@@ -268,10 +289,12 @@
                 TipoRegistro = tipoRegistro,
                 Notas = "Registro facial automático",
                 ImagenRegistro = imageBytes,
-                Sucursal = 1, // Asumiendo que existe al menos una sucursal con Id = 1
+                Sucursal = cajaActiva?.IdSucursal ?? 1,
                 MetodoRegistro = "Facial",
                 EsRegistroAutomatico = true,
-                UbicacionRegistro = "Terminal Principal"
+                UbicacionRegistro = "Terminal Principal",
+                Turno = cajaActiva?.TurnoActual,
+                IdCaja = cajaActiva?.IdCaja
             };
 
             // *** CALCULAR AUTOMÁTICAMENTE TODOS LOS CAMPOS DE CONTROL DE TIEMPO ***

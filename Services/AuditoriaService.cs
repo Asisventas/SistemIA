@@ -17,11 +17,11 @@ namespace SistemIA.Services
         }
 
         /// <summary>
-        /// Registra una acción de usuario en la auditor 
+        /// Registra una acción de usuario en la auditoría
         /// </summary>
         public async Task<int> RegistrarAccionAsync(
-            int idUsuario,
-            string nombreUsuario,
+            int? idUsuario,
+            string? nombreUsuario,
             string? rolUsuario,
             string accion,
             string? tipoAccion = null,
@@ -35,7 +35,15 @@ namespace SistemIA.Services
             string? navegador = null,
             bool exitosa = true,
             string? mensajeError = null,
-            string severidad = "INFO")
+            string severidad = "INFO",
+            // Nuevos parámetros de contexto
+            DateTime? fechaHoraEquipo = null,
+            DateTime? fechaCaja = null,
+            int? turno = null,
+            int? idSucursal = null,
+            string? nombreSucursal = null,
+            int? idCaja = null,
+            string? nombreCaja = null)
         {
             try
             {
@@ -59,7 +67,15 @@ namespace SistemIA.Services
                     Navegador = navegador,
                     Exitosa = exitosa,
                     MensajeError = mensajeError,
-                    Severidad = severidad
+                    Severidad = severidad,
+                    // Contexto de operación
+                    FechaHoraEquipo = fechaHoraEquipo,
+                    FechaCaja = fechaCaja,
+                    Turno = turno,
+                    IdSucursal = idSucursal,
+                    NombreSucursal = nombreSucursal,
+                    IdCaja = idCaja,
+                    NombreCaja = nombreCaja
                 };
 
                 ctx.AuditoriasAcciones.Add(auditoria);
