@@ -490,7 +490,24 @@
                         }
                     </td>
                 }
-                <td class="text-end"><strong>@d.Cantidad</strong></td>
+                <td class="text-end">
+                    @{
+                        var prodDetalle = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
+                        var cantPaq = prodDetalle?.CantidadPorPaquete ?? 1;
+                        var esPaq = (prodDetalle?.UnidadMedidaCodigo == "006" || prodDetalle?.UnidadMedidaCodigo == "005") && cantPaq > 1;
+                    }
+                    @if (esPaq)
+                    {
+                        var numPaquetes = Math.Floor(d.Cantidad / cantPaq);
+                        var unidadesSueltas = d.Cantidad % cantPaq;
+                        <strong>@d.Cantidad.ToString("N0")</strong>
+                        <br/><small class="text-muted">(@numPaquetes.ToString("N0") paq.@(unidadesSueltas > 0 ? $" + {unidadesSueltas:N0} u." : ""))</small>
+                    }
+                    else
+                    {
+                        <strong>@d.Cantidad</strong>
+                    }
+                </td>
                 <td class="text-end text-primary fw-semibold">@FormatearPrecio(d.PrecioUnitario)</td>
                 <td class="text-end text-success fw-bold">@FormatearPrecio(d.Importe)</td>
                 <td class="text-end">
@@ -2732,14 +2749,21 @@ END
             {
                 var prod = Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto);
                 var desc = prod?.Descripcion ?? $"Producto #{d.IdProducto}";
+                // Información de paquetes
+                var cantPaq = prod?.CantidadPorPaquete ?? 1;
+                var esPaq = (prod?.UnidadMedidaCodigo == "006" || prod?.UnidadMedidaCodigo == "005") && cantPaq > 1;
+                var cantStr = esPaq 
+                    ? $"{d.Cantidad:N0} ({Math.Floor(d.Cantidad / cantPaq):N0} paq.)" 
+                    : d.Cantidad.ToString("N2");
+                
                 if (mostrarPMinImpresion)
                 {
                     var pMinStr = d.PrecioMinisterio.HasValue ? d.PrecioMinisterio.Value.ToString(formato) : (prod?.PrecioMinisterio.HasValue == true ? prod.PrecioMinisterio.Value.ToString(formato) : "-");
-                    sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.PrecioVentaRef.ToString(formato)}</td><td class=\"text-end\">{pMinStr}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                    sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{cantStr}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.PrecioVentaRef.ToString(formato)}</td><td class=\"text-end\">{pMinStr}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
                 }
                 else
                 {
-                    sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                    sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{cantStr}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
                 }
             }
             sb.AppendLine("    </tbody>");
@@ -3423,6 +3447,23 @@ END
         
         // Mostrar imagen del producto seleccionado
         ProductoImagenUrl = p.Foto;
+        
+        // ========== REINICIAR MODO PAQUETE/UNIDAD ==========
+        // Si el producto se vende por paquete/caja, inicializar el modo
+        var esPaqueteOCaja = p.UnidadMedidaCodigo == "006" || p.UnidadMedidaCodigo == "005";
+        var cantPorPaq = p.CantidadPorPaquete ?? 1;
+        if (esPaqueteOCaja && cantPorPaq > 1)
+        {
+            ModoIngresoCompra = "paquete";
+            _cantidadIngresadaCompra = 1;
+            NuevoDetalle.Cantidad = cantPorPaq; // 1 paquete = X unidades
+        }
+        else
+        {
+            ModoIngresoCompra = "unidad";
+            _cantidadIngresadaCompra = 1;
+            NuevoDetalle.Cantidad = 1;
+        }
         
         // IMPORTANTE: CostoUnitarioGs y PrecioUnitarioGs SIEMPRE están en Guaraníes por definición del campo
         // No importa qué moneda tenga asignada el producto en IdMonedaPrecio

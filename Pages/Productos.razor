@@ -94,7 +94,13 @@
                   <div class="text-muted small">Código de barras: @p.CodigoBarras</div>
                 }
               </td>
-              <td class="col-unidad">@p.UnidadMedidaCodigo</td>
+              <td class="col-unidad">
+                @p.UnidadMedidaCodigo
+                @if ((p.UnidadMedidaCodigo == "006" || p.UnidadMedidaCodigo == "005") && p.CantidadPorPaquete.HasValue && p.CantidadPorPaquete > 1)
+                {
+                  <br/><small class="text-muted">(@p.CantidadPorPaquete.Value.ToString("N0") u/paq)</small>
+                }
+              </td>
               <td class="col-iva">@p.TipoIva?.DescripcionCompleta</td>
               <td class="col-costo text-end">@(p.CostoUnitarioGs.HasValue ? p.CostoUnitarioGs.Value.ToString("N0") : "-")</td>
         <td class="col-precio text-end">@p.PrecioUnitarioGs.ToString("N0")</td>
@@ -124,16 +130,26 @@
               tooltip = string.Join("\n", stocksDeposito.Where(s => s.Stock != 0).Select(s => $"{s.Deposito}: {s.Stock:N2}"));
               mostrarIconoMultiple = stocksDeposito.Count(s => s.Stock > 0) > 1;
             }
+            
+            // Calcular paquetes si aplica
+            var esPaqueteProd = (p.UnidadMedidaCodigo == "006" || p.UnidadMedidaCodigo == "005") && p.CantidadPorPaquete.HasValue && p.CantidadPorPaquete > 1;
+            var cantPaqProd = p.CantidadPorPaquete ?? 1;
           }
-          <span class="@(stockMostrar < p.StockMinimo ? "text-danger fw-semibold" : stockMostrar == 0 ? "text-muted" : null)" 
+          <span class="@(stockMostrar < p.StockMinimo ? "text-danger fw-semibold" : stockMostrar == 0 ? "text-muted" : "text-success fw-semibold")" 
                 title="@tooltip" 
                 style="cursor: help;">
-            @stockMostrar.ToString("N2")
+            @stockMostrar.ToString("N0")
             @if (mostrarIconoMultiple)
             {
               <i class="bi bi-info-circle-fill text-info ms-1" style="font-size: 0.8em;"></i>
             }
           </span>
+          @if (esPaqueteProd && stockMostrar > 0)
+          {
+            var numPaq = Math.Floor(stockMostrar / cantPaqProd);
+            var unidadesSuel = stockMostrar % cantPaqProd;
+            <br/><small class="text-muted">@numPaq.ToString("N0") paq.@(unidadesSuel > 0 ? $" + {unidadesSuel:N0} u." : "")</small>
+          }
         </td>
               <td class="col-marca">@p.Marca?.NombreMarca</td>
               <td class="col-sucursal">@p.Sucursal?.NombreSucursal</td>

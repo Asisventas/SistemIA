@@ -844,6 +844,40 @@ html[data-theme="oscuro"] .clientes-table td.col-email { color: #93c5fd; }
 html[data-theme="oscuro"] .clientes-table td.col-telefono { color: #cbd5e1; }
 html[data-theme="oscuro"] .clientes-table td.col-saldo { color: #f5d0fe; }
 
+/* --- TABLA PRODUCTOS: ESTILOS GENERALES (todos los temas) --- */
+.productos-table { font-size: 0.9rem; }
+.productos-table td { vertical-align: middle; }
+.productos-table td.col-descripcion strong { font-weight: 600; }
+.productos-table td.col-codigo .badge { font-weight: 500; }
+.productos-table td.col-stock { font-size: 0.95rem; }
+.productos-table td.col-stock small { font-size: 0.8rem; display: block; margin-top: 2px; }
+.productos-table td.col-unidad small { font-size: 0.8rem; display: block; margin-top: 2px; }
+.productos-table td.col-costo, .productos-table td.col-precio { font-weight: 500; }
+
+/* --- TABLA PRODUCTOS: Tema TENUE (default) --- */
+.productos-table td.col-descripcion { color: #1f2937; }
+.productos-table td.col-codigo .badge { background-color: #6b7280; color: white; }
+.productos-table td.col-precio { color: #059669; }
+.productos-table td.col-costo { color: #b45309; }
+.productos-table td.col-iva, 
+.productos-table td.col-unidad, 
+.productos-table td.col-marca, 
+.productos-table td.col-sucursal { color: #4b5563; }
+.productos-table td.col-estado { color: #374151; }
+.productos-table td.col-stock .text-success { color: #059669 !important; }
+.productos-table td.col-stock .text-danger { color: #dc2626 !important; }
+
+/* --- TABLA PRODUCTOS: Tema CLARO --- */
+html[data-theme="claro"] .productos-table td.col-descripcion { color: #111827; }
+html[data-theme="claro"] .productos-table td.col-codigo .badge { background-color: #4b5563; color: white; }
+html[data-theme="claro"] .productos-table td.col-precio { color: #047857; }
+html[data-theme="claro"] .productos-table td.col-costo { color: #92400e; }
+html[data-theme="claro"] .productos-table td.col-iva, 
+html[data-theme="claro"] .productos-table td.col-unidad, 
+html[data-theme="claro"] .productos-table td.col-marca, 
+html[data-theme="claro"] .productos-table td.col-sucursal { color: #374151; }
+html[data-theme="claro"] .productos-table td.col-estado { color: #1f2937; }
+
 /* --- Mejoras de legibilidad para tabla de Productos en oscuro --- */
 html[data-theme="oscuro"] .productos-table { color: var(--text-primary); }
 html[data-theme="oscuro"] .productos-table thead { background-color: #0b1220; }
