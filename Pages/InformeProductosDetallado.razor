@@ -148,6 +148,9 @@
             var n = 0;
             foreach (var r in filas)
             {
+              var esPaqueteOCaja = r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005";
+              var cantPaq = r.CantidadPorPaquete ?? 1;
+              var nombreUnidad = r.UnidadMedidaCodigo == "006" ? "Paquete" : (r.UnidadMedidaCodigo == "005" ? "Caja" : r.UnidadMedida);
               <tr class="@(r.Stock < r.StockMinimo && r.StockMinimo > 0 ? "table-warning" : "")">
                 <td>@(++n)</td>
                 <td><span class="badge bg-secondary">@r.CodigoInterno</span></td>
@@ -157,7 +160,17 @@
                 <td>@(string.IsNullOrEmpty(r.CodigoBarras) ? "-" : r.CodigoBarras)</td>
                 <td>@(string.IsNullOrEmpty(r.Marca) ? "-" : r.Marca)</td>
                 <td>@(string.IsNullOrEmpty(r.Clasificacion) ? "-" : r.Clasificacion)</td>
-                <td>@r.UnidadMedida</td>
+                <td>
+                  @if (esPaqueteOCaja && cantPaq > 1)
+                  {
+                    <span>@nombreUnidad</span>
+                    <span class="badge bg-info ms-1" title="Unidades por paquete">×@cantPaq.ToString("0.##")</span>
+                  }
+                  else
+                  {
+                    @r.UnidadMedida
+                  }
+                </td>
                 <td>@r.TipoIva</td>
                 <td>
                   @if (r.TipoItem == 1)
@@ -172,7 +185,23 @@
                 <td class="text-end">@(r.CostoGs.HasValue ? r.CostoGs.Value.ToString("N0") : "-")</td>
                 <td class="text-end">@r.PrecioGs.ToString("N0")</td>
                 <td class="text-end">@(r.PrecioUsd.HasValue ? r.PrecioUsd.Value.ToString("N2") : "-")</td>
-                <td class="text-end @(r.Stock < r.StockMinimo && r.StockMinimo > 0 ? "text-danger fw-bold" : "")">@r.Stock.ToString("N2")</td>
+                <td class="text-end @(r.Stock < r.StockMinimo && r.StockMinimo > 0 ? "text-danger fw-bold" : "")">
+                  @{
+                    var paquetes = esPaqueteOCaja && cantPaq > 1 ? Math.Floor(r.Stock / cantPaq) : 0;
+                    var unidadesSueltas = esPaqueteOCaja && cantPaq > 1 ? r.Stock % cantPaq : 0;
+                  }
+                  @if (esPaqueteOCaja && cantPaq > 1 && r.Stock > 0)
+                  {
+                    <span title="@r.Stock.ToString("N0") unidades totales">
+                      @r.Stock.ToString("N0")
+                      <small class="text-muted">(@paquetes.ToString("N0") paq@(unidadesSueltas > 0 ? $" +{unidadesSueltas:N0}" : ""))</small>
+                    </span>
+                  }
+                  else
+                  {
+                    @r.Stock.ToString("N2")
+                  }
+                </td>
                 <td class="text-end">@r.StockMinimo.ToString("N2")</td>
                 <td>
                   @if (r.Activo)
@@ -300,7 +329,7 @@
               p.IdProducto, p.CodigoInterno, p.Descripcion, p.CodigoBarras,
               Marca = m != null ? m.NombreMarca : null,
               Clasificacion = c != null ? c.Nombre : null,
-              p.UndMedida, p.UnidadMedidaCodigo,
+              p.UndMedida, p.UnidadMedidaCodigo, p.CantidadPorPaquete,
               TipoIva = iva != null ? iva.DescripcionCompleta : "",
               p.TipoItem, p.CostoUnitarioGs, p.PrecioUnitarioGs, p.PrecioUnitarioUsd,
               p.Stock, p.StockMinimo, p.Activo, p.IdSucursal, p.IdMarca, p.IdClasificacion, p.IdTipoIva
@@ -360,6 +389,8 @@
         Marca = x.Marca,
         Clasificacion = x.Clasificacion,
         UnidadMedida = x.UndMedida ?? x.UnidadMedidaCodigo ?? "",
+        UnidadMedidaCodigo = x.UnidadMedidaCodigo,
+        CantidadPorPaquete = x.CantidadPorPaquete,
         TipoIva = x.TipoIva ?? "",
         TipoItem = x.TipoItem,
         CostoGs = x.CostoUnitarioGs,
@@ -567,6 +598,8 @@
     public string? Marca { get; set; }
     public string? Clasificacion { get; set; }
     public string UnidadMedida { get; set; } = string.Empty;
+    public string? UnidadMedidaCodigo { get; set; }
+    public decimal? CantidadPorPaquete { get; set; }
     public string TipoIva { get; set; } = string.Empty;
     public int TipoItem { get; set; }
     public decimal? CostoGs { get; set; }

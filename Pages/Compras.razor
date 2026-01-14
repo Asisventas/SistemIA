@@ -782,30 +782,68 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Marca</label>
-                            <select class="form-select" @bind="_nuevoProducto.IdMarca">
-                                <option value="">(Sin marca)</option>
-                                @foreach (var m in _marcasModal)
-                                {
-                                    <option value="@m.IdMarca">@m.NombreMarca</option>
-                                }
-                            </select>
+                            <div class="input-group">
+                                <select class="form-select" @bind="_nuevoProducto.IdMarca">
+                                    <option value="">(Sin marca)</option>
+                                    @foreach (var m in _marcasModal)
+                                    {
+                                        <option value="@m.IdMarca">@m.NombreMarca</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn btn-outline-success" @onclick="AbrirModalMarcaRapida" title="Nueva marca">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Clasificación</label>
-                            <select class="form-select" @bind="_nuevoProducto.IdClasificacion">
-                                <option value="">(Sin clasificación)</option>
-                                @foreach (var c in _clasificacionesModal)
-                                {
-                                    <option value="@c.IdClasificacion">@c.Nombre</option>
-                                }
-                            </select>
+                            <div class="input-group">
+                                <select class="form-select" @bind="_nuevoProducto.IdClasificacion">
+                                    <option value="">(Sin clasificación)</option>
+                                    @foreach (var c in _clasificacionesModal)
+                                    {
+                                        <option value="@c.IdClasificacion">@c.Nombre</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn btn-outline-success" @onclick="AbrirModalClasificacionRapida" title="Nueva clasificación">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
                         </div>
 
                         @* Unidad e Impuestos *@
                         <div class="col-12 mt-3">
                             <h6 class="text-success border-bottom pb-1 mb-2"><i class="bi bi-percent me-1"></i>Unidad e Impuestos</h6>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <label class="form-label">Unidad de Medida</label>
+                            <select class="form-select" @bind="_nuevoProducto.UnidadMedidaCodigo" @bind:after="OnUnidadMedidaChanged">
+                                <option value="77">Unidad</option>
+                                <option value="006">Paquete</option>
+                                <option value="005">Caja</option>
+                                <option value="71">Kg</option>
+                                <option value="72">Litro</option>
+                                <option value="73">Metro</option>
+                            </select>
+                        </div>
+                        @if (_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005")
+                        {
+                            <div class="col-md-4">
+                                <label class="form-label">Unidades por @(_nuevoProducto.UnidadMedidaCodigo == "006" ? "Paquete" : "Caja") <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" min="1" step="1" @bind="_nuevoProducto.CantidadPorPaquete" placeholder="Ej: 10" />
+                                <small class="text-muted">Cuántas unidades contiene cada @(_nuevoProducto.UnidadMedidaCodigo == "006" ? "paquete" : "caja")</small>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check form-switch mt-4">
+                                    <input class="form-check-input" type="checkbox" id="npPermiteVentaUnidad" @bind="_nuevoProducto.PermiteVentaPorUnidad" />
+                                    <label class="form-check-label" for="npPermiteVentaUnidad">
+                                        <i class="bi bi-box-seam me-1"></i>Permite venta por unidad
+                                    </label>
+                                </div>
+                                <small class="text-muted">Vender unidades sueltas</small>
+                            </div>
+                        }
+                        <div class="col-md-4">
                             <label class="form-label">Tipo de IVA <span class="text-danger">*</span></label>
                             <select class="form-select" @bind="_nuevoProducto.IdTipoIva">
                                 @foreach (var iva in _tiposIvaModal)
@@ -941,6 +979,70 @@
     </div>
 }
 
+@* Modal para crear nueva marca rápida *@
+@if (_mostrarModalMarcaRapida)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);z-index:1060;" @onclick="() => _mostrarModalMarcaRapida = false">
+        <div class="modal-dialog modal-sm modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white py-2">
+                    <h6 class="modal-title mb-0"><i class="bi bi-tag-fill me-2"></i>Nueva Marca</h6>
+                    <button type="button" class="btn-close btn-close-white btn-sm" @onclick="() => _mostrarModalMarcaRapida = false"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_errorMarcaRapida))
+                    {
+                        <div class="alert alert-danger py-2 small">@_errorMarcaRapida</div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">Nombre de la marca <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_nuevaMarcaNombre" placeholder="Ej: Samsung, LG, etc." maxlength="100" />
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _mostrarModalMarcaRapida = false">Cancelar</button>
+                    <button type="button" class="btn btn-primary btn-sm" @onclick="GuardarMarcaRapidaAsync" disabled="@_guardandoMarcaRapida">
+                        @if (_guardandoMarcaRapida) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal para crear nueva clasificación rápida *@
+@if (_mostrarModalClasificacionRapida)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);z-index:1060;" @onclick="() => _mostrarModalClasificacionRapida = false">
+        <div class="modal-dialog modal-sm modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white py-2">
+                    <h6 class="modal-title mb-0"><i class="bi bi-folder-fill me-2"></i>Nueva Clasificación</h6>
+                    <button type="button" class="btn-close btn-close-white btn-sm" @onclick="() => _mostrarModalClasificacionRapida = false"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_errorClasificacionRapida))
+                    {
+                        <div class="alert alert-danger py-2 small">@_errorClasificacionRapida</div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">Nombre de la clasificación <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_nuevaClasificacionNombre" placeholder="Ej: Electrónica, Alimentos, etc." maxlength="100" />
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _mostrarModalClasificacionRapida = false">Cancelar</button>
+                    <button type="button" class="btn btn-info btn-sm" @onclick="GuardarClasificacionRapidaAsync" disabled="@_guardandoClasificacionRapida">
+                        @if (_guardandoClasificacionRapida) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private string? Error;
     private string? Ok;
@@ -1038,6 +1140,18 @@
     private List<SistemIA.Models.TiposIva> _tiposIvaModal = new();
     private IBrowserFile? _imagenProductoPendiente;
     private string? _previewImagenProducto;
+    
+    // Variables para modal de nueva marca rápida
+    private bool _mostrarModalMarcaRapida;
+    private bool _guardandoMarcaRapida;
+    private string? _errorMarcaRapida;
+    private string _nuevaMarcaNombre = string.Empty;
+    
+    // Variables para modal de nueva clasificación rápida
+    private bool _mostrarModalClasificacionRapida;
+    private bool _guardandoClasificacionRapida;
+    private string? _errorClasificacionRapida;
+    private string _nuevaClasificacionNombre = string.Empty;
 
     private decimal Gravado10; private decimal Gravado5; private decimal Exenta; private decimal IVATotal10; private decimal IVATotal5;
     private decimal CantidadInput { get => NuevoDetalle.Cantidad; set { NuevoDetalle.Cantidad = value; RecalcularNuevoDetalle(); } }
@@ -4519,6 +4633,152 @@ END
         finally
         {
             _guardandoProducto = false;
+            StateHasChanged();
+        }
+    }
+    
+    // ============ Método para cambio de unidad de medida ============
+    private void OnUnidadMedidaChanged()
+    {
+        // Actualizar el nombre de unidad según el código
+        _nuevoProducto.UndMedida = _nuevoProducto.UnidadMedidaCodigo switch
+        {
+            "006" => "PAQUETE",
+            "005" => "CAJA",
+            "71" => "KG",
+            "72" => "LITRO",
+            "73" => "METRO",
+            _ => "UNIDAD"
+        };
+        
+        // Si NO es paquete/caja, limpiar campos de paquete
+        if (_nuevoProducto.UnidadMedidaCodigo != "006" && _nuevoProducto.UnidadMedidaCodigo != "005")
+        {
+            _nuevoProducto.CantidadPorPaquete = null;
+            _nuevoProducto.PermiteVentaPorUnidad = false;
+        }
+        else if (_nuevoProducto.CantidadPorPaquete == null)
+        {
+            // Valor inicial sugerido para paquete/caja
+            _nuevoProducto.CantidadPorPaquete = 10;
+        }
+    }
+    
+    // ============ Métodos para modal de marca rápida ============
+    private void AbrirModalMarcaRapida()
+    {
+        _mostrarModalMarcaRapida = true;
+        _errorMarcaRapida = null;
+        _nuevaMarcaNombre = string.Empty;
+    }
+    
+    private async Task GuardarMarcaRapidaAsync()
+    {
+        _errorMarcaRapida = null;
+        
+        if (string.IsNullOrWhiteSpace(_nuevaMarcaNombre))
+        {
+            _errorMarcaRapida = "El nombre de la marca es obligatorio.";
+            return;
+        }
+        
+        _guardandoMarcaRapida = true;
+        StateHasChanged();
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Verificar si ya existe
+            var existe = await ctx.Marcas.AnyAsync(m => m.NombreMarca.ToLower() == _nuevaMarcaNombre.Trim().ToLower());
+            if (existe)
+            {
+                _errorMarcaRapida = "Ya existe una marca con ese nombre.";
+                return;
+            }
+            
+            var nuevaMarca = new SistemIA.Models.Marca
+            {
+                NombreMarca = _nuevaMarcaNombre.Trim()
+            };
+            
+            ctx.Marcas.Add(nuevaMarca);
+            await ctx.SaveChangesAsync();
+            
+            // Agregar a la lista del modal y seleccionarla
+            _marcasModal.Add(nuevaMarca);
+            _marcasModal = _marcasModal.OrderBy(m => m.NombreMarca).ToList();
+            _nuevoProducto.IdMarca = nuevaMarca.IdMarca;
+            
+            _mostrarModalMarcaRapida = false;
+        }
+        catch (Exception ex)
+        {
+            _errorMarcaRapida = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardandoMarcaRapida = false;
+            StateHasChanged();
+        }
+    }
+    
+    // ============ Métodos para modal de clasificación rápida ============
+    private void AbrirModalClasificacionRapida()
+    {
+        _mostrarModalClasificacionRapida = true;
+        _errorClasificacionRapida = null;
+        _nuevaClasificacionNombre = string.Empty;
+    }
+    
+    private async Task GuardarClasificacionRapidaAsync()
+    {
+        _errorClasificacionRapida = null;
+        
+        if (string.IsNullOrWhiteSpace(_nuevaClasificacionNombre))
+        {
+            _errorClasificacionRapida = "El nombre de la clasificación es obligatorio.";
+            return;
+        }
+        
+        _guardandoClasificacionRapida = true;
+        StateHasChanged();
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Verificar si ya existe
+            var existe = await ctx.Clasificaciones.AnyAsync(c => c.Nombre.ToLower() == _nuevaClasificacionNombre.Trim().ToLower());
+            if (existe)
+            {
+                _errorClasificacionRapida = "Ya existe una clasificación con ese nombre.";
+                return;
+            }
+            
+            var nuevaClasif = new SistemIA.Models.Clasificacion
+            {
+                Nombre = _nuevaClasificacionNombre.Trim(),
+                Activo = true
+            };
+            
+            ctx.Clasificaciones.Add(nuevaClasif);
+            await ctx.SaveChangesAsync();
+            
+            // Agregar a la lista del modal y seleccionarla
+            _clasificacionesModal.Add(nuevaClasif);
+            _clasificacionesModal = _clasificacionesModal.OrderBy(c => c.Nombre).ToList();
+            _nuevoProducto.IdClasificacion = nuevaClasif.IdClasificacion;
+            
+            _mostrarModalClasificacionRapida = false;
+        }
+        catch (Exception ex)
+        {
+            _errorClasificacionRapida = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardandoClasificacionRapida = false;
             StateHasChanged();
         }
     }
