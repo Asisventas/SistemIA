@@ -56,8 +56,7 @@ else if (cliente is not null)
                                 <label class="form-label">Numero de Documento</label>
                                 <div class="input-group">
                                     <InputText class="form-control"
-                                               @bind-Value="cliente.RUC"
-                                               @bind-Value:after="OnRucChanged" />
+                                               @bind-Value="cliente.RUC" />
                                     <button type="button" class="btn btn-outline-secondary" @onclick="ConsultarRucManual" disabled="@consultandoRuc">
                                         @if (consultandoRuc)
                                         {
@@ -908,27 +907,69 @@ END");
             
             // Usar URLs de SIFEN desde configuración de sociedad
             var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            // IMPORTANTE: La URL DEBE terminar en .wsdl para evitar error 0160
+            if (!string.IsNullOrWhiteSpace(url) && !url.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+            {
+                url = url + ".wsdl";
+            }
             
             var sifen = new Sifen();
             var xmlRespuesta = await sifen.Consulta(url, cliente.RUC, "1", sociedad.PathCertificadoP12 ?? "", sociedad.PasswordCertificadoP12 ?? "");
             
-            Console.WriteLine($"[DEBUG] Resultado recibido: {xmlRespuesta?.Substring(0, Math.Min(500, xmlRespuesta?.Length ?? 0))}...");
+            Console.WriteLine($"[DEBUG EditarCliente] Respuesta recibida, longitud: {xmlRespuesta?.Length ?? 0}");
+            Console.WriteLine($"[DEBUG EditarCliente] Primeros 100 chars: {xmlRespuesta?.Substring(0, Math.Min(100, xmlRespuesta?.Length ?? 0))}");
             
             if (string.IsNullOrEmpty(xmlRespuesta))
             {
+                Console.WriteLine($"[DEBUG EditarCliente] ❌ Respuesta vacía");
                 mensajeRuc = "⚠️ Sin respuesta de SIFEN. Verifique conexión e intente nuevamente.";
                 esErrorRuc = true;
                 return;
             }
             
-            // Verificar si es error de conexión/formato (problema común con conexión inestable)
-            if (xmlRespuesta.Contains("0160") || xmlRespuesta.Contains("XML Mal Formado"))
+            // Verificar si la respuesta es un JSON de error (todos los reintentos fallaron)
+            bool esJsonError = xmlRespuesta.TrimStart().StartsWith("{") && xmlRespuesta.Contains("\"error\"");
+            Console.WriteLine($"[DEBUG EditarCliente] ¿Es JSON de error?: {esJsonError}");
+            
+            if (esJsonError)
             {
+                Console.WriteLine($"[DEBUG EditarCliente] ❌ Respuesta es JSON de error");
                 mensajeRuc = "⚠️ Error de conexión con SIFEN. Intente nuevamente.";
                 esErrorRuc = true;
                 return;
             }
             
+            // Verificar tipo de respuesta SIFEN
+            // - rResEnviConsRUC = respuesta de consulta RUC (lo que esperamos)
+            // - rRetEnviDe = respuesta de envío DE (error del servidor - respuesta equivocada)
+            bool esRespuestaConsultaRuc = xmlRespuesta.Contains("rResEnviConsRUC") || xmlRespuesta.Contains("xContRUC");
+            bool esRespuestaEnvioDe = xmlRespuesta.Contains("rRetEnviDe") || xmlRespuesta.Contains("rProtDe");
+            bool tieneError0160 = xmlRespuesta.Contains("0160") || xmlRespuesta.Contains("XML Mal Formado");
+            bool tieneExito0502 = xmlRespuesta.Contains(">0502<");
+            
+            Console.WriteLine($"[DEBUG EditarCliente] ¿Es respuesta ConsultaRUC?: {esRespuestaConsultaRuc}");
+            Console.WriteLine($"[DEBUG EditarCliente] ¿Es respuesta EnvíoDE (error servidor)?: {esRespuestaEnvioDe}");
+            Console.WriteLine($"[DEBUG EditarCliente] ¿Tiene error 0160?: {tieneError0160}, ¿Tiene éxito 0502?: {tieneExito0502}");
+            
+            // Si recibimos respuesta de tipo EnvíoDE en lugar de ConsultaRUC, es error del servidor BIG-IP
+            if (esRespuestaEnvioDe && !esRespuestaConsultaRuc)
+            {
+                Console.WriteLine($"[DEBUG EditarCliente] ⚠️ Servidor devolvió respuesta tipo incorrecto (rRetEnviDe)");
+                mensajeRuc = "⚠️ Error de servidor SIFEN. Intente nuevamente.";
+                esErrorRuc = true;
+                return;
+            }
+            
+            // Verificar error 0160 solo si NO es respuesta de consulta RUC válida
+            if (tieneError0160 && !esRespuestaConsultaRuc && !tieneExito0502)
+            {
+                Console.WriteLine($"[DEBUG EditarCliente] ❌ Error de formato 0160");
+                mensajeRuc = "⚠️ Error de formato en SIFEN. Intente nuevamente.";
+                esErrorRuc = true;
+                return;
+            }
+            
+            Console.WriteLine($"[DEBUG EditarCliente] ✓ Procesando respuesta XML...");
             var xmlDoc = new System.Xml.XmlDocument();
             xmlDoc.LoadXml(xmlRespuesta);
             

@@ -15,13 +15,40 @@
   private List<VentaDetalle> detalles = new();
   private Cliente? cliente;
   private Caja? caja;
+  private Sociedad? sociedad; // Para Factura Electrónica: usar datos de Sociedad en cabecera
+  private SociedadActividadEconomica? actividadPrincipal; // Actividad económica principal de la sociedad
   private string? qrDataUrl;
   private int _lastLoadedIdVenta = -1; // Cache para evitar recargas innecesarias
   private int _lastOnReadyIdVenta = -1; // Evitar invocaciones repetidas de OnReady
   private bool _ocultarImagenes = false; // Debug: ocultar imágenes (logo/QR)
   private bool _modoFarmaciaActivo = false; // Modo farmacia para mostrar Precio Ministerio
-  private bool esFacturaElectronica => (caja?.TipoFacturacion ?? "ELECTRONICA") == "ELECTRONICA";
+  private bool esFacturaElectronica => (caja?.TipoFacturacion ?? "ELECTRONICA").ToUpper().Contains("ELECTR");
   private string numeroCompleto => $"{venta?.Establecimiento}-{venta?.PuntoExpedicion}-{venta?.NumeroFactura}";
+  
+  // ========== DATOS DEL EMISOR (cabecera) ==========
+  // Para Factura Electrónica: usar Sociedad
+  // Para Autoimpresor: usar Sucursal
+  private string NombreEmisor => esFacturaElectronica 
+      ? (sociedad?.Nombre ?? venta?.Sucursal?.NombreEmpresa ?? "") 
+      : (venta?.Sucursal?.NombreEmpresa ?? "");
+  private string DireccionEmisor => esFacturaElectronica 
+      ? (sociedad?.Direccion ?? venta?.Sucursal?.Direccion ?? "") 
+      : (venta?.Sucursal?.Direccion ?? "");
+  private string TelefonoEmisor => esFacturaElectronica 
+      ? (sociedad?.Telefono ?? venta?.Sucursal?.Telefono ?? "") 
+      : (venta?.Sucursal?.Telefono ?? "");
+  private string CorreoEmisor => esFacturaElectronica 
+      ? (sociedad?.Email ?? venta?.Sucursal?.Correo ?? "") 
+      : (venta?.Sucursal?.Correo ?? "");
+  private string RubroEmisor => esFacturaElectronica 
+      ? (actividadPrincipal?.NombreActividad ?? venta?.Sucursal?.RubroEmpresa ?? "") 
+      : (venta?.Sucursal?.RubroEmpresa ?? "");
+  private string RucEmisor => esFacturaElectronica 
+      ? (sociedad?.RUC ?? venta?.Sucursal?.RUC ?? "") 
+      : (venta?.Sucursal?.RUC ?? "");
+  private int? DvEmisor => esFacturaElectronica 
+      ? (sociedad?.DV ?? venta?.Sucursal?.DV) 
+      : venta?.Sucursal?.DV;
 
   protected override async Task OnParametersSetAsync()
   {
@@ -94,12 +121,32 @@
         _modoFarmaciaActivo = config?.FarmaciaModoActivo == true;
       }));
       
+      // Cargar Sociedad y Actividad Económica (para cabecera en Factura Electrónica)
+      loadTasks.Add(Task.Run(async () =>
+      {
+        await using var socCtx = await DbFactory.CreateDbContextAsync();
+        // Obtener la primera sociedad (normalmente hay una sola)
+        sociedad = await socCtx.Sociedades
+          .AsNoTracking()
+          .FirstOrDefaultAsync();
+        
+        // Cargar la actividad económica principal de la sociedad
+        if (sociedad != null)
+        {
+          actividadPrincipal = await socCtx.SociedadesActividades
+            .AsNoTracking()
+            .Where(a => a.IdSociedad == sociedad.IdSociedad && a.ActividadPrincipal == "S")
+            .FirstOrDefaultAsync();
+        }
+      }));
+      
       await Task.WhenAll(loadTasks);
       _lastLoadedIdVenta = IdVenta; // Marcar como cargado
 
       Console.WriteLine($"[KudeFactura] Datos cargados: {detalles.Count} detalles");
       Console.WriteLine($"[KudeFactura] TipoFacturacion de caja: {caja?.TipoFacturacion ?? "NULL"}");
       Console.WriteLine($"[KudeFactura] esFacturaElectronica: {esFacturaElectronica}");
+      Console.WriteLine($"[KudeFactura] Sociedad cargada: {sociedad?.Nombre ?? "NULL"}");
 
       // Generar QR solo si es factura electrónica
       if (esFacturaElectronica)
@@ -185,25 +232,25 @@ else
             <img class="logo" src="@LogoDataUrl()" alt="Logo" />
           }
           <div class="empresa">
-            <div class="nombre">@venta.Sucursal?.NombreEmpresa</div>
-            <div class="dir">@venta.Sucursal?.Direccion</div>
-            @if (!string.IsNullOrWhiteSpace(venta?.Sucursal?.Telefono))
+            <div class="nombre">@NombreEmisor</div>
+            <div class="dir">@DireccionEmisor</div>
+            @if (!string.IsNullOrWhiteSpace(TelefonoEmisor))
             {
-              <div class="tel">Teléfono: @venta.Sucursal?.Telefono</div>
+              <div class="tel">Teléfono: @TelefonoEmisor</div>
             }
-            @if (!string.IsNullOrWhiteSpace(venta?.Sucursal?.Correo))
+            @if (!string.IsNullOrWhiteSpace(CorreoEmisor))
             {
-              <div class="mail">@venta.Sucursal?.Correo</div>
+              <div class="mail">@CorreoEmisor</div>
             }
-            @if (!string.IsNullOrWhiteSpace(venta?.Sucursal?.RubroEmpresa))
+            @if (!string.IsNullOrWhiteSpace(RubroEmisor))
             {
-              <div class="rubro">Actividad Económica: @venta.Sucursal?.RubroEmpresa</div>
+              <div class="rubro">Actividad Económica: @RubroEmisor</div>
             }
           </div>
         </div>
       </div>
       <div class="emisor-right">
-        <div>R.U.C.: @(venta?.Sucursal?.RUC)-@(venta?.Sucursal?.DV)</div>
+        <div>R.U.C.: @RucEmisor-@DvEmisor</div>
   <div>Timbrado N°: @venta?.Timbrado</div>
         @if (caja != null)
         {

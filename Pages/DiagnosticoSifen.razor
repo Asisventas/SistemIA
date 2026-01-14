@@ -308,11 +308,24 @@
                 
                 // Si hay URLs personalizadas en Sociedad, usarlas
                 if (!string.IsNullOrEmpty(sociedad.DeUrlConsultaRuc))
+                {
                     urlConsultaRuc = sociedad.DeUrlConsultaRuc;
+                    // IMPORTANTE: La URL DEBE terminar en .wsdl para evitar error 0160
+                    if (!urlConsultaRuc.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+                        urlConsultaRuc = urlConsultaRuc + ".wsdl";
+                }
                 if (!string.IsNullOrEmpty(sociedad.DeUrlConsultaDocumento))
+                {
                     urlConsultaDe = sociedad.DeUrlConsultaDocumento;
+                    if (!urlConsultaDe.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+                        urlConsultaDe = urlConsultaDe + ".wsdl";
+                }
                 if (!string.IsNullOrEmpty(sociedad.DeUrlEnvioDocumento))
+                {
                     urlRecepcionLote = sociedad.DeUrlEnvioDocumento;
+                    if (!urlRecepcionLote.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+                        urlRecepcionLote = urlRecepcionLote + ".wsdl";
+                }
                     
                 AgregarLog("info", $"Datos cargados desde Sociedad: {sociedad.Nombre}");
             }

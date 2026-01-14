@@ -184,8 +184,10 @@ namespace SistemIA.Services
             var sumaDetallesGs = (pago.Detalles ?? new List<VentaPagoDetalle>()).Sum(d => d.MontoGs);
             if (pago.CondicionOperacion == 1)
             {
-                // Contado: suma de pagos debe igualar total
-                AssertCasiIgual(venta.Total, sumaDetallesGs, "La suma de pagos (Gs) no coincide con el total de la venta");
+                // Contado: suma de pagos debe ser >= total (puede haber vuelto en efectivo)
+                // El ImporteTotal ya está ajustado al total de la venta
+                if (sumaDetallesGs < venta.Total)
+                    throw new InvalidOperationException($"La suma de pagos (Gs) es menor que el total de la venta. Esperado>={venta.Total}, Actual={sumaDetallesGs}");
             }
             else if (pago.CondicionOperacion == 2)
             {

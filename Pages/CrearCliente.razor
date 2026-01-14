@@ -49,7 +49,7 @@
                             <div class="col-md-6">
                                 <label class="form-label">Documento</label>
                                 <div class="input-group">
-                                    <InputText @bind-Value="cliente.RUC" @bind-Value:after="OnRucChanged" class="form-control" placeholder="RUC sin DV" />
+                                    <InputText @bind-Value="cliente.RUC" class="form-control" placeholder="RUC sin DV" />
                                     <button type="button" class="btn btn-outline-primary" @onclick="ConsultarRucManual" disabled="@consultandoRuc" title="Consultar datos del RUC en DNIT">
                                         @if (consultandoRuc)
                                         {
@@ -411,6 +411,11 @@
             }
 
             var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            // IMPORTANTE: La URL DEBE terminar en .wsdl para evitar error 0160
+            if (!string.IsNullOrWhiteSpace(url) && !url.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+            {
+                url = url + ".wsdl";
+            }
             Console.WriteLine($"[DEBUG CrearCliente] URL: {url}");
             Console.WriteLine($"[DEBUG CrearCliente] Certificado: {sociedad.PathCertificadoP12}");
             Console.WriteLine($"[DEBUG CrearCliente] RUC a consultar: {cliente.RUC}");

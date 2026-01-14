@@ -1359,9 +1359,14 @@
   {
     try
     {
+      // Handler que ignora certificados SSL para llamadas localhost
+      var handler = new System.Net.Http.HttpClientHandler();
+      handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+      
       // Prevalidar
-      using (var http = new System.Net.Http.HttpClient { BaseAddress = new Uri(Nav.BaseUri) })
+      using (var http = new System.Net.Http.HttpClient(handler) { BaseAddress = new Uri(Nav.BaseUri) })
       {
+        http.Timeout = TimeSpan.FromSeconds(60);
         var pre = await http.GetAsync($"admin/de/validar/{id}");
         var preBody = await pre.Content.ReadAsStringAsync();
         if (!pre.IsSuccessStatusCode)
@@ -1386,8 +1391,12 @@
         }
       }
 
-      using var http2 = new System.Net.Http.HttpClient { BaseAddress = new Uri(Nav.BaseUri) };
-      var res = await http2.PostAsync($"ventas/{id}/enviar-sifen", content: null);
+      var handler2 = new System.Net.Http.HttpClientHandler();
+      handler2.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+      using var http2 = new System.Net.Http.HttpClient(handler2) { BaseAddress = new Uri(Nav.BaseUri), Timeout = TimeSpan.FromSeconds(120) };
+      // FIX 10-Ene-2026: Usar endpoint SYNC que envía XML directo (sin ZIP)
+      // El endpoint /enviar-sifen usaba formato LOTE con ZIP+Base64, causando error 0160
+      var res = await http2.PostAsync($"ventas/{id}/enviar-sifen-sync", content: null);
       var body = await res.Content.ReadAsStringAsync();
       await JS.InvokeVoidAsync("alert", res.IsSuccessStatusCode ? body : ($"Error al enviar: {body}"));
       await Buscar();

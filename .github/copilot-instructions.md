@@ -1,6 +1,30 @@
 # Instrucciones para GitHub Copilot - SistemIA
 
-## 📋 Descripción del Proyecto
+## � REGLA PRIMORDIAL - Ejecución del Servidor
+
+> **⚠️ CRÍTICO:** Al ejecutar el servidor (`dotnet run`) y luego hacer solicitudes HTTP (Invoke-RestMethod, curl, etc.) desde la misma terminal o proceso, **el servidor se cierra automáticamente**.
+
+### Solución Obligatoria:
+1. **NUNCA** usar `dotnet run` en background y luego `Invoke-RestMethod` en la misma sesión
+2. **SIEMPRE** usar `Start-Process` para iniciar el servidor como proceso independiente:
+```powershell
+# ✅ CORRECTO - Servidor como proceso independiente
+Start-Process -FilePath "dotnet" -ArgumentList "run","--urls","http://localhost:5095" -WorkingDirectory "c:\asis\SistemIA" -WindowStyle Hidden
+Start-Sleep -Seconds 20  # Esperar que compile e inicie
+
+# Luego en OTRA terminal o comando separado:
+Invoke-RestMethod -Uri "http://localhost:5095/endpoint" -Method POST
+```
+
+3. **Alternativa:** Usar tareas de VS Code separadas para servidor y pruebas
+4. **Para debugging HTTP:** Abrir el navegador manualmente o usar herramientas externas (Postman, Bruno)
+
+### ¿Por qué ocurre?
+PowerShell en VS Code terminal comparte contexto y cuando el proceso hijo (dotnet) detecta que la sesión padre hace operaciones de red, puede interpretarlo como señal de cierre.
+
+---
+
+## �📋 Descripción del Proyecto
 SistemIA es un sistema de gestión empresarial desarrollado en **Blazor Server** con integración a **SIFEN** (Facturación Electrónica de Paraguay - SET).
 
 ## 🛠️ Stack Tecnológico
@@ -31,6 +55,31 @@ wwwroot/css/     → Estilos (site.css es el principal)
 - `GUIA_MIGRACIONES_EF_CORE.md` - Migraciones Entity Framework
 - `PUBLICACION_DEPLOY.md` - Publicación y problemas de cultura/decimales
 - `FLEXBOX_SCROLL_SIDEBAR.md` - Solución para scroll en sidebar
+
+### 📄 Conversión de Manuales PDF
+Para consultar manuales PDF (SIFEN, etc.), usar el script de extracción:
+
+```powershell
+# Ejecutar extractor de PDF (requiere PyMuPDF)
+python .ai-docs/SIFEN/extraer_manual.py
+```
+
+**Documentos ya convertidos disponibles:**
+| Archivo Original | Texto Extraído |
+|------------------|----------------|
+| `.ai-docs/SIFEN/Manual_Tecnico_v150.pdf` | `.ai-docs/SIFEN/Manual_Extraido/manual_completo.txt` |
+| `.ai-docs/SIFEN/Manual_Tecnico_v150.pdf` | `.ai-docs/SIFEN/Manual_Tecnico_v150_COMPLETO.txt` |
+
+**Estructura de archivos extraídos:**
+```
+.ai-docs/SIFEN/Manual_Extraido/
+├── manual_completo.txt      # Texto completo del manual
+├── GUIA_RAPIDA_SIFEN.md     # Guía rápida generada
+├── resumen_extraccion.json  # Metadata de extracción
+└── imagenes/                # Imágenes extraídas del PDF
+```
+
+> **CONSULTAR PRIMERO** los archivos `.txt` ya extraídos antes de procesar el PDF nuevamente.
 
 ## 🔑 Convenciones de Código
 
@@ -69,23 +118,98 @@ wwwroot/css/     → Estilos (site.css es el principal)
 
 ## 🧾 SIFEN (Facturación Electrónica)
 
+> **📖 DOCUMENTACIÓN COMPLETA:** [`.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md`](../.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md)
+> 
+> Esta sección es un resumen. Consultar el documento completo para detalles de implementación, códigos de error, y estructura XML.
+
 ### Tipos de Documentos
-- Factura Electrónica (FE)
-- Nota de Crédito Electrónica (NCE)
-- Nota de Débito Electrónica (NDE)
-- Autofactura Electrónica (AFE)
-- Nota de Remisión Electrónica (NRE)
+| Código | Tipo | Abreviatura |
+|--------|------|-------------|
+| 1 | Factura Electrónica | FE |
+| 5 | Nota de Crédito Electrónica | NCE |
+| 6 | Nota de Débito Electrónica | NDE |
+| 4 | Autofactura Electrónica | AFE |
+| 7 | Nota de Remisión Electrónica | NRE |
 
-### Estructura XML
-- Seguir estrictamente la especificación del SET
-- Namespace: `http://ekuatia.set.gov.py/sifen/xsd`
-- Los servicios SIFEN están en `Services/`
+### Archivos Principales
+| Archivo | Función |
+|---------|---------|
+| `Models/Sifen.cs` | Construcción SOAP, firma XML, envío a SET |
+| `Services/DEXmlBuilder.cs` | Generación XML del Documento Electrónico |
+| `Services/CdcGenerator.cs` | Generación del CDC (44 caracteres) |
+| `Services/ClienteSifenService.cs` | Configuración por cliente SIFEN |
 
-### Campos SIFEN comunes
-- `CDC` - Código de Control (44 caracteres)
-- `IdLote` - Identificador de lote enviado
-- `EstadoSifen` - Estado del documento en SIFEN
-- `MensajeSifen` - Mensaje de respuesta del SET
+### Campos SIFEN en Modelos
+```csharp
+// ========== SIFEN ==========
+[MaxLength(8)] public string? Timbrado { get; set; }
+[MaxLength(64)] public string? CDC { get; set; }        // 44 caracteres
+[MaxLength(30)] public string? EstadoSifen { get; set; }
+public string? MensajeSifen { get; set; }
+public long? IdLote { get; set; }                        // ID del lote enviado
+```
+
+### ⚠️ Conexión SSL/TLS - IMPORTANTE (Enero 2026)
+Los servidores SIFEN tienen **problemas de conexión SSL intermitentes** debido a balanceadores BIG-IP.
+
+**Solución implementada:** Retry automático con exponential backoff (5 intentos, delays: 1s, 2s, 3s, 5s, 8s)
+
+```csharp
+// En Models/Sifen.cs - método Enviar()
+const int maxRetries = 5;
+int[] delaySeconds = { 1, 2, 3, 5, 8 }; // Fibonacci-like backoff
+```
+
+**Configuración requerida:**
+- TLS 1.2 obligatorio: `handler.SslProtocols = SslProtocols.Tls12`
+- URLs deben terminar en `.wsdl`
+- Content-Type: `application/xml; charset=utf-8`
+- Header User-Agent: `Java/1.8.0_341` (bypass BIG-IP)
+
+### 🔴 Error 0160 "XML Mal Formado" - CRÍTICO (Enero 2026)
+
+**Causa #1 - ZIP vs GZip:** El campo xDE requiere `application/zip` (ZIP real), NO GZip.
+```csharp
+// ✅ CORRECTO - En Models/Sifen.cs StringToZip()
+using var zipArchive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true);
+var entry = zipArchive.CreateEntry($"DE_{DateTime.Now:ddMMyyyy}.xml");
+```
+
+**Causa #2 - schemaLocation HTTPS:** Debe ser `http://` no `https://`.
+```xml
+<!-- ✅ CORRECTO -->
+xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"
+```
+
+**Causa #3 - Campos obligatorios faltantes:**
+- `gOblAfe` (Obligaciones Afectadas del contribuyente) - **OBLIGATORIO**
+- `dBasExe` dentro de `gCamIVA` (base exenta)
+
+**Causa #4 - Campos que deben omitirse:**
+- `dSubExo` (subtotal exonerado) si no aplica
+
+**Causa #5 - DigestValue en QR (BUG CRÍTICO 10-Ene-2026):**
+El DigestValue del QR debe ser el HEX de los **bytes binarios** del hash, NO del texto Base64.
+```csharp
+// ❌ INCORRECTO - Convertía texto Base64 a hex caracter por caracter
+public string StringToHex(string s) => string.Concat(s.Select(c => ((int)c).ToString("x2")));
+// Resultado: "GAC2XV..." → "4741433258..." (hex de caracteres ASCII)
+
+// ✅ CORRECTO - Decodificar Base64 primero, luego convertir bytes a hex
+public string Base64ToHex(string base64) {
+    byte[] bytes = Convert.FromBase64String(base64);
+    return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
+}
+// Resultado: "GAC2XV..." → decodificar → bytes → "1800b65d53aa..."
+```
+
+**Referencia Manual Técnico v150 (Sección 13.8.4.3):**
+> "El resultado del hash de la firma viene en formato texto base64, el mismo debe ser convertido a un texto hexadecimal."
+
+### 📚 Librería Java de Referencia
+Se usó como referencia la librería oficial de Roshka: `github.com/roshkadev/rshk-jsifenlib`
+- Archivo clave: `ReqRecLoteDe.java` - Estructura del SOAP para envío
+- Archivo clave: `SifenUtil.java` - Compresión ZIP del XML
 
 ## 🗃️ Entity Framework Core - REGLAS CRÍTICAS
 
@@ -1464,3 +1588,399 @@ Ejemplo de mensaje al usuario al finalizar:
 📁 Tema: Infraestructura
 🏷️ Tags: historial, cambios, documentación, IA
 ```
+
+---
+
+## 📜 Historial de Cambios Recientes (Enero 2026)
+
+### Sesión 7 de Enero 2026 - Correcciones SIFEN
+
+#### Cambios Implementados:
+
+1. **[Corrección] VentasExplorar.razor - Error SSL interno**
+   - Archivo: `Pages/VentasExplorar.razor` (líneas ~1358-1420)
+   - Problema: El botón "Enviar SIFEN" fallaba con error SSL al hacer llamadas HTTP internas
+   - Solución: Agregado `HttpClientHandler` con `ServerCertificateCustomValidationCallback = true`
+   - También agregado timeout de 120 segundos para envíos
+
+2. **[Documentación] Valores CSC de Prueba del SET**
+   - Los valores oficiales de TEST del SET son:
+     - `IdCsc`: "0001"
+     - `Csc`: "ABCD0000000000000000000000000000" (32 caracteres)
+   - Documentado en `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md`
+
+3. **[Diagnóstico] Error 0160 - XML Mal Formado**
+   - Causa identificada: Fechas en el futuro en los documentos
+   - Los campos `dFeEmiDE`, `dFecFirma`, `dFeIniT` deben tener fechas <= fecha actual
+   - SIFEN rechaza documentos con fechas futuras
+
+#### Archivos Modificados:
+- `Pages/VentasExplorar.razor` - Corrección SSL para llamadas HTTP internas
+- `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` - Documentación CSC y errores
+- `.github/copilot-instructions.md` - Este historial de cambios
+
+#### Pruebas Realizadas:
+- ✅ Envío de venta a SIFEN desde VentasExplorar funciona (SSL corregido)
+- ✅ Conexión con servidor SIFEN TEST establecida correctamente
+- ⚠️ Venta 221 rechazada por fechas (año 2026 en el futuro - error de datos de prueba)
+
+#### Pendientes Identificados:
+- [x] El campo `dFeIniT` ahora usa `Caja.VigenciaDel` en lugar de `venta.Fecha` ✅ CORREGIDO
+- [x] **FIX CRÍTICO:** `StringToZip()` ahora usa `ZipArchive` en lugar de `GZipStream` ✅ CORREGIDO
+- [ ] Considerar validación de fechas antes de enviar a SIFEN
+- [ ] Crear una venta de prueba con fecha correcta para validar flujo completo
+- [ ] Verificar que todas las Cajas tengan `VigenciaDel` configurado correctamente
+
+### Sesión 7 de Enero 2026 (Continuación) - Fix Crítico ZIP vs GZip
+
+#### ⚠️ Cambio Crítico Implementado:
+
+**4. [Corrección CRÍTICA] StringToZip() - ZIP real en lugar de GZip**
+   - Archivo: `Models/Sifen.cs` (líneas 35-53)
+   - **Problema:** Error 0160 "XML Mal Formado" en TODOS los envíos de lote
+   - **Causa raíz:** SIFEN requiere `application/zip` (archivo ZIP real), pero el código usaba `GZipStream` que genera `.gz`
+   - **Solución:** Reemplazar `GZipStream` por `ZipArchive` con entrada nombrada `DE_DDMMYYYY.xml`
+   - **Referencia:** Código Java oficial en `ManualSifen/codigoabierto/.../SifenUtil.java`
+
+#### Archivos Modificados:
+- `Models/Sifen.cs` - Función `StringToZip()` corregida
+
+#### Documentación Descargada:
+- `.ai-docs/SIFEN/Manual_Tecnico_v150.pdf` (5.2 MB)
+- `.ai-docs/SIFEN/Guia_Mejores_Practicas_Envio_DE.pdf` (520 KB)
+- `.ai-docs/SIFEN/XML_Ejemplos/Extructura xml_DE.xml`
+- `.ai-docs/SIFEN/XSD_Schemas/Estructura_DE xsd.xml`
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Error 0160 - CRÍTICO"
+
+### Sesión 13 de Enero 2026 - Análisis Comparativo XML Funcional
+
+#### 🔍 Hallazgos Importantes:
+
+Se obtuvo un **XML que SIFEN ACEPTÓ** de otro sistema (Gasparini Informática) y se comparó con nuestro XML generado.
+
+**5. [Investigación] Comparación XML Funcional vs Generado**
+   - Se analizó la librería oficial Java: `github.com/roshkadev/rshk-jsifenlib`
+   - Se identificaron **diferencias críticas** entre XMLs
+
+#### 📋 Diferencias Críticas Encontradas:
+
+| Campo | XML Funcional (Aceptado) | Nuestro XML | Acción |
+|-------|--------------------------|-------------|--------|
+| `gOblAfe` | ✅ **Incluye** (Obligaciones Afectadas) | ❌ No genera | **AGREGAR** |
+| `dBasExe` en gCamIVA | ✅ Incluye | ❌ No genera | Agregar |
+| `dSubExo` | ❌ **No incluye** | ✅ Genera | **ELIMINAR** |
+| `schemaLocation` | `http://` | `https://` (error) | ✅ Corregido |
+| Decimales cantidad | `1.0000` | `1` | Formatear |
+| Campos geográficos receptor | ❌ Omitidos | ✅ Incluidos | Hacer opcionales |
+
+#### ⚠️ Campos que Causan Error 0160:
+
+1. **`gOblAfe` FALTANTE** - Obligaciones Afectadas del contribuyente (IVA, IRE, etc.)
+   ```xml
+   <gOblAfe>
+     <cOblAfe>211</cOblAfe>
+     <dDesOblAfe>IMPUESTO AL VALOR AGREGADO</dDesOblAfe>
+   </gOblAfe>
+   ```
+
+2. **`dSubExo` SOBRANTE** - El XML funcional NO incluye este campo
+   ```xml
+   <!-- ❌ Nuestro XML tiene esto que NO debería -->
+   <dSubExo>0</dSubExo>
+   ```
+
+3. **`schemaLocation` HTTPS** - Debe ser `http://` no `https://`
+   ```xml
+   <!-- ✅ CORRECTO -->
+   xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"
+   ```
+
+#### Archivos Actualizados:
+- `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` - Sección nueva de comparación XML
+- `.github/copilot-instructions.md` - Resumen SIFEN actualizado
+
+#### Pendientes para Corrección:
+- [x] **CRÍTICO:** Agregar campo `gOblAfe` en DEXmlBuilder.cs ✅ CORREGIDO 8 Ene 2026
+- [x] **CRÍTICO:** Eliminar campo `dSubExo` de gTotSub ✅ CORREGIDO 8 Ene 2026
+- [x] Agregar campo `dBasExe` dentro de gCamIVA ✅ YA ESTABA IMPLEMENTADO
+- [ ] Formatear decimales (4 para cantidades, 2 para porcentajes)
+- [ ] Hacer opcionales campos geográficos del receptor
+
+> **📖 Ver comparación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Comparación XML Funcional vs Generado"
+
+### Sesión 8 de Enero 2026 - Correcciones CRÍTICAS DEXmlBuilder
+
+#### ✅ Correcciones Implementadas:
+
+**1. [CRÍTICO] Agregado campo `gOblAfe` (Obligaciones Afectadas)**
+   - Archivo: `Services/DEXmlBuilder.cs`
+   - Campo obligatorio según XML aprobado por SIFEN
+   - Código 211 = IVA GRAVADAS Y EXONERADAS - EXPORTADORES
+
+**2. [CRÍTICO] Eliminado campo `dSubExo` (Subtotal Exonerado)**
+   - Archivo: `Services/DEXmlBuilder.cs`
+   - El XML aprobado por SIFEN NO incluye este campo
+
+**3. [Documentación] Guardados XMLs de referencia aprobados por SIFEN**
+   - `.ai-docs/SIFEN/XML_Ejemplos/Respuesta_ConsultaDE_Exitosa.xml`
+   - `.ai-docs/SIFEN/XML_Ejemplos/Respuesta_ConsultaLote_Aprobado.xml`
+
+**4. [Documentación] Códigos de respuesta SIFEN actualizados**
+   - Código 0362: Procesamiento de lote concluido
+   - Código 0260: Documento aprobado
+   - Código 0422: CDC encontrado
+   - Campo `dProtAut`: Protocolo de autorización (guardar)
+
+#### Archivos Modificados:
+- `Services/DEXmlBuilder.cs` - Agregado gOblAfe, eliminado dSubExo
+- `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` - Códigos de respuesta y XMLs de referencia
+- `.ai-docs/SIFEN/XML_Ejemplos/` - Nuevos archivos de referencia
+
+#### Próximo Paso:
+- Probar envío de venta a SIFEN con los cambios aplicados
+- Verificar que el XML generado sea aceptado
+
+### Sesión 9 de Enero 2026 - Debugging ZIP Corrupto en StringToZip()
+
+#### 🔴 Hallazgo CRÍTICO: ZIP enviado a SIFEN está corrupto
+
+Se realizó debugging intensivo del error 0160 "XML Mal Formado" persistente.
+
+#### Datos de la Prueba
+| Campo | Valor |
+|-------|-------|
+| IdVenta | 236 |
+| CDC | `01004952197001001000002422026010910624793139` |
+| Certificado | `WEN.pfx` (Subject: CN=WENCESLAO ROJAS ALFONSO) |
+| Respuesta SIFEN | Status 400, Error 0160 "XML Mal Formado" |
+
+#### Análisis del ZIP (xDE)
+Al decodificar el campo `xDE` enviado a SIFEN (Base64 → ZIP → XML):
+
+```powershell
+# Resultado:
+ZIP creado: 4271 bytes
+Error al extraer: "Se encontraron datos no válidos al descodificar"
+Archivo extraído: DE_09012026.xml (0 bytes) ← ¡VACÍO!
+```
+
+**El ZIP se crea pero el contenido XML interno está vacío/corrupto.**
+
+#### Causa Identificada
+La función `StringToZip()` en `Models/Sifen.cs` tiene un problema de flush/cierre de streams:
+- El `ZipArchive` y sus streams no se cierran correctamente antes de leer el `MemoryStream`
+- El XML nunca se escribe completamente al ZIP
+
+---
+
+### 🔴 FIX CRÍTICO 10-Ene-2026: Endpoint Sync NO usa ZIP
+
+#### ⚠️ DESCUBRIMIENTO DEFINITIVO
+
+Tras analizar **3 librerías de referencia** (Java, PHP, TypeScript), se descubrió que **el ZIP era innecesario para el endpoint sync**:
+
+| Endpoint | Elemento SOAP | ¿Comprime? | Contenido de xDE |
+|----------|---------------|------------|------------------|
+| **Sync** `recibe.wsdl` | `rEnviDe` | ❌ **NO** | XML directo `<rDE>...</rDE>` |
+| **Async** `recibe-lote.wsdl` | `rEnvioLote` | ✅ **SÍ** | ZIP + Base64 de `<rLoteDE>` |
+
+#### Evidencia de la Librería PHP (sifen.php línea 502)
+```php
+$soapEnvelope = '<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope">
+    <env:Header/>
+    <env:Body>
+        <rEnviDe xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+            <dId>25</dId>
+            <xDE>
+                ' . $contenidoXML . '   <!-- XML DIRECTO, SIN comprimir -->
+            </xDE>
+        </rEnviDe>
+    </env:Body>
+</env:Envelope>';
+```
+
+#### Corrección Aplicada en Models/Sifen.cs
+
+**ANTES (INCORRECTO):**
+```csharp
+// Para sync, comprimíamos en ZIP - ESTO ERA EL ERROR
+var zipped = StringToZip(xmlFirmado);
+var soap = $"...<xDE>{zipped}</xDE>...";
+```
+
+**DESPUÉS (CORRECTO):**
+```csharp
+// Para sync, el XML va DIRECTO sin comprimir
+var soap = $"...<xDE>{xmlFirmado}</xDE>...";
+```
+
+#### Resumen de Librerías Analizadas
+
+| Librería | Repositorio | Lenguaje | Conclusión |
+|----------|-------------|----------|------------|
+| Roshka | `roshkadev/rshk-jsifenlib` | Java | Sync = XML directo, Lote = ZIP |
+| TIPS-SA | `facturacionelectronicapy-xmlgen` | TypeScript | Confirma namespace `http://` |
+| Juan804041 | `Juan804041/sifen` | PHP | Sync = XML directo en xDE |
+
+#### Archivos de Referencia:
+- **Documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "FIX CRÍTICO 10-Ene-2026"
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md`
+
+### Sesión 21 de Enero 2026 - Validación XSD y Eliminación de Campos Inválidos
+
+#### 🔴 CAMPOS INVÁLIDOS ENCONTRADOS EN XSD v150
+
+Se analizó el XSD oficial `ManualSifen/codigoabierto/docs/set/20190910_XSD_v150/DE_v150.xsd` y se descubrió que generábamos campos **que NO EXISTEN**:
+
+| Campo | Dónde se agregaba | Existe en XSD | Acción |
+|-------|-------------------|---------------|--------|
+| `gOblAfe` | Dentro de `gOpeCom` | ❌ **NO** | **ELIMINADO** |
+| `dBasExe` | Dentro de `gCamIVA` | ❌ **NO** | **ELIMINADO** |
+| `dNumCasRec` duplicado | Se agregaba 2 veces | Existe 1 vez | **ELIMINADO duplicado** |
+
+#### ✅ Correcciones Aplicadas en DEXmlBuilder.cs
+
+```csharp
+// ELIMINADO 21-Ene-2026: gOblAfe NO EXISTE en XSD DE_v150.xsd
+// El XSD tgOpeCom solo tiene: iTipTra, dDesTipTra, iTImp, dDesTImp, cMoneOpe, dDesMoneOpe...
+// NO tiene gOblAfe (se agregó erróneamente basándose en XML de otra versión)
+
+// ELIMINADO 21-Ene-2026: dBasExe NO EXISTE en XSD dentro de tgCamIVA
+// El XSD tgCamIVA solo tiene: iAfecIVA, dDesAfecIVA, dPropIVA, dTasaIVA, dBasGravIVA, dLiqIVAItem
+// NO tiene dBasExe
+
+// ELIMINADO 21-Ene-2026: dNumCasRec duplicado (ya existe en ClienteSifenService)
+```
+
+#### ✅ Cambios en SOAP (Sifen.cs línea ~1195)
+
+```csharp
+// ANTES:
+var soap = $"<soap:Envelope xmlns:soap=\"...\">...";
+
+// DESPUÉS:
+var soap = $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body>...";
+```
+
+**Cambios:**
+- ✅ Declaración XML al inicio
+- ✅ Prefijo `env:` en lugar de `soap:`
+- ✅ Content-Type: `application/xml` (sin charset)
+
+#### 🧪 Endpoint de Prueba de Variantes Creado
+
+Nuevo endpoint `/debug/ventas/{id}/probar-variantes` que prueba **15 variantes** de formato SOAP.
+
+**Resultado:** Las 15 variantes fallan con error 0160 → El problema NO está en el formato del envelope.
+
+#### 🔍 Estado Actual del Error 0160
+
+| Verificación | Estado |
+|--------------|--------|
+| Campos del XSD | ✅ Corregidos (gOblAfe, dBasExe eliminados) |
+| Formato SOAP | ✅ 15 variantes probadas |
+| XML firmado estructura | ✅ Válido (tiene gCamFuFD, cierra con </rDE>) |
+| **Causa pendiente** | 🔍 Posible problema en firma digital o orden de elementos |
+
+#### Archivos Modificados:
+- `Services/DEXmlBuilder.cs` - Eliminados campos inválidos
+- `Models/Sifen.cs` - Nuevo formato SOAP + `GenerarSoapVariante()`
+- `Program.cs` - Endpoint `/debug/ventas/{id}/probar-variantes`
+
+#### Comandos de Debug Útiles:
+```powershell
+# Ver XML firmado
+Invoke-RestMethod "http://localhost:5095/debug/ventas/243/de-firmado"
+
+# Probar variante específica
+curl.exe -X POST "http://localhost:5095/debug/ventas/243/probar-variantes?variante=1"
+
+# Probar todas las variantes
+curl.exe -X POST "http://localhost:5095/debug/ventas/243/probar-variantes"
+```
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 21-Ene-2026"
+
+### Sesión 23 de Enero 2026 - Análisis XML Aprobado y Re-agregado de Campos
+
+#### ⚠️ Descubrimiento CRÍTICO: XML Aprobado tiene gOblAfe y dBasExe
+
+Se analizó el archivo `Respuesta_ConsultaDE_Exitosa.xml` (protocolo `48493331`) que **SÍ FUE APROBADO** por SIFEN.
+
+**Hallazgo:** El XML aprobado **SÍ incluye** los campos que habíamos eliminado por no estar en el XSD:
+- ✅ `gOblAfe` con código 211 (IVA Gravadas y Exoneradas)
+- ✅ `dBasExe` dentro de gCamIVA (valor 0 para gravados)
+- ✅ QR con `&amp;amp;` (doble encoding - CORRECTO)
+
+#### Cambios Realizados
+
+1. **Re-agregado `gOblAfe`** en `Services/DEXmlBuilder.cs`
+2. **Re-agregado `dBasExe`** en gCamIVA (~líneas 430-446)
+3. **Eliminada conversión doble** de `&amp;` en `Models/Sifen.cs`
+
+#### Verificaciones Completadas
+
+| Verificación | Estado |
+|--------------|--------|
+| Campo `gOblAfe` | ✅ Re-agregado (código 211) |
+| Campo `dBasExe` | ✅ Re-agregado en gCamIVA |
+| QR encoding `&amp;amp;` | ✅ Correcto (mismo que XML aprobado) |
+| URLs TEST | ✅ Correctas en SifenConfig.cs |
+| Botón VentasExplorar | ✅ Usa código actualizado |
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 23-Ene-2026"
+
+---
+
+### Sesión 10 de Enero 2026 - Validación SIFEN: Firma ✅ QR Pendiente
+
+#### 🎉 LOGRO IMPORTANTE: Firma Digital VÁLIDA
+
+En el prevalidador oficial `ekuatia.set.gov.py/prevalidador/validacion`:
+- ✅ **"Validación Firma: Es Válido"** - La firma digital ahora es correcta
+- ❌ **"Cadena de caracteres correspondiente al código QR no es coincidente con el archivo XML"** - Pendiente
+
+#### 📊 Estado Actual de Validación SIFEN
+
+| Componente | Estado | Notas |
+|------------|--------|-------|
+| Firma Digital (SignatureValue) | ✅ **VÁLIDA** | Funciona correctamente |
+| Encoding UTF-8 | ✅ **CORRECTO** | Tildes y ñ se muestran bien |
+| cHashQR (SHA256 URL+CSC) | ✅ Correcto | Verificado matemáticamente |
+| dFeEmiDE (fecha hex) | ✅ Correcto | Hex de caracteres ASCII |
+| **DigestValue en QR** | ✅ **CORRECTO** | 88 chars (hex de Base64 string) |
+
+#### 🎉 LOGRO 12-Ene-2026: XML Pasó Prevalidador SIFEN
+
+**El XML generado pasó TODAS las validaciones del prevalidador oficial:**
+- ✅ "XML y Firma Válidos"
+- ✅ "Pasó las Validaciones de SIFEN"
+
+**Correcciones implementadas:**
+1. **URL del QR**: Debe ser `consultas/qr` (producción) incluso para ambiente test
+2. **Escape `&`**: Escape simple `&amp;` (NO doble `&amp;amp;`)
+3. **IdCSC**: Sin ceros iniciales ("1" en vez de "0001")
+
+#### 🔴 Pendiente: Error 0160 al Enviar por SOAP
+
+A pesar de que el XML es 100% válido, el webservice retorna error 0160.
+
+**Formatos SOAP probados (todos fallan con 0160):**
+| Prefijo | Body | Resultado |
+|---------|------|-----------|
+| `env:` | `Body` | ❌ 0160 |
+| `soap:` | `body` | ❌ 0160 |
+| `soap:` | `Body` | ❌ 0160 |
+
+**Hipótesis pendientes:**
+1. Orden de elementos en SOAP
+2. Cabeceras HTTP adicionales
+3. Configuración TLS/certificado cliente
+
+#### Archivos de Prueba Generados
+- `Debug/venta_252_url_prod.xml` - XML válido con URL producción (pasa prevalidador)
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md`

@@ -67,12 +67,14 @@ namespace SistemIA.Services
             else
             {
                 // Generar CDC según especificación SIFEN
-                var rucEmisor = venta.Sucursal!.RUC;
-                var dvEmisor = Convert.ToString(venta.Sucursal!.DV, CultureInfo.InvariantCulture);
+                // IMPORTANTE: Usar datos de SOCIEDAD (contribuyente registrado en SIFEN)
+                var rucEmisor = sociedad.RUC;
+                var dvEmisor = Convert.ToString(sociedad.DV, CultureInfo.InvariantCulture);
                 var establecimiento = venta.Sucursal!.NumSucursal.ToString(CultureInfo.InvariantCulture);
                 var puntoExpedicion = venta.Caja?.Nivel2 ?? "001"; // Nivel2 es el punto de expedición
                 var numeroFactura = venta.NumeroFactura ?? "0";
-                var tipoContribuyente = "2"; // 2 = Persona Jurídica (por defecto)
+                // TipoContribuyente: 1=Persona Física, 2=Persona Jurídica - obtener de Sociedad
+                var tipoContribuyente = (sociedad.TipoContribuyente ?? 1).ToString(CultureInfo.InvariantCulture);
                 var tipoEmision = "1"; // 1 = Normal
                 var codigoSeguridad = venta.CodigoSeguridad; // Si existe en la venta
 
@@ -95,23 +97,70 @@ namespace SistemIA.Services
                 await db.SaveChangesAsync();
             }
 
-            var rucEm = Digits(venta.Sucursal!.RUC);
-            var dvEm = Digits(Convert.ToString(venta.Sucursal!.DV, CultureInfo.InvariantCulture));
+            // ========== DATOS DEL EMISOR ==========
+            // Para Factura Electrónica: Usar datos de SOCIEDAD (contribuyente registrado en SIFEN)
+            // El RUC, nombre y dirección deben coincidir con los datos del certificado digital
+            var rucEm = Digits(sociedad.RUC);
+            var dvEm = Digits(Convert.ToString(sociedad.DV, CultureInfo.InvariantCulture));
             var numSuc = Digits(Convert.ToString(venta.Sucursal!.NumSucursal, CultureInfo.InvariantCulture));
             var estab = Digits(venta.Establecimiento ?? string.Empty);
             var ptoExp = Digits(venta.PuntoExpedicion ?? string.Empty);
             var nroFact = Digits(venta.NumeroFactura ?? string.Empty);
 
-            // Emisor mínimo (gEmis) con Sucursal
+            // Cargar actividades económicas de la sociedad
+            var actividadesEconomicas = await db.SociedadesActividades
+                .Where(a => a.IdSociedad == sociedad.IdSociedad)
+                .OrderByDescending(a => a.ActividadPrincipal == "S")
+                .Take(9) // Máximo 9 según XSD
+                .ToListAsync();
+            
+            // Si no hay actividades, usar una por defecto
+            if (!actividadesEconomicas.Any())
+            {
+                actividadesEconomicas.Add(new SociedadActividadEconomica
+                {
+                    CodigoActividad = "47190",
+                    NombreActividad = "VENTA AL POR MENOR DE OTROS PRODUCTOS EN COMERCIOS NO ESPECIALIZADOS"
+                });
+            }
+
+            // Emisor COMPLETO (gEmis) con TODOS los campos obligatorios según XSD v150
+            // TipoContribuyente: 1=Persona Física, 2=Persona Jurídica
+            var iTipCont = sociedad.TipoContribuyente ?? 1;
             var gEmis = new XElement(NsSifen + "gEmis",
                 new XElement(NsSifen + "dRucEm", rucEm),
                 new XElement(NsSifen + "dDVEmi", string.IsNullOrEmpty(dvEm) ? "0" : dvEm),
-                new XElement(NsSifen + "iTipCont", 1),
-                // cTipReg removido para alinear estructura
-                new XElement(NsSifen + "dNomEmi", venta.Sucursal!.NombreEmpresa ?? string.Empty),
-                new XElement(NsSifen + "dDirEmi", venta.Sucursal!.Direccion ?? string.Empty),
-                new XElement(NsSifen + "dNumCas", "0")
+                new XElement(NsSifen + "iTipCont", iTipCont),
+                // cTipReg es opcional, se omite
+                new XElement(NsSifen + "dNomEmi", sociedad.Nombre ?? "SIN NOMBRE"),
+                // dNomFanEmi es opcional, se omite
+                new XElement(NsSifen + "dDirEmi", sociedad.Direccion ?? "SIN DIRECCION"),
+                new XElement(NsSifen + "dNumCas", sociedad.NumeroCasa ?? "0"),
+                // dCompDir1 y dCompDir2 son opcionales, se omiten
+                // CAMPOS OBLIGATORIOS DE UBICACIÓN
+                new XElement(NsSifen + "cDepEmi", sociedad.Departamento ?? 11), // 11 = CENTRAL por defecto
+                new XElement(NsSifen + "dDesDepEmi", ObtenerNombreDepartamento(sociedad.Departamento ?? 11)),
+                // Distrito del emisor (opcional pero recomendado)
+                new XElement(NsSifen + "cDisEmi", sociedad.Distrito ?? 1),
+                new XElement(NsSifen + "dDesDisEmi", ObtenerNombreDistrito(sociedad.Distrito ?? 1, db)),
+                new XElement(NsSifen + "cCiuEmi", sociedad.Ciudad ?? 1), // 1 = ASUNCION por defecto
+                new XElement(NsSifen + "dDesCiuEmi", ObtenerNombreCiudad(sociedad.Ciudad ?? 1, db)),
+                // CAMPOS OBLIGATORIOS DE CONTACTO
+                new XElement(NsSifen + "dTelEmi", sociedad.Telefono ?? "000000000"),
+                new XElement(NsSifen + "dEmailE", sociedad.Email ?? "sin@email.com")
+                // dDenSuc es opcional, se omite
+                // gActEco se agrega después (al menos 1 obligatorio)
+                // gRespDE es opcional, se omite
             );
+            
+            // Agregar actividades económicas (obligatorio al menos 1)
+            foreach (var act in actividadesEconomicas)
+            {
+                gEmis.Add(new XElement(NsSifen + "gActEco",
+                    new XElement(NsSifen + "cActEco", act.CodigoActividad),
+                    new XElement(NsSifen + "dDesActEco", act.NombreActividad ?? "ACTIVIDAD ECONOMICA")
+                ));
+            }
 
             // Receptor (gDatRec) desde servicio existente
             var gDatRecRaw = _clienteSvc.GenerarDatosReceptorSifen(venta.Cliente!);
@@ -160,7 +209,10 @@ namespace SistemIA.Services
             gDatRec.Add(new XElement(NsSifen + "iNatRec", iNatRec));
             // Consumidor Final: no contribuyente (iNatRec!=1) y sin documento (iTipIDRec==9 o dNumIDRec vacío/0)
             bool esConsumidorFinal = !esContribuyente && (tipMap == "9" || string.IsNullOrWhiteSpace(Digits(numIdRaw)) || Digits(numIdRaw) == "0");
-            var iTiOpeVal = esConsumidorFinal ? "1" : (gDatRecRaw.Element("iTiOpe")?.Value ?? "1");
+            // iTiOpe según manual SIFEN: 1=B2B (empresa a empresa), 2=B2C (empresa a consumidor final)
+            // El XML aprobado de PowerBuilder usa iTiOpe=1 para contribuyentes
+            // Para contado debe ser 1, para crédito puede ser 1 o 2 según si es B2B o B2C
+            var iTiOpeVal = esContribuyente ? "1" : "2"; // B2B=1, B2C=2
             gDatRec.Add(new XElement(NsSifen + "iTiOpe", iTiOpeVal));
             gDatRec.Add(new XElement(NsSifen + "cPaisRec", gDatRecRaw.Element("cPaisRec")?.Value ?? "PRY"));
             gDatRec.Add(new XElement(NsSifen + "dDesPaisRe", gDatRecRaw.Element("dDesPaisRe")?.Value ?? "Paraguay"));
@@ -199,37 +251,56 @@ namespace SistemIA.Services
                 gDatRec.Add(new XElement(NsSifen + "dNumCasRec", numCasRec));
 
             // gDatGralOpe: fecha emisión, operación comercial, emisor y receptor
+            
+            // Crear gOpeCom según XML aprobado por SIFEN (Respuesta_ConsultaDE_Exitosa.xml)
+            // FIX 13-Ene-2026: Re-agregar gOblAfe que es OBLIGATORIO según XML aprobado
+            var gOpeCom = new XElement(NsSifen + "gOpeCom",
+                new XElement(NsSifen + "iTipTra", 3),
+                new XElement(NsSifen + "dDesTipTra", "Mixto (Venta de mercadería y servicios)"),
+                new XElement(NsSifen + "iTImp", 1),
+                new XElement(NsSifen + "dDesTImp", "IVA"),
+                new XElement(NsSifen + "cMoneOpe", venta.Moneda?.CodigoISO ?? "PYG"),
+                new XElement(NsSifen + "dDesMoneOpe", "Guarani"),
+                // gOblAfe: Obligaciones afectadas del contribuyente (OBLIGATORIO según XML aprobado)
+                new XElement(NsSifen + "gOblAfe",
+                    new XElement(NsSifen + "cOblAfe", 211),  // 211 = IVA GRAVADAS Y EXONERADAS - EXPORTADORES
+                    new XElement(NsSifen + "dDesOblAfe", "IMPUESTO AL VALOR AGREGADO - GRAVADAS Y EXONERADAS - EXPORTADORES")
+                )
+            );
+
             var gDatGralOpe = new XElement(NsSifen + "gDatGralOpe",
                 new XElement(NsSifen + "dFeEmiDE", venta.Fecha.ToString("yyyy-MM-ddTHH:mm:ss")),
-                new XElement(NsSifen + "gOpeCom",
-                    // Alinear al ejemplo provisto: Mixto / IVA
-                    new XElement(NsSifen + "iTipTra", 3),
-                    new XElement(NsSifen + "dDesTipTra", "Mixto (Venta de mercadería y servicios)"),
-                    new XElement(NsSifen + "iTImp", 1),
-                    new XElement(NsSifen + "dDesTImp", "IVA"),
-                    new XElement(NsSifen + "cMoneOpe", venta.Moneda?.CodigoISO ?? "PYG"),
-                    new XElement(NsSifen + "dDesMoneOpe", "Guarani"),
-                    // Reponer gOblAfe según ejemplo
-                    new XElement(NsSifen + "gOblAfe",
-                        new XElement(NsSifen + "cOblAfe", "211"),
-                        new XElement(NsSifen + "dDesOblAfe", "IMPUESTO AL VALOR AGREGADO - GRAVADAS Y EXONERADAS - EXPORTADORES")
-                    )
-                ),
+                gOpeCom,
                 gEmis,
                 gDatRec
             );
 
             // gTimb: incluir tipo de DE y datos de timbrado
-            var nroTim = Digits(venta.Timbrado ?? venta.Sucursal?.Timbrado ?? string.Empty);
+            // CRÍTICO para ambiente TEST: dNumTim debe ser el RUC del emisor (sin DV) con padding a 8 caracteres
+            // CRÍTICO para ambiente PROD: dNumTim es el número de timbrado asignado por SET
+            var ambiente = (venta.Sucursal?.Ambiente ?? "test").ToLowerInvariant();
+            string nroTim;
+            if (ambiente == "prod")
+            {
+                // Producción: usar el timbrado real de la Caja
+                nroTim = Digits(venta.Timbrado ?? venta.Caja?.Timbrado ?? string.Empty).PadLeft(8, '0');
+            }
+            else
+            {
+                // TEST: usar el RUC de la Sociedad (sin DV) con padding a 8 caracteres
+                nroTim = Digits(sociedad.RUC).PadLeft(8, '0');
+            }
             var nroDoc = Digits(venta.NumeroFactura ?? string.Empty);
+            // Fecha de inicio de vigencia del timbrado: usar VigenciaDel de Caja, si no existe usar fecha de venta como fallback
+            var fechaInicioTimbrado = venta.Caja?.VigenciaDel ?? venta.Fecha;
             var gTimb = new XElement(NsSifen + "gTimb",
                 new XElement(NsSifen + "iTiDE", 1),
                 new XElement(NsSifen + "dDesTiDE", "Factura electrónica"),
-                new XElement(NsSifen + "dNumTim", string.IsNullOrWhiteSpace(nroTim) ? "00000000" : nroTim),
+                new XElement(NsSifen + "dNumTim", string.IsNullOrWhiteSpace(nroTim) ? "00000000" : nroTim.PadLeft(8, '0')),
                 new XElement(NsSifen + "dEst", string.IsNullOrWhiteSpace(estab) ? "001" : estab.PadLeft(3, '0')),
                 new XElement(NsSifen + "dPunExp", string.IsNullOrWhiteSpace(ptoExp) ? "001" : ptoExp.PadLeft(3, '0')),
                 new XElement(NsSifen + "dNumDoc", string.IsNullOrWhiteSpace(nroDoc) ? "0000001" : nroDoc.PadLeft(7, '0')),
-                new XElement(NsSifen + "dFeIniT", venta.Fecha.ToString("yyyy-MM-dd")) // TODO: usar fecha real de inicio de timbrado si está disponible
+                new XElement(NsSifen + "dFeIniT", fechaInicioTimbrado.ToString("yyyy-MM-dd")) // Fecha inicio vigencia del timbrado desde Caja.VigenciaDel
             );
             // Serie del número de timbrado desde Caja (opcional, patrón [A-Z]{2})
             var serieCaja = venta.Caja?.Serie?.ToString()?.Trim();
@@ -263,13 +334,13 @@ namespace SistemIA.Services
             );
             if (pagos.E7.iCondOpe == 1)
             {
-                // Contado: estructura compacta (sin gPagos)
+                // Contado: estructura compacta (sin gPagos) - usar enteros para PYG
                 var pagoRef = pagos.E7.gPagos.FirstOrDefault();
                 int iTiPago = pagoRef?.iTiPago ?? 1;
                 var gPaConEIni = new XElement(NsSifen + "gPaConEIni",
                     new XElement(NsSifen + "iTiPago", iTiPago),
                     new XElement(NsSifen + "dDesTiPag", DescribirTipoPago(iTiPago)),
-                    new XElement(NsSifen + "dMonTiPag", pagos.E7.dTotGralOpe.ToString("0.####", CultureInfo.InvariantCulture)),
+                    new XElement(NsSifen + "dMonTiPag", Math.Round(pagos.E7.dTotGralOpe, 0).ToString("0", CultureInfo.InvariantCulture)),
                     new XElement(NsSifen + "cMoneTiPag", string.IsNullOrWhiteSpace(pagoRef?.cMoneTiPag) ? (pagos.E7.dMoneda ?? "PYG") : pagoRef!.cMoneTiPag),
                     new XElement(NsSifen + "dDMoneTiPag", "Guarani")
                 );
@@ -283,12 +354,12 @@ namespace SistemIA.Services
                     new XElement(NsSifen + "dPlazoCre", pagos.E7.gPagCred.gCuotas.Any() ? (pagos.E7.gPagCred.gCuotas.Max(c => (c.dFeFinCuo - DateTime.Today).Days)) : 30)
                 );
                 if (pagos.E7.gPagCred.dAnticipo.HasValue)
-                    gPagCred.Add(new XElement(NsSifen + "dAnticipo", pagos.E7.gPagCred.dAnticipo.Value.ToString("0.####", CultureInfo.InvariantCulture)));
+                    gPagCred.Add(new XElement(NsSifen + "dAnticipo", Math.Round(pagos.E7.gPagCred.dAnticipo.Value, 0).ToString("0", CultureInfo.InvariantCulture)));
                 foreach (var cuo in pagos.E7.gPagCred.gCuotas)
                 {
                     var gCuota = new XElement(NsSifen + "gCuotas",
                         new XElement(NsSifen + "cMoneCuo", cuo.cMoneCuo),
-                        new XElement(NsSifen + "dMonCuota", cuo.dMonCuota.ToString("0.####", CultureInfo.InvariantCulture)),
+                        new XElement(NsSifen + "dMonCuota", Math.Round(cuo.dMonCuota, 0).ToString("0", CultureInfo.InvariantCulture)),
                         new XElement(NsSifen + "dFeFinCuo", cuo.dFeFinCuo.ToString("yyyy-MM-dd"))
                     );
                     gPagCred.Add(gCuota);
@@ -304,18 +375,19 @@ namespace SistemIA.Services
                     new XElement(NsSifen + "dDesProSer", d.Producto?.Descripcion ?? "ITEM"),
                     new XElement(NsSifen + "cUniMed", d.Producto?.UnidadMedidaCodigo ?? "77"),
                     new XElement(NsSifen + "dDesUniMed", "UNI"),
-                    new XElement(NsSifen + "dCantProSer", d.Cantidad.ToString("0.####", CultureInfo.InvariantCulture))
+                    new XElement(NsSifen + "dCantProSer", d.Cantidad.ToString("0.0000", CultureInfo.InvariantCulture)) // 4 decimales según XML aprobado
                 );
 
-                // gValorItem y gValorRestaItem (simplificados sin descuentos/recargos)
+                // gValorItem y gValorRestaItem (según XML aprobado por SIFEN - SIN dDescGloItem)
+                // Para PYG usar valores enteros (excepto cantidades que usan 4 decimales)
                 var gValorItem = new XElement(NsSifen + "gValorItem",
-                    new XElement(NsSifen + "dPUniProSer", d.PrecioUnitario.ToString("0.####", CultureInfo.InvariantCulture)),
-                    new XElement(NsSifen + "dTotBruOpeItem", d.Importe.ToString("0.####", CultureInfo.InvariantCulture)),
+                    new XElement(NsSifen + "dPUniProSer", Math.Round(d.PrecioUnitario, 0).ToString("0", CultureInfo.InvariantCulture)),
+                    new XElement(NsSifen + "dTotBruOpeItem", Math.Round(d.Importe, 0).ToString("0", CultureInfo.InvariantCulture)),
                     new XElement(NsSifen + "gValorRestaItem",
-                        new XElement(NsSifen + "dDescItem", 0),
-                        new XElement(NsSifen + "dPorcDesIt", 0),
-                        new XElement(NsSifen + "dDescGloItem", 0),
-                        new XElement(NsSifen + "dTotOpeItem", d.Importe.ToString("0.####", CultureInfo.InvariantCulture))
+                        new XElement(NsSifen + "dDescItem", "0"),
+                        new XElement(NsSifen + "dPorcDesIt", "0.00"),  // 2 decimales según XML aprobado
+                        // NOTA: dDescGloItem fue eliminado - el XML aprobado NO lo incluye
+                        new XElement(NsSifen + "dTotOpeItem", Math.Round(d.Importe, 0).ToString("0", CultureInfo.InvariantCulture))
                     )
                 );
                 item.Add(gValorItem);
@@ -347,20 +419,23 @@ namespace SistemIA.Services
                 }
 
                 string dDesAfec = iAfecIVA switch { 1 => "Gravado IVA", 2 => "Exonerado", 3 => "Exento", _ => "Exento" };
-                string dPropIVA = iAfecIVA == 1 ? (dTasa == 10 ? "100" : dTasa == 5 ? "50" : "0") : "0"; // Placeholder proporcionalidad
+                // dPropIVA = proporcionalidad del IVA (100 = 100% gravado). NO es la tasa de IVA.
+                string dPropIVAValue = iAfecIVA == 1 ? "100" : "0"; // 100% gravado cuando iAfecIVA=1
+                // Para PYG, usar valores enteros (scale = 0)
+                bool esPYG = true; // TODO: obtener de moneda
+                string formatoDecimal = esPYG ? "0" : "0.####";
+                
+                // Construir gCamIVA según XML aprobado por SIFEN (Respuesta_ConsultaDE_Exitosa.xml)
+                // dBasExe = Base Exenta del item - SIEMPRE 0 según XML aprobado (el total va en dSubExe)
                 var gCamIVA = new XElement(NsSifen + "gCamIVA",
                     new XElement(NsSifen + "iAfecIVA", iAfecIVA),
                     new XElement(NsSifen + "dDesAfecIVA", dDesAfec),
-                    new XElement(NsSifen + "dPropIVA", dPropIVA),
-                    new XElement(NsSifen + "dTasaIVA", dTasa.ToString("0.####", CultureInfo.InvariantCulture)),
-                    new XElement(NsSifen + "dBasGravIVA", dBasGrav.ToString("0.####", CultureInfo.InvariantCulture)),
-                    new XElement(NsSifen + "dLiqIVAItem", dLiq.ToString("0.####", CultureInfo.InvariantCulture))
+                    new XElement(NsSifen + "dPropIVA", dPropIVAValue),
+                    new XElement(NsSifen + "dTasaIVA", dTasa.ToString("0", CultureInfo.InvariantCulture)),
+                    new XElement(NsSifen + "dBasGravIVA", Math.Round(dBasGrav, 0).ToString("0", CultureInfo.InvariantCulture)),
+                    new XElement(NsSifen + "dLiqIVAItem", Math.Round(dLiq, 0).ToString("0", CultureInfo.InvariantCulture)),
+                    new XElement(NsSifen + "dBasExe", "0")  // SIEMPRE 0 según XML aprobado
                 );
-                if (iAfecIVA == 3)
-                {
-                    var baseExe = d.Exenta > 0 ? d.Exenta : (d.Grabado5 == 0 && d.Grabado10 == 0 ? d.Importe : 0);
-                    gCamIVA.Add(new XElement(NsSifen + "dBasExe", baseExe.ToString("0.####", CultureInfo.InvariantCulture)));
-                }
                 item.Add(gCamIVA);
                 gDtipDE.Add(item);
                 i++;
@@ -368,40 +443,44 @@ namespace SistemIA.Services
 
             // Eliminar gCamEsp y gTransp para estructura mínima
 
-            // Totales mínimos
-            decimal subExe = detalles.Sum(x => x.Exenta);
-            decimal subExo = 0m; // Si hay exonerado, mapear aquí
-            decimal sub5 = detalles.Sum(x => x.Grabado5);
-            decimal sub10 = detalles.Sum(x => x.Grabado10);
-            decimal iva5 = detalles.Sum(x => x.IVA5);
-            decimal iva10 = detalles.Sum(x => x.IVA10);
+            // Totales mínimos - Para PYG usar valores enteros (scale = 0)
+            decimal subExe = Math.Round(detalles.Sum(x => x.Exenta), 0);
+            decimal subExo = 0; // Subtotal exonerado (no aplica en Paraguay normalmente)
+            decimal sub5 = Math.Round(detalles.Sum(x => x.Grabado5), 0);
+            decimal sub10 = Math.Round(detalles.Sum(x => x.Grabado10), 0);
+            decimal iva5 = Math.Round(detalles.Sum(x => x.IVA5), 0);
+            decimal iva10 = Math.Round(detalles.Sum(x => x.IVA10), 0);
             decimal totIVA = iva5 + iva10;
-            decimal totOpe = venta.Total; // Asumimos total incluye IVA
+            decimal totOpe = Math.Round(venta.Total, 0); // Asumimos total incluye IVA
             decimal baseGrav5 = sub5; // en ejemplo, base gravada 5 = subtotal 5 sin descuentos
             decimal baseGrav10 = sub10;
             decimal tBaseGravIva = baseGrav5 + baseGrav10;
 
+            // gTotSub según estructura de XML APROBADO por SIFEN (Respuesta_ConsultaDE_Exitosa.xml)
+            // Para PYG todos los valores son enteros (sin decimales)
+            // IMPORTANTE: El orden de campos debe coincidir EXACTAMENTE con el XSD
+            // NOTA: dSubExo eliminado - el XML funcional NO lo incluye
+            // NOTA: dLiqTotIVA5 y dLiqTotIVA10 ELIMINADOS - no aparecen en XML exitoso
             var gTotSub = new XElement(NsSifen + "gTotSub",
-                new XElement(NsSifen + "dSubExe", subExe.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dSubExo", subExo.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dSub5", sub5.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dSub10", sub10.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dTotOpe", totOpe.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dTotDesc", 0.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dTotDescGlotem", 0.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dTotAntItem", 0.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dTotAnt", 0.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dPorcDescTotal", 0.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dDescTotal", 0.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dAnticipo", 0.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dRedon", 0.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dTotGralOpe", totOpe.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dIVA5", iva5.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dIVA10", iva10.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dTotIVA", totIVA.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dBaseGrav5", baseGrav5.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dBaseGrav10", baseGrav10.ToString("0.####", CultureInfo.InvariantCulture)),
-                new XElement(NsSifen + "dTBasGraIVA", tBaseGravIva.ToString("0.####", CultureInfo.InvariantCulture))
+                new XElement(NsSifen + "dSubExe", subExe.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dSub5", sub5.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dSub10", sub10.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dTotOpe", totOpe.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dTotDesc", "0"),
+                new XElement(NsSifen + "dTotDescGlotem", "0"),
+                new XElement(NsSifen + "dTotAntItem", "0"),
+                new XElement(NsSifen + "dTotAnt", "0"),
+                new XElement(NsSifen + "dPorcDescTotal", "0"),
+                new XElement(NsSifen + "dDescTotal", "0"),
+                new XElement(NsSifen + "dAnticipo", "0"),
+                new XElement(NsSifen + "dRedon", "0"),
+                new XElement(NsSifen + "dTotGralOpe", totOpe.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dIVA5", iva5.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dIVA10", iva10.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dTotIVA", totIVA.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dBaseGrav5", baseGrav5.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dBaseGrav10", baseGrav10.ToString("0", CultureInfo.InvariantCulture)),
+                new XElement(NsSifen + "dTBasGraIVA", tBaseGravIva.ToString("0", CultureInfo.InvariantCulture))
             );
 
             // Determinar parámetro de identificación del receptor para el QR (RUC o documento)
@@ -421,40 +500,73 @@ namespace SistemIA.Services
             // dCarQR con DigestValue placeholder (hex de base64 SHA256) que Sifen.FirmarYEnviar reemplazará
             var digestPlaceholder = "DigestValue=" +
                 "665569394474586a4f4a396970724970754f344c434a75706a457a73645766664846656d573270344c69593d";
-            // Base del QR: si está mal configurada (duplicada) usar default; asegurar '?'
-            string defaultQr = "https://ekuatia.set.gov.py/consultas-test/qr?";
-            // Forzar default para evitar duplicación por datos corruptos de configuración
-            string urlQrBase = defaultQr;
+            // FIX 13-Ene-2026: Usar URL de BD (sociedad.DeUrlQr) como prioridad
+            // Si no hay URL configurada, usar URL según ambiente de la sucursal (variable 'ambiente' ya existe en línea 281)
+            string defaultQr = ambiente == "prod" 
+                ? "https://ekuatia.set.gov.py/consultas/qr?"
+                : "https://ekuatia.set.gov.py/consultas-test/qr?";
+            // PRIORIDAD: URL de BD > default según ambiente
+            string urlQrBase = sociedad.DeUrlQr ?? defaultQr;
             if (!urlQrBase.Contains("?")) urlQrBase += "?";
-            var dCarQR = new XElement(NsSifen + "dCarQR",
-                $"{urlQrBase}nVersion=150&Id={idCdc}&dFeEmiDE={Uri.EscapeDataString(venta.Fecha.ToString("yyyy-MM-ddTHH:mm:ss"))}&{qrIdParamName}={qrIdParamValue}&dTotGralOpe={(long)venta.Total}&dTotIVA={(long)(detalles.Sum(x => x.IVA5 + x.IVA10))}&cItems={detalles.Count}&{digestPlaceholder}&IdCSC={(sociedad.IdCsc ?? "0001")}&cHashQR=PLACEHOLDER"
-            );
+            // SIFEN requiere dFeEmiDE en formato HEX (no URI-escaped)
+            string fechaHex = BitConverter.ToString(Encoding.UTF8.GetBytes(venta.Fecha.ToString("yyyy-MM-ddTHH:mm:ss"))).Replace("-", "").ToLowerInvariant();
+            // CSC para cálculo del hash (se incluye como __CSC__ para que Sifen.cs lo extraiga)
+            string cscValue = sociedad.Csc ?? "ABCD0000000000000000000000000000";
+            // FIX 27-Ene-2026: IdCSC debe ser sin ceros iniciales (ej: "1" NO "0001")
+            // Verificado con QR funcional de Power Builder: usa IdCSC=1
+            string idCscValue = (sociedad.IdCsc ?? "1").TrimStart('0');
+            if (string.IsNullOrEmpty(idCscValue)) idCscValue = "1";
+            // ========================================================================
+            // CRÍTICO: El QR en XML aprobado por SIFEN tiene &amp;amp; entre parámetros
+            // Esto significa que el texto del QR debe ser &amp;Id=... (URL-encoded ampersand)
+            // XElement escapa & a &amp; automáticamente
+            // Pero necesitamos que el TEXTO sea literalmente &amp; (no &)
+            // Entonces el TEXTO fuente debe ser &amp; y XElement lo escapará a &amp;amp;
+            // Para lograr esto, usamos el string con &amp; y XElement detecta que ya es entidad
+            // SOLUCIÓN: Usar XML CDATA o SetValue con texto que contenga &amp; literales
+            // Alternativa: usar &#38;amp; que es & seguido de amp;
+            // O más simple: usar Uri.EscapeDataString para cada & individual
+            // ========================================================================
+            // El QR debe tener & URL-encoded como &amp; en el texto
+            // Usamos la secuencia Unicode \x26 para & que XElement escapará correctamente
+            // NO - eso no funciona. XElement siempre escapa & a &amp;
+            // Si queremos &amp;amp; en XML, el texto debe ser &amp; y XElement no lo re-escapa
+            // porque lo trata como entidad válida.
+            // SOLUCION FINAL: NO usar XElement para el valor del QR, usar XmlDocument
+            // O: construir el string y luego reemplazar manualmente en el XML final
+            // SOLUCIÓN 22-Ene-2026: Usar &amp; literal en el qrText
+            // Cuando XElement serializa, &amp; se convierte en &amp;amp; en XML
+            // que es exactamente lo que tiene el XML aprobado por SIFEN
+            // ========================================================================
+            // SOLUCIÓN FINAL 14-Ene-2026: Usar & simple en el texto del QR
+            // XElement escapa & a &amp; en el XML
+            // Luego Sifen.cs convierte &amp; → &amp;amp; SOLO en dCarQR
+            // Resultado final en XML: &amp;amp; (correcto - igual que XML de Power Builder)
+            // ========================================================================
+            string qrText = $"{urlQrBase}nVersion=150&Id={idCdc}&dFeEmiDE={fechaHex}&{qrIdParamName}={qrIdParamValue}&dTotGralOpe={totOpe.ToString("0", CultureInfo.InvariantCulture)}&dTotIVA={totIVA.ToString("0", CultureInfo.InvariantCulture)}&cItems={detalles.Count}&{digestPlaceholder}&IdCSC={idCscValue}&cHashQR=PLACEHOLDER&__CSC__={cscValue}";
+            var dCarQR = new XElement(NsSifen + "dCarQR", qrText);
 
             // gCamCond ya agregado dentro de gDtipDE (definición arriba)
 
             // DE principal
-            // NOTA: Según ejemplo v150 se requieren cabeceras dDVId (DV del Id), dFecFirma (fecha de firma) y dSisFact.
-            // Por ahora dDVId se recalcula como dígito verificador simple mod11 sobre el Id numérico sin prefijo (placeholder).
-            string idNumerico = idCdc.TrimStart('0');
-            if (string.IsNullOrEmpty(idNumerico)) idNumerico = "0";
-            int sum = 0; int mult = 2;
-            for (int idx = idNumerico.Length - 1; idx >= 0; idx--)
-            {
-                sum += (idNumerico[idx] - '0') * mult;
-                mult++; if (mult > 11) mult = 2;
-            }
-            int dvCalc = 11 - (sum % 11); if (dvCalc > 9) dvCalc = 0; if (dvCalc < 0) dvCalc = 0;
+            // dDVId es el dígito verificador del CDC (último carácter, posición 44)
+            // El CDC ya incluye el DV calculado por CdcGenerator.CalcularDigitoVerificador()
+            string dvId = idCdc.Length > 0 ? idCdc[^1].ToString() : "0";
 
+            // CRÍTICO: El dCodSeg DEBE coincidir con los dígitos 35-43 del CDC
+            // CDC tiene 44 dígitos: pos 35-43 = código de seguridad (9 dígitos)
+            var codigoSeguridadDelCdc = idCdc.Length >= 43 ? idCdc.Substring(34, 9) : "000000001";
+            
             var de = new XElement(NsSifen + "DE",
                 new XAttribute("Id", idCdc),
-                new XElement(NsSifen + "dDVId", dvCalc),
-                new XElement(NsSifen + "dFecFirma", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss")), // Placeholder, se actualizará al firmar
+                new XElement(NsSifen + "dDVId", dvId),
+                // CRÍTICO: dFecFirma debe ser hora LOCAL de Paraguay (UTC-3 o UTC-4), NO UTC
+                new XElement(NsSifen + "dFecFirma", DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss")),
                 new XElement(NsSifen + "dSisFact", 1),
                 new XElement(NsSifen + "gOpeDE",
                     new XElement(NsSifen + "iTipEmi", 1),
                     new XElement(NsSifen + "dDesTipEmi", "Normal"),
-                    new XElement(NsSifen + "dCodSeg", ("000000000" + (venta.IdVenta % 1000000000)).Substring(("000000000" + (venta.IdVenta % 1000000000)).Length - 9))
-                    // dInfoEmi y dInfoFisc removidos para alinear
+                    new XElement(NsSifen + "dCodSeg", codigoSeguridadDelCdc) // Extraído del CDC
                 ),
                 gTimb,
                 gDatGralOpe,
@@ -463,113 +575,43 @@ namespace SistemIA.Services
             );
 
             // rDE envolvente
-            // Completar datos geográficos y contactos del emisor y receptor desde el catálogo SIFEN cuando sea posible
-            // Emisor: mapear por Sucursal.IdCiudad -> ciudad (dep, dis, nom)
-            int em_cDep = 1; string em_dDesDep = "CAPITAL";
-            int em_cDis = 1; string em_dDesDis = "ASUNCION (DISTRITO)";
-            int em_cCiu = 1; string em_dDesCiu = "ASUNCION (DISTRITO)";
-            if (venta.Sucursal?.IdCiudad != null && venta.Sucursal.IdCiudad.Value > 0)
-            {
-                var ciu = await db.CiudadesCatalogo.FindAsync(venta.Sucursal.IdCiudad.Value);
-                if (ciu != null)
-                {
-                    em_cCiu = ciu.Numero;
-                    em_dDesCiu = ciu.Nombre;
-                    em_cDep = ciu.Departamento;
-                    var dep = await db.DepartamentosCatalogo.FindAsync(ciu.Departamento);
-                    if (dep != null) em_dDesDep = dep.Nombre;
-                    var dis = await db.DistritosCatalogo.FindAsync(ciu.Distrito);
-                    if (dis != null) { em_cDis = dis.Numero; em_dDesDis = dis.Nombre; }
-                }
-            }
-            // Normalización a SAN LORENZO para coincidir con el otro sistema: dep=11, dis=164, ciu=1370
-            if ((em_dDesCiu ?? string.Empty).Trim().ToUpperInvariant() == "SAN LORENZO")
-            {
-                em_cDep = 11; em_dDesDep = "CENTRAL";
-                em_cDis = 164; em_dDesDis = "SAN LORENZO";
-                em_cCiu = 1370; em_dDesCiu = "SAN LORENZO";
-            }
-            gEmis.Add(new XElement(NsSifen + "cDepEmi", em_cDep));
-            gEmis.Add(new XElement(NsSifen + "dDesDepEmi", em_dDesDep));
-            gEmis.Add(new XElement(NsSifen + "cDisEmi", em_cDis));
-            gEmis.Add(new XElement(NsSifen + "dDesDisEmi", em_dDesDis));
-            gEmis.Add(new XElement(NsSifen + "cCiuEmi", em_cCiu));
-            gEmis.Add(new XElement(NsSifen + "dDesCiuEmi", em_dDesCiu));
-            gEmis.Add(new XElement(NsSifen + "dTelEmi", Digits(venta.Sucursal?.Telefono ?? "012123456")));
-            gEmis.Add(new XElement(NsSifen + "dEmailE", sociedad.Email ?? venta.Sucursal?.Correo ?? "correo@correo.com"));
-            // Actividad económica: tomar de tabla SociedadesActividades (principal), fallback a sucursal.RubroEmpresa
-            var act = await db.SociedadesActividades
-                .AsNoTracking()
-                .Where(a => a.IdSociedad == sociedad.IdSociedad && (a.ActividadPrincipal == "S" || a.ActividadPrincipal == "1"))
-                .OrderBy(a => a.Numero)
-                .FirstOrDefaultAsync();
-            string cActEco = act?.CodigoActividad ?? "46510";
-            string dDesActEco = !string.IsNullOrWhiteSpace(act?.NombreActividad)
-                ? act!.NombreActividad!
-                : (string.IsNullOrWhiteSpace(venta.Sucursal?.RubroEmpresa) ? "ACTIVIDAD ECONOMICA NO ESPECIFICADA" : venta.Sucursal!.RubroEmpresa!);
-            var gActEco = new XElement(NsSifen + "gActEco",
-                new XElement(NsSifen + "cActEco", cActEco),
-                new XElement(NsSifen + "dDesActEco", dDesActEco)
-            );
-            gEmis.Add(gActEco);
-
-            // Receptor: mapear por Cliente.IdCiudad -> ciudad (dep, dis, nom)
-            int rc_cDep = 1; string rc_dDesDep = "CAPITAL";
-            int rc_cDis = 1; string rc_dDesDis = "ASUNCION (DISTRITO)";
-            int rc_cCiu = 1; string rc_dDesCiu = "ASUNCION (DISTRITO)";
-            if (venta.Cliente != null && venta.Cliente.IdCiudad > 0)
-            {
-                var ciuR = await db.CiudadesCatalogo.FindAsync(venta.Cliente.IdCiudad);
-                if (ciuR != null)
-                {
-                    rc_cCiu = ciuR.Numero;
-                    rc_dDesCiu = ciuR.Nombre;
-                    rc_cDep = ciuR.Departamento;
-                    var depR = await db.DepartamentosCatalogo.FindAsync(ciuR.Departamento);
-                    if (depR != null) rc_dDesDep = depR.Nombre;
-                    var disR = await db.DistritosCatalogo.FindAsync(ciuR.Distrito);
-                    if (disR != null) { rc_cDis = disR.Numero; rc_dDesDis = disR.Nombre; }
-                }
-            }
-            // Normalización a SAN LORENZO para receptor cuando corresponda
-            if ((rc_dDesCiu ?? string.Empty).Trim().ToUpperInvariant() == "SAN LORENZO")
-            {
-                rc_cDep = 11; rc_dDesDep = "CENTRAL";
-                rc_cDis = 164; rc_dDesDis = "SAN LORENZO";
-                rc_cCiu = 1370; rc_dDesCiu = "SAN LORENZO";
-            }
-            // Agregar geocódigos/contacto del receptor SIEMPRE (la estructura oficial los muestra presentes)
-            gDatRec.Add(new XElement(NsSifen + "cDepRec", rc_cDep));
-            gDatRec.Add(new XElement(NsSifen + "dDesDepRec", rc_dDesDep));
-            gDatRec.Add(new XElement(NsSifen + "cDisRec", rc_cDis));
-            gDatRec.Add(new XElement(NsSifen + "dDesDisRec", rc_dDesDis));
-            gDatRec.Add(new XElement(NsSifen + "cCiuRec", rc_cCiu));
-            gDatRec.Add(new XElement(NsSifen + "dDesCiuRec", rc_dDesCiu));
-            gDatRec.Add(new XElement(NsSifen + "dTelRec", venta.Cliente?.Telefono ?? "021-555-1234"));
-            gDatRec.Add(new XElement(NsSifen + "dCodCliente", venta.Cliente?.CodigoCliente ?? "CLI001"));
+            // NOTA: Se eliminaron campos geográficos (cDepRec, cDisRec, cCiuRec) y de contacto (dTelRec, dCodCliente)
+            // dNumCasRec ya se añadió condicionalmente en líneas anteriores
 
             XNamespace xsi = "http://www.w3.org/2001/XMLSchema-instance";
+            
+            // FIX 31-Ene-2026: Orden EXACTO de atributos según DLL Power que FUNCIONA
+            // Power genera: xmlns="..." xmlns:xsi="..." xsi:schemaLocation="..."
+            // Para controlar el orden exacto, primero declaramos xmlns ANTES que xmlns:xsi
             var rde = new XElement(NsSifen + "rDE",
-                new XAttribute(XNamespace.Xmlns + "xsi", xsi.NamespaceName),
-                // Alinear con el ejemplo oficial (https en schemaLocation)
-                new XAttribute(xsi + "schemaLocation", "https://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"),
+                // CRÍTICO: xmlns default DEBE ir PRIMERO - XAttribute(XNamespace.None + "xmlns", ...) NO funciona con XElement
+                // Por eso usamos el namespace en NsSifen + "rDE" que lo declara implícitamente
+                // Pero para garantizar el orden, agregamos explícitamente
+                new XAttribute("xmlns", NsSifen.NamespaceName), // PRIMERO: xmlns="http://ekuatia.set.gov.py/sifen/xsd"
+                new XAttribute(XNamespace.Xmlns + "xsi", xsi.NamespaceName), // SEGUNDO: xmlns:xsi="..."
+                // FIX 27-Ene-2026: schemaLocation según librería Java oficial (roshkadev/rshk-jsifenlib)
+                // Constants.java línea 15: SIFEN_NS_URI_RECEP_DE = SIFEN_NS_URI + " siRecepDE_v150.xsd"
+                // Resultado: "http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"
+                new XAttribute(xsi + "schemaLocation", "http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"),
                 new XElement(NsSifen + "dVerFor", "150"),
                 de,
                 // gCamFuFD (firma y QR data) debe estar a nivel de rDE (no dentro de DE) antes de firmar
                 new XElement(NsSifen + "gCamFuFD", dCarQR)
             );
 
-            var doc = new XDocument(new XDeclaration("1.0", "UTF-8", null), rde);
+            var doc = new XDocument(rde);  // Sin XDeclaration - SIFEN no espera declaración XML
             // Retornar XML sin indentación para evitar problemas de formato
             using var ms = new MemoryStream();
             using var writer = XmlWriter.Create(ms, new XmlWriterSettings { 
                 Indent = false, 
-                OmitXmlDeclaration = false // Incluir declaración XML
+                OmitXmlDeclaration = true, // 10-Ene-2026: NO incluir declaración XML (igual que ejemplo Java)
+                Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false) // UTF-8 sin BOM
             });
             doc.WriteTo(writer);
             writer.Flush();
             ms.Position = 0;
-            using var reader = new StreamReader(ms);
+            // CRÍTICO: Leer con UTF-8 explícito para mantener caracteres especiales (tildes, ñ, etc.)
+            using var reader = new StreamReader(ms, Encoding.UTF8);
             return reader.ReadToEnd();
         }
 
@@ -585,6 +627,80 @@ namespace SistemIA.Services
                 6 => "Giro",
                 7 => "Billetera electrónica",
                 _ => "Otro"
+            };
+        }
+
+        /// <summary>
+        /// Obtiene el nombre del departamento según el código SIFEN
+        /// </summary>
+        private static string ObtenerNombreDepartamento(int codigo)
+        {
+            return codigo switch
+            {
+                0 => "CAPITAL",
+                1 => "CAPITAL",
+                2 => "CONCEPCION",
+                3 => "SAN PEDRO",
+                4 => "CORDILLERA",
+                5 => "GUAIRA",
+                6 => "CAAGUAZU",
+                7 => "CAAZAPA",
+                8 => "ITAPUA",
+                9 => "MISIONES",
+                10 => "PARAGUARI",
+                11 => "CENTRAL",
+                12 => "ÑEEMBUCU",
+                13 => "AMAMBAY",
+                14 => "CANINDEYU",
+                15 => "PRESIDENTE HAYES",
+                16 => "ALTO PARAGUAY",
+                17 => "BOQUERON",
+                18 => "ALTO PARANA",
+                _ => "CENTRAL"
+            };
+        }
+
+        /// <summary>
+        /// Obtiene el nombre del distrito desde la base de datos
+        /// </summary>
+        private static string ObtenerNombreDistrito(int codigo, AppDbContext? ctx = null)
+        {
+            if (ctx != null)
+            {
+                var distrito = ctx.DistritosCatalogo
+                    .FirstOrDefault(d => d.Numero == codigo);
+                if (distrito != null)
+                    return distrito.Nombre?.ToUpper() ?? $"DISTRITO {codigo}";
+            }
+            
+            // Fallback para casos sin contexto
+            return codigo switch
+            {
+                1 => "ASUNCION (DISTRITO)",
+                164 => "SAN LORENZO",
+                _ => $"DISTRITO {codigo}"
+            };
+        }
+
+        /// <summary>
+        /// Obtiene el nombre de la ciudad desde la base de datos
+        /// </summary>
+        private static string ObtenerNombreCiudad(int codigo, AppDbContext? ctx = null)
+        {
+            if (ctx != null)
+            {
+                var ciudad = ctx.CiudadesCatalogo
+                    .FirstOrDefault(c => c.Numero == codigo);
+                if (ciudad != null)
+                    return ciudad.Nombre?.ToUpper() ?? $"CIUDAD {codigo}";
+            }
+            
+            // Fallback para casos sin contexto
+            return codigo switch
+            {
+                1 => "ASUNCION (DISTRITO)",
+                3840 => "SAN LORENZO",
+                _ => $"CIUDAD {codigo}"
             };
         }
     }

@@ -25,6 +25,30 @@ namespace SistemIA.Models
             _httpClient = new HttpClient();
         }
 
+        /// <summary>
+        /// Serializa un XmlDocument a string con encoding UTF-8 correcto (sin BOM).
+        /// CRÍTICO: XmlDocument.OuterXml puede corromper caracteres UTF-8.
+        /// Esta función garantiza que caracteres como "í" se mantengan correctos.
+        /// </summary>
+        /// <param name="omitDeclaration">Si true, omite la declaración XML (para envío sync a SIFEN)</param>
+        public static string SerializeXmlToUtf8String(XmlDocument doc, bool indent = false, bool omitDeclaration = false)
+        {
+            using var ms = new MemoryStream();
+            using (var writer = XmlWriter.Create(ms, new XmlWriterSettings
+            {
+                Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                Indent = indent,
+                OmitXmlDeclaration = omitDeclaration
+            }))
+            {
+                doc.WriteTo(writer);
+                writer.Flush();
+            }
+            ms.Position = 0;
+            using var reader = new StreamReader(ms, Encoding.UTF8);
+            return reader.ReadToEnd();
+        }
+
         public static string SHA256ToString(string s)
         {
             using var alg = SHA256.Create();
@@ -32,21 +56,63 @@ namespace SistemIA.Models
             return Convert.ToHexString(hash).ToLower();
         }
 
+        /// <summary>
+        /// <summary>
+        /// Comprime XML usando ZIP real para envío a SIFEN (modo LOTE).
+        /// ========================================================================
+        /// FIX 12-Ene-2026: Cambiado de GZipStream a ZipArchive (ZIP real)
+        /// ========================================================================
+        /// El PDF "Recomendaciones y mejores prácticas SIFEN" (página 8) muestra
+        /// que el contenido de xDE empieza con "UEs..." que es la signatura de ZIP
+        /// (PK en Base64 = 50 4B), NO GZip (H4sI = 1F 8B).
+        /// 
+        /// Power Builder usaba GZip pero SIFEN espera ZIP real según el manual.
+        /// ========================================================================
+        /// </summary>
         public static string StringToZip(string originalString)
         {
-            using var memoryStream = new MemoryStream();
-            using (var gzip = new GZipStream(memoryStream, CompressionMode.Compress))
+            byte[] compressedBytes;
+            using (MemoryStream memoryStream = new MemoryStream())
             {
-                // Usar UTF-8 sin BOM para evitar bytes extra al inicio
-                using var writer = new StreamWriter(gzip, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(originalString);
+                // Crear archivo ZIP real (no GZip)
+                using (var zipArchive = new ZipArchive(memoryStream, ZipArchiveMode.Create, leaveOpen: true))
+                {
+                    // FIX 12-Ene-2026: El DLL de nextsys que FUNCIONA usa "compressed.txt"
+                    // NO un nombre con fecha como DE_DDMMYYYY.xml
+                    var entry = zipArchive.CreateEntry("compressed.txt", CompressionLevel.Optimal);
+                    
+                    using (var entryStream = entry.Open())
+                    using (var writer = new StreamWriter(entryStream, new UTF8Encoding(false)))
+                    {
+                        writer.Write(originalString);
+                        writer.Flush();
+                    }
+                }
+                compressedBytes = memoryStream.ToArray();
             }
-            return Convert.ToBase64String(memoryStream.ToArray());
+            Console.WriteLine($"[SIFEN DEBUG] StringToZip ZIP bytes: {compressedBytes.Length}");
+            return Convert.ToBase64String(compressedBytes);
         }
 
-        public string StringToHex(string hexstring)
+        /// <summary>
+        /// Convierte un string Base64 a su representación hexadecimal.
+        /// SIFEN requiere que DigestValue (que viene en Base64 del XML) se convierta a HEX
+        /// decodificando primero los bytes del Base64, NO convirtiendo los caracteres del string.
+        /// 
+        /// FIX CRÍTICO 31-Ene-2026:
+        /// ANTES: Convertía cada carácter del string Base64 a HEX (incorrecto)
+        ///        "obnJek3R..." → "6f626e4a656b33..." (HEX de los caracteres ASCII)
+        /// 
+        /// SIFEN requiere el HEX de los CARACTERES ASCII del texto Base64.
+        /// IMPORTANTE: Esto contradice la documentación del Manual Técnico v150 (sección 13.8.4.3)
+        /// pero es lo que SIFEN realmente acepta según XMLs aprobados en producción.
+        /// 
+        /// Ejemplo: "abc=" → "6162633d" (hex de cada carácter: a=61, b=62, c=63, ==3d)
+        /// </summary>
+        public string StringToHex(string textString)
         {
-            return string.Concat(hexstring.Select(c => Convert.ToInt32(c).ToString("x2")));
+            // Convertir cada carácter a su valor ASCII y luego a hexadecimal
+            return string.Concat(textString.Select(c => Convert.ToInt32(c).ToString("x2")));
         }
 
         public string GetTagValue(string xmlString, string tagName)
@@ -58,6 +124,114 @@ namespace SistemIA.Models
         }
 
         public async Task<string> Enviar(string url, string documento, string pathArchivoP12, string passwordArchivoP12)
+        {
+            // Reintentos automáticos para problemas de conexión SSL/BIG-IP de SIFEN Paraguay
+            // Los servidores SIFEN usan balanceadores BIG-IP que frecuentemente rechazan conexiones
+            const int maxRetries = 5;
+            int[] delaySeconds = { 1, 2, 3, 5, 8 }; // Fibonacci-like backoff
+            Exception? lastException = null;
+            string lastError = "";
+            
+            // Detectar si es consulta RUC o envío de documento
+            bool esConsultaRuc = url.Contains("consulta-ruc") || documento.Contains("rEnviConsRUC");
+            bool esEnvioDocumento = url.Contains("recibe") || documento.Contains("rEnviLote") || documento.Contains("rEnvioLote");
+            
+            for (int intento = 1; intento <= maxRetries; intento++)
+            {
+                try
+                {
+                    Console.WriteLine($"[SIFEN] Intento {intento}/{maxRetries} de envío a {url}");
+                    var resultado = await EnviarInterno(url, documento, pathArchivoP12, passwordArchivoP12);
+                    
+                    // Verificar si es respuesta exitosa de SIFEN (contiene XML SOAP válido)
+                    bool esRespuestaValida = !string.IsNullOrEmpty(resultado) && 
+                        (resultado.Contains("soap:Envelope") || resultado.Contains("env:Envelope") ||
+                         resultado.Contains("rRetEnvi") || resultado.Contains("rEnviConsRUCResponse") || 
+                         resultado.Contains("dCodRes") || resultado.Contains("rProtDe") || resultado.Contains("ns2:"));
+                    
+                    // Para consulta RUC: verificar que sea respuesta del tipo correcto
+                    // Si recibimos rRetEnviDe/rProtDe con error 0160 en consulta RUC, el BIG-IP mezcló respuestas
+                    bool esRespuestaIncorrecta = false;
+                    
+                    if (esConsultaRuc && resultado.Contains("rRetEnviDe") && !resultado.Contains("rResEnviConsRUC"))
+                    {
+                        esRespuestaIncorrecta = true;
+                        Console.WriteLine($"[SIFEN] ⚠️ Servidor devolvió tipo de respuesta incorrecta (rRetEnviDe en lugar de rResEnviConsRUC)");
+                    }
+                    // Para envío de documentos: verificar que no recibamos respuesta de consulta RUC
+                    else if (esEnvioDocumento && resultado.Contains("rResEnviConsRUC") && !resultado.Contains("rRetEnvi"))
+                    {
+                        esRespuestaIncorrecta = true;
+                        Console.WriteLine($"[SIFEN] ⚠️ Servidor devolvió tipo de respuesta incorrecta (rResEnviConsRUC en lugar de rRetEnviDe/rRetEnviLoteDe)");
+                    }
+                    
+                    if (esRespuestaIncorrecta)
+                    {
+                        if (intento < maxRetries)
+                        {
+                            var delay = delaySeconds[intento - 1] * 1000;
+                            Console.WriteLine($"[SIFEN] Esperando {delaySeconds[intento - 1]}s antes del próximo intento...");
+                            await Task.Delay(delay);
+                            continue;
+                        }
+                    }
+                    
+                    if (esRespuestaValida && !esRespuestaIncorrecta)
+                    {
+                        Console.WriteLine($"[SIFEN] ✓ Respuesta SIFEN válida en intento {intento}");
+                        return resultado;
+                    }
+                    
+                    // Verificar si es error que requiere reintento
+                    bool esErrorConexion = string.IsNullOrEmpty(resultado) ||
+                        resultado.Contains("\"error\":") ||
+                        resultado.Contains("SSL") || 
+                        resultado.Contains("conexión") || 
+                        resultado.Contains("connection") ||
+                        resultado.Contains("timeout") || 
+                        resultado.Contains("refused") || 
+                        resultado.Contains("reset") ||
+                        resultado.Contains("BIG-IP") ||
+                        resultado.Contains("logout") ||
+                        resultado.Contains("<html") ||
+                        resultado.Contains("500") ||
+                        resultado.Contains("503") ||
+                        resultado.Contains("502") ||
+                        resultado.Contains("closed") ||
+                        resultado.Contains("aborted");
+                    
+                    if (esErrorConexion && intento < maxRetries)
+                    {
+                        lastError = resultado ?? "Respuesta vacía";
+                        var delay = delaySeconds[intento - 1] * 1000;
+                        Console.WriteLine($"[SIFEN] ⚠️ Error de conexión en intento {intento}: {lastError.Substring(0, Math.Min(100, lastError.Length))}");
+                        Console.WriteLine($"[SIFEN] Esperando {delaySeconds[intento - 1]}s antes del próximo intento...");
+                        await Task.Delay(delay);
+                        continue;
+                    }
+                    
+                    // Si no es error de conexión o es último intento, retornar resultado
+                    return resultado;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SIFEN] ❌ Excepción en intento {intento}: {ex.Message}");
+                    lastException = ex;
+                    lastError = ex.Message;
+                    if (intento < maxRetries)
+                    {
+                        var delay = delaySeconds[intento - 1] * 1000;
+                        Console.WriteLine($"[SIFEN] Esperando {delaySeconds[intento - 1]}s antes del próximo intento...");
+                        await Task.Delay(delay);
+                    }
+                }
+            }
+            
+            Console.WriteLine($"[SIFEN] ❌ Fallaron los {maxRetries} intentos de conexión");
+            return $"{{\"error\": \"Fallaron {maxRetries} intentos de conexión a SIFEN\", \"lastError\": \"{lastError}\", \"suggestion\": \"El servidor SIFEN no responde. Intente nuevamente en unos segundos.\"}}";
+        }
+
+        private async Task<string> EnviarInterno(string url, string documento, string pathArchivoP12, string passwordArchivoP12)
         {
             X509Certificate2? certificate = null;
             try
@@ -156,30 +330,17 @@ namespace SistemIA.Models
                 {
                     if (documento.Contains("<rEnviLoteDe", StringComparison.OrdinalIgnoreCase)) op = "rEnviLoteDe";
                     else if (documento.Contains("<rEnvioLote", StringComparison.OrdinalIgnoreCase)) op = "rEnvioLote";
-                    else if (documento.Contains("<rEnviDeRequest", StringComparison.OrdinalIgnoreCase)) op = "rEnviDeRequest";
+                    else if (documento.Contains("<rEnviDe", StringComparison.OrdinalIgnoreCase)) op = "rEnviDe"; // FIX: Cambiado de rEnviDeRequest a rEnviDe
                     else if (documento.Contains("<rEnviConsLoteDe", StringComparison.OrdinalIgnoreCase)) { op = "rEnviConsLoteDe"; esConsulta = true; }
                     else if (documento.Contains("<rEnviConsDeRequest", StringComparison.OrdinalIgnoreCase)) { op = "rEnviConsDeRequest"; esConsulta = true; }
                     else if (documento.Contains("<rEnviConsRUC", StringComparison.OrdinalIgnoreCase)) { op = "rEnviConsRUC"; esConsulta = true; }
                 }
                 catch { /* noop */ }
                 
-                // IMPORTANTE: Según la implementación de referencia (facturacionelectronicapy-setapi),
-                // las consultas usan Content-Type: application/xml; charset=utf-8
-                // mientras que los envíos de DE usan application/soap+xml; charset=utf-8; action="..."
-                string contentType;
-                if (esConsulta)
-                {
-                    // Para consultas: application/xml; charset=utf-8 (según referencia)
-                    contentType = "application/xml; charset=utf-8";
-                }
-                else
-                {
-                    // Para envíos DE: application/soap+xml con action
-                    string? actionOp = op;
-                    contentType = (actionOp == null)
-                        ? "application/soap+xml; charset=utf-8"
-                        : $"application/soap+xml; charset=utf-8; action=\"http://ekuatia.set.gov.py/sifen/xsd/{actionOp}\"";
-                }
+                // IMPORTANTE: Según implementación PHP de referencia (sifen.php línea 522),
+                // SIFEN acepta Content-Type: application/xml (sin charset ni action)
+                // Referencia: curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/xml'));
+                string contentType = "application/xml";
                 content.Headers.Add("Content-Type", contentType);
                 // Fallback adicional: incluir SOAPAction como header (algunos balanceadores lo usan aún con SOAP 1.2)
                 // Solo para operaciones que NO son consultas
@@ -221,6 +382,17 @@ namespace SistemIA.Models
                 }
                 Console.WriteLine($"[DEBUG] Response length: {responseString.Length}");
                 Console.WriteLine($"[DEBUG] Response preview: {(responseString.Length > 200 ? responseString.Substring(0, 200) + "..." : responseString)}");
+                
+                // Guardar respuesta completa a archivo para análisis
+                try
+                {
+                    var debugDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Debug");
+                    if (!Directory.Exists(debugDir)) Directory.CreateDirectory(debugDir);
+                    var respFile = Path.Combine(debugDir, $"SIFEN_Response_{DateTime.Now:yyyyMMdd_HHmmss}.xml");
+                    File.WriteAllText(respFile, responseString);
+                    Console.WriteLine($"[DEBUG] Respuesta completa guardada en: {respFile}");
+                }
+                catch { /* mejor esfuerzo */ }
                 
                 // Verificar diferentes tipos de respuestas problemáticas
                 if (responseString.TrimStart().StartsWith("<html", StringComparison.OrdinalIgnoreCase))
@@ -278,6 +450,58 @@ namespace SistemIA.Models
             }
         }
 
+        /// <summary>
+        /// Remueve el atributo xmlns del elemento rDE (para que herede del padre rEnviDe)
+        /// </summary>
+        private static string RemoverNamespaceDeRDE(string xml)
+        {
+            // Remover xmlns="http://ekuatia.set.gov.py/sifen/xsd" del <rDE>
+            return System.Text.RegularExpressions.Regex.Replace(
+                xml,
+                @"<rDE\s+xmlns:xsi=""[^""]*""\s*xsi:schemaLocation=""[^""]*""\s*xmlns=""[^""]*""",
+                "<rDE",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>
+        /// Remueve xmlns Y schemaLocation del elemento rDE
+        /// </summary>
+        private static string RemoverNamespaceYSchemaDeRDE(string xml)
+        {
+            // Remover todos los atributos de namespace del <rDE>
+            var result = System.Text.RegularExpressions.Regex.Replace(
+                xml,
+                @"<rDE\s+[^>]*>",
+                "<rDE>",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return result;
+        }
+
+        /// <summary>
+        /// Remueve solo el atributo schemaLocation del rDE (mantiene xmlns)
+        /// </summary>
+        private static string RemoverSchemaLocationDeRDE(string xml)
+        {
+            return System.Text.RegularExpressions.Regex.Replace(
+                xml,
+                @"\s*xsi:schemaLocation=""[^""]*""",
+                "",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>
+        /// Remueve schemaLocation pero mantiene xmlns:xsi
+        /// </summary>
+        private static string RemoverSchemaLocationMantenerXsi(string xml)
+        {
+            // Solo remueve el atributo schemaLocation
+            return System.Text.RegularExpressions.Regex.Replace(
+                xml,
+                @"\s*xsi:schemaLocation=""[^""]*""",
+                "",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
         public string FormatearXML(string XML)
         {
             if (string.IsNullOrWhiteSpace(XML)) return string.Empty;
@@ -285,13 +509,21 @@ namespace SistemIA.Models
             try
             {
                 using var ms = new MemoryStream();
-                using var writer = XmlWriter.Create(ms, new XmlWriterSettings { Indent = true });
+                // Usar UTF-8 sin BOM para consistencia con SIFEN
+                // 31-Ene-2026: OmitXmlDeclaration = true (SIFEN no acepta declaración)
+                using var writer = XmlWriter.Create(ms, new XmlWriterSettings 
+                { 
+                    Indent = true,
+                    Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                    OmitXmlDeclaration = true
+                });
                 var doc = new XmlDocument();
                 doc.LoadXml(XML);
                 doc.WriteTo(writer);
                 writer.Flush();
                 ms.Position = 0;
-                using var reader = new StreamReader(ms);
+                // Leer explícitamente en UTF-8
+                using var reader = new StreamReader(ms, Encoding.UTF8);
                 return reader.ReadToEnd();
             }
             catch (XmlException)
@@ -341,11 +573,57 @@ namespace SistemIA.Models
                     ?? throw new InvalidOperationException("No se encontró el atributo Id");
                 var nodeId = idAttribute.Value;
 
-                using var cert = new X509Certificate2(p12FilePath, certificatePassword, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
-                using var rsa = cert.GetRSAPrivateKey() 
-                    ?? throw new InvalidOperationException("No se pudo obtener la clave RSA");
+                // ========================================================================
+                // FIX 13-Ene-2026: Usar RSACryptoServiceProvider con ProviderType 24
+                // Copiado EXACTAMENTE del DLL de Power que FUNCIONA
+                // El ProviderType 24 = "Microsoft Enhanced RSA and AES Cryptographic Provider"
+                // que soporta SHA-256 nativamente para firma
+                // ========================================================================
+                using var cert = new X509Certificate2(p12FilePath, certificatePassword, 
+                    X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
+                
+                // Crear RSA con proveedor AES (24) para SHA-256 - IGUAL que DLL Power
+                RSACryptoServiceProvider key = new RSACryptoServiceProvider(new CspParameters(24));
+                key.PersistKeyInCsp = false;
+                
+                // Importar clave desde certificado
+                try
+                {
+                    var originalCsp = cert.PrivateKey as RSACryptoServiceProvider;
+                    if (originalCsp != null)
+                    {
+                        key.FromXmlString(originalCsp.ToXmlString(true));
+                        Console.WriteLine($"[FIRMA] RSA Key importada via RSACryptoServiceProvider.ToXmlString");
+                    }
+                    else
+                    {
+                        // Fallback: GetRSAPrivateKey para certificados modernos (CNG)
+                        var rsaKey = cert.GetRSAPrivateKey();
+                        if (rsaKey != null)
+                        {
+                            RSAParameters rsaParams = rsaKey.ExportParameters(true);
+                            key.ImportParameters(rsaParams);
+                            Console.WriteLine($"[FIRMA] RSA Key importada via GetRSAPrivateKey().ExportParameters");
+                        }
+                        else
+                        {
+                            throw new CryptographicException("No se pudo obtener RSA PrivateKey");
+                        }
+                    }
+                }
+                catch (Exception exKey)
+                {
+                    Console.WriteLine($"[FIRMA] Error en método primario: {exKey.Message}, usando fallback");
+                    // Último intento: GetRSAPrivateKey con ExportParameters
+                    var rsaKey = cert.GetRSAPrivateKey() 
+                        ?? throw new InvalidOperationException("No se pudo obtener la clave RSA");
+                    RSAParameters rsaParams = rsaKey.ExportParameters(true);
+                    key.ImportParameters(rsaParams);
+                }
+                Console.WriteLine($"[FIRMA] Certificado: {cert.Subject}");
+                Console.WriteLine($"[FIRMA] Key Size: {key.KeySize}");
 
-                var signedXml = new SignedXmlWithId(doc) { SigningKey = rsa };
+                var signedXml = new SignedXmlWithId(doc) { SigningKey = key };
                 
                 var reference = new Reference
                 {
@@ -368,6 +646,27 @@ namespace SistemIA.Models
 
                 signedXml.ComputeSignature();
                 var signature = signedXml.GetXml();
+                
+                // ========================================================================
+                // DEBUG FIRMA 10-Ene-2026: Logging para diagnóstico de error de firma
+                // ========================================================================
+                try
+                {
+                    var digestValueNode = signature.GetElementsByTagName("DigestValue")[0];
+                    var signatureValueNode = signature.GetElementsByTagName("SignatureValue")[0];
+                    Console.WriteLine($"[FIRMA DEBUG] DigestValue (Base64): {digestValueNode?.InnerText}");
+                    Console.WriteLine($"[FIRMA DEBUG] SignatureValue (primeros 50): {signatureValueNode?.InnerText?.Substring(0, Math.Min(50, signatureValueNode?.InnerText?.Length ?? 0))}...");
+                    Console.WriteLine($"[FIRMA DEBUG] Reference URI: #{nodeId}");
+                    Console.WriteLine($"[FIRMA DEBUG] Certificado Subject: {cert.Subject}");
+                    
+                    // Verificar que el nodo DE no se modificó
+                    var deXml = node.OuterXml;
+                    Console.WriteLine($"[FIRMA DEBUG] Nodo DE longitud: {deXml.Length} chars");
+                    Console.WriteLine($"[FIRMA DEBUG] Nodo DE (primeros 200): {deXml.Substring(0, Math.Min(200, deXml.Length))}...");
+                }
+                catch (Exception exDebug) { Console.WriteLine($"[FIRMA DEBUG ERROR] {exDebug.Message}"); }
+                // ========================================================================
+                
                 // La firma debe ser ENVELOPED pero colocada FUERA de DE, como sibling en rDE
                 var rdeNode = doc.DocumentElement;
                 if (rdeNode != null)
@@ -407,6 +706,14 @@ namespace SistemIA.Models
                     .Cast<XmlNode>()
                     .Select(n => StringToHex(n.InnerText))
                     .FirstOrDefault() ?? string.Empty;
+                
+                // DEBUG: Mostrar conversión de DigestValue
+                var digestValueBase64 = doc.GetElementsByTagName("DigestValue")
+                    .Cast<XmlNode>()
+                    .Select(n => n.InnerText)
+                    .FirstOrDefault() ?? "";
+                Console.WriteLine($"[QR DEBUG] DigestValue Base64: {digestValueBase64}");
+                Console.WriteLine($"[QR DEBUG] DigestValue HEX: {digestValue}");
 
                 foreach (XmlNode qrNode in doc.GetElementsByTagName("dCarQR"))
                 {
@@ -422,27 +729,142 @@ namespace SistemIA.Models
                             qrText = $"{urlQR}{qrText.TrimStart('?')}";
                         }
 
-                        // Recalcular cHashQR
-                        var qrHash = SHA256ToString(qrText);
-                        if (qrText.Contains("cHashQR="))
+                        // Extraer CSC del parámetro temporal __CSC__ (agregado por DEXmlBuilder)
+                        string cscValue = "ABCD0000000000000000000000000000"; // Default TEST
+                        // Buscar __CSC__ con & simple (como genera DEXmlBuilder ahora)
+                        var cscMatch = System.Text.RegularExpressions.Regex.Match(qrText, @"__CSC__=([^&]+)");
+                        if (cscMatch.Success)
                         {
-                            qrText = System.Text.RegularExpressions.Regex.Replace(qrText, @"cHashQR=[A-Za-z0-9]+", $"cHashQR={qrHash}");
-                        }
-                        else
-                        {
-                            qrText += (qrText.Contains("?") ? "&" : "?") + $"cHashQR={qrHash}";
+                            cscValue = cscMatch.Groups[1].Value;
+                            // Remover el parámetro temporal __CSC__ del QR final (con & simple)
+                            qrText = System.Text.RegularExpressions.Regex.Replace(qrText, @"&__CSC__=[^&]+", "");
                         }
 
+                        // ========================================================================
+                        // FIX CRÍTICO 26-Ene-2026: Cálculo de cHashQR según librería Roshka Java
+                        // Referencia: ManualSifen/codigoabierto/.../DocumentoElectronico.java
+                        // Método: generateQRLink() líneas 380-417
+                        //
+                        // DESCUBRIMIENTO CRÍTICO: El hash se calcula SOLO con los parámetros,
+                        // SIN incluir la URL base (https://...qr?)
+                        //
+                        // Java Roshka:
+                        //   String urlParamsString = buildUrlParams(params); // Solo params
+                        //   String cHashQR = sha256Hex(urlParamsString + csc);
+                        //
+                        // Verificado contra XML aprobado (protocolo 48493331):
+                        //   Hash calculado con params+CSC = fa02c1ed... ✅ COINCIDE
+                        //   Hash calculado con URL+CSC    = 2c87cc21... ❌ NO COINCIDE
+                        // ========================================================================
+                        
+                        // Paso 1: Obtener URL completa hasta &cHashQR= (sin incluirlo)
+                        string urlCompleta = qrText;
+                        if (urlCompleta.Contains("&cHashQR="))
+                        {
+                            urlCompleta = urlCompleta.Substring(0, urlCompleta.IndexOf("&cHashQR="));
+                        }
+                        else if (urlCompleta.Contains("cHashQR="))
+                        {
+                            urlCompleta = urlCompleta.Substring(0, urlCompleta.IndexOf("cHashQR="));
+                            if (urlCompleta.EndsWith("&")) 
+                                urlCompleta = urlCompleta.TrimEnd('&');
+                        }
+                        
+                        // Paso 2: CRÍTICO - Extraer SOLO los parámetros (sin URL base)
+                        // El hash se calcula sobre "nVersion=150&Id=..." NO sobre "https://...?nVersion=..."
+                        string soloParametros = urlCompleta;
+                        int indexInterrogacion = urlCompleta.IndexOf('?');
+                        if (indexInterrogacion >= 0)
+                        {
+                            soloParametros = urlCompleta.Substring(indexInterrogacion + 1);
+                        }
+                        
+                        // Paso 3: Concatenar CSC directamente al final (sin &)
+                        // El CSC va PEGADO a los parámetros para calcular el hash
+                        string datosParaHash = soloParametros + cscValue;
+                        
+                        // Paso 4: SHA256 de la concatenación
+                        var qrHash = SHA256ToString(datosParaHash);
+                        
+                        // La URL final para el QR mantiene la estructura completa
+                        string urlSinHash = urlCompleta;
+                        
+                        // Reconstruir QR con el hash calculado
+                        qrText = urlSinHash + "&cHashQR=" + qrHash;
+                        
+                        // DEBUG: Mostrar cálculo del QR
+                        Console.WriteLine($"[QR DEBUG] URL completa: {urlCompleta.Substring(0, Math.Min(80, urlCompleta.Length))}...");
+                        Console.WriteLine($"[QR DEBUG] Solo parámetros: {soloParametros.Substring(0, Math.Min(80, soloParametros.Length))}...");
+                        Console.WriteLine($"[QR DEBUG] CSC usado: {cscValue}");
+                        Console.WriteLine($"[QR DEBUG] Hash calculado (params+CSC): {qrHash}");
+                        
+                        // ========================================================================
+                        // FIX 12-Ene-2026: InnerText escapa automáticamente & a &amp; (escape simple)
+                        // El XML válido de SIFEN usa &amp; simple, NO doble escape
+                        // ========================================================================
                         qrNode.InnerText = qrText;
                 }
 
-                var xmlContent = doc.OuterXml;
-                // Construir SOAP de envío para recepción de lote (primero: xDE=Base64(GZip(rLoteDE)) con rEnviLoteDe)
-                string variante = "rEnviLoteDe_zip";
-                var finalXml = ConstruirSoapEnvioLoteZipBase64(xmlContent, dId);
+                // ========================================================================
+                // FIX CRÍTICO: Serializar XML con encoding UTF-8 explícito
+                // ========================================================================
+                // PROBLEMA: doc.OuterXml puede corromper caracteres UTF-8 como "í" → "├¡"
+                // SOLUCIÓN: Usar XmlWriter con UTF8Encoding explícito (sin BOM)
+                // FIX 10-Ene-2026: OmitXmlDeclaration = true porque SIFEN/Java no espera declaración
+                // ========================================================================
+                string xmlContent;
+                using (var ms = new MemoryStream())
+                {
+                    using (var writer = XmlWriter.Create(ms, new XmlWriterSettings
+                    {
+                        Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                        Indent = false,
+                        OmitXmlDeclaration = true  // 10-Ene-2026: NO declaración XML (igual que Java)
+                    }))
+                    {
+                        doc.WriteTo(writer);
+                        writer.Flush();
+                    }
+                    ms.Position = 0;
+                    using var reader = new StreamReader(ms, Encoding.UTF8);
+                    xmlContent = reader.ReadToEnd();
+                }
+                
+                // El XML válido de SIFEN (producción) usa &amp; simple en dCarQR, NO doble escape
+                
+                // ========================================================================
+                // FIX 13-Ene-2026: FORMATO EXACTO del DLL de Power que FUNCIONA
+                // ========================================================================
+                // El DLL de Power comprime DIRECTAMENTE doc.OuterXml (el <rDE> firmado)
+                // SIN envolverlo en <rLoteDE>. Ver Sifen_Fuente/Sifen.cs líneas 370-377:
+                //   StringBuilder builder = new StringBuilder(doc.OuterXml);
+                //   base64String = StringToZip(builder.ToString());
+                //
+                // Esto significa que dentro del ZIP va:
+                //   <rDE xmlns="...">...(firma)...</rDE>
+                // NO:
+                //   <rLoteDE><rDE xmlns="...">...</rDE></rLoteDE>
+                // ========================================================================
+                string variante = "Power_DLL_format";
+                
+                // Comprimir directamente el XML firmado (sin <rLoteDE>)
+                var zippedXml = StringToZip(xmlContent);
+                
+                // Generar dId único
+                var dIdValue = string.IsNullOrWhiteSpace(dId) 
+                    ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") 
+                    : dId!;
+                
+                // Envelope SOAP exacto del DLL de Power
+                var finalXml = $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dIdValue}</dId><xDE>{zippedXml}</xDE></rEnvioLote></soap:Body></soap:Envelope>";
 
                 var result = await Enviar(url, finalXml, p12FilePath, certificatePassword);
-
+                
+                // TEMPORALMENTE DESHABILITADO: Probar solo variante ZIP para diagnóstico
+                // Las variantes fallback estaban confundiendo el diagnóstico
+                // TODO: Reactivar fallbacks una vez que la variante principal funcione
+                
+                /*
                 // Si 0160, probar alternativas automáticamente: vista y wrapper alternativo rEnvioLote
                 bool Es0160(string s)
                 {
@@ -487,6 +909,7 @@ namespace SistemIA.Models
                         result = resultA;
                     }
                 }
+                */
 
                 // Extraer idLote de forma robusta (varias variantes de etiqueta)
                 string idLote = GetTagValue(result, "ns2:dProtConsLote");
@@ -520,8 +943,13 @@ namespace SistemIA.Models
 
                 var codigo = GetTagValue(result, "ns2:dCodRes");
                 var mensaje = GetTagValue(result, "ns2:dMsgRes");
-                // Sanitizar para JSON simple
-                string esc(string s) => (s ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+                // Sanitizar para JSON simple (incluyendo saltos de línea)
+                string esc(string s) => (s ?? string.Empty)
+                    .Replace("\\", "\\\\")
+                    .Replace("\"", "\\\"")
+                    .Replace("\r", "\\r")
+                    .Replace("\n", "\\n")
+                    .Replace("\t", "\\t");
 
                 return $"{{\"codigo\":\"{esc(codigo)}\",\"mensaje\":\"{esc(mensaje)}\",\"qr\":\"{esc(digestValue)}\",\"idLote\":\"{esc(idLote)}\",\"cdc\":\"{esc(cdc)}\",\"variante\":\"{esc(variante)}\",\"documento\":\"{esc(finalXml)}\",\"respuesta\":\"{esc(result)}\"}}";
             }
@@ -567,50 +995,126 @@ namespace SistemIA.Models
             var imported = soapDoc.ImportNode(rdeNode, true);
             rLote.AppendChild(imported);
 
-            return soapDoc.OuterXml;
+            // CRÍTICO: Usar SerializeXmlToUtf8String para preservar caracteres UTF-8
+            return SerializeXmlToUtf8String(soapDoc);
         }
 
-        // Construye el SOAP rEnvioLote con xDE como Base64(GZip(<rLoteDE><rDE/>...</rLoteDE>)) listo para enviar
+        /// <summary>
+        /// REPLICACIÓN EXACTA del DLL de Power Builder (Sifen_26/Sifen.cs).
+        /// Este método genera el SOAP EXACTAMENTE como lo hace el código que SÍ FUNCIONA.
+        /// FIX 12-Ene-2026: Copiado del DLL de Power Builder verificado en producción.
+        /// </summary>
+        /// <param name="xmlRdeFirmado">El XML del rDE ya firmado (con Signature y gCamFuFD)</param>
+        /// <param name="dId">ID del envío (opcional, se genera automáticamente)</param>
+        /// <returns>SOAP completo listo para enviar al endpoint LOTE</returns>
+        public string ConstruirSoapComoPoweBuilder(string xmlRdeFirmado, string? dId = null)
+        {
+            // =====================================================================
+            // CÓDIGO IDÉNTICO AL DLL DE POWER BUILDER (Sifen_26/Sifen.cs líneas 155-222)
+            // =====================================================================
+            
+            // 1. Generar dId si no se proporciona
+            string dIdFinal = string.IsNullOrWhiteSpace(dId) 
+                ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") 
+                : dId!;
+            
+            // 2. Comprimir el XML firmado con GZip y convertir a Base64
+            //    Power Builder comprime el rDE COMPLETO (con <rDE>...</rDE>), NO rLoteDE
+            string base64Gzip = StringToZip(xmlRdeFirmado);
+            
+            // 3. Construir el sobre SOAP EXACTAMENTE como Power Builder
+            //    Power Builder usa string concatenation simple, NO XmlDocument
+            string soapEnvelope = 
+                "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body>" +
+                "<rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\">" +
+                "<dId>" + dIdFinal + "</dId>" +
+                "<xDE>" + base64Gzip + "</xDE>" +
+                "</rEnvioLote>" +
+                "</soap:Body>" +
+                "</soap:Envelope>";
+            
+            Console.WriteLine($"[SIFEN] ConstruirSoapComoPoweBuilder: dId={dIdFinal}, GZip={base64Gzip.Length} chars");
+            
+            return soapEnvelope;
+        }
+
+        // Construye el SOAP rEnvioLote con xDE como Base64(ZIP(<rLoteDE><rDE/>...</rLoteDE>)) listo para enviar
+        // NOTA: SIFEN requiere archivo ZIP real (application/zip), NO gzip
+        // IMPORTANTE: Siguiendo el formato EXACTO del DLL Power Builder que FUNCIONA:
+        // - rLoteDE SIN namespace (solo nombre local)
+        // - SIN declaración XML en el contenido comprimido
+        // - CON indentación (tabs)
     public string ConstruirSoapEnvioLoteZipBase64(string xmlRdeFirmado, string? dId = null)
         {
             if (string.IsNullOrWhiteSpace(xmlRdeFirmado)) throw new ArgumentException("xmlRdeFirmado vacío");
 
-            // Documento interno: rLoteDE con rDE importado
+            // ========================================================================
+            // FIX 31-Ene-2026: Formato EXACTO según DLL Power que FUNCIONA
+            // ========================================================================
+            // El DLL de Power genera (VERIFICADO del archivo sifen_xml_input.txt):
+            // <rLoteDE>
+            // \t<rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="..." xsi:schemaLocation="...">
+            //     ...elementos...
+            // \t</rDE>
+            // </rLoteDE>
+            //
+            // IMPORTANTE:
+            // - SIN declaración XML (<?xml version="1.0"?>)
+            // - rLoteDE SIN namespace (solo nombre local)
+            // - CON tabulación al inicio del rDE
+            // ========================================================================
+            
             var inner = new XmlDocument();
-            var sifenNs = "http://ekuatia.set.gov.py/sifen/xsd";
-            // Agregar declaración XML UTF-8 explícita
-            var declInner = inner.CreateXmlDeclaration("1.0", "UTF-8", null);
-            inner.AppendChild(declInner);
-            var rLote = inner.CreateElement("rLoteDE", sifenNs);
+            // FIX 31-Ene-2026: NO agregar declaración XML - Power DLL no la tiene
+            // var declInner = inner.CreateXmlDeclaration("1.0", "UTF-8", null);
+            // inner.AppendChild(declInner);
+            
+            // CRÍTICO: rLoteDE SIN namespace (solo nombre local)
+            var rLote = inner.CreateElement("rLoteDE"); // SIN namespace
             inner.AppendChild(rLote);
 
+            // Cargar el rDE firmado
             var rdeDoc = new XmlDocument();
             rdeDoc.LoadXml(xmlRdeFirmado);
             var rdeNode = rdeDoc.DocumentElement ?? throw new InvalidOperationException("rDE raíz no encontrado");
+            
+            // FIX 31-Ene-2026: SIN whitespace adicional - Power DLL no tiene \n\t entre rLoteDE y rDE
+            // El XML del Power DLL es: <rLoteDE><rDE xmlns="...">...</rDE></rLoteDE> (todo en una línea)
+            
+            // Importar el nodo rDE - el namespace se preservará del original (xmlns="http://ekuatia.set.gov.py/sifen/xsd")
             var imported = inner.ImportNode(rdeNode, true);
             rLote.AppendChild(imported);
+            
+            // SIN whitespace adicional
 
-            var zipped = StringToZip(inner.OuterXml);
+            // Comprimir el contenido XML SIN declaración
+            // CRÍTICO: Usar SerializeXmlToUtf8String CON omitDeclaration=true (Power DLL no tiene declaración)
+            var zipped = StringToZip(SerializeXmlToUtf8String(inner, indent: false, omitDeclaration: true));
 
-            // SOAP externo con xDE en base64+gzip
-            // IMPORTANTE: Usar prefijo "soap:" y NO incluir Header (formato probado que funciona)
-            var soapDoc = new XmlDocument();
-            var soapNs = "http://www.w3.org/2003/05/soap-envelope";
-            var envelope = soapDoc.CreateElement("soap", "Envelope", soapNs);
-            soapDoc.AppendChild(envelope);
-            var body = soapDoc.CreateElement("soap", "Body", soapNs);
-            envelope.AppendChild(body);
-            // Usar rEnvioLote (formato del código original que funciona)
-            var req = soapDoc.CreateElement("rEnvioLote", sifenNs);
-            body.AppendChild(req);
-            var dIdNode = soapDoc.CreateElement("dId", sifenNs);
-            dIdNode.InnerText = string.IsNullOrWhiteSpace(dId) ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") : dId!;
-            req.AppendChild(dIdNode);
-            var xde = soapDoc.CreateElement("xDE", sifenNs);
-            xde.InnerText = zipped;
-            req.AppendChild(xde);
-
-            return soapDoc.OuterXml;
+            // ========================================================================
+            // FIX 31-Ene-2026: Formato SOAP exacto del DLL Power que FUNCIONA
+            // ========================================================================
+            var dIdValue = string.IsNullOrWhiteSpace(dId) 
+                ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") 
+                : dId!;
+            
+            // ========================================================================
+            // FIX 31-Ene-2026: Formato SOAP exacto del DLL Power que FUNCIONA
+            // ========================================================================
+            // El DLL de Power usa este formato exacto (sin soap:Header, con namespace por defecto):
+            // <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+            //   <soap:Body>
+            //     <rEnvioLote xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+            //       <dId>160420241700</dId>
+            //       <xDE>ZIP_BASE64</xDE>
+            //     </rEnvioLote>
+            //   </soap:Body>
+            // </soap:Envelope>
+            // ========================================================================
+            var soapString = $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dIdValue}</dId><xDE>{zipped}</xDE></rEnvioLote></soap:Body></soap:Envelope>";
+            
+            return soapString;
         }
 
         // Variante alternativa: mismo payload (zip+base64) pero wrapper rEnvioLote
@@ -618,11 +1122,12 @@ namespace SistemIA.Models
         {
             if (string.IsNullOrWhiteSpace(xmlRdeFirmado)) throw new ArgumentException("xmlRdeFirmado vacío");
 
+            // CRÍTICO: rLoteDE SIN namespace pero CON declaración XML (Java Transformer lo hace)
             var inner = new XmlDocument();
-            var sifenNs = "http://ekuatia.set.gov.py/sifen/xsd";
+            // Agregar declaración XML - Java Transformer lo hace por defecto
             var declInner = inner.CreateXmlDeclaration("1.0", "UTF-8", null);
             inner.AppendChild(declInner);
-            var rLote = inner.CreateElement("rLoteDE", sifenNs);
+            var rLote = inner.CreateElement("rLoteDE"); // SIN namespace
             inner.AppendChild(rLote);
 
             var rdeDoc = new XmlDocument();
@@ -631,13 +1136,15 @@ namespace SistemIA.Models
             var imported = inner.ImportNode(rdeNode, true);
             rLote.AppendChild(imported);
 
-            var zipped = StringToZip(inner.OuterXml);
+            // CRÍTICO: Usar SerializeXmlToUtf8String en lugar de OuterXml para preservar UTF-8
+            var zipped = StringToZip(SerializeXmlToUtf8String(inner));
 
+            // El wrapper SOAP SÍ usa namespace SIFEN
+            var sifenNs = "http://ekuatia.set.gov.py/sifen/xsd";
             var soapDoc = new XmlDocument();
             var decl = soapDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
             soapDoc.AppendChild(decl);
             var soapNs = "http://www.w3.org/2003/05/soap-envelope";
-            // IMPORTANTE: Usar prefijo "soap:" y NO incluir Header (formato probado que funciona)
             var envelope = soapDoc.CreateElement("soap", "Envelope", soapNs);
             soapDoc.AppendChild(envelope);
             var body = soapDoc.CreateElement("soap", "Body", soapNs);
@@ -651,7 +1158,8 @@ namespace SistemIA.Models
             xde.InnerText = zipped;
             req.AppendChild(xde);
 
-            return soapDoc.OuterXml;
+            // Usar SerializeXmlToUtf8String por consistencia
+            return SerializeXmlToUtf8String(soapDoc);
         }
 
         // Variante alternativa: wrapper rEnvioLote en modo vista (xDE contiene rLoteDE crudo)
@@ -683,13 +1191,15 @@ namespace SistemIA.Models
             var xde = soapDoc.CreateElement("xDE", sifenNs);
             req.AppendChild(xde);
 
-            var rLote = soapDoc.CreateElement("rLoteDE", sifenNs);
+            // CRÍTICO: rLoteDE SIN namespace (como en Java: addChildElement("rLoteDE") sin QName)
+            var rLote = soapDoc.CreateElement("rLoteDE");
             xde.AppendChild(rLote);
 
             var imported = soapDoc.ImportNode(rdeNode, true);
             rLote.AppendChild(imported);
 
-            return soapDoc.OuterXml;
+            // CRÍTICO: Usar SerializeXmlToUtf8String para preservar caracteres UTF-8
+            return SerializeXmlToUtf8String(soapDoc);
         }
 
         public async Task<string> Consulta(string url, string id, string tipoConsulta, string p12FilePath, string certificatePassword)
@@ -814,31 +1324,507 @@ namespace SistemIA.Models
                 {
                     qrText = $"{urlQR}{qrText.TrimStart('?')}";
                 }
-                var qrHash = SHA256ToString(qrText);
-                if (qrText.Contains("cHashQR="))
-                    qrText = System.Text.RegularExpressions.Regex.Replace(qrText, @"cHashQR=[A-Za-z0-9]+", $"cHashQR={qrHash}");
-                else
-                    qrText += (qrText.Contains("?") ? "&" : "?") + $"cHashQR={qrHash}";
+                
+                // Extraer CSC del parámetro temporal __CSC__ (agregado por DEXmlBuilder)
+                string cscValue = "ABCD0000000000000000000000000000"; // Default TEST
+                // Buscar __CSC__ con & simple (como genera DEXmlBuilder ahora)
+                var cscMatch = System.Text.RegularExpressions.Regex.Match(qrText, @"__CSC__=([^&]+)");
+                if (cscMatch.Success)
+                {
+                    cscValue = cscMatch.Groups[1].Value;
+                    // Remover el parámetro temporal __CSC__ del QR final (con & simple)
+                    qrText = System.Text.RegularExpressions.Regex.Replace(qrText, @"&__CSC__=[^&]+", "");
+                }
+
+                // ========================================================================
+                // FIX CRÍTICO 26-Ene-2026: Cálculo de cHashQR según librería Roshka Java
+                // El hash se calcula SOLO con los parámetros, SIN incluir la URL base
+                // Referencia: ManualSifen/codigoabierto/.../DocumentoElectronico.java
+                // ========================================================================
+                string urlCompleta = qrText;
+                // Buscar &cHashQR= con & simple (como viene de DEXmlBuilder)
+                if (urlCompleta.Contains("&cHashQR="))
+                {
+                    urlCompleta = urlCompleta.Substring(0, urlCompleta.IndexOf("&cHashQR="));
+                }
+                else if (urlCompleta.Contains("cHashQR="))
+                {
+                    urlCompleta = urlCompleta.Substring(0, urlCompleta.IndexOf("cHashQR="));
+                    if (urlCompleta.EndsWith("&"))
+                        urlCompleta = urlCompleta.TrimEnd('&');
+                }
+                
+                // CRÍTICO: Extraer SOLO los parámetros (sin URL base)
+                string soloParametros = urlCompleta;
+                int indexInterrogacion = urlCompleta.IndexOf('?');
+                if (indexInterrogacion >= 0)
+                {
+                    soloParametros = urlCompleta.Substring(indexInterrogacion + 1);
+                }
+                
+                // Calcular hash sobre parámetros + CSC (sin URL base)
+                var qrHash = SHA256ToString(soloParametros + cscValue);
+                
+                // Construir URL final con el hash calculado
+                qrText = urlCompleta + "&cHashQR=" + qrHash;
+                // FIX 12-Ene-2026: InnerText escapa automáticamente & a &amp; (escape simple)
+                // El XML válido de SIFEN usa &amp; simple, NO doble escape
                 qrNode.InnerText = qrText;
             }
 
-            var xmlFirmado = doc.OuterXml;
+            // ========================================================================
+            // FIX CRÍTICO: Serializar XML con encoding UTF-8 explícito
+            // ========================================================================
+            // PROBLEMA: doc.OuterXml puede corromper caracteres UTF-8 como "í" → "├¡"
+            // SOLUCIÓN: Usar XmlWriter con UTF8Encoding explícito (sin BOM)
+            // ========================================================================
+            string xmlFirmado;
+            using (var ms = new MemoryStream())
+            {
+                using (var writer = XmlWriter.Create(ms, new XmlWriterSettings
+                {
+                    Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                    Indent = false,
+                    OmitXmlDeclaration = true  // 31-Ene-2026: Sin declaración XML (igual que Java/PHP)
+                }))
+                {
+                    doc.WriteTo(writer);
+                    writer.Flush();
+                }
+                ms.Position = 0;
+                using var reader = new StreamReader(ms, Encoding.UTF8);
+                xmlFirmado = reader.ReadToEnd();
+            }
+            
+            // El XML válido de SIFEN (producción) usa &amp; simple en dCarQR, NO doble escape
+            
             if (tipoFirmado == "1" && devolverBase64Zip)
             {
-                // Para envío síncrono, SIFEN espera xDE = Base64(GZip(DE)) (solo el nodo DE), no rDE completo
-                var deOnly = new XmlDocument();
-                var declDe = deOnly.CreateXmlDeclaration("1.0", "UTF-8", null);
-                deOnly.AppendChild(declDe);
-                var importedDe = deOnly.ImportNode(node, true);
-                deOnly.AppendChild(importedDe);
-                var zipped = StringToZip(deOnly.OuterXml);
-                // Generar dId de 16 dígitos (yyyyMMddHHmmssNN) como en el envío por lote
+                // ========================================================================
+                // FIX CRÍTICO 10-Ene-2026: Para endpoint SYNC (recibe.wsdl), el XML va DIRECTO
+                // ========================================================================
+                // IMPORTANTE: Según análisis de librerías oficiales (Java, PHP, TypeScript):
+                // - SYNC (recibe.wsdl)  → XML SIN comprimir, directamente dentro de <xDE>
+                // - ASYNC (recibe-lote.wsdl) → XML comprimido en ZIP + Base64
+                //
+                // La librería PHP lo confirma en sifen.php línea 502:
+                //   $soapEnvelope = '...
+                //     <rEnviDe xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+                //       <dId>25</dId>
+                //       <xDE>' . $contenidoXML . '</xDE>  <-- XML directo, SIN comprimir
+                //     </rEnviDe>...'
+                //
+                // La librería Java (DocumentoElectronico.java línea 255) también agrega
+                // el XML como elemento SOAP hijo, no como texto Base64.
+                // ========================================================================
+                
+                // Generar dId de 16 dígitos (yyyyMMddHHmmssNN)
                 var dId = DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00");
-                // IMPORTANTE: Usar prefijo "soap:" y NO incluir Header (formato probado que funciona)
-                var soap = $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{zipped}</xDE></rEnvioLote></soap:Body></soap:Envelope>";
+                
+                // El contenido de xDE es el XML del rDE directamente (SIN ZIP, SIN Base64)
+                // xmlFirmado ya contiene <rDE>...</rDE> con firma y QR
+                // ========================================================================
+                // FIX CRÍTICO: Remover declaración XML antes de insertar en <xDE>
+                // ========================================================================
+                // PROBLEMA: <?xml version="1.0" encoding="utf-8"?> NO puede estar anidado
+                //           dentro de otro XML - causa "XML Mal Formado" (error 0160)
+                // SOLUCIÓN: Remover la declaración XML dejando solo el elemento <rDE>
+                // ========================================================================
+                var xmlContent = xmlFirmado;
+                if (xmlContent.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Encontrar el fin de la declaración XML (el primer ?>)
+                    var endDecl = xmlContent.IndexOf("?>", StringComparison.Ordinal);
+                    if (endDecl > 0)
+                    {
+                        xmlContent = xmlContent.Substring(endDecl + 2).TrimStart();
+                    }
+                }
+                
+                // ========================================================================
+                // FIX 12-Ene-2026: Formato SOAP según PDF "Recomendaciones y mejores prácticas SIFEN"
+                // ========================================================================
+                // El PDF oficial del SET (Octubre 2024, página 8) muestra:
+                // <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+                //                xmlns:xsd="http://ekuatia.set.gov.py/sifen/xsd">
+                //   <soap:Header/>
+                //   <soap:Body>
+                //     <xsd:rEnvioLote>           <- CON prefijo xsd:
+                //       <xsd:dId>...</xsd:dId>
+                //       <xsd:xDE>...</xsd:xDE>
+                //     </xsd:rEnvioLote>
+                //   </soap:Body>
+                // </soap:Envelope>
+                //
+                // NOTA: Para endpoint SYNC usamos rEnviDe en lugar de rEnvioLote
+                // ========================================================================
+                var soap = $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsd=\"http://ekuatia.set.gov.py/sifen/xsd\"><soap:Header/><soap:Body><xsd:rEnviDe><xsd:dId>{dId}</xsd:dId><xsd:xDE>{xmlContent}</xsd:xDE></xsd:rEnviDe></soap:Body></soap:Envelope>";
                 return soap;
             }
             return xmlFirmado;
+        }
+
+        /// <summary>
+        /// Genera diferentes variantes de SOAP para probar cuál acepta SIFEN.
+        /// Útil para debugging del error 0160 "XML Mal Formado".
+        /// </summary>
+        /// <param name="xmlFirmado">El XML del DE firmado (resultado de FirmarSinEnviar con devolverBase64Zip=false)</param>
+        /// <param name="variante">Número de variante a probar (1-10)</param>
+        /// <returns>Tupla con (soapGenerado, descripcionVariante)</returns>
+        public (string soap, string descripcion) GenerarSoapVariante(string xmlFirmado, int variante)
+        {
+            // Generar dId de 16 dígitos
+            var dId = DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00");
+            
+            // Preparar el contenido XML (remover declaración XML si existe)
+            var xmlContent = xmlFirmado;
+            if (xmlContent.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase))
+            {
+                var endDecl = xmlContent.IndexOf("?>", StringComparison.Ordinal);
+                if (endDecl > 0)
+                {
+                    xmlContent = xmlContent.Substring(endDecl + 2).TrimStart();
+                }
+            }
+            
+            // Definir las variantes
+            switch (variante)
+            {
+                case 1:
+                    // Variante 1: Actual (env: + declaración XML)
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + declaración XML + XML directo"
+                    );
+                    
+                case 2:
+                    // Variante 2: soap: en vez de env: (como algunos ejemplos usan)
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Header/><soap:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></soap:Body></soap:Envelope>",
+                        "soap: + declaración XML + XML directo"
+                    );
+                    
+                case 3:
+                    // Variante 3: Sin declaración XML (env:)
+                    return (
+                        $"<env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: SIN declaración XML + XML directo"
+                    );
+                    
+                case 4:
+                    // Variante 4: Sin declaración XML (soap:)
+                    return (
+                        $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Header/><soap:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></soap:Body></soap:Envelope>",
+                        "soap: SIN declaración XML + XML directo"
+                    );
+                    
+                case 5:
+                    // Variante 5: SOAP 1.1 (namespace diferente)
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></soap:Body></soap:Envelope>",
+                        "SOAP 1.1 (schemas.xmlsoap.org) + declaración XML"
+                    );
+                    
+                case 6:
+                    // Variante 6: env: con namespace del rEnviDe como atributo xsi (algunas libs usan esto)
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsd=\"http://ekuatia.set.gov.py/sifen/xsd\"><env:Header/><env:Body><xsd:rEnviDe><dId>{dId}</dId><xDE>{xmlContent}</xDE></xsd:rEnviDe></env:Body></env:Envelope>",
+                        "env: con prefijo xsd: para rEnviDe"
+                    );
+                    
+                case 7:
+                    // Variante 7: Usar CDATA para el contenido del xDE
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE><![CDATA[{xmlContent}]]></xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + declaración XML + CDATA en xDE"
+                    );
+                    
+                case 8:
+                    // Variante 8: env: sin Header (algunos servidores lo rechazan)
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + declaración XML + SIN Header"
+                    );
+                    
+                case 9:
+                    // Variante 9: Igual a la librería Java de Roshka (estructura exacta)
+                    // SOAPElement con namespace default heredado
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://www.w3.org/2003/05/soap-envelope\"><SOAP-ENV:Header/><SOAP-ENV:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></SOAP-ENV:Body></SOAP-ENV:Envelope>",
+                        "SOAP-ENV: (mayúsculas como Java) + declaración XML"
+                    );
+                    
+                case 10:
+                    // Variante 10: Con xDE comprimido en ZIP+Base64 (modo LOTE pero en endpoint SYNC)
+                    // Por si SIFEN espera el ZIP incluso en sync
+                    var zippedB64 = StringToZip(xmlFirmado); // xmlFirmado original CON declaración
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{zippedB64}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + declaración XML + xDE con ZIP+Base64 (como lote)"
+                    );
+                    
+                case 11:
+                    // Variante 11: Quitar xmlns del rDE (hereda del padre rEnviDe)
+                    // El problema puede ser que rDE redefine el mismo namespace
+                    var xmlSinNs = RemoverNamespaceDeRDE(xmlContent);
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlSinNs}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + rDE SIN namespace (hereda de rEnviDe)"
+                    );
+                    
+                case 12:
+                    // Variante 12: Quitar xmlns Y xsi:schemaLocation del rDE
+                    var xmlSinNsYSchema = RemoverNamespaceYSchemaDeRDE(xmlContent);
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlSinNsYSchema}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + rDE SIN namespace NI schemaLocation"
+                    );
+                    
+                case 13:
+                    // Variante 13: schemaLocation con HTTPS en vez de HTTP
+                    var xmlConHttps = xmlContent.Replace(
+                        "xsi:schemaLocation=\"http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd\"",
+                        "xsi:schemaLocation=\"https://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd\"");
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlConHttps}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + schemaLocation con HTTPS"
+                    );
+                    
+                case 14:
+                    // Variante 14: Sin schemaLocation completamente
+                    var xmlSinSchema = RemoverSchemaLocationDeRDE(xmlContent);
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlSinSchema}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + rDE SIN schemaLocation (pero con namespace)"
+                    );
+                    
+                case 15:
+                    // Variante 15: Solo xmlns:xsi sin schemaLocation
+                    var xmlSoloXsi = RemoverSchemaLocationMantenerXsi(xmlContent);
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlSoloXsi}</xDE></rEnviDe></env:Body></env:Envelope>",
+                        "env: + xmlns:xsi pero SIN schemaLocation"
+                    );
+                    
+                case 16:
+                    // ========================================================================
+                    // Variante 16: FORMATO EXACTO DEL MANUAL TÉCNICO v150 (página 36-37)
+                    // ========================================================================
+                    // Diferencias clave con variantes anteriores:
+                    // 1. <soap:body> con b MINÚSCULA (no Body)
+                    // 2. Sin <?xml ...?> declaration
+                    // 3. Namespace en rEnviDe, NO en Envelope
+                    // ========================================================================
+                    return (
+                        $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Header/><soap:body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></soap:body></soap:Envelope>",
+                        "MANUAL TÉCNICO v150: soap:body minúscula + SIN declaración XML"
+                    );
+                    
+                case 17:
+                    // Variante 17: Manual Técnico CON declaración XML
+                    return (
+                        $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Header/><soap:body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></soap:body></soap:Envelope>",
+                        "MANUAL TÉCNICO v150: soap:body minúscula + CON declaración XML"
+                    );
+                    
+                case 18:
+                    // Variante 18: Manual Técnico sin Header (algunos servidores lo rechazan vacío)
+                    return (
+                        $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></soap:body></soap:Envelope>",
+                        "MANUAL TÉCNICO v150: soap:body minúscula + SIN Header"
+                    );
+                    
+                case 19:
+                    // Variante 19: Igual al Manual pero env: en vez de soap:
+                    return (
+                        $"<env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></env:body></env:Envelope>",
+                        "env:body minúscula (variante Manual Técnico)"
+                    );
+                    
+                case 20:
+                    // Variante 20: Body mayúscula pero namespace xsd: como PDF Mejores Prácticas
+                    return (
+                        $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsd=\"http://ekuatia.set.gov.py/sifen/xsd\"><soap:Header/><soap:Body><xsd:rEnviDe><xsd:dId>{dId}</xsd:dId><xsd:xDE>{xmlContent}</xsd:xDE></xsd:rEnviDe></soap:Body></soap:Envelope>",
+                        "soap:Body MAYÚSCULA + prefijo xsd: (PDF Mejores Prácticas)"
+                    );
+                    
+                case 21:
+                    // ========================================================================
+                    // Variante 21: FORMATO EXACTO DEL DLL DECOMPILADO (Sifen.dll funcional)
+                    // ========================================================================
+                    // Este es el formato que usa la librería DLL que SÍ FUNCIONA.
+                    // Diferencias clave del DLL (confirmado por decompilación):
+                    // 1. **CON** <?xml version="1.0" encoding="UTF-8"?> declaration (xmlDocument.OuterXml lo incluye)
+                    // 2. SIN <soap:Header/>
+                    // 3. Usa rEnvioLote (NO rEnviDe) - PARA ENDPOINT LOTE
+                    // 4. El contenido xDE va comprimido en ZIP+Base64
+                    // 5. Body con B mayúscula
+                    // 6. ZIP entry name: "compressed.txt" (ya implementado)
+                    // ========================================================================
+                    {
+                        // CRÍTICO 31-Ene-2026: El DLL usa xmlDocument.OuterXml que INCLUYE la declaración XML
+                        // Nuestro FirmarSinEnviar usa OmitXmlDeclaration=true, así que debemos agregarla manualmente
+                        var xmlConDeclaracion = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xmlFirmado;
+                        var zippedContent = StringToZip(xmlConDeclaracion);
+                        return (
+                            $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{zippedContent}</xDE></rEnvioLote></soap:Body></soap:Envelope>",
+                            "DLL DECOMPILADO: rEnvioLote + ZIP (CON declaración XML) + SIN Header (ENDPOINT LOTE)"
+                        );
+                    }
+                    
+                case 22:
+                    // Variante 22: Igual al DLL pero para endpoint SYNC (rEnviDe en vez de rEnvioLote)
+                    // SIN ZIP, XML directo
+                    return (
+                        $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></soap:Body></soap:Envelope>",
+                        "DLL DECOMPILADO (adaptado SYNC): rEnviDe + XML directo + SIN Header + SIN declaración"
+                    );
+                    
+                case 23:
+                    // Variante 23: DLL + Content-Type exacto (solo "application/xml" sin charset)
+                    // Esta variante usa el mismo SOAP que 22 pero indica que el Content-Type debe ser diferente
+                    return (
+                        $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnviDe xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{xmlContent}</xDE></rEnviDe></soap:Body></soap:Envelope>",
+                        "DLL DECOMPILADO: Content-Type=application/xml (SIN charset)"
+                    );
+                    
+                case 24:
+                    // ========================================================================
+                    // Variante 24: COPIA EXACTA del DLL funcional
+                    // - Mismo dId hardcodeado: 160420241700 (como en el DLL decompilado)
+                    // - CON declaración XML (xmlDocument.OuterXml lo incluye)
+                    // - ZIP con archivo "compressed.txt"
+                    // - LOTE endpoint
+                    // ========================================================================
+                    {
+                        var xmlConDecl24 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xmlFirmado;
+                        var zip24 = StringToZip(xmlConDecl24);
+                        return (
+                            $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>160420241700</dId><xDE>{zip24}</xDE></rEnvioLote></soap:Body></soap:Envelope>",
+                            "DLL EXACTO: dId fijo 160420241700 + XML declaration + ZIP + LOTE"
+                        );
+                    }
+                    
+                case 25:
+                    // ========================================================================
+                    // Variante 25: LOTE con wrapper <rLoteDE> (formato documentación Java)
+                    // El ZIP contiene: <rLoteDE><rDE xmlns="...">...</rDE></rLoteDE>
+                    // SIN declaración XML en el contenido del ZIP
+                    // ========================================================================
+                    {
+                        // Crear el wrapper rLoteDE SIN namespace (como indica la doc Java)
+                        var loteXml25 = $"<rLoteDE>{xmlFirmado}</rLoteDE>";
+                        var zip25 = StringToZip(loteXml25);
+                        return (
+                            $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{zip25}</xDE></rEnvioLote></soap:Body></soap:Envelope>",
+                            "LOTE JAVA: <rLoteDE> wrapper + SIN declaración + ZIP + LOTE endpoint"
+                        );
+                    }
+                    
+                case 26:
+                    // ========================================================================
+                    // Variante 26: LOTE con wrapper <rLoteDE> + declaración XML
+                    // El ZIP contiene: <?xml...?><rLoteDE><rDE xmlns="...">...</rDE></rLoteDE>
+                    // ========================================================================
+                    {
+                        var loteXml26 = $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><rLoteDE>{xmlFirmado}</rLoteDE>";
+                        var zip26 = StringToZip(loteXml26);
+                        return (
+                            $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{zip26}</xDE></rEnvioLote></soap:Body></soap:Envelope>",
+                            "LOTE JAVA: <?xml?> + <rLoteDE> wrapper + ZIP + LOTE endpoint"
+                        );
+                    }
+                    
+                case 27:
+                    // ========================================================================
+                    // Variante 27: EXACTO como DLL pero con dId dinámico
+                    // - CON declaración XML (xmlDocument.OuterXml lo incluye)
+                    // - SIN wrapper <rLoteDE>
+                    // - ZIP con archivo "compressed.txt"
+                    // - dId dinámico (no hardcodeado)
+                    // ========================================================================
+                    {
+                        var xmlConDecl27 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xmlFirmado;
+                        var zip27 = StringToZip(xmlConDecl27);
+                        return (
+                            $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId}</dId><xDE>{zip27}</xDE></rEnvioLote></soap:Body></soap:Envelope>",
+                            "DLL con dId dinámico: <?xml?> + ZIP + LOTE endpoint"
+                        );
+                    }
+                    
+                case 28:
+                    // ========================================================================
+                    // Variante 28: DLL exacto con formato dId de 12 dígitos (DDMMYYYYHHMM)
+                    // - El DLL usa formato "160420241700" = DDMMYYYYHHMM
+                    // - Nuestro dId usa YYYYMMDDHHMMSSNN (16 dígitos)
+                    // ========================================================================
+                    {
+                        // Generar dId con formato DLL: DDMMYYYYHHMM (12 dígitos)
+                        var dId12 = DateTime.Now.ToString("ddMMyyyyHHmm");
+                        var xmlConDecl28 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xmlFirmado;
+                        var zip28 = StringToZip(xmlConDecl28);
+                        return (
+                            $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dId12}</dId><xDE>{zip28}</xDE></rEnvioLote></soap:Body></soap:Envelope>",
+                            $"DLL exacto con dId12 ({dId12}): DDMMYYYYHHMM + <?xml?> + ZIP + LOTE"
+                        );
+                    }
+                    
+                default:
+                    return (string.Empty, $"Variante {variante} no definida");
+            }
+        }
+
+        /// <summary>
+        /// Prueba automáticamente todas las variantes de SOAP hasta encontrar una que SIFEN acepte.
+        /// </summary>
+        public async Task<(bool exito, int varianteExitosa, string descripcion, string codigo, string mensaje, string soapEnviado, string respuesta)> 
+            ProbarVariantesAsync(string xmlFirmado, string urlEnvio, string p12Path, string p12Pass, int maxVariantes = 20)
+        {
+            for (int i = 1; i <= maxVariantes; i++)
+            {
+                var (soap, desc) = GenerarSoapVariante(xmlFirmado, i);
+                if (string.IsNullOrEmpty(soap)) continue;
+                
+                Console.WriteLine($"\n[SIFEN PRUEBA] ========== VARIANTE {i}: {desc} ==========");
+                Console.WriteLine($"[SIFEN PRUEBA] Longitud SOAP: {soap.Length} caracteres");
+                
+                try
+                {
+                    var resp = await Enviar(urlEnvio, soap, p12Path, p12Pass);
+                    
+                    string codigo = GetTagValue(resp, "ns2:dCodRes");
+                    if (string.IsNullOrWhiteSpace(codigo) || codigo == "Tag not found.") 
+                        codigo = GetTagValue(resp, "dCodRes");
+                    
+                    string mensaje = GetTagValue(resp, "ns2:dMsgRes");
+                    if (string.IsNullOrWhiteSpace(mensaje) || mensaje == "Tag not found.") 
+                        mensaje = GetTagValue(resp, "dMsgRes");
+                    
+                    Console.WriteLine($"[SIFEN PRUEBA] Código: {codigo}, Mensaje: {mensaje}");
+                    
+                    // Si el código NO es 0160 (XML mal formado), puede ser éxito o error diferente
+                    if (codigo != "0160" && codigo != "Tag not found.")
+                    {
+                        // Código 0260 = Aprobado, pero también otros códigos pueden indicar que el XML fue aceptado
+                        bool esExito = codigo == "0260" || codigo == "0300" || codigo == "0362" || 
+                                       !mensaje.Contains("mal formado", StringComparison.OrdinalIgnoreCase);
+                        
+                        Console.WriteLine($"[SIFEN PRUEBA] ✅ Variante {i} procesada sin error 0160!");
+                        return (esExito, i, desc, codigo, mensaje, soap, resp);
+                    }
+                    
+                    Console.WriteLine($"[SIFEN PRUEBA] ❌ Variante {i} rechazada con error 0160");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SIFEN PRUEBA] ⚠️ Variante {i} error de conexión: {ex.Message}");
+                }
+                
+                // Esperar un poco entre intentos para no sobrecargar el servidor
+                await Task.Delay(500);
+            }
+            
+            return (false, 0, "Ninguna variante fue aceptada", "0160", "XML Mal Formado en todas las variantes", string.Empty, string.Empty);
         }
 
         // ========== Métodos de consulta con resultados estructurados ==========

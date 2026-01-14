@@ -1,12 +1,16 @@
 @page "/pruebas-xml"
 @inject HttpClient Http
 @inject NavigationManager Nav
+@inject SistemIA.Services.DEXmlBuilder XmlBuilder
+@inject SistemIA.Models.Sifen Sifen
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @using System.Net.Http.Json
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>Pruebas XML SIFEN - SistemIA</PageTitle>
 
 <SaProtection TituloPagina="Pruebas XML SIFEN" UrlRetorno="/">
-<h3>Pruebas con XML Externo (SIFEN)</h3>
+<h3>Pruebas XML SIFEN</h3>
 
 <div class="mb-3">
     <label>Ambiente:</label>
@@ -19,6 +23,150 @@
         <option value="lote">Lote (async)</option>
         <option value="sync">Síncrono (recibe-de)</option>
     </select>
+</div>
+
+@* === SECCIÓN PARA PROBAR CONEXIÓN SSL/TLS === *@
+<div class="card mb-3 border-info">
+    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-shield-lock me-2"></i>Prueba de Conexión SSL/TLS</span>
+        <button class="btn btn-sm btn-light" @onclick="ProbarConexionSsl" disabled="@IsBusy">
+            <i class="bi bi-arrow-repeat me-1"></i>Probar Conexión
+        </button>
+    </div>
+    <div class="card-body">
+        @if (SslTestResult == null && !IsBusy)
+        {
+            <p class="text-muted small mb-0">
+                <i class="bi bi-info-circle me-1"></i>
+                Haga clic en "Probar Conexión" para verificar la conectividad SSL/TLS con los servidores SIFEN.
+            </p>
+        }
+        else if (IsBusy && SslTestInProgress)
+        {
+            <div class="d-flex align-items-center">
+                <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+                <span>Probando conexión SSL con @Ambiente...</span>
+            </div>
+        }
+        else if (SslTestResult != null)
+        {
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-muted"><i class="bi bi-server me-1"></i>Servidor SIFEN (@Ambiente)</h6>
+                    <table class="table table-sm table-borderless small mb-0">
+                        <tr>
+                            <td class="text-muted" style="width:120px;">Estado:</td>
+                            <td>
+                                @if (SslTestResult.Exitoso)
+                                {
+                                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Conectado</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Error</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">URL Probada:</td>
+                            <td><code class="small">@SslTestResult.UrlProbada</code></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Protocolo:</td>
+                            <td><span class="badge bg-secondary">@SslTestResult.Protocolo</span></td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="text-muted"><i class="bi bi-file-earmark-lock me-1"></i>Certificado del Servidor</h6>
+                    @if (!string.IsNullOrWhiteSpace(SslTestResult.Emisor))
+                    {
+                        <table class="table table-sm table-borderless small mb-0">
+                            <tr>
+                                <td class="text-muted" style="width:100px;">Emisor:</td>
+                                <td>@SslTestResult.Emisor</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Subject:</td>
+                                <td>@SslTestResult.Subject</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Válido hasta:</td>
+                                <td>
+                                    @if (SslTestResult.ValidoHasta.HasValue)
+                                    {
+                                        var diasRestantes = (SslTestResult.ValidoHasta.Value - DateTime.Now).Days;
+                                        <span class="@(diasRestantes < 30 ? "text-warning" : "")">
+                                            @SslTestResult.ValidoHasta.Value.ToString("dd/MM/yyyy")
+                                            (@diasRestantes días)
+                                        </span>
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Thumbprint:</td>
+                                <td><code class="small">@SslTestResult.Thumbprint</code></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Errores SSL:</td>
+                                <td>
+                                    @if (SslTestResult.ErroresSsl == "None" || string.IsNullOrWhiteSpace(SslTestResult.ErroresSsl))
+                                    {
+                                        <span class="text-success"><i class="bi bi-check me-1"></i>Ninguno</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-warning">@SslTestResult.ErroresSsl</span>
+                                    }
+                                </td>
+                            </tr>
+                        </table>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(SslTestResult.Error))
+                    {
+                        <div class="alert alert-danger small py-2 mb-0">
+                            <i class="bi bi-exclamation-triangle me-1"></i>@SslTestResult.Error
+                        </div>
+                    }
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(SslTestResult.Mensaje))
+            {
+                <div class="alert alert-info small py-2 mt-2 mb-0">
+                    <i class="bi bi-info-circle me-1"></i>@SslTestResult.Mensaje
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@* === SECCIÓN PARA CARGAR XML DESDE VENTA DEL SISTEMA === *@
+<div class="card mb-3 border-primary">
+    <div class="card-header bg-primary text-white">
+        <i class="bi bi-file-earmark-code me-2"></i>Cargar XML desde Venta del Sistema
+    </div>
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label small">ID Venta:</label>
+                <input type="number" class="form-control" style="width:120px;" @bind="IdVentaCargar" placeholder="Ej: 229" />
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-outline-primary" @onclick="CargarXmlDesdeVenta" disabled="@(IsBusy || IdVentaCargar <= 0)">
+                    <i class="bi bi-download me-1"></i>Cargar XML
+                </button>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-success" @onclick="CargarYEnviarDesdeVenta" disabled="@(IsBusy || IdVentaCargar <= 0)">
+                    <i class="bi bi-send me-1"></i>Cargar y Enviar
+                </button>
+            </div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(MensajeVenta))
+        {
+            <div class="mt-2 small @(MensajeVentaError ? "text-danger" : "text-success")">@MensajeVenta</div>
+        }
+    </div>
 </div>
 
 @if (Config != null)
@@ -107,9 +255,110 @@
     private string? LastAmbiente { get; set; }
     private string? LastModo { get; set; }
 
+    // === Prueba SSL ===
+    private SslTestResultado? SslTestResult { get; set; }
+    private bool SslTestInProgress { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         await CargarConfig();
+    }
+
+    // === MÉTODO PARA PROBAR CONEXIÓN SSL ===
+    private async Task ProbarConexionSsl()
+    {
+        try
+        {
+            IsBusy = true;
+            SslTestInProgress = true;
+            SslTestResult = null;
+            StateHasChanged();
+
+            var ambiente = (Ambiente ?? "test").ToLower() == "prod" ? "prod" : "test";
+            var urlPrueba = SistemIA.Utils.SifenConfig.GetConsultaRucUrl(ambiente);
+            
+            SslTestResult = new SslTestResultado { UrlProbada = urlPrueba };
+
+            using var handler = new System.Net.Http.HttpClientHandler();
+            handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+            
+            // Capturar info del certificado del servidor
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+            {
+                if (cert != null)
+                {
+                    SslTestResult.Subject = cert.Subject;
+                    SslTestResult.Emisor = cert.Issuer;
+                    SslTestResult.Thumbprint = cert.GetCertHashString();
+                    SslTestResult.ValidoHasta = DateTime.Parse(cert.GetExpirationDateString());
+                    SslTestResult.ErroresSsl = errors.ToString();
+                    Console.WriteLine($"[SSL] Subject: {cert.Subject}");
+                    Console.WriteLine($"[SSL] Issuer: {cert.Issuer}");
+                    Console.WriteLine($"[SSL] Errores SSL: {errors}");
+                    Console.WriteLine($"[SSL] Thumbprint: {cert.GetCertHashString()}");
+                }
+                return true; // Aceptar en modo desarrollo
+            };
+
+            using var client = new System.Net.Http.HttpClient(handler);
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.Add("User-Agent", "Java/1.8.0_341");
+
+            // Solo hacer HEAD para verificar conexión
+            var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Head, urlPrueba);
+            
+            try
+            {
+                var response = await client.SendAsync(request);
+                SslTestResult.Exitoso = true;
+                SslTestResult.Protocolo = "TLS 1.2";
+                SslTestResult.Mensaje = $"Conexión exitosa. Código HTTP: {(int)response.StatusCode} ({response.StatusCode})";
+            }
+            catch (System.Net.Http.HttpRequestException httpEx)
+            {
+                // Incluso si hay error HTTP, si llegamos aquí es que SSL funcionó
+                if (SslTestResult.Thumbprint != null)
+                {
+                    SslTestResult.Exitoso = true;
+                    SslTestResult.Protocolo = "TLS 1.2";
+                    SslTestResult.Mensaje = $"Conexión SSL establecida. Error HTTP: {httpEx.Message}";
+                }
+                else
+                {
+                    SslTestResult.Exitoso = false;
+                    SslTestResult.Error = httpEx.Message;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            SslTestResult = new SslTestResultado
+            {
+                Exitoso = false,
+                Error = ex.Message,
+                UrlProbada = SistemIA.Utils.SifenConfig.GetConsultaRucUrl((Ambiente ?? "test").ToLower() == "prod" ? "prod" : "test")
+            };
+        }
+        finally
+        {
+            IsBusy = false;
+            SslTestInProgress = false;
+        }
+    }
+
+    // Clase para resultados de prueba SSL
+    public class SslTestResultado
+    {
+        public bool Exitoso { get; set; }
+        public string? UrlProbada { get; set; }
+        public string? Protocolo { get; set; }
+        public string? Subject { get; set; }
+        public string? Emisor { get; set; }
+        public string? Thumbprint { get; set; }
+        public DateTime? ValidoHasta { get; set; }
+        public string? ErroresSsl { get; set; }
+        public string? Error { get; set; }
+        public string? Mensaje { get; set; }
     }
 
     private async Task CargarConfig()
@@ -132,26 +381,65 @@
         try
         {
             IsBusy = true; Resultado = "";
-            var req = new { xml = Xml, modo = Modo, ambiente = Ambiente };
-            var url = new Uri(new Uri(Nav.BaseUri), "debug/de-externo/enviar");
-            var resp = await Http.PostAsJsonAsync(url, req);
-            var text = await resp.Content.ReadAsStringAsync();
-            Resultado = text;
-            // Extraer CDC e idLote rudimentariamente
-            try
+            var modo = (Modo ?? "lote").ToLower();
+            var ambiente = (Ambiente ?? "test").ToLower() == "prod" ? "prod" : "test";
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+            if (sociedad == null) { Resultado = "ERROR: No existe registro de Sociedad; configure certificados y URL QR."; return; }
+
+            var urlQrBase = sociedad.DeUrlQr ?? (SistemIA.Utils.SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
+            var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+            var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(p12Path) || string.IsNullOrWhiteSpace(p12Pass))
+            { Resultado = "ERROR: Falta configurar ruta/contraseña del certificado (.p12) en Sociedad."; return; }
+            if (!System.IO.File.Exists(p12Path))
+            { Resultado = $"ERROR: No existe el archivo .p12 en la ruta: {p12Path}"; return; }
+
+            // Extraer rDE del XML pegado
+            string? rdeXml = SistemIA.ExternalXmlExtractor.TryExtractRde(Xml!);
+            if (string.IsNullOrWhiteSpace(rdeXml))
+            { Resultado = "ERROR: No se pudo encontrar un nodo rDE válido."; return; }
+
+            string codigo = "", mensaje = "", soapEnviado = "", respRecibida = "";
+
+            if (modo == "lote")
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(text);
-                if (doc.RootElement.TryGetProperty("cdc", out var pCdc) && pCdc.ValueKind == System.Text.Json.JsonValueKind.String)
-                    Cdc = pCdc.GetString();
-                if (doc.RootElement.TryGetProperty("idLote", out var pLote) && pLote.ValueKind == System.Text.Json.JsonValueKind.String)
-                    IdLote = pLote.GetString();
-                LastUrl = doc.RootElement.TryGetProperty("url", out var pUrl) && pUrl.ValueKind == System.Text.Json.JsonValueKind.String ? pUrl.GetString() : null;
-                LastP12 = doc.RootElement.TryGetProperty("p12", out var p12) && p12.ValueKind == System.Text.Json.JsonValueKind.String ? p12.GetString() : null;
-                LastAmbiente = doc.RootElement.TryGetProperty("ambiente", out var pAmb) && pAmb.ValueKind == System.Text.Json.JsonValueKind.String ? pAmb.GetString() : Ambiente;
-                LastModo = doc.RootElement.TryGetProperty("modo", out var pModo) && pModo.ValueKind == System.Text.Json.JsonValueKind.String ? pModo.GetString() : Modo;
-                LastDetailsVisible = true;
+                var urlEnvio = SistemIA.Utils.SifenConfig.GetEnvioLoteUrl(ambiente);
+                LastUrl = urlEnvio;
+                var resultJson = await Sifen.FirmarYEnviar(urlEnvio, urlQrBase, rdeXml!, p12Path, p12Pass);
+                
+                using var doc = System.Text.Json.JsonDocument.Parse(resultJson);
+                codigo = doc.RootElement.TryGetProperty("codigo", out var pCod) && pCod.ValueKind == System.Text.Json.JsonValueKind.String ? pCod.GetString() ?? "" : "";
+                mensaje = doc.RootElement.TryGetProperty("mensaje", out var pMsg) && pMsg.ValueKind == System.Text.Json.JsonValueKind.String ? pMsg.GetString() ?? "" : "";
+                Cdc = doc.RootElement.TryGetProperty("cdc", out var pCdc) && pCdc.ValueKind == System.Text.Json.JsonValueKind.String ? pCdc.GetString() : null;
+                IdLote = doc.RootElement.TryGetProperty("idLote", out var pLote) && pLote.ValueKind == System.Text.Json.JsonValueKind.String ? pLote.GetString() : null;
+                soapEnviado = doc.RootElement.TryGetProperty("documento", out var pDoc) && pDoc.ValueKind == System.Text.Json.JsonValueKind.String ? pDoc.GetString() ?? "" : "";
+                respRecibida = doc.RootElement.TryGetProperty("respuesta", out var pResp) && pResp.ValueKind == System.Text.Json.JsonValueKind.String ? pResp.GetString() ?? "" : "";
+                
+                Resultado = $"Modo: lote | Código: {codigo} | Mensaje: {mensaje}\nCDC: {Cdc}\nIdLote: {IdLote}\n\nRespuesta SIFEN:\n{Sifen.FormatearXML(respRecibida)}";
             }
-            catch { }
+            else // sync
+            {
+                var urlEnvioDe = SistemIA.Utils.SifenConfig.GetEnvioDeUrl(ambiente);
+                LastUrl = urlEnvioDe;
+                soapEnviado = Sifen.FirmarSinEnviar(urlQrBase, rdeXml!, p12Path, p12Pass, "1", true);
+                respRecibida = await Sifen.Enviar(urlEnvioDe, soapEnviado, p12Path, p12Pass);
+                
+                codigo = Sifen.GetTagValue(respRecibida, "ns2:dCodRes");
+                if (string.IsNullOrWhiteSpace(codigo) || codigo == "Tag not found.") codigo = Sifen.GetTagValue(respRecibida, "dCodRes");
+                mensaje = Sifen.GetTagValue(respRecibida, "ns2:dMsgRes");
+                if (string.IsNullOrWhiteSpace(mensaje) || mensaje == "Tag not found.") mensaje = Sifen.GetTagValue(respRecibida, "dMsgRes");
+                Cdc = Sifen.GetTagValue(respRecibida, "ns2:dCDC");
+                if (string.IsNullOrWhiteSpace(Cdc) || Cdc == "Tag not found.") Cdc = Sifen.GetTagValue(respRecibida, "dCDC");
+                
+                Resultado = $"Modo: sync | Código: {codigo} | Mensaje: {mensaje}\nCDC: {Cdc}\n\nRespuesta SIFEN:\n{Sifen.FormatearXML(respRecibida)}";
+            }
+
+            LastP12 = p12Path;
+            LastAmbiente = ambiente;
+            LastModo = modo;
+            LastDetailsVisible = true;
         }
         catch (Exception ex)
         {
@@ -169,20 +457,24 @@
         try
         {
             IsBusy = true; Resultado = "";
-            var req = new { tipo = "cdc", id = Cdc, ambiente = Ambiente };
-            var url = new Uri(new Uri(Nav.BaseUri), "debug/de-externo/consultar");
-            var resp = await Http.PostAsJsonAsync(url, req);
-            var text = await resp.Content.ReadAsStringAsync();
-            Resultado = text;
-            try
-            {
-                using var doc = System.Text.Json.JsonDocument.Parse(text);
-                LastUrl = doc.RootElement.TryGetProperty("url", out var pUrl) && pUrl.ValueKind == System.Text.Json.JsonValueKind.String ? pUrl.GetString() : null;
-                LastP12 = doc.RootElement.TryGetProperty("p12", out var p12) && p12.ValueKind == System.Text.Json.JsonValueKind.String ? p12.GetString() : null;
-                LastAmbiente = Ambiente; LastModo = "consulta-cdc";
-                LastDetailsVisible = true;
-            }
-            catch { }
+            var ambiente = (Ambiente ?? "test").ToLower() == "prod" ? "prod" : "test";
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+            if (sociedad == null) { Resultado = "ERROR: No existe registro de Sociedad; configure certificados."; return; }
+            var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+            var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(p12Path) || string.IsNullOrWhiteSpace(p12Pass))
+            { Resultado = "ERROR: Falta configurar ruta/contraseña del certificado (.p12) en Sociedad."; return; }
+            if (!System.IO.File.Exists(p12Path))
+            { Resultado = $"ERROR: No existe el archivo .p12 en la ruta: {p12Path}"; return; }
+
+            var urlConsulta = SistemIA.Utils.SifenConfig.GetConsultaDeUrl(ambiente);
+            var resp = await Sifen.Consulta(urlConsulta, Cdc!, "2", p12Path, p12Pass);
+            
+            LastUrl = urlConsulta; LastP12 = p12Path; LastAmbiente = ambiente; LastModo = "consulta-cdc";
+            LastDetailsVisible = true;
+            Resultado = $"Consulta por CDC: {Cdc}\nURL: {urlConsulta}\n\nRespuesta SIFEN:\n{Sifen.FormatearXML(resp)}";
         }
         catch (Exception ex)
         {
@@ -197,26 +489,73 @@
         try
         {
             IsBusy = true; Resultado = "";
-            var req = new { tipo = "lote", id = IdLote, ambiente = Ambiente };
-            var url = new Uri(new Uri(Nav.BaseUri), "debug/de-externo/consultar");
-            var resp = await Http.PostAsJsonAsync(url, req);
-            var text = await resp.Content.ReadAsStringAsync();
-            Resultado = text;
-            try
-            {
-                using var doc = System.Text.Json.JsonDocument.Parse(text);
-                LastUrl = doc.RootElement.TryGetProperty("url", out var pUrl) && pUrl.ValueKind == System.Text.Json.JsonValueKind.String ? pUrl.GetString() : null;
-                LastP12 = doc.RootElement.TryGetProperty("p12", out var p12) && p12.ValueKind == System.Text.Json.JsonValueKind.String ? p12.GetString() : null;
-                LastAmbiente = Ambiente; LastModo = "consulta-lote";
-                LastDetailsVisible = true;
-            }
-            catch { }
+            var ambiente = (Ambiente ?? "test").ToLower() == "prod" ? "prod" : "test";
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+            if (sociedad == null) { Resultado = "ERROR: No existe registro de Sociedad; configure certificados."; return; }
+            var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+            var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(p12Path) || string.IsNullOrWhiteSpace(p12Pass))
+            { Resultado = "ERROR: Falta configurar ruta/contraseña del certificado (.p12) en Sociedad."; return; }
+            if (!System.IO.File.Exists(p12Path))
+            { Resultado = $"ERROR: No existe el archivo .p12 en la ruta: {p12Path}"; return; }
+
+            var urlConsulta = SistemIA.Utils.SifenConfig.GetConsultaLoteUrl(ambiente);
+            var resp = await Sifen.Consulta(urlConsulta, IdLote!, "3", p12Path, p12Pass);
+            
+            LastUrl = urlConsulta; LastP12 = p12Path; LastAmbiente = ambiente; LastModo = "consulta-lote";
+            LastDetailsVisible = true;
+            Resultado = $"Consulta por Lote: {IdLote}\nURL: {urlConsulta}\n\nRespuesta SIFEN:\n{Sifen.FormatearXML(resp)}";
         }
         catch (Exception ex)
         {
             Resultado = $"ERROR: {ex.Message}";
         }
         finally { IsBusy = false; }
+    }
+
+    // ========== CARGAR DESDE VENTA ==========
+    private int IdVentaCargar { get; set; }
+    private string MensajeVenta { get; set; } = "";
+    private bool MensajeVentaError { get; set; }
+
+    private async Task CargarXmlDesdeVenta()
+    {
+        if (IdVentaCargar <= 0) return;
+        try
+        {
+            MensajeVenta = ""; MensajeVentaError = false;
+            IsBusy = true;
+            
+            // Llamar directamente al servicio DEXmlBuilder (sin HTTP)
+            var xmlFirmado = await XmlBuilder.ConstruirXmlAsync(IdVentaCargar);
+            
+            if (string.IsNullOrWhiteSpace(xmlFirmado))
+            {
+                MensajeVenta = "No se pudo generar el XML. Verifique que la venta exista y tenga datos completos.";
+                MensajeVentaError = true;
+                return;
+            }
+
+            Xml = xmlFirmado;
+            MensajeVenta = $"✓ XML cargado ({Xml.Length:N0} caracteres) - Venta #{IdVentaCargar}";
+        }
+        catch (Exception ex)
+        {
+            MensajeVenta = $"Error: {ex.Message}";
+            MensajeVentaError = true;
+        }
+        finally { IsBusy = false; }
+    }
+
+    private async Task CargarYEnviarDesdeVenta()
+    {
+        await CargarXmlDesdeVenta();
+        if (!MensajeVentaError && !string.IsNullOrWhiteSpace(Xml))
+        {
+            await FirmarYEnviar();
+        }
     }
 
     // Tipos para respuesta de configuración

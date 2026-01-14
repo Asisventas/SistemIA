@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RESPUESTA DE CONSULTA DE LOTE (rResEnviConsLoteDe)
+  Código Lote: 0362 - Procesamiento de lote concluido
+  Código DE: 0260 - Aprobado
+  Fecha: 2026-01-08
+  
+  Esta es la respuesta cuando se consulta el estado de un lote enviado.
+  El lote puede contener uno o más documentos electrónicos.
+-->
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope">
+  <env:Header />
+  <env:Body>
+    <ns2:rResEnviConsLoteDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd">
+      <!-- Fecha de procesamiento -->
+      <ns2:dFecProc>2026-01-08T10:04:35-03:00</ns2:dFecProc>
+      
+      <!-- Código de resultado del LOTE -->
+      <!-- 0362 = Procesamiento de lote concluido (éxito) -->
+      <ns2:dCodResLot>0362</ns2:dCodResLot>
+      <ns2:dMsgResLot>Procesamiento de lote {154307038997383352} concluido</ns2:dMsgResLot>
+      
+      <!-- Resultado de procesamiento de cada DE en el lote -->
+      <ns2:gResProcLote>
+        <!-- CDC del documento -->
+        <ns2:id>01004952197001001000002112026010810755085074</ns2:id>
+        
+        <!-- Estado del documento: "Aprobado" o "Rechazado" -->
+        <ns2:dEstRes>Aprobado</ns2:dEstRes>
+        
+        <!-- Protocolo de autorización (número único asignado por SET) -->
+        <ns2:dProtAut>48493331</ns2:dProtAut>
+        
+        <!-- Detalle del resultado -->
+        <ns2:gResProc>
+          <!-- Código 0260 = Aprobado -->
+          <ns2:dCodRes>0260</ns2:dCodRes>
+          <ns2:dMsgRes>Aprobado</ns2:dMsgRes>
+        </ns2:gResProc>
+      </ns2:gResProcLote>
+    </ns2:rResEnviConsLoteDe>
+  </env:Body>
+</env:Envelope>
+
+<!--
+  CÓDIGOS DE RESPUESTA IMPORTANTES:
+  
+  CÓDIGOS DE LOTE (dCodResLot):
+  - 0360: Lote recibido correctamente (aún no procesado)
+  - 0361: Lote en procesamiento
+  - 0362: Procesamiento de lote concluido ✅
+  - 0363: Lote no encontrado
+  
+  CÓDIGOS DE DOCUMENTO (dCodRes en gResProc):
+  - 0260: Aprobado ✅
+  - 0300: Rechazado por error en firma
+  - 0400: Rechazado por RUC no habilitado
+  - 0500: CDC duplicado
+  - 0160: XML mal formado
+  
+  ESTADOS (dEstRes):
+  - "Aprobado": Documento aceptado por SET
+  - "Rechazado": Documento rechazado, ver gResProc para detalles
+-->

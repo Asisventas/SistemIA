@@ -1,0 +1,77 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Control de Asistencia</title>
+    <base href="/" />
+
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('theme') || 'tenue';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch (e) { }
+        })();
+    </script>
+    <script defer src="js/theme.js?v=1_n1ZIYKarcO4sSKOYHnSkuCxzOHUHY0PU0xu1de4No"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&family=Inter:wght@400;500;700&display=swap" rel="stylesheet" />
+
+    <!-- Bootstrap y estilos -->
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="css/main-layout.css" />
+    <link rel="stylesheet" href="css/nav-menu.css" />
+    <link rel="stylesheet" href="css/site.css" />
+    <link rel="stylesheet" href="css/registro-directo.css" />
+    <link rel="stylesheet" href="css/registro-asistencia.css" />
+    <link href="SistemIA.styles.css" rel="stylesheet" />
+</head>
+
+<body>
+    <app>
+        <!--Blazor:{"type":"server","key":{"locationHash":"EB410886F539C2CE9C20AA3A59B87C09120F364475359B0043C47D0F0779D5E4:0","formattedComponentKey":""},"sequence":0,"descriptor":"CfDJ8HwYiVpbv5BPhAAHYgVXaJTcXBMKfLGgxywRE43ypg6Wk/WR2ykFSDrvDDgEtbqQJqsRJlkLqx8aVFn46NGUD7ZfGTm1YhaU9S1MQyF1kp7FUVgpYmxVIQH2y8py\u002BAObN4X047iGv8rsKKs501LB8b4T6hpzEKKVhBvNFIDQ4adY5oEH5d9WB3l86i2fks5\u002BM1zbNgCGroLJbWwqVV5r\u002B2ltvAWw7Mv5Nn/FgRhY8nsmSUFxxU7rToXT7aCvV5duQDpuTk5TBMAoWvILGtkh6NYJYUU0ZvDc07rse\u002BgZlS5ZSAG8\u002Bsg1\u002BvCCwyCguLL5cEOz1meDAu1PB8h9zjiPuiN5hBMDZIaLZr6VO/n4n19yE8XfsfKeXtHm13zJW4/W4seUuKmME2xg/oRYqc5NsyMyrOK93Wk369ugzm87taYXC3cGjt4DXb3BBL5Gq/NIG98gCNDb6YvHYab9zialP8Y8FpWel2FBqyqi05pszohiZxDdCpJmixd4xVRP87vcjA=="}-->
+    </app>
+
+    <!-- JsBarcode y wrapper deben cargarse antes que Blazor para garantizar disponibilidad -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <script src="js/barcode.js?v=Rv_lgoB5kUSPgnBNz8PIRHgHNsfjYM8QxnX-aF9GND0"></script>
+    
+    <!-- html5-qrcode para escanear códigos de barras con cámara -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="js/barcode-scanner.js?v=2hd37GvOiQN7Vltp0GzMV7ZGX0dG_O9uJNxdEWg5zyc"></script>
+    
+    <!-- Scripts principales -->
+    <script src="_framework/blazor.server.js"></script>
+    <script defer src="js/windowUtils.js?v=k93zFdbxuE9PJFr1hzkV5Njr9BokgHYk4V06y25sX9E"></script>
+    <script defer src="js/login.js?v=iXIAe0wtqczvETxQ_u3e46x_ObLjUSgV8AJAC5I6ioM"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Chart.js y adaptadores -->
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- Scripts de gráficos -->
+    <script defer src="js/graficos.js?v=C1GMJ4ljgQcGlXspqyvry6qFv5o1ZuaYb8FvRja5tEM"></script>
+    
+    <!-- Scripts de reconocimiento facial -->
+    <script defer src="js/camera-handler.js?v=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU"></script>
+    
+    <!-- Scripts del chat de voz (Web Speech API) -->
+    <script src="js/chat-voz.js?v=LXZl2XSOEJWrZ8rz5En_U0w69nJD3y2r_1GNgTA6qjw"></script>
+    
+    <!-- Scripts de soporte (captura pantalla/video) -->
+    <script src="js/soporte-captura.js?v=ejfTXk_12bgyYTSBwpbA7xyAvCMv3ZAH_iUTiel75U4"></script>
+    
+    <!-- Scripts adicionales - SIN DEFER para disponibilidad inmediata -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    
+    <script src="js/funciones.js?v=639038576268048971"></script>
+</body>
+</html>

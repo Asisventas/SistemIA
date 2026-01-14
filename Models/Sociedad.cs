@@ -38,6 +38,9 @@ namespace SistemIA.Models
         // Tipo Contribuyente (catálogo DNIT/SIFEN)
         public int? TipoContribuyente { get; set; }
 
+        // Código de Obligación Afectada SIFEN (1=IVA General, 11=Régimen Simplificado, 211=Exportadores)
+        public int? CodigoObligacionAfectada { get; set; }
+
         // CSC (Control de seguridad del contribuyente) para QR
         [StringLength(50)]
         public string? IdCsc { get; set; }

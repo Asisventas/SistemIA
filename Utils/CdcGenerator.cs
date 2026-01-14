@@ -68,30 +68,28 @@ namespace SistemIA.Utils
         }
 
         /// <summary>
-        /// Calcula el dígito verificador usando módulo 11 con base 2-9
+        /// Calcula el dígito verificador usando módulo 11 con base 2-11
+        /// Según código oficial Java de SIFEN (SifenUtil.generateDv)
         /// </summary>
         private static string CalcularDigitoVerificador(string cdc43)
         {
-            int suma = 0;
-            int multiplicador = 2;
+            // Algoritmo oficial SIFEN: baseMax = 11, factores 2,3,4,5,6,7,8,9,10,11,2,3...
+            const int baseMax = 11;
+            int k = 2;
+            int total = 0;
 
             // Recorrer de derecha a izquierda
             for (int i = cdc43.Length - 1; i >= 0; i--)
             {
-                int digito = int.Parse(cdc43[i].ToString());
-                suma += digito * multiplicador;
-
-                multiplicador++;
-                if (multiplicador > 9)
-                    multiplicador = 2;
+                if (k > baseMax) k = 2; // Reset cuando k > 11
+                int n = int.Parse(cdc43[i].ToString());
+                total += n * k;
+                k++;
             }
 
-            int modulo = suma % 11;
-            int dv = 11 - modulo;
-
-            // Si el dígito verificador es 10 u 11, se usa 0
-            if (dv >= 10)
-                dv = 0;
+            // Fórmula oficial: (total % 11) > 1 ? 11 - (total % 11) : 0
+            int modulo = total % 11;
+            int dv = modulo > 1 ? 11 - modulo : 0;
 
             return dv.ToString();
         }

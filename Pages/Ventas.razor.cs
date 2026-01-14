@@ -3596,6 +3596,11 @@ public partial class Ventas
             }
 
             var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            // Asegurar que URL termine en .wsdl (requerido por SIFEN)
+            if (!string.IsNullOrWhiteSpace(url) && !url.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+            {
+                url = url + ".wsdl";
+            }
             var xmlRespuesta = await SifenService.Consulta(url, _nuevoCliRuc, "1", sociedad.PathCertificadoP12 ?? "", sociedad.PasswordCertificadoP12 ?? "");
 
             if (string.IsNullOrEmpty(xmlRespuesta))

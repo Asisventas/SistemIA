@@ -5078,6 +5078,9 @@ namespace SistemIA.Migrations
                     b.Property<int?>("Ciudad")
                         .HasColumnType("int");
 
+                    b.Property<int?>("CodigoObligacionAfectada")
+                        .HasColumnType("int");
+
                     b.Property<string>("Csc")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");

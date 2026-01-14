@@ -4013,6 +4013,11 @@ END
             }
 
             var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            // IMPORTANTE: La URL DEBE terminar en .wsdl para evitar error 0160
+            if (!string.IsNullOrWhiteSpace(url) && !url.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+            {
+                url = url + ".wsdl";
+            }
             var xmlRespuesta = await SifenService.Consulta(url, _nuevoProvRuc, "1", sociedad.PathCertificadoP12 ?? "", sociedad.PasswordCertificadoP12 ?? "");
 
             if (string.IsNullOrEmpty(xmlRespuesta))

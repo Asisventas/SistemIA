@@ -134,22 +134,34 @@ else
 
             <div class="col-12">
                 <div class="border rounded p-3 bg-light small">
+                    <p class="text-muted mb-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        URLs de SIFEN. Se autocompletan al cambiar el ambiente. Puede editarlas manualmente si necesita URLs personalizadas.
+                    </p>
                     <div class="row g-2">
                         <div class="col-md-6">
                             <label class="form-label">Consulta RUC (.wsdl)</label>
-                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaRuc" disabled />
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaRuc" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Envío DE (.wsdl)</label>
-                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlEnvioDocumento" disabled />
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlEnvioDocumento" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Consulta DE (.wsdl)</label>
-                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaDocumento" disabled />
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaDocumento" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Consulta Lote (.wsdl)</label>
-                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaDocumentoLote" disabled />
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlConsultaDocumentoLote" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Envío Documento por Lote (.wsdl)</label>
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlEnvioDocumentoLote" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Envío Evento (.wsdl)</label>
+                            <InputText class="form-control" @bind-Value="_sociedad.DeUrlEnvioEvento" />
                         </div>
                     </div>
                 </div>
@@ -339,13 +351,19 @@ else
         setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlEnvioDocumento),
             () => SifenConfig.GetEnvioDeUrl(ambiente), v => _sociedad.DeUrlEnvioDocumento = v);
 
+        setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlEnvioDocumentoLote),
+            () => SifenConfig.GetEnvioLoteUrl(ambiente), v => _sociedad.DeUrlEnvioDocumentoLote = v);
+
         setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlConsultaDocumento),
             () => SifenConfig.GetConsultaDeUrl(ambiente), v => _sociedad.DeUrlConsultaDocumento = v);
 
         setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlConsultaDocumentoLote),
             () => SifenConfig.GetConsultaLoteUrl(ambiente), v => _sociedad.DeUrlConsultaDocumentoLote = v);
 
-        // DeUrlEnvioEvento y DeUrlQr quedan manuales (no definidos en SifenConfig)
+        setIf(!soloSiVacio || string.IsNullOrWhiteSpace(_sociedad.DeUrlEnvioEvento),
+            () => SifenConfig.GetEnvioEventoUrl(ambiente), v => _sociedad.DeUrlEnvioEvento = v);
+
+        // DeUrlQr queda manual (calculado dinámicamente según ambiente)
     }
 
     private void CiudadChanged(ChangeEventArgs _)

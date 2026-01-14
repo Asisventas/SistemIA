@@ -74,18 +74,19 @@ namespace SistemIA.Services
             if (!string.IsNullOrEmpty(cliente.Direccion))
             {
                 gDatRec.Add(new XElement("dDirRec", cliente.Direccion));
+            }
 
-                // Si se informa dirección, el número de casa es obligatorio
-                var numeroCasa = !string.IsNullOrEmpty(cliente.NumeroCasa) ? cliente.NumeroCasa : "0";
-                gDatRec.Add(new XElement("dNumCasRec", numeroCasa));
+            // dNumCasRec - SIEMPRE se agrega según XML aprobado por SIFEN (valor "0" si no hay dirección)
+            // Corregido 22-Ene-2026: El XML aprobado muestra dNumCasRec="0" incluso sin dDirRec
+            var numeroCasa = !string.IsNullOrEmpty(cliente.NumeroCasa) ? cliente.NumeroCasa : "0";
+            gDatRec.Add(new XElement("dNumCasRec", numeroCasa));
 
-                // Información geográfica (si está disponible)
-                if (cliente.IdCiudad > 0)
-                {
-                    // Recomendado: completar además cDepRec/dDesDepRec y cDisRec/dDesDisRec desde catálogo
-                    gDatRec.Add(new XElement("cCiuRec", cliente.IdCiudad));
-                    // dDesCiuRec opcional: no disponible aquí sin acceso a catálogo
-                }
+            // Información geográfica (opcional, solo si hay dirección y ciudad)
+            if (!string.IsNullOrEmpty(cliente.Direccion) && cliente.IdCiudad > 0)
+            {
+                // Recomendado: completar además cDepRec/dDesDepRec y cDisRec/dDesDisRec desde catálogo
+                gDatRec.Add(new XElement("cCiuRec", cliente.IdCiudad));
+                // dDesCiuRec opcional: no disponible aquí sin acceso a catálogo
             }
 
             // Teléfono (opcional)

@@ -251,6 +251,11 @@ namespace SistemIA.Services
                 }
 
                 var url = sociedad.DeUrlConsultaRuc ?? Utils.SifenConfig.GetConsultaRucUrl("test");
+                // Asegurar que URL termine en .wsdl (requerido por SIFEN)
+                if (!string.IsNullOrWhiteSpace(url) && !url.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+                {
+                    url = url + ".wsdl";
+                }
                 var xmlRespuesta = await _sifenService.Consulta(url, ruc, "1", sociedad.PathCertificadoP12, sociedad.PasswordCertificadoP12 ?? "");
 
                 if (string.IsNullOrEmpty(xmlRespuesta))

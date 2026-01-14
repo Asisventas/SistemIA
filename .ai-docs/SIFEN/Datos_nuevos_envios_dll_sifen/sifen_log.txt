@@ -1,0 +1,58 @@
+2026-01-13 13:31:26 - === INICIO FIRMA ===
+2026-01-13 13:31:26 - === PARAMETROS DE ENTRADA ===
+2026-01-13 13:31:26 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-13 13:31:26 - urlQR: https://ekuatia.set.gov.py/consultas-test/qr?
+2026-01-13 13:31:26 - p12FilePath: C:\nextsys - GLP\sifen\WEN.pfx
+2026-01-13 13:31:26 - tipoFirmado: 1
+2026-01-13 13:31:26 - XML Input Length: 4397
+2026-01-13 13:31:26 - Sistema Hora Local: 2026-01-13 13:31:26
+2026-01-13 13:31:26 - Sistema Hora UTC: 2026-01-13 16:31:26
+2026-01-13 13:31:26 - XML Input guardado en: C:\nextsys - GLP\sifen_xml_input.txt
+2026-01-13 13:31:26 - Primeros 10 chars (códigos): 60,114,76,111,116,101,68,69,62,10
+2026-01-13 13:31:26 - XML Cleaned Length: 4397
+2026-01-13 13:31:26 - Node ID: 01004952197001002000003512026011310763744690
+2026-01-13 13:31:26 - Certificado cargado: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-13 13:31:26 - Certificado Serial: 00E9312C9B1DB909AC49B307D8A7A6AE8B
+2026-01-13 13:31:26 - Certificado Thumbprint: 477AAEC61F0A09E5EC6DCE86FE7A75DA0F91F9C2
+2026-01-13 13:31:26 - PrivateKey Type: System.Security.Cryptography.RSACryptoServiceProvider
+2026-01-13 13:31:26 - PrivateKey KeySize: 2048
+2026-01-13 13:31:26 - RSA Key via ToXmlString (ProviderType 1)
+2026-01-13 13:31:26 - Firma computada correctamente
+2026-01-13 13:31:26 - SignatureValue (primeros 100 chars): d1/BnsF5v9tz0O6q8xBebh1hrnXfrTZQcV3pVRIGHoV9ojzKmSxSKD+yyrL5HxeVI5RwOwG90S+iiAvqZXkbA8iR3X7A3NDQkFEe
+2026-01-13 13:31:26 - SignatureValue Length: 344
+2026-01-13 13:31:26 - DigestValue (hex): 6251795546615956526975496e4355317868502f44415045754d596d506d395a4c616d5165583774...
+2026-01-13 13:31:26 - === INICIO COMPRESION ===
+2026-01-13 13:31:26 - XML Original Length: 7542
+2026-01-13 13:31:26 - XML Original (primeros 500 chars): <rLoteDE><rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"><dVerFor>150</dVerFor><DE Id="01004952197001002000003512026011310763744690"><dDVId>0</dDVId><dFecFirma>2026-01-13T13:31:25</dFecFirma><dSisFact>1</dSisFact><gOpeDE><iTipEmi>1</iTipEmi><dDesTipEmi>Normal</dDesTipEmi><dCodSeg>076374469</dCodSeg></gOpeDE><gTimb><iTiDE>1</iTiDE><dDesTiDE>Factura electrónica</dDesTi
+2026-01-13 13:31:26 - Compressed Base64 Length: 5648
+2026-01-13 13:31:26 - === FIN COMPRESION ===
+2026-01-13 13:31:26 - XML Firmado guardado en: C:\nextsys - GLP\sifen_xml_firmado.txt
+2026-01-13 13:31:26 - === FIN FIRMA - Enviando... ===
+2026-01-13 13:31:26 - === INICIO ENVIO ===
+2026-01-13 13:31:26 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-13 13:31:26 - Documento Length: 5858
+2026-01-13 13:31:26 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><rEnvioLote xmlns="http://ekuatia.set.gov.py/sifen/xsd"><dId>160420241700</dId><xDE>UEsDBBQAAAAIAO1rLVzaMo/BDRAAAHwdAAAOAAAAY29tcHJlc3NlZC50eHSdWdmS4kh3fhWiJ8LxO4hqJJAEaleVnVoRaEEry41DG0KgBSSBBO/wP4gvfOVHmBdzaqOYmZ7wjDu64Dsnz5YnT55MifdMTAufYT/fM4YdVHGU5B/fDkVx/jEa+aerXYT299wvvgfp7fv5PsrDvZ+Mqtz71sr+qPLwKV+W5fdy8j3NgtEYQdDRRhJ19+DH9luY5IWduD7UysMfecMUUxdaT5O/5G6Qh5rv+meG/c8biiPf6wg+3z3Lz7g0+4Sc91FPvMN5CN7HNwRFEIzExyg5RWoMQ4L/Jjg6RsYEgqITFJkSkymGESRS22Iswfus7TTg3eN8lwuz2P6s5d8Q9A2dGOjkxwT9Mcah1HP43dPDnLPd4hOF7B6/B8q5SWtohGc2DuvBHkJfft5hOYU2otrrk/Xu0amn+8HnMz443LHeR73dwAhjpzEPqdZ4zW7tQFRHcc3sgR/5bpH9+j9J6Nq9m0ZQvsbQxGefJDjWcd49Ni8gv55Ojd691TVhqzNkjSGrIxoDTOp+dmlt9WtGnTohCY06cfgbiryhbb4aHpxAG3jA2AWf2RGcTqMBZw7Desk1gvxo/je67WiTVDqN26wamf05abNawz6rNZbCqkgH/7D8pLAHnj+I/cy1PT/79b/twX2Q+9ktdMM0/9dn3hsDoSHE5zaXNWgN1kiwQCfZ8F0pTfw67tWWfx89qUa+J/irndlJ2Ko9JQLFicAeArcDYxS664nGQIcFaWWyuqEMgDiwgKhoA8BrLA8YZfA24DVgAQbog+2A3
+2026-01-13 13:31:26 - Enviando 5858 bytes...
+2026-01-13 13:31:26 - Response StatusCode: OK
+2026-01-13 13:31:26 - Response Length: 474
+2026-01-13 13:31:26 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rResEnviLoteDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-13T13:31:25-03:00</ns2:dFecProc><ns2:dCodRes>0300</ns2:dCodRes><ns2:dMsgRes>Lote recibido con &#233;xito</ns2:dMsgRes><ns2:dProtConsLote>154307038997529626</ns2:dProtConsLote><ns2:dTpoProces>0</ns2:dTpoProces></ns2:rResEnviLoteDe></env:Body></env:Envelope>
+2026-01-13 13:31:26 - === FIN ENVIO ===
+2026-01-13 13:31:26 - Respuesta guardada en: C:\nextsys - GLP\sifen_respuesta.txt
+2026-01-13 13:31:43 - === INICIO ENVIO ===
+2026-01-13 13:31:43 - URL: https://sifen-test.set.gov.py/de/ws/consultas/consulta.wsdl
+2026-01-13 13:31:43 - Documento Length: 268
+2026-01-13 13:31:43 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+<soap:Body>
+<rEnviConsDeRequest xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+<dId>1</dId>
+<dCDC>01004952197001002000003512026011310763744690</dCDC>
+</rEnviConsDeRequest>
+</soap:Body>
+</soap:Envelope>
+2026-01-13 13:31:43 - Enviando 268 bytes...
+2026-01-13 13:31:44 - Response StatusCode: OK
+2026-01-13 13:31:44 - Response Length: 8851
+2026-01-13 13:31:44 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rEnviConsDeResponse xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-13T13:31:26-03:00</ns2:dFecProc><ns2:dCodRes>0422</ns2:dCodRes><ns2:dMsgRes>CDC encontrado</ns2:dMsgRes><ns2:xContenDE>&lt;?xml version="1.0" encoding="UTF-8"?>&lt;rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd">&lt;dVerFor>150&lt;/dVerFor>&lt;DE Id="01004952197001002000003512026011310763744690">&lt;dDVId>0&lt;/dDVId>&lt;dFecFirma>2026-01-13T13:31:25&lt;/dFecFirma>&lt;dSisFact>1&lt;/dSisFact>&lt;gOpeDE>&lt;iTipEmi>1&lt;/iTipEmi>&lt;dDesTipEmi>Normal&lt;/dDesTipEmi>&lt;dCodSeg>076374469&lt;/dCodSeg>&lt;/gOpeDE>&lt;gTimb>&lt;iTiDE>1&lt;/iTiDE>&lt;dDesTiDE>Factura electr&#243;nica&lt;/dDesTiDE>&lt;dNumTim>00495219&lt;/dNumTim>&lt;dEst>001&lt;
+2026-01-13 13:31:44 - === FIN ENVIO ===
