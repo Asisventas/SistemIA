@@ -288,10 +288,43 @@
                 }
             </div>
         </div>
-        <div class="col-md-1">
-            <label class="form-label">Cantidad</label>
-            <input id="inputCantidadCompras" type="number" step="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" min="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" class="form-control" @bind="CantidadInput" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
-        </div>
+        @* ========== CANTIDAD CON SELECTOR PAQUETE/UNIDAD ========== *@
+        @{
+            var productoActual = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var esPaqueteOCaja = productoActual?.UnidadMedidaCodigo == "006" || productoActual?.UnidadMedidaCodigo == "005";
+            var nombreUnidadCompra = productoActual?.UnidadMedidaCodigo == "006" ? "Paquete" : (productoActual?.UnidadMedidaCodigo == "005" ? "Caja" : "Unidad");
+            var cantidadPorPaq = productoActual?.CantidadPorPaquete ?? 1;
+            var permiteUnidad = productoActual?.PermiteVentaPorUnidad ?? true;
+        }
+        @if (esPaqueteOCaja && cantidadPorPaq > 1)
+        {
+            <div class="col-md-1">
+                <label class="form-label">Modo</label>
+                <select class="form-select form-select-sm" value="@ModoIngresoCompra" @onchange="OnModoIngresoCompraChanged">
+                    <option value="paquete">@nombreUnidadCompra</option>
+                    @if (permiteUnidad)
+                    {
+                        <option value="unidad">Unidad</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Cantidad</label>
+                <input id="inputCantidadCompras" type="number" step="1" min="1" class="form-control" 
+                       @bind="CantidadIngresadaCompra" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
+                @if (ModoIngresoCompra == "paquete")
+                {
+                    <small class="text-muted">= @((CantidadIngresadaCompra * cantidadPorPaq).ToString("N0")) und.</small>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="col-md-1">
+                <label class="form-label">Cantidad</label>
+                <input id="inputCantidadCompras" type="number" step="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" min="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" class="form-control" @bind="CantidadInput" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
+            </div>
+        }
         <div class="col-md-1">
             <label class="form-label">Precio</label>
             <input id="inputPrecioCompras" type="number" step="0.01" class="form-control" @bind="PrecioInput" @bind:event="oninput" />
@@ -992,6 +1025,40 @@
     private decimal Gravado10; private decimal Gravado5; private decimal Exenta; private decimal IVATotal10; private decimal IVATotal5;
     private decimal CantidadInput { get => NuevoDetalle.Cantidad; set { NuevoDetalle.Cantidad = value; RecalcularNuevoDetalle(); } }
     private decimal PrecioInput { get => NuevoDetalle.PrecioUnitario; set { NuevoDetalle.PrecioUnitario = value; RecalcularNuevoDetalle(); } }
+    
+    // ========== VARIABLES PARA COMPRA POR PAQUETE/UNIDAD ==========
+    private string ModoIngresoCompra { get; set; } = "paquete"; // "paquete" o "unidad"
+    private decimal _cantidadIngresadaCompra = 1;
+    private decimal CantidadIngresadaCompra 
+    { 
+        get => _cantidadIngresadaCompra; 
+        set 
+        { 
+            _cantidadIngresadaCompra = value;
+            RecalcularCantidadPorModo();
+        } 
+    }
+    
+    private void OnModoIngresoCompraChanged(ChangeEventArgs e)
+    {
+        ModoIngresoCompra = e.Value?.ToString() ?? "paquete";
+        RecalcularCantidadPorModo();
+    }
+    
+    private void RecalcularCantidadPorModo()
+    {
+        var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+        var cantPorPaq = prod?.CantidadPorPaquete ?? 1;
+        if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
+        {
+            NuevoDetalle.Cantidad = _cantidadIngresadaCompra * cantPorPaq;
+        }
+        else
+        {
+            NuevoDetalle.Cantidad = _cantidadIngresadaCompra;
+        }
+        RecalcularNuevoDetalle();
+    }
 
     // Variables para crédito y cuotas
     private int NumeroCuotasCompra { get; set; } = 1;

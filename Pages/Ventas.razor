@@ -259,10 +259,39 @@
           </div>
         }
       </div>
-      <div class="@(PermitirVenderConDescuento ? "col-md-1" : "col-md-2")">
-        <label class="form-label">Cant. @(ProductoPermiteDecimal ? "(dec)" : "")</label>
-  <input type="number" class="form-control" step="@(ProductoPermiteDecimal ? "any" : "1")" min="@(ProductoPermiteDecimal ? "0.001" : "1")" @bind="NuevoDetalle.Cantidad" @bind:event="oninput" @bind:after="@(() => OnCantidadChanged())" />
-      </div>
+      @* ========== CANTIDAD CON SELECTOR PAQUETE/UNIDAD ========== *@
+      @{
+          var esPaqueteOCajaVenta = _cantidadPorPaqueteActual.HasValue && _cantidadPorPaqueteActual.Value > 1;
+      }
+      @if (esPaqueteOCajaVenta)
+      {
+          <div class="col-md-1">
+              <label class="form-label">Modo</label>
+              <select class="form-select form-select-sm" value="@ModoIngresoVenta" @onchange="OnModoIngresoVentaChanged">
+                  <option value="paquete">@_nombreUnidadVenta</option>
+                  @if (_productoPermiteVentaPorUnidad)
+                  {
+                      <option value="unidad">Unidad</option>
+                  }
+              </select>
+          </div>
+          <div class="@(PermitirVenderConDescuento ? "col-md-1" : "col-md-1")">
+              <label class="form-label">Cant.</label>
+              <input type="number" class="form-control" step="1" min="1" 
+                     @bind="CantidadIngresadaVenta" @bind:event="oninput" />
+              @if (ModoIngresoVenta == "paquete")
+              {
+                  <small class="text-muted">= @((CantidadIngresadaVenta * (_cantidadPorPaqueteActual ?? 1)).ToString("N0")) und.</small>
+              }
+          </div>
+      }
+      else
+      {
+          <div class="@(PermitirVenderConDescuento ? "col-md-1" : "col-md-2")">
+              <label class="form-label">Cant. @(ProductoPermiteDecimal ? "(dec)" : "")</label>
+              <input type="number" class="form-control" step="@(ProductoPermiteDecimal ? "any" : "1")" min="@(ProductoPermiteDecimal ? "0.001" : "1")" @bind="NuevoDetalle.Cantidad" @bind:event="oninput" @bind:after="@(() => OnCantidadChanged())" />
+          </div>
+      }
       <div class="col-md-2">
         <label class="form-label">Precio</label>
         @if (PuedeEditarPrecio)

@@ -267,7 +267,7 @@
               
               <div class="col-md-4">
                 <label class="form-label">Unidad de Medida (cUniMed) *</label>
-                <select class="form-select" @bind="editando.UnidadMedidaCodigo">
+                <select class="form-select" value="@editando.UnidadMedidaCodigo" @onchange="OnUnidadMedidaChanged">
                   <option value="77">77 - Unidad</option>
                   <option value="005">005 - Caja</option>
                   <option value="003">003 - Kilogramo</option>
@@ -277,6 +277,25 @@
                 </select>
                 <div class="form-text">Códigos SIFEN más usados.</div>
               </div>
+              
+              @* Campo Cantidad por Paquete - solo visible cuando UnidadMedida = Paquete o Caja *@
+              @if (editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")
+              {
+                <div class="col-md-4">
+                  <label class="form-label">📦 Cantidad por @(editando.UnidadMedidaCodigo == "006" ? "Paquete" : "Caja") *</label>
+                  <input type="number" class="form-control" min="1" step="1" 
+                         value="@(editando.CantidadPorPaquete?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" 
+                         @onchange="OnCantidadPorPaqueteChanged" placeholder="Ej: 10" />
+                  <div class="form-text">Cuántas unidades trae un @(editando.UnidadMedidaCodigo == "006" ? "paquete" : "caja").</div>
+                </div>
+                <div class="col-md-4">
+                  <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" id="permiteVentaUnidadSwitch" @bind="editando.PermiteVentaPorUnidad" />
+                    <label class="form-check-label" for="permiteVentaUnidadSwitch">🛒 Permitir Venta por Unidad</label>
+                  </div>
+                  <div class="form-text">Permite vender unidades sueltas del @(editando.UnidadMedidaCodigo == "006" ? "paquete" : "caja").</div>
+                </div>
+              }
               <div class="col-md-4">
                 <label class="form-label">Tipo de IVA *</label>
                 <select class="form-select" @bind="editando.IdTipoIva">
@@ -832,6 +851,9 @@ END");
       IdMonedaPrecio = p.IdMonedaPrecio,
       ControladoReceta = p.ControladoReceta,
       PermiteDecimal = p.PermiteDecimal,
+      // Campos de paquete/caja
+      CantidadPorPaquete = p.CantidadPorPaquete,
+      PermiteVentaPorUnidad = p.PermiteVentaPorUnidad,
       // Campos que faltaban - CRÍTICOS para no perder datos al guardar
       ControlarVencimiento = p.ControlarVencimiento,
       FechaVencimiento = p.FechaVencimiento,
@@ -899,6 +921,42 @@ END");
     tiposItem = await db.TiposItem.OrderBy(t => t.Nombre).ToListAsync();
     editando.TipoItem = nuevo.IdTipoItem;
     StateHasChanged();
+  }
+
+  // ========== MÉTODOS PARA UNIDAD DE MEDIDA / PAQUETE ==========
+  
+  private void OnUnidadMedidaChanged(ChangeEventArgs e)
+  {
+    editando.UnidadMedidaCodigo = e.Value?.ToString() ?? "77";
+    
+    // Si cambia a Paquete (006) o Caja (005), inicializar valores por defecto
+    if (editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")
+    {
+      if (!editando.CantidadPorPaquete.HasValue || editando.CantidadPorPaquete <= 0)
+      {
+        editando.CantidadPorPaquete = 1; // Valor por defecto
+      }
+    }
+    else
+    {
+      // Si cambia a otra unidad, limpiar campos de paquete
+      editando.CantidadPorPaquete = null;
+      editando.PermiteVentaPorUnidad = true;
+    }
+    StateHasChanged();
+  }
+  
+  private void OnCantidadPorPaqueteChanged(ChangeEventArgs e)
+  {
+    var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+    if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var cantidad) && cantidad > 0)
+    {
+      editando.CantidadPorPaquete = cantidad;
+    }
+    else
+    {
+      editando.CantidadPorPaquete = 1; // Mínimo 1
+    }
   }
 
   // ========== MÉTODOS PARA CÁLCULO BIDIRECCIONAL DE PRECIO ==========
@@ -1031,6 +1089,14 @@ END");
     if (string.IsNullOrWhiteSpace(editando.Descripcion) || string.IsNullOrWhiteSpace(editando.UnidadMedidaCodigo) || string.IsNullOrWhiteSpace(undMedidaValue) || editando.IdSucursal <= 0)
     {
       await JS.InvokeVoidAsync("alert", "Complete Descripción, Unidad SIFEN, UndMedida y Sucursal");
+      return;
+    }
+    
+    // Validar cantidad por paquete cuando la unidad es Paquete o Caja
+    if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") 
+        && (!editando.CantidadPorPaquete.HasValue || editando.CantidadPorPaquete <= 0))
+    {
+      await JS.InvokeVoidAsync("alert", "Ingrese la cantidad de unidades por " + (editando.UnidadMedidaCodigo == "006" ? "paquete" : "caja"));
       return;
     }
     

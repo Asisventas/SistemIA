@@ -67,8 +67,25 @@ namespace SistemIA.Models
         public Compra? Compra { get; set; }
         public Producto? Producto { get; set; }
         
+        // ========== CAMPOS AUXILIARES (NO MAPEADOS) ==========
+        
         // Propiedad auxiliar para validación (no se persiste en BD)
         [NotMapped]
         public bool PermiteDecimal { get; set; }
+        
+        // Para productos vendidos por paquete/caja
+        [NotMapped]
+        public decimal? CantidadPorPaquete { get; set; }
+        
+        [NotMapped]
+        public bool PermiteVentaPorUnidad { get; set; } = true;
+        
+        // Modo de ingreso: "paquete" o "unidad"
+        [NotMapped]
+        public string ModoIngreso { get; set; } = "unidad";
+        
+        // Cantidad ingresada en el modo seleccionado (antes de convertir a unidades)
+        [NotMapped]
+        public decimal CantidadIngresada { get; set; } = 1;
     }
 }

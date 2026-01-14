@@ -72,4 +72,20 @@
     <None Remove="backup\**" />
   </ItemGroup>
 
+  <!-- Excluir carpeta .ai-docs (documentación y código de referencia) -->
+  <ItemGroup>
+    <Compile Remove=".ai-docs\**" />
+    <Content Remove=".ai-docs\**" />
+    <EmbeddedResource Remove=".ai-docs\**" />
+    <None Remove=".ai-docs\**" />
+  </ItemGroup>
+
+  <!-- Excluir archivos de debug/test temporales -->
+  <ItemGroup>
+    <Compile Remove="Debug\**" />
+    <Content Remove="Debug\**" />
+    <EmbeddedResource Remove="Debug\**" />
+    <None Remove="Debug\**" />
+  </ItemGroup>
+
 </Project>

@@ -76,6 +76,42 @@ public partial class Ventas
     
     // Control de venta decimal por producto
     protected bool ProductoPermiteDecimal { get; set; } = false;
+    
+    // ========== VARIABLES PARA VENTA POR PAQUETE/UNIDAD ==========
+    protected string ModoIngresoVenta { get; set; } = "paquete"; // "paquete" o "unidad"
+    protected decimal _cantidadIngresadaVenta = 1;
+    protected decimal? _cantidadPorPaqueteActual = null;
+    protected bool _productoPermiteVentaPorUnidad = true;
+    protected string _nombreUnidadVenta = "Unidad"; // "Paquete", "Caja" o "Unidad"
+    protected decimal CantidadIngresadaVenta 
+    { 
+        get => _cantidadIngresadaVenta; 
+        set 
+        { 
+            _cantidadIngresadaVenta = value;
+            RecalcularCantidadPorModoVenta();
+        } 
+    }
+    
+    private void RecalcularCantidadPorModoVenta()
+    {
+        var cantPorPaq = _cantidadPorPaqueteActual ?? 1;
+        if (ModoIngresoVenta == "paquete" && cantPorPaq > 1)
+        {
+            NuevoDetalle.Cantidad = _cantidadIngresadaVenta * cantPorPaq;
+        }
+        else
+        {
+            NuevoDetalle.Cantidad = _cantidadIngresadaVenta;
+        }
+        OnCantidadChanged();
+    }
+    
+    private void OnModoIngresoVentaChanged(ChangeEventArgs e)
+    {
+        ModoIngresoVenta = e.Value?.ToString() ?? "paquete";
+        RecalcularCantidadPorModoVenta();
+    }
 
     // Presupuesto: validez
     protected int? ValidezDias { get; set; }
@@ -1511,6 +1547,26 @@ public partial class Ventas
         
         // Verificar si el producto permite venta decimal
         ProductoPermiteDecimal = p.PermiteDecimal;
+        
+        // ========== CARGAR INFO DE PAQUETE/CAJA ==========
+        _cantidadPorPaqueteActual = p.CantidadPorPaquete;
+        _productoPermiteVentaPorUnidad = p.PermiteVentaPorUnidad;
+        _nombreUnidadVenta = p.UnidadMedidaCodigo == "006" ? "Paquete" : (p.UnidadMedidaCodigo == "005" ? "Caja" : "Unidad");
+        
+        // Si es paquete/caja con cantidad configurada, iniciar en modo paquete
+        var esPaqueteOCaja = (p.UnidadMedidaCodigo == "006" || p.UnidadMedidaCodigo == "005") && (_cantidadPorPaqueteActual ?? 0) > 1;
+        if (esPaqueteOCaja)
+        {
+            ModoIngresoVenta = "paquete";
+            _cantidadIngresadaVenta = 1;
+            NuevoDetalle.Cantidad = _cantidadPorPaqueteActual ?? 1;
+        }
+        else
+        {
+            ModoIngresoVenta = "unidad";
+            _cantidadIngresadaVenta = 1;
+            NuevoDetalle.Cantidad = 1;
+        }
         
         // Calcular el precio respetando ClientePrecio
         NuevoDetalle.PrecioUnitario = await CalcularPrecioRespetandoClientePrecioAsync(p.IdProducto, Cab.IdCliente);

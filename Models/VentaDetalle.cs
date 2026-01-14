@@ -42,5 +42,26 @@ namespace SistemIA.Models
         
         /// <summary>Porcentaje de descuento aplicado (calculado como (PrecioMinisterio - PrecioUnitario) / PrecioMinisterio * 100)</summary>
         [Column(TypeName = "decimal(18,4)")] public decimal? PorcentajeDescuento { get; set; }
+        
+        // ========== CAMPOS AUXILIARES (NO MAPEADOS) ==========
+        
+        // Para productos vendidos por paquete/caja
+        [NotMapped]
+        public decimal? CantidadPorPaquete { get; set; }
+        
+        [NotMapped]
+        public bool PermiteVentaPorUnidad { get; set; } = true;
+        
+        // Modo de ingreso: "paquete" o "unidad"
+        [NotMapped]
+        public string ModoIngreso { get; set; } = "unidad";
+        
+        // Cantidad ingresada en el modo seleccionado (antes de convertir a unidades)
+        [NotMapped]
+        public decimal CantidadIngresada { get; set; } = 1;
+        
+        // Si el producto permite cantidad decimal
+        [NotMapped]
+        public bool PermiteDecimal { get; set; }
     }
 }

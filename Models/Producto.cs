@@ -193,6 +193,26 @@ namespace SistemIA.Models
     [Display(Name = "Permitir Venta Decimal")]
     public bool PermiteDecimal { get; set; } = false;
 
+    // ========== PAQUETE / PRESENTACIÓN ==========
+    
+    /// <summary>
+    /// Cantidad de unidades que contiene un paquete/caja/presentación.
+    /// Solo aplica cuando UnidadMedidaCodigo = "006" (Paquete) u otras unidades agrupadas.
+    /// Ejemplo: Paquete de 10 unidades → CantidadPorPaquete = 10
+    /// El stock siempre se maneja en unidades base.
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Cantidad por Paquete")]
+    [Range(1, 999999)]
+    public decimal? CantidadPorPaquete { get; set; }
+
+    /// <summary>
+    /// Indica si el producto puede venderse tanto por paquete como por unidad individual.
+    /// Si es true, en ventas/compras se puede elegir la forma de carga.
+    /// </summary>
+    [Display(Name = "Permite Venta por Unidad")]
+    public bool PermiteVentaPorUnidad { get; set; } = true;
+
     // Factor multiplicador para calcular precio de venta desde costo
     [Column(TypeName = "decimal(18,4)")]
     [Display(Name = "Factor Multiplicador")]
