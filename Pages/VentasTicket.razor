@@ -140,14 +140,40 @@ else
 
                 @foreach (var det in _detalles)
                 {
+                    // Lógica de precio por paquete/unidad
+                    var cantPorPaq = det.CantidadPorPaqueteMomento ?? det.Producto?.CantidadPorPaquete ?? 1;
+                    var fueVentaPorPaquete = det.ModoIngresoPersistido == "paquete" && cantPorPaq > 1;
+                    var fueVentaPorUnidad = det.ModoIngresoPersistido == "unidad" && cantPorPaq > 1;
+                    var multiplicadorPrecio = fueVentaPorPaquete ? (int)cantPorPaq : 1;
+                    var precioMostrar = det.PrecioUnitario * multiplicadorPrecio;
+                    // Cantidades separadas: paquetes y unidades
+                    var cantidadPaquetes = fueVentaPorPaquete ? Math.Round(det.Cantidad / cantPorPaq, 2) : 0m;
+                    var cantidadUnidades = det.Cantidad;
+                    // Formato de cantidad: sin decimales si es número entero
+                    var cantPaqFormateada = cantidadPaquetes == Math.Floor(cantidadPaquetes) 
+                        ? cantidadPaquetes.ToString("N0") 
+                        : cantidadPaquetes.ToString("N2").TrimEnd('0').TrimEnd(',').TrimEnd('.');
+                    var cantUnidFormateada = cantidadUnidades == Math.Floor(cantidadUnidades) 
+                        ? cantidadUnidades.ToString("N0") 
+                        : cantidadUnidades.ToString("N2").TrimEnd('0').TrimEnd(',').TrimEnd('.');
                     <div class="ticket-detalle-item">
-                        <span class="col-desc">@det.Producto?.Descripcion</span>
-                        <span class="col-cant">@det.Cantidad</span>
+                        <span class="col-desc">
+                            @det.Producto?.Descripcion
+                            @if (fueVentaPorPaquete)
+                            {
+                                <small class="text-muted"> (Paq x@((int)cantPorPaq))</small>
+                            }
+                            else if (fueVentaPorUnidad)
+                            {
+                                <small class="text-muted"> (Unidad)</small>
+                            }
+                        </span>
+                        <span class="col-cant">@(fueVentaPorPaquete ? $"{cantPaqFormateada}p/{cantUnidFormateada}u" : cantUnidFormateada)</span>
                         @if (_modoFarmaciaActivo)
                         {
                             <span class="col-descuento">@(det.PorcentajeDescuento.HasValue && det.PorcentajeDescuento.Value > 0 ? det.PorcentajeDescuento.Value.ToString("N2") : "-")</span>
                         }
-                        <span class="col-precio">@FormatearImporte(det.PrecioUnitario)</span>
+                        <span class="col-precio">@FormatearImporte(precioMostrar)</span>
                         <span class="col-subtotal">@FormatearImporte(det.Importe)</span>
                     </div>
                 }
@@ -289,16 +315,23 @@ else
             esCredito = (_tipoPago?.Nombre?.ToUpper().Contains("CREDITO") ?? false) || (_tipoPago?.Nombre?.ToUpper().Contains("CRÉDITO") ?? false),
             
             // === DETALLE DE PRODUCTOS ===
-            items = _detalles.Select(d => new
-            {
-                codigo = d.Producto?.CodigoInterno ?? "",
-                descripcion = d.Producto?.Descripcion ?? "",
-                cantidad = d.Cantidad,
-                precio = FormatearImporte(d.PrecioUnitario),
-                exenta = d.Exenta > 0 ? FormatearImporte(d.Exenta) : "",
-                gravada5 = d.Grabado5 > 0 ? FormatearImporte(d.Grabado5) : "",
-                gravada10 = d.Grabado10 > 0 ? FormatearImporte(d.Grabado10) : "",
-                total = FormatearImporte(d.Importe)
+            items = _detalles.Select(d => {
+                var cantPorPaq = d.CantidadPorPaqueteMomento ?? d.Producto?.CantidadPorPaquete ?? 1;
+                var fueVentaPorPaquete = d.ModoIngresoPersistido == "paquete" && cantPorPaq > 1;
+                var multiplicadorPrecio = fueVentaPorPaquete ? (int)cantPorPaq : 1;
+                var precioMostrar = d.PrecioUnitario * multiplicadorPrecio;
+                var cantidadMostrar = fueVentaPorPaquete ? d.Cantidad / cantPorPaq : d.Cantidad;
+                return new
+                {
+                    codigo = d.Producto?.CodigoInterno ?? "",
+                    descripcion = d.Producto?.Descripcion + (fueVentaPorPaquete ? $" (x{(int)cantPorPaq})" : ""),
+                    cantidad = cantidadMostrar,
+                    precio = FormatearImporte(precioMostrar),
+                    exenta = d.Exenta > 0 ? FormatearImporte(d.Exenta) : "",
+                    gravada5 = d.Grabado5 > 0 ? FormatearImporte(d.Grabado5) : "",
+                    gravada10 = d.Grabado10 > 0 ? FormatearImporte(d.Grabado10) : "",
+                    total = FormatearImporte(d.Importe)
+                };
             }).ToArray(),
             
             // === TOTALES ===
@@ -560,9 +593,19 @@ else
 
         foreach (var det in _detalles)
         {
-            var descLines = Wrap(det.Producto?.Descripcion, colDesc).ToList();
-            var cant = det.Cantidad.ToString().PadLeft(colCant);
-            var pUnit = FormatearImporte(det.PrecioUnitario).PadLeft(colPrecio);
+            // Lógica de precio por paquete/unidad
+            var cantPorPaq = det.CantidadPorPaqueteMomento ?? det.Producto?.CantidadPorPaquete ?? 1;
+            var fueVentaPorPaquete = det.ModoIngresoPersistido == "paquete" && cantPorPaq > 1;
+            var multiplicadorPrecio = fueVentaPorPaquete ? (int)cantPorPaq : 1;
+            var precioMostrar = det.PrecioUnitario * multiplicadorPrecio;
+            // Cantidad: si fue por paquete mostrar paquetes, si no unidades
+            var cantidadMostrar = fueVentaPorPaquete ? (det.Cantidad / cantPorPaq) : det.Cantidad;
+            
+            var descText = det.Producto?.Descripcion + (fueVentaPorPaquete ? $" (Paq x{(int)cantPorPaq})" : "");
+            var descLines = Wrap(descText, colDesc).ToList();
+            var cantStr = fueVentaPorPaquete ? cantidadMostrar.ToString("N0") + "p" : det.Cantidad.ToString("N0");
+            var cant = cantStr.PadLeft(colCant);
+            var pUnit = FormatearImporte(precioMostrar).PadLeft(colPrecio);
             var tot = FormatearImporte(det.Importe).PadLeft(colTotal);
 
             if (descLines.Count == 0) descLines.Add(string.Empty);

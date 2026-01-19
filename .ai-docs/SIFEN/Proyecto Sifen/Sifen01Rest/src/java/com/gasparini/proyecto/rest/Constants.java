@@ -1,0 +1,23 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package com.gasparini.proyecto.rest;
+
+/**
+ *
+ * @author Admin
+ */
+public class Constants {
+    // Globals
+    public static final String SDK_CURRENT_VERSION = "0.2.0";
+    public static final String SIFEN_CURRENT_VERSION = "150";
+
+    public static final String RSA_SHA256 = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+
+    // Namespaces
+    public static final String SIFEN_NS_URI = "http://ekuatia.set.gov.py/sifen/xsd";
+    public static final String SIFEN_NS_URI_RECEP_DE = SIFEN_NS_URI + " siRecepDE_v150.xsd";
+    public static final String SIFEN_NS_URI_RECEP_EVENTO = SIFEN_NS_URI + " siRecepEvento_v150.xsd";
+}

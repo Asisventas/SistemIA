@@ -219,6 +219,92 @@ namespace SistemIA.Models
     [Range(0, 9999.9999)]
     public decimal? FactorMultiplicador { get; set; }
 
+    // ========== PRECIOS POR PAQUETE ==========
+    
+    /// <summary>
+    /// Costo de compra por paquete completo.
+    /// Si es null, se calcula como CostoUnitarioGs * CantidadPorPaquete.
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Costo Paquete Gs")]
+    [Range(0, 999999999999.9999)]
+    public decimal? CostoPaqueteGs { get; set; }
+
+    /// <summary>
+    /// Factor multiplicador para calcular precio de paquete desde costo de paquete.
+    /// Ejemplo: 1.25 para un 25% de margen.
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Factor Paquete")]
+    [Range(0, 9999.9999)]
+    public decimal? FactorPaquete { get; set; }
+
+    /// <summary>
+    /// Porcentaje de mark-up para el paquete.
+    /// Ejemplo: 25 para un 25% de ganancia sobre el costo.
+    /// </summary>
+    [Column(TypeName = "decimal(5,2)")]
+    [Display(Name = "Mark-Up Paquete (%)")]
+    [Range(0, 9999.99)]
+    public decimal? MarkupPaquetePct { get; set; }
+
+    /// <summary>
+    /// Precio de venta por paquete completo.
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Precio Paquete Gs")]
+    [Range(0, 999999999999.9999)]
+    public decimal? PrecioPaqueteGs { get; set; }
+
+    /// <summary>
+    /// Precio máximo regulado por el Ministerio para el paquete completo.
+    /// Solo aplica para farmacias.
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "P. Ministerio Paquete")]
+    [Range(0, 999999999999.9999)]
+    public decimal? PrecioMinisterioPaquete { get; set; }
+
+    // ========== CONTROL DE LOTES Y VENCIMIENTO ==========
+
+    /// <summary>
+    /// Indica si el producto maneja control de lotes.
+    /// Cuando está activo, las compras/ventas exigen especificar el lote.
+    /// </summary>
+    [Display(Name = "Controla Lote")]
+    public bool ControlaLote { get; set; } = false;
+
+    /// <summary>
+    /// Indica si el producto maneja control de vencimiento.
+    /// Cuando está activo, se validan fechas de vencimiento y se aplica FEFO.
+    /// </summary>
+    [Display(Name = "Controla Vencimiento")]
+    public bool ControlaVencimiento { get; set; } = false;
+
+    /// <summary>
+    /// Días de anticipación para alertar sobre vencimiento próximo.
+    /// Por defecto 30 días.
+    /// </summary>
+    [Display(Name = "Días Alerta Vencimiento")]
+    [Range(1, 365)]
+    public int DiasAlertaVencimiento { get; set; } = 30;
+
+    /// <summary>
+    /// Permite vender productos vencidos (solo con autorización).
+    /// Por defecto bloqueado.
+    /// </summary>
+    [Display(Name = "Permite Venta Vencido")]
+    public bool PermiteVentaVencido { get; set; } = false;
+
+    /// <summary>
+    /// Indica si el control de lotes ya fue activado alguna vez.
+    /// Útil para saber si ya se creó el lote inicial de stock existente.
+    /// </summary>
+    public bool LoteInicialCreado { get; set; } = false;
+
+    // Navegación a lotes
+    public virtual ICollection<ProductoLote>? Lotes { get; set; }
+
     // Depósito predeterminado para operaciones
     [Display(Name = "Depósito predeterminado")]
     public int? IdDepositoPredeterminado { get; set; }    [ForeignKey(nameof(IdDepositoPredeterminado))]

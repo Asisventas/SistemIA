@@ -49,7 +49,9 @@
 			],
 			"isBackground": true,
 			"group": "build",
-			"problemMatcher": ["$msCompile"]
+			"problemMatcher": [
+				"$msCompile"
+			]
 		},
 		{
 			"label": "Run SistemIA LAN HTTPS (7060) watch [dotnet-urls]",
@@ -63,7 +65,9 @@
 			],
 			"isBackground": true,
 			"group": "build",
-			"problemMatcher": ["$msCompile"]
+			"problemMatcher": [
+				"$msCompile"
+			]
 		},
 		{
 			"label": "Run SistemIA LAN (0.0.0.0:5095)",
@@ -76,7 +80,9 @@
 			],
 			"isBackground": true,
 			"group": "build",
-			"problemMatcher": ["$msCompile"]
+			"problemMatcher": [
+				"$msCompile"
+			]
 		},
 		{
 			"label": "Run SistemIA LAN watch (0.0.0.0:5095)",
@@ -89,7 +95,9 @@
 			],
 			"isBackground": true,
 			"group": "build",
-			"problemMatcher": ["$msCompile"]
+			"problemMatcher": [
+				"$msCompile"
+			]
 		},
 		{
 			"type": "shell",
@@ -1362,6 +1370,193 @@
 				"build"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Test Signature Fix",
+			"type": "shell",
+			"command": "Start-Sleep 30; curl.exe -s http://localhost:5095/debug/ventas/280/de-firmado -o c:\\asis\\SistemIA\\Debug\\test_output.json; $c = Get-Content c:\\asis\\SistemIA\\Debug\\test_output.json -Raw; if ($c -match 'Signature') { Write-Host 'FIRMA ENCONTRADA'; } else { Write-Host 'SIN FIRMA'; }; Write-Host 'Longitud:' $c.Length"
+		},
+		{
+			"label": "Check SOAP for XML declaration in xDE",
+			"type": "shell",
+			"command": "Start-Sleep -Seconds 40; curl.exe -s http://localhost:5095/debug/ventas/285/soap-sync -o c:/asis/SistemIA/Debug/soap_sync_285.json; $j = Get-Content c:/asis/SistemIA/Debug/soap_sync_285.json -Raw | ConvertFrom-Json; $soap = $j.soapCompleto; $xdeStart = $soap.IndexOf('<xDE>'); $xdeEnd = $soap.IndexOf('</xDE>'); if ($xdeStart -gt 0 -and $xdeEnd -gt 0) { $xdeContent = $soap.Substring($xdeStart + 5, $xdeEnd - $xdeStart - 5); $hasXmlDecl = $xdeContent.Contains('<?xml'); Write-Host \"xDE empieza en: $xdeStart\"; Write-Host \"xDE termina en: $xdeEnd\"; Write-Host \"xDE contiene <?xml: $hasXmlDecl\"; if ($hasXmlDecl) { Write-Host 'ERROR: xDE contiene declaracion XML - MAL FORMADO' -ForegroundColor Red; $pos = $xdeContent.IndexOf('<?xml'); Write-Host \"Posicion de <?xml dentro de xDE: $pos\"; Write-Host \"Primeros 200 chars de xDE: $($xdeContent.Substring(0, [Math]::Min(200, $xdeContent.Length)))\" } else { Write-Host 'OK: xDE NO contiene declaracion XML' -ForegroundColor Green } } else { Write-Host 'No se encontro xDE en el SOAP'; Write-Host $j.inicio500chars }"
+		},
+		{
+			"label": "Check xDE for XML declaration",
+			"type": "shell",
+			"command": "powershell -ExecutionPolicy Bypass -File c:/asis/SistemIA/Debug/check_xde.ps1"
+		},
+		{
+			"label": "Test SIFEN 285",
+			"type": "shell",
+			"command": "Start-Sleep -Seconds 15; curl.exe -s -X POST 'http://localhost:5095/ventas/285/enviar-sifen-sync' -o 'c:\\asis\\SistemIA\\Debug\\resp_sifen_285.json'; Get-Content 'c:\\asis\\SistemIA\\Debug\\resp_sifen_285.json'",
+			"isBackground": false
+		},
+		{
+			"label": "Get SOAP 285",
+			"type": "shell",
+			"command": "curl.exe -s 'http://localhost:5095/debug/ventas/285/soap-sync' -o 'c:\\asis\\SistemIA\\Debug\\soap_sync_285_nuevo.json'; Get-Content 'c:\\asis\\SistemIA\\Debug\\soap_sync_285_nuevo.json' | Select-Object -First 50",
+			"isBackground": false
+		},
+		{
+			"label": "Test SIFEN 285 NS Fix",
+			"type": "shell",
+			"command": "Start-Sleep -Seconds 25; curl.exe -s -X POST 'http://localhost:5095/ventas/285/enviar-sifen-sync'",
+			"isBackground": false
+		},
+		{
+			"label": "Test SIFEN 285 v2",
+			"type": "shell",
+			"command": "Start-Sleep -Seconds 35; $r = curl.exe -s -X POST 'http://localhost:5095/ventas/285/enviar-sifen-sync'; Write-Host $r",
+			"isBackground": false
+		},
+		{
+			"label": "Test SIFEN 285 NS Fix v2",
+			"type": "shell",
+			"command": "Start-Sleep -Seconds 10; $r = curl.exe -s -X POST 'http://localhost:5095/ventas/285/enviar-sifen-sync'; Write-Host $r",
+			"isBackground": false
+		},
+		{
+			"label": "Get DE 285 NS Fix",
+			"type": "shell",
+			"command": "curl.exe -s 'http://localhost:5095/debug/ventas/285/de-firmado' -o 'c:\\asis\\SistemIA\\Debug\\de_firmado_285_ns_fix.json'; Get-Content 'c:\\asis\\SistemIA\\Debug\\de_firmado_285_ns_fix.json' | Select-Object -First 10",
+			"isBackground": false
+		},
+		{
+			"label": "shell: Test SIFEN 285 simple",
+			"type": "shell",
+			"command": "Start-Sleep -Seconds 30; curl.exe -s -X POST http://localhost:5095/ventas/285/enviar-sifen-sync"
+		},
+		{
+			"label": "shell: Get DE 285 check",
+			"type": "shell",
+			"command": "curl.exe -s http://localhost:5095/debug/ventas/285/de-firmado -o c:\\asis\\SistemIA\\Debug\\de285_check.json"
+		},
+		{
+			"label": "Run SistemIA HTTP 5095",
+			"type": "shell",
+			"command": "dotnet run --urls http://localhost:5095",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Kill SistemIA processes",
+			"type": "shell",
+			"command": "taskkill /F /IM SistemIA.exe; taskkill /F /IM dotnet.exe"
+		},
+		{
+			"label": "Run SistemIA 5095",
+			"type": "shell",
+			"command": "dotnet run --urls http://localhost:5095",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Test SIFEN envio 285",
+			"type": "shell",
+			"command": "curl.exe -s -X POST \"http://localhost:5095/ventas/285/enviar-sifen-sync\" -o \"c:\\asis\\SistemIA\\Debug\\sifen_resp_285.json\"; Get-Content \"c:\\asis\\SistemIA\\Debug\\sifen_resp_285.json\""
+		},
+		{
+			"label": "Get DE firmado 285",
+			"type": "shell",
+			"command": "curl.exe -s \"http://localhost:5095/debug/ventas/285/de-firmado\" -o \"c:\\asis\\SistemIA\\Debug\\v285_debug.json\""
+		},
+		{
+			"label": "shell: EF Update Database",
+			"type": "shell",
+			"command": "dotnet ef database update --no-build"
+		},
+		{
+			"label": "shell: Check Paquete Columns",
+			"type": "shell",
+			"command": "sqlcmd -S \"SERVERSIS\\SQL2022\" -d \"asiswebapp\" -Q \"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Productos' AND COLUMN_NAME LIKE '%Paquete%' ORDER BY COLUMN_NAME\" -h-1 -W"
+		},
+		{
+			"label": "shell: Check Paquete Columns PS",
+			"type": "shell",
+			"command": "Invoke-Sqlcmd -ServerInstance 'SERVERSIS\\SQL2022' -Database 'asiswebapp' -Query \"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Productos' AND COLUMN_NAME LIKE '%Paquete%'\" | Format-Table -HideTableHeaders"
+		},
+		{
+			"label": "shell: Apply Paquete Fields SQL",
+			"type": "shell",
+			"command": "sqlcmd -S SERVERSIS\\SQL2022 -d asiswebapp -i Scripts\\agregar_campos_paquete.sql"
+		},
+		{
+			"label": "shell: Apply Paquete Fields SQL auth",
+			"type": "shell",
+			"command": "sqlcmd -S SERVERSIS\\SQL2022 -d asiswebapp -U sa -P %L4V1CT0R14 -i Scripts\\agregar_campos_paquete.sql"
+		},
+		{
+			"label": "shell: Delete Paquete Migration",
+			"type": "shell",
+			"command": "del /f \"c:\\asis\\SistemIA\\Migrations\\20260116150000_Agregar_Campos_Precios_Paquete.cs\"",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Delete Paquete Migration v2",
+			"type": "shell",
+			"command": "Remove-Item -Path 'c:\\asis\\SistemIA\\Migrations\\20260116150000_Agregar_Campos_Precios_Paquete.cs' -Force",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Add EF Migration Precios Paquete",
+			"type": "shell",
+			"command": "dotnet ef migrations add Agregar_Campos_Precios_Paquete",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Update Database Precios Paquete",
+			"type": "shell",
+			"command": "dotnet ef database update --no-build",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Check Paquete columns",
+			"type": "shell",
+			"command": "sqlcmd -S SERVERSIS\\SQL2022 -d asiswebapp -Q \"SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('Productos') AND name LIKE '%Paquete%'\"",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Check migrations history",
+			"type": "shell",
+			"command": "sqlcmd -S SERVERSIS\\SQL2022 -d asiswebapp -Q \"SELECT TOP 5 MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId DESC\"",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Check migrations SQL",
+			"type": "shell",
+			"command": "sqlcmd -S SERVERSIS\\SQL2022 -d asiswebapp -i Scripts\\check_migrations.sql",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Check migrations SQL auth",
+			"type": "shell",
+			"command": "sqlcmd -S localhost,1434 -d SistemIA -U sa -P admin123. -i Scripts\\check_migrations.sql",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Check migrations SQL sa auth",
+			"type": "shell",
+			"command": "sqlcmd -S SERVERSIS\\SQL2022 -d asiswebapp -U sa -P %L4V1CT0R14 -i Scripts\\check_migrations.sql",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Register migration",
+			"type": "shell",
+			"command": "sqlcmd -S SERVERSIS\\SQL2022 -d asiswebapp -U sa -P %L4V1CT0R14 -i Scripts\\register_migration.sql",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Check paquete migration",
+			"type": "shell",
+			"command": "sqlcmd -S SERVERSIS\\SQL2022 -d asiswebapp -U sa -P %L4V1CT0R14 -i Scripts\\check_paquete_mig.sql",
+			"problemMatcher": []
+		},
+		{
+			"label": "shell: Verify database update",
+			"type": "shell",
+			"command": "dotnet ef database update --no-build",
+			"problemMatcher": []
 		}
 	]
 }

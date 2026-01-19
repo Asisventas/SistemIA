@@ -252,8 +252,14 @@ namespace SistemIA.Services
 
             // gDatGralOpe: fecha emisión, operación comercial, emisor y receptor
             
-            // Crear gOpeCom según XML aprobado por SIFEN (Respuesta_ConsultaDE_Exitosa.xml)
-            // FIX 13-Ene-2026: Re-agregar gOblAfe que es OBLIGATORIO según XML aprobado
+            // Crear gOpeCom según XSD siRecepDE_v150.xsd
+            // FIX 16-Ene-2026: RE-AGREGAR gOblAfe - El XML de referencia APROBADO por SIFEN lo incluye
+            // El XML xmlRequestVenta_273_sync.xml tiene <gOblAfe><cOblAfe>211</cOblAfe>...
+            var gOblAfe = new XElement(NsSifen + "gOblAfe",
+                new XElement(NsSifen + "cOblAfe", "211"),
+                new XElement(NsSifen + "dDesOblAfe", "IMPUESTO AL VALOR AGREGADO - GRAVADAS Y EXONERADAS - EXPORTADORES")
+            );
+            
             var gOpeCom = new XElement(NsSifen + "gOpeCom",
                 new XElement(NsSifen + "iTipTra", 3),
                 new XElement(NsSifen + "dDesTipTra", "Mixto (Venta de mercadería y servicios)"),
@@ -261,11 +267,7 @@ namespace SistemIA.Services
                 new XElement(NsSifen + "dDesTImp", "IVA"),
                 new XElement(NsSifen + "cMoneOpe", venta.Moneda?.CodigoISO ?? "PYG"),
                 new XElement(NsSifen + "dDesMoneOpe", "Guarani"),
-                // gOblAfe: Obligaciones afectadas del contribuyente (OBLIGATORIO según XML aprobado)
-                new XElement(NsSifen + "gOblAfe",
-                    new XElement(NsSifen + "cOblAfe", 211),  // 211 = IVA GRAVADAS Y EXONERADAS - EXPORTADORES
-                    new XElement(NsSifen + "dDesOblAfe", "IMPUESTO AL VALOR AGREGADO - GRAVADAS Y EXONERADAS - EXPORTADORES")
-                )
+                gOblAfe  // FIX 16-Ene-2026: Requerido por SIFEN según XML de referencia
             );
 
             var gDatGralOpe = new XElement(NsSifen + "gDatGralOpe",
@@ -278,7 +280,8 @@ namespace SistemIA.Services
             // gTimb: incluir tipo de DE y datos de timbrado
             // CRÍTICO para ambiente TEST: dNumTim debe ser el RUC del emisor (sin DV) con padding a 8 caracteres
             // CRÍTICO para ambiente PROD: dNumTim es el número de timbrado asignado por SET
-            var ambiente = (venta.Sucursal?.Ambiente ?? "test").ToLowerInvariant();
+            // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+            var ambiente = (sociedad.ServidorSifen ?? "test").ToLowerInvariant();
             string nroTim;
             if (ambiente == "prod")
             {
@@ -425,8 +428,18 @@ namespace SistemIA.Services
                 bool esPYG = true; // TODO: obtener de moneda
                 string formatoDecimal = esPYG ? "0" : "0.####";
                 
-                // Construir gCamIVA según XML aprobado por SIFEN (Respuesta_ConsultaDE_Exitosa.xml)
-                // dBasExe = Base Exenta del item - SIEMPRE 0 según XML aprobado (el total va en dSubExe)
+                // ========================================================================
+                // FIX 15-Ene-2026 v2: dBasExe SIEMPRE es 0
+                // ========================================================================
+                // Según XMLs aprobados por SIFEN (ejemplo: 01800261658019002007094122023091018521597072.xml)
+                // ========================================================================
+                // FIX 16-Ene-2026: dBasExe SÍ EXISTE en el XML de referencia APROBADO por SIFEN
+                // ========================================================================
+                // El XML xmlRequestVenta_273_sync.xml tiene:
+                //   <dLiqIVAItem>0</dLiqIVAItem><dBasExe>0</dBasExe>
+                // Incluso cuando es 0, debe incluirse según el XML de referencia aprobado
+                // ========================================================================
+                
                 var gCamIVA = new XElement(NsSifen + "gCamIVA",
                     new XElement(NsSifen + "iAfecIVA", iAfecIVA),
                     new XElement(NsSifen + "dDesAfecIVA", dDesAfec),
@@ -434,7 +447,7 @@ namespace SistemIA.Services
                     new XElement(NsSifen + "dTasaIVA", dTasa.ToString("0", CultureInfo.InvariantCulture)),
                     new XElement(NsSifen + "dBasGravIVA", Math.Round(dBasGrav, 0).ToString("0", CultureInfo.InvariantCulture)),
                     new XElement(NsSifen + "dLiqIVAItem", Math.Round(dLiq, 0).ToString("0", CultureInfo.InvariantCulture)),
-                    new XElement(NsSifen + "dBasExe", "0")  // SIEMPRE 0 según XML aprobado
+                    new XElement(NsSifen + "dBasExe", "0")  // FIX 16-Ene-2026: Requerido por SIFEN según XML de referencia
                 );
                 item.Add(gCamIVA);
                 gDtipDE.Add(item);
@@ -557,6 +570,13 @@ namespace SistemIA.Services
             // CDC tiene 44 dígitos: pos 35-43 = código de seguridad (9 dígitos)
             var codigoSeguridadDelCdc = idCdc.Length >= 43 ? idCdc.Substring(34, 9) : "000000001";
             
+            // ========================================================================
+            // FIX 16-Ene-2026: gCamGen NO aparece en el XML de referencia APROBADO por SIFEN
+            // El XML xmlRequestVenta_273_sync.xml NO tiene <gCamGen /> vacío
+            // Solo agregar si hay contenido real (condiciones de pago a crédito, etc.)
+            // Para ventas simples al contado, NO incluir gCamGen
+            // ========================================================================
+
             var de = new XElement(NsSifen + "DE",
                 new XAttribute("Id", idCdc),
                 new XElement(NsSifen + "dDVId", dvId),
@@ -572,6 +592,7 @@ namespace SistemIA.Services
                 gDatGralOpe,
                 gDtipDE,
                 gTotSub
+                // gCamGen ELIMINADO - no aparece en XML de referencia APROBADO
             );
 
             // rDE envolvente

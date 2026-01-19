@@ -28,6 +28,7 @@ public partial class Ventas
     [Inject] public PdfFacturaService PdfService { get; set; } = default!;
     [Inject] public ITrackingService TrackingService { get; set; } = default!;
     [Inject] public AuditoriaService AuditoriaService { get; set; } = default!;
+    [Inject] public ILoteService LoteService { get; set; } = default!;
 
     [SupplyParameterFromQuery(Name = "presupuesto")]
     public int? PresupuestoId { get; set; }
@@ -107,10 +108,91 @@ public partial class Ventas
         OnCantidadChanged();
     }
     
-    private void OnModoIngresoVentaChanged(ChangeEventArgs e)
+    private async void OnModoIngresoVentaChanged(ChangeEventArgs e)
     {
         ModoIngresoVenta = e.Value?.ToString() ?? "paquete";
-        RecalcularCantidadPorModoVenta();
+        await RecalcularCantidadYPrecioPorModoVentaAsync();
+    }
+    
+    /// <summary>
+    /// Recalcula cantidad Y precio según el modo seleccionado (paquete/unidad).
+    /// Usa el PrecioPaqueteGs cuando está en modo paquete y el producto lo tiene.
+    /// </summary>
+    private async Task RecalcularCantidadYPrecioPorModoVentaAsync()
+    {
+        if (NuevoDetalle.IdProducto <= 0) return;
+        
+        var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+        if (prod == null) return;
+        
+        var cantPorPaq = prod.CantidadPorPaquete ?? 1;
+        
+        // Recalcular cantidad según modo
+        if (ModoIngresoVenta == "paquete" && cantPorPaq > 1)
+        {
+            NuevoDetalle.Cantidad = _cantidadIngresadaVenta * cantPorPaq;
+        }
+        else
+        {
+            NuevoDetalle.Cantidad = _cantidadIngresadaVenta;
+        }
+        
+        // Recalcular precio según modo (esto ya considera PrecioPaqueteGs internamente)
+        NuevoDetalle.PrecioUnitario = await CalcularPrecioRespetandoClientePrecioAsync(prod.IdProducto, Cab.IdCliente);
+        
+        // Guardar precio original para validaciones de descuento
+        PrecioOriginalSinDescuento = NuevoDetalle.PrecioUnitario;
+        
+        // Recalcular el precio ministerio según modo
+        if (ModoFarmaciaActivo)
+        {
+            if (ModoIngresoVenta == "paquete" && prod.PrecioMinisterioPaquete.HasValue && prod.PrecioMinisterioPaquete > 0 && cantPorPaq > 1)
+            {
+                // Precio ministerio por unidad dentro del paquete
+                NuevoDetalle.PrecioMinisterio = prod.PrecioMinisterioPaquete.Value / cantPorPaq;
+            }
+            else
+            {
+                NuevoDetalle.PrecioMinisterio = prod.PrecioMinisterio;
+            }
+        }
+        
+        RecalcularNuevoDetalle();
+        StateHasChanged();
+    }
+    
+    /// <summary>
+    /// Precio mostrado en la UI según el modo de ingreso (paquete/unidad).
+    /// - Modo Paquete: Muestra el precio total del paquete (PrecioUnitario * CantidadPorPaquete)
+    /// - Modo Unidad: Muestra el precio unitario directamente
+    /// </summary>
+    protected decimal PrecioMostrado
+    {
+        get
+        {
+            var cantPorPaq = _cantidadPorPaqueteActual ?? 1;
+            
+            // En modo paquete, mostrar el precio del paquete completo
+            if (ModoIngresoVenta == "paquete" && cantPorPaq > 1)
+            {
+                return NuevoDetalle.PrecioUnitario * cantPorPaq;
+            }
+            return NuevoDetalle.PrecioUnitario;
+        }
+        set
+        {
+            var cantPorPaq = _cantidadPorPaqueteActual ?? 1;
+            
+            // En modo paquete, el usuario ingresa precio del paquete, guardar como unitario
+            if (ModoIngresoVenta == "paquete" && cantPorPaq > 1)
+            {
+                NuevoDetalle.PrecioUnitario = value / cantPorPaq;
+            }
+            else
+            {
+                NuevoDetalle.PrecioUnitario = value;
+            }
+        }
     }
 
     // Presupuesto: validez
@@ -370,6 +452,7 @@ public partial class Ventas
     /// - Si tiene PrecioFijoGs: usa ese precio
     /// - Si tiene PorcentajeDescuento: aplica el descuento sobre el precio base
     /// Si no existe ClientePrecio: usa el precio base del producto
+    /// NUEVO: Si está en modo paquete y el producto tiene PrecioPaqueteGs, calcula el precio unitario desde el paquete
     /// </summary>
     private async Task<decimal> CalcularPrecioRespetandoClientePrecioAsync(int idProducto, int? idCliente)
     {
@@ -377,8 +460,25 @@ public partial class Ventas
         var prod = Productos.FirstOrDefault(p => p.IdProducto == idProducto);
         if (prod == null) return 0m;
 
-        // Precio base siempre en Guaraníes
-        var precioBaseEnGs = prod.PrecioUnitarioGs;
+        // ========== SELECCIONAR PRECIO BASE SEGÚN MODO PAQUETE/UNIDAD ==========
+        decimal precioBaseEnGs;
+        var cantPorPaq = prod.CantidadPorPaquete ?? 1;
+        
+        // Si está en modo paquete y el producto tiene PrecioPaqueteGs configurado
+        if (ModoIngresoVenta == "paquete" && prod.PrecioPaqueteGs.HasValue && prod.PrecioPaqueteGs > 0 && cantPorPaq > 1)
+        {
+            // PrecioPaqueteGs es el precio total del paquete
+            // Para ventas, usamos el precio completo del paquete como base
+            // (la cantidad ya se multiplica por cantPorPaq en RecalcularCantidadPorModoVenta)
+            precioBaseEnGs = prod.PrecioPaqueteGs.Value / cantPorPaq;
+            Console.WriteLine($"[CalcularPrecio] Modo PAQUETE: PrecioPaqueteGs={prod.PrecioPaqueteGs}, cantPorPaq={cantPorPaq}, precioUnitario={precioBaseEnGs}");
+        }
+        else
+        {
+            // Modo unidad o producto sin precio de paquete: usar precio unitario normal
+            precioBaseEnGs = prod.PrecioUnitarioGs;
+            Console.WriteLine($"[CalcularPrecio] Modo UNIDAD: PrecioUnitarioGs={precioBaseEnGs}");
+        }
 
         // Si no hay cliente seleccionado, usar precio base
         if (!idCliente.HasValue || idCliente.Value <= 0)
@@ -1365,8 +1465,11 @@ public partial class Ventas
     /// </summary>
     private async Task AgregarProductoAlDetalleDirectoAsync(Producto p)
     {
-        // Verificar si el producto ya está en la lista - si existe, sumar cantidad
-        var detalleExistente = Detalles.FirstOrDefault(d => d.IdProducto == p.IdProducto);
+        // Verificar si el producto ya está en la lista EN MODO UNIDAD - si existe, sumar cantidad
+        // (el click rápido siempre es modo unidad, no agrupar con líneas de paquete)
+        var detalleExistente = Detalles.FirstOrDefault(d => 
+            d.IdProducto == p.IdProducto && 
+            d.ModoIngresoPersistido == "unidad");
         if (detalleExistente != null)
         {
             // Sumar 1 a la cantidad existente y recalcular
@@ -1433,7 +1536,10 @@ public partial class Ventas
                 // Costo al momento de la venta (para informes)
                 CostoUnitario = p.CostoUnitarioGs,
                 // Precio Ministerio para modo farmacia
-                PrecioMinisterio = ModoFarmaciaActivo && p.PrecioMinisterio.HasValue ? p.PrecioMinisterio : null
+                PrecioMinisterio = ModoFarmaciaActivo && p.PrecioMinisterio.HasValue ? p.PrecioMinisterio : null,
+                // ========== PERSISTIR INFO DE PAQUETE (en click rápido siempre es unidad) ==========
+                ModoIngresoPersistido = "unidad",
+                CantidadPorPaqueteMomento = p.CantidadPorPaquete
             };
             Detalles.Add(det);
             RecalcularTotales();
@@ -1623,16 +1729,30 @@ public partial class Ventas
         // SIN DESCUENTO: No tiene regla Y (no está activo cálculo Ministerio O no tiene Precio Ministerio)
         
         // Guardar precio ministerio si aplica (modo farmacia)
-        if (ModoFarmaciaActivo && p.PrecioMinisterio.HasValue)
+        if (ModoFarmaciaActivo)
         {
-            NuevoDetalle.PrecioMinisterio = p.PrecioMinisterio;
+            var cantPorPaq = p.CantidadPorPaquete ?? 1;
+            // Si está en modo paquete y tiene precio ministerio de paquete configurado
+            if (ModoIngresoVenta == "paquete" && p.PrecioMinisterioPaquete.HasValue && p.PrecioMinisterioPaquete > 0 && cantPorPaq > 1)
+            {
+                // Precio ministerio por unidad dentro del paquete
+                NuevoDetalle.PrecioMinisterio = p.PrecioMinisterioPaquete.Value / cantPorPaq;
+            }
+            else if (p.PrecioMinisterio.HasValue)
+            {
+                NuevoDetalle.PrecioMinisterio = p.PrecioMinisterio;
+            }
+            else
+            {
+                NuevoDetalle.PrecioMinisterio = null;
+            }
         }
         else
         {
             NuevoDetalle.PrecioMinisterio = null;
         }
         
-        Console.WriteLine($"[SeleccionarProducto] Producto: {p.Descripcion}, Precio final: {NuevoDetalle.PrecioUnitario}");
+        Console.WriteLine($"[SeleccionarProducto] Producto: {p.Descripcion}, Precio final: {NuevoDetalle.PrecioUnitario}, Modo: {ModoIngresoVenta}");
         RecalcularNuevoDetalle();
     }
 
@@ -1675,11 +1795,14 @@ public partial class Ventas
             NuevoDetalle.Cantidad = Math.Ceiling(NuevoDetalle.Cantidad);
         }
         
-        // Verificar si el producto ya está en la lista - si existe, sumar cantidad
-        var detalleExistente = Detalles.FirstOrDefault(d => d.IdProducto == NuevoDetalle.IdProducto);
+        // Verificar si el producto ya está en la lista CON EL MISMO MODO DE INGRESO
+        // Si el modo es diferente (paquete vs unidad), crear línea separada
+        var detalleExistente = Detalles.FirstOrDefault(d => 
+            d.IdProducto == NuevoDetalle.IdProducto && 
+            d.ModoIngresoPersistido == ModoIngresoVenta);
         if (detalleExistente != null)
         {
-            // Sumar cantidad y recalcular
+            // Sumar cantidad y recalcular (mismo producto Y mismo modo)
             detalleExistente.Cantidad += NuevoDetalle.Cantidad;
             var prod = Productos.FirstOrDefault(x => x.IdProducto == detalleExistente.IdProducto);
             var ivaPorc = prod?.TipoIva?.Porcentaje ?? 0m;
@@ -1703,6 +1826,28 @@ public partial class Ventas
             {
                 detalleExistente.Exenta = importe;
             }
+            
+            // ========== ACTUALIZAR LOTE FEFO SI EL PRODUCTO CONTROLA LOTE ==========
+            if (prod != null && prod.ControlaLote)
+            {
+                try
+                {
+                    decimal cantidadUnidades = detalleExistente.Cantidad;
+                    if (detalleExistente.ModoIngresoPersistido == "paquete" && (prod.CantidadPorPaquete ?? 1) > 1)
+                    {
+                        cantidadUnidades = detalleExistente.Cantidad * (prod.CantidadPorPaquete ?? 1);
+                    }
+                    var loteFEFO = await LoteService.ObtenerLoteFEFOAsync(prod.IdProducto, 1, cantidadUnidades);
+                    if (loteFEFO != null)
+                    {
+                        detalleExistente.IdProductoLote = loteFEFO.IdProductoLote;
+                        detalleExistente.NumeroLoteMomento = loteFEFO.NumeroLote;
+                        detalleExistente.FechaVencimientoLoteMomento = loteFEFO.FechaVencimiento;
+                    }
+                }
+                catch { /* Ignorar errores en preview */ }
+            }
+            
             RecalcularTotales();
             NuevoDetalle = new VentaDetalle { Cantidad = 1, PrecioUnitario = 0 };
             BuscarProducto = string.Empty; MostrarSugProductos = false;
@@ -1724,7 +1869,9 @@ public partial class Ventas
             CambioDelDia = NuevoDetalle.CambioDelDia,
             // Descuento y Farmacia
             PorcentajeDescuento = NuevoDetalle.PorcentajeDescuento,
-            PrecioMinisterio = NuevoDetalle.PrecioMinisterio
+            PrecioMinisterio = NuevoDetalle.PrecioMinisterio,
+            // Modo de ingreso (paquete/unidad) - NotMapped para UI
+            ModoIngreso = ModoIngresoVenta
         };
         // Completar Tipo de IVA del detalle desde el producto para evitar advertencia al enviar a SIFEN
         var prodFuente = Productos.FirstOrDefault(x => x.IdProducto == det.IdProducto);
@@ -1733,6 +1880,45 @@ public partial class Ventas
             det.IdTipoIva = prodFuente.IdTipoIva;
             // Guardar costo al momento de la venta para informes
             det.CostoUnitario = prodFuente.CostoUnitarioGs;
+            
+            // ========== CONSULTAR LOTE FEFO PARA PRODUCTOS CON CONTROL DE LOTE ==========
+            if (prodFuente.ControlaLote)
+            {
+                try
+                {
+                    // Calcular cantidad total en unidades para consultar lote
+                    decimal cantidadUnidades = det.Cantidad;
+                    if (ModoIngresoVenta == "paquete" && (prodFuente.CantidadPorPaquete ?? 1) > 1)
+                    {
+                        cantidadUnidades = det.Cantidad * (prodFuente.CantidadPorPaquete ?? 1);
+                    }
+                    
+                    // Consultar lote FEFO (depósito 1 = principal)
+                    var loteFEFO = await LoteService.ObtenerLoteFEFOAsync(prodFuente.IdProducto, 1, cantidadUnidades);
+                    if (loteFEFO != null)
+                    {
+                        det.IdProductoLote = loteFEFO.IdProductoLote;
+                        det.NumeroLoteMomento = loteFEFO.NumeroLote;
+                        det.FechaVencimientoLoteMomento = loteFEFO.FechaVencimiento;
+                        Console.WriteLine($"[FEFO-Preview] Producto {prodFuente.Descripcion}: Lote {loteFEFO.NumeroLote} (vence: {loteFEFO.FechaVencimiento:dd/MM/yyyy})");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[FEFO-Preview] Error al consultar lote para {prodFuente.Descripcion}: {ex.Message}");
+                }
+            }
+            
+            // ========== PERSISTIR MODO DE INGRESO Y PRECIOS POR PAQUETE ==========
+            det.ModoIngresoPersistido = ModoIngresoVenta;
+            det.CantidadPorPaqueteMomento = prodFuente.CantidadPorPaquete;
+            if (ModoIngresoVenta == "paquete" && prodFuente.CantidadPorPaquete > 1)
+            {
+                // Guardar precio por paquete (precio unitario * cantidad por paquete)
+                det.PrecioPaqueteMomento = det.PrecioUnitario * prodFuente.CantidadPorPaquete;
+                // Guardar precio ministerio por paquete si existe
+                det.PrecioMinisterioPaqueteMomento = prodFuente.PrecioMinisterioPaquete;
+            }
         }
         Detalles.Add(det);
         RecalcularTotales();
@@ -2408,11 +2594,12 @@ public partial class Ventas
                     .ToListAsync();
 
                 // Filtrar detalles que NO son servicios (solo productos físicos)
+                // También incluir información de control de lotes
                 var productosIds = Detalles.Select(d => d.IdProducto).ToList();
                 var productosConTipo = await ctx.Productos
                     .AsNoTracking()
                     .Where(p => productosIds.Contains(p.IdProducto))
-                    .Select(p => new { p.IdProducto, p.TipoItem })
+                    .Select(p => new { p.IdProducto, p.TipoItem, p.ControlaLote, p.ControlaVencimiento })
                     .ToListAsync();
 
                 var detallesFisicos = Detalles
@@ -2429,31 +2616,80 @@ public partial class Ventas
                     .OrderBy(d => d.IdDeposito)
                     .FirstOrDefaultAsync();
 
-                if (depositoPrincipal != null)
+                var idDeposito = depositoPrincipal?.IdDeposito ?? 
+                    (await ctx.Depositos.AsNoTracking().Where(d => d.Activo).OrderBy(d => d.IdDeposito).Select(d => d.IdDeposito).FirstOrDefaultAsync());
+
+                if (idDeposito > 0)
                 {
                     foreach (var d in detallesFisicos)
                     {
-                        await Inventario.AjustarStockAsync(d.IdProducto, depositoPrincipal.IdDeposito, d.Cantidad, 2, $"Venta #{Cab.IdVenta}", _usuarioActual,
-                            Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
-                    }
-                }
-                else
-                {
-                    // Si no hay depósito activo en la sucursal, buscar cualquier depósito activo
-                    var cualquierDeposito = await ctx.Depositos
-                        .AsNoTracking()
-                        .Where(d => d.Activo)
-                        .OrderBy(d => d.IdDeposito)
-                        .FirstOrDefaultAsync();
-
-                    if (cualquierDeposito != null)
-                    {
-                        foreach (var d in detallesFisicos)
+                        // Verificar si el producto controla lotes
+                        var prodInfo = productosConTipo.FirstOrDefault(p => p.IdProducto == d.IdProducto);
+                        
+                        if (prodInfo != null && prodInfo.ControlaLote)
                         {
-                            await Inventario.AjustarStockAsync(d.IdProducto, cualquierDeposito.IdDeposito, d.Cantidad, 2, $"Venta #{Cab.IdVenta}", _usuarioActual,
+                            // ========== LÓGICA FEFO: Descontar del lote más próximo a vencer ==========
+                            var cantidadPendiente = d.Cantidad;
+                            
+                            while (cantidadPendiente > 0)
+                            {
+                                // Obtener el lote FEFO (primero en expirar con stock disponible)
+                                var loteFEFO = await LoteService.ObtenerLoteFEFOAsync(d.IdProducto, idDeposito, cantidadPendiente);
+                                
+                                if (loteFEFO == null)
+                                {
+                                    // No hay lotes con stock suficiente - usar stock general
+                                    Console.WriteLine($"[FEFO] Producto {d.IdProducto}: Sin lotes disponibles para {cantidadPendiente} unidades. Usando stock general.");
+                                    await Inventario.AjustarStockAsync(d.IdProducto, idDeposito, cantidadPendiente, 2, $"Venta #{Cab.IdVenta} (sin lote)", _usuarioActual,
+                                        Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
+                                    break;
+                                }
+                                
+                                // Calcular cuánto descontar de este lote (Stock es el campo correcto)
+                                var cantidadDescontar = Math.Min(cantidadPendiente, loteFEFO.Stock);
+                                
+                                // Descontar del lote - firma: (idProductoLote, cantidad, tipoDocumento, idDocumento, idDocumentoDetalle, referencia, usuario)
+                                var resultado = await LoteService.DescontarStockLoteAsync(
+                                    loteFEFO.IdProductoLote,
+                                    cantidadDescontar,
+                                    "Venta",
+                                    Cab.IdVenta,
+                                    d.IdVentaDetalle,
+                                    $"Venta #{Cab.IdVenta}",
+                                    _usuarioActual
+                                );
+                                
+                                if (resultado)
+                                {
+                                    // Guardar info del lote en el detalle para trazabilidad
+                                    // Solo guardamos el primer lote usado (el más cercano a vencer)
+                                    if (d.IdProductoLote == null)
+                                    {
+                                        d.IdProductoLote = loteFEFO.IdProductoLote;
+                                        d.NumeroLoteMomento = loteFEFO.NumeroLote;
+                                        d.FechaVencimientoLoteMomento = loteFEFO.FechaVencimiento;
+                                        ctx.VentasDetalles.Update(d);
+                                    }
+                                    
+                                    Console.WriteLine($"[FEFO] Producto {d.IdProducto}: Descontado {cantidadDescontar} del lote {loteFEFO.NumeroLote} (vence: {loteFEFO.FechaVencimiento:dd/MM/yyyy})");
+                                }
+                                
+                                cantidadPendiente -= cantidadDescontar;
+                            }
+                            
+                            // También ajustar stock general (para mantener consistencia con MovimientosStock)
+                            await Inventario.AjustarStockAsync(d.IdProducto, idDeposito, d.Cantidad, 2, $"Venta #{Cab.IdVenta}", _usuarioActual,
+                                Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
+                        }
+                        else
+                        {
+                            // Producto sin control de lotes - usar lógica tradicional
+                            await Inventario.AjustarStockAsync(d.IdProducto, idDeposito, d.Cantidad, 2, $"Venta #{Cab.IdVenta}", _usuarioActual,
                                 Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
                         }
                     }
+                    
+                    await ctx.SaveChangesAsync(); // Guardar cambios en VentaDetalles (info de lotes)
                 }
 
                 // Nota: La auto-impresión ocurre después de confirmar la composición de caja
@@ -3567,6 +3803,18 @@ public partial class Ventas
         Detalles.Clear();
         foreach (var det in detallesVenta)
         {
+            // Restaurar campos NotMapped desde los persistidos
+            det.ModoIngreso = det.ModoIngresoPersistido ?? "unidad";
+            det.CantidadPorPaquete = det.CantidadPorPaqueteMomento ?? det.Producto?.CantidadPorPaquete;
+            det.PermiteVentaPorUnidad = det.Producto?.PermiteVentaPorUnidad ?? true;
+            det.PermiteDecimal = det.Producto?.PermiteDecimal ?? false;
+            
+            // Calcular cantidad ingresada original si fue por paquete
+            if (det.ModoIngresoPersistido == "paquete" && det.CantidadPorPaqueteMomento.HasValue && det.CantidadPorPaqueteMomento > 0)
+                det.CantidadIngresada = det.Cantidad / det.CantidadPorPaqueteMomento.Value;
+            else
+                det.CantidadIngresada = det.Cantidad;
+            
             Detalles.Add(det);
         }
         

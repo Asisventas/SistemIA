@@ -1,0 +1,470 @@
+@page "/inventario/alertas-vencimiento"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Services
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ILoteService LoteService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/inventario/alertas-vencimiento" Permiso="VIEW">
+
+<div class="container-fluid px-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+            Alertas de Vencimiento (FEFO)
+        </h3>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary" @onclick="ActualizarEstadosAsync" disabled="@_procesando">
+                <i class="bi bi-arrow-clockwise @(_procesando ? "spin" : "")"></i> Actualizar Estados
+            </button>
+            <button class="btn btn-outline-success" @onclick="ExportarExcel">
+                <i class="bi bi-file-earmark-excel"></i> Exportar
+            </button>
+        </div>
+    </div>
+
+    <!-- Resumen de alertas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-danger shadow-sm">
+                <div class="card-body text-center">
+                    <h1 class="text-danger mb-1">@_alertas.Count(a => a.Estado == "Vencido")</h1>
+                    <small class="text-muted">Vencidos</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-warning shadow-sm">
+                <div class="card-body text-center">
+                    <h1 class="text-warning mb-1">@_alertas.Count(a => a.Estado == "Crítico")</h1>
+                    <small class="text-muted">Críticos (≤7 días)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-info shadow-sm">
+                <div class="card-body text-center">
+                    <h1 class="text-info mb-1">@_alertas.Count(a => a.Estado == "Urgente" || a.Estado == "Alerta")</h1>
+                    <small class="text-muted">Próximos a vencer</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success shadow-sm">
+                <div class="card-body text-center">
+                    <h1 class="text-success mb-1">@_alertas.Count</h1>
+                    <small class="text-muted">Total Alertas</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Estado</label>
+                    <select class="form-select form-select-sm" @bind="_filtroEstado">
+                        <option value="">Todos</option>
+                        <option value="Vencido">🔴 Vencidos</option>
+                        <option value="Crítico">🟡 Críticos (≤7 días)</option>
+                        <option value="Urgente">🟠 Urgentes (≤15 días)</option>
+                        <option value="Alerta">🟢 En alerta</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Depósito</label>
+                    <select class="form-select form-select-sm" @bind="_filtroDeposito">
+                        <option value="0">Todos</option>
+                        @foreach (var dep in _depositos)
+                        {
+                            <option value="@dep.IdDeposito">@dep.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Buscar producto</label>
+                    <input type="text" class="form-control form-control-sm" 
+                           placeholder="Código o descripción..."
+                           @bind="_filtroBusqueda" @bind:event="oninput" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="soloConStock" @bind="_soloConStock" />
+                        <label class="form-check-label" for="soloConStock">Solo con stock</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de alertas -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-table me-2"></i>Lotes con Vencimiento</h6>
+                <small class="text-muted">Mostrando @AlertasFiltradas.Count() de @_alertas.Count lote(s)</small>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 5%">Estado</th>
+                        <th>Producto</th>
+                        <th>Lote</th>
+                        <th>Depósito</th>
+                        <th class="text-center">Vencimiento</th>
+                        <th class="text-center">Días Rest.</th>
+                        <th class="text-end">Stock</th>
+                        <th class="text-end">Valor Stock</th>
+                        <th style="width: 10%" class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_cargando)
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Cargando...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    else if (!AlertasFiltradas.Any())
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No hay alertas con los filtros seleccionados
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var alerta in AlertasFiltradas)
+                        {
+                            <tr class="@GetRowClass(alerta.Estado)">
+                                <td class="text-center">
+                                    @GetBadgeEstado(alerta.Estado)
+                                </td>
+                                <td>
+                                    <div class="fw-semibold">@alerta.DescripcionProducto</div>
+                                    <small class="text-muted">@alerta.CodigoProducto</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">@alerta.NumeroLote</span>
+                                </td>
+                                <td>@alerta.NombreDeposito</td>
+                                <td class="text-center">
+                                    <span class="@(alerta.DiasParaVencer < 0 ? "text-danger fw-bold" : alerta.DiasParaVencer <= 7 ? "text-warning" : "")">
+                                        @alerta.FechaVencimiento.ToString("dd/MM/yyyy")
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge @(alerta.DiasParaVencer < 0 ? "bg-danger" : alerta.DiasParaVencer <= 7 ? "bg-warning" : alerta.DiasParaVencer <= 30 ? "bg-info" : "bg-success")">
+                                        @(alerta.DiasParaVencer < 0 ? $"{Math.Abs(alerta.DiasParaVencer)} días vencido" : $"{alerta.DiasParaVencer} días")
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    @alerta.Stock.ToString("N2")
+                                </td>
+                                <td class="text-end">
+                                    <span class="text-muted">₲</span> @alerta.ValorStock.ToString("N0")
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" 
+                                                title="Ver producto"
+                                                @onclick="() => VerProducto(alerta.IdProducto)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        @if (alerta.Estado == "Vencido")
+                                        {
+                                            <button class="btn btn-outline-danger" 
+                                                    title="Dar de baja"
+                                                    @onclick="() => MostrarModalBaja(alerta)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+                @if (AlertasFiltradas.Any())
+                {
+                    <tfoot class="table-light">
+                        <tr class="fw-bold">
+                            <td colspan="6" class="text-end">Totales:</td>
+                            <td class="text-end">@AlertasFiltradas.Sum(a => a.Stock).ToString("N2")</td>
+                            <td class="text-end">₲ @AlertasFiltradas.Sum(a => a.ValorStock).ToString("N0")</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de baja de lote vencido -->
+@if (_mostrarModalBaja && _loteParaBaja != null)
+{
+    <div class="modal show d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle me-2"></i>Dar de Baja Lote Vencido
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalBaja"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <strong>¿Está seguro de dar de baja este lote?</strong>
+                        <p class="mb-0 mt-2">Esta acción eliminará el stock del lote y registrará el movimiento de baja por vencimiento.</p>
+                    </div>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Producto:</dt>
+                        <dd class="col-sm-8">@_loteParaBaja.DescripcionProducto</dd>
+                        <dt class="col-sm-4">Lote:</dt>
+                        <dd class="col-sm-8">@_loteParaBaja.NumeroLote</dd>
+                        <dt class="col-sm-4">Vencimiento:</dt>
+                        <dd class="col-sm-8">@_loteParaBaja.FechaVencimiento.ToString("dd/MM/yyyy")</dd>
+                        <dt class="col-sm-4">Stock a dar de baja:</dt>
+                        <dd class="col-sm-8 text-danger fw-bold">@_loteParaBaja.Stock.ToString("N2")</dd>
+                    </dl>
+                    
+                    <div class="mt-3">
+                        <label class="form-label">Motivo de baja</label>
+                        <textarea class="form-control" rows="2" @bind="_motivoBaja" placeholder="Ej: Producto vencido, destrucción controlada..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CerrarModalBaja">Cancelar</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmarBajaAsync" disabled="@_procesandoBaja">
+                        @if (_procesandoBaja)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-trash me-1"></i> Confirmar Baja
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+<style>
+    .spin {
+        animation: spin 1s linear infinite;
+    }
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .table-row-vencido {
+        background-color: rgba(220, 53, 69, 0.1) !important;
+    }
+    .table-row-critico {
+        background-color: rgba(255, 193, 7, 0.1) !important;
+    }
+</style>
+
+@code {
+    private List<ProductoLoteAlertaDto> _alertas = new();
+    private List<Deposito> _depositos = new();
+    private bool _cargando = true;
+    private bool _procesando = false;
+    
+    // Filtros
+    private string _filtroEstado = "";
+    private int _filtroDeposito = 0;
+    private string _filtroBusqueda = "";
+    private bool _soloConStock = true;
+    
+    // Modal baja
+    private bool _mostrarModalBaja = false;
+    private ProductoLoteAlertaDto? _loteParaBaja = null;
+    private string _motivoBaja = "";
+    private bool _procesandoBaja = false;
+    
+    private IEnumerable<ProductoLoteAlertaDto> AlertasFiltradas => _alertas
+        .Where(a => (string.IsNullOrEmpty(_filtroEstado) || a.Estado == _filtroEstado)
+                 && (_filtroDeposito == 0 || a.IdDeposito == _filtroDeposito)
+                 && (string.IsNullOrEmpty(_filtroBusqueda) 
+                     || (a.DescripcionProducto?.Contains(_filtroBusqueda, StringComparison.OrdinalIgnoreCase) ?? false)
+                     || (a.CodigoProducto?.Contains(_filtroBusqueda, StringComparison.OrdinalIgnoreCase) ?? false)
+                     || (a.NumeroLote?.Contains(_filtroBusqueda, StringComparison.OrdinalIgnoreCase) ?? false))
+                 && (!_soloConStock || a.Stock > 0))
+        .OrderBy(a => a.DiasParaVencer)
+        .ThenBy(a => a.DescripcionProducto);
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosAsync();
+    }
+    
+    private async Task CargarDatosAsync()
+    {
+        _cargando = true;
+        await InvokeAsync(StateHasChanged);
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Cargar depósitos
+            _depositos = await ctx.Depositos.AsNoTracking()
+                .Where(d => d.Activo)
+                .OrderBy(d => d.Nombre)
+                .ToListAsync();
+            
+            // Cargar alertas usando el servicio
+            _alertas = await LoteService.ObtenerAlertasVencimientoAsync(null, null);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar alertas: {ex.Message}");
+        }
+        finally
+        {
+            _cargando = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    private async Task ActualizarEstadosAsync()
+    {
+        _procesando = true;
+        await InvokeAsync(StateHasChanged);
+        
+        try
+        {
+            await LoteService.ActualizarEstadosLotesAsync();
+            await CargarDatosAsync();
+        }
+        finally
+        {
+            _procesando = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    private string GetRowClass(string estado) => estado switch
+    {
+        "Vencido" => "table-row-vencido",
+        "Crítico" => "table-row-critico",
+        _ => ""
+    };
+    
+    private MarkupString GetBadgeEstado(string estado) => estado switch
+    {
+        "Vencido" => new MarkupString("<span class='badge bg-danger'>🔴 Vencido</span>"),
+        "Vence Hoy" => new MarkupString("<span class='badge bg-danger'>⚠️ Vence Hoy</span>"),
+        "Crítico" => new MarkupString("<span class='badge bg-warning text-dark'>🟡 Crítico</span>"),
+        "Urgente" => new MarkupString("<span class='badge bg-info'>🟠 Urgente</span>"),
+        _ => new MarkupString("<span class='badge bg-secondary'>🟢 Alerta</span>")
+    };
+    
+    private void VerProducto(int idProducto)
+    {
+        Nav.NavigateTo($"/productos?id={idProducto}");
+    }
+    
+    private void MostrarModalBaja(ProductoLoteAlertaDto alerta)
+    {
+        _loteParaBaja = alerta;
+        _motivoBaja = "Producto vencido - baja por vencimiento";
+        _mostrarModalBaja = true;
+    }
+    
+    private void CerrarModalBaja()
+    {
+        _mostrarModalBaja = false;
+        _loteParaBaja = null;
+        _motivoBaja = "";
+    }
+    
+    private async Task ConfirmarBajaAsync()
+    {
+        if (_loteParaBaja == null) return;
+        
+        _procesandoBaja = true;
+        await InvokeAsync(StateHasChanged);
+        
+        try
+        {
+            // Descontar todo el stock del lote
+            var resultado = await LoteService.DescontarStockLoteAsync(
+                _loteParaBaja.IdProductoLote,
+                _loteParaBaja.Stock,
+                "Baja",
+                null,
+                null,
+                $"Baja por vencimiento: {_motivoBaja}",
+                null
+            );
+            
+            if (resultado)
+            {
+                // Marcar lote como agotado
+                await using var ctx = await DbFactory.CreateDbContextAsync();
+                var lote = await ctx.ProductosLotes.FindAsync(_loteParaBaja.IdProductoLote);
+                if (lote != null)
+                {
+                    lote.Estado = "Agotado";
+                    lote.FechaModificacion = DateTime.Now;
+                    await ctx.SaveChangesAsync();
+                }
+                
+                CerrarModalBaja();
+                await CargarDatosAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al dar de baja lote: {ex.Message}");
+        }
+        finally
+        {
+            _procesandoBaja = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    private async Task ExportarExcel()
+    {
+        try
+        {
+            // Exportar a CSV simple (compatible con Excel)
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Estado,Producto,Código,Lote,Depósito,Vencimiento,Días Restantes,Stock,Valor Stock");
+            
+            foreach (var a in AlertasFiltradas)
+            {
+                sb.AppendLine($"\"{a.Estado}\",\"{a.DescripcionProducto}\",\"{a.CodigoProducto}\",\"{a.NumeroLote}\",\"{a.NombreDeposito}\",\"{a.FechaVencimiento:dd/MM/yyyy}\",{a.DiasParaVencer},{a.Stock},{a.ValorStock}");
+            }
+            
+            var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+            var base64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadFile", $"AlertasVencimiento_{DateTime.Now:yyyyMMdd}.csv", "text/csv", base64);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al exportar: {ex.Message}");
+        }
+    }
+}

@@ -161,7 +161,18 @@
                     <i class="bi bi-send me-1"></i>Cargar y Enviar
                 </button>
             </div>
+            <div class="col-auto">
+                <button class="btn btn-warning" @onclick="IniciarSesionDeLog" disabled="@IsBusy" title="Limpia logs y crea carpeta de sesión para análisis">
+                    <i class="bi bi-journal-text me-1"></i>Nueva Sesión Log
+                </button>
+            </div>
         </div>
+        @if (!string.IsNullOrWhiteSpace(SesionLogActiva))
+        {
+            <div class="mt-2 alert alert-info py-1 small">
+                <i class="bi bi-folder me-1"></i>Sesión de log activa: <code>@SesionLogActiva</code>
+            </div>
+        }
         @if (!string.IsNullOrWhiteSpace(MensajeVenta))
         {
             <div class="mt-2 small @(MensajeVentaError ? "text-danger" : "text-success")">@MensajeVenta</div>
@@ -383,6 +394,14 @@
             IsBusy = true; Resultado = "";
             var modo = (Modo ?? "lote").ToLower();
             var ambiente = (Ambiente ?? "test").ToLower() == "prod" ? "prod" : "test";
+            
+            // Iniciar sesión de log si no existe
+            if (string.IsNullOrWhiteSpace(SesionLogActiva))
+            {
+                IniciarSesionDeLog();
+            }
+            var sesionDir = SesionLogActiva ?? @"c:\asis\SistemIA\Debug";
+            int paso = 1;
 
             await using var db = await DbFactory.CreateDbContextAsync();
             var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
@@ -396,10 +415,18 @@
             if (!System.IO.File.Exists(p12Path))
             { Resultado = $"ERROR: No existe el archivo .p12 en la ruta: {p12Path}"; return; }
 
+            // PASO 1: Log de configuración
+            Sifen.LogPasoSesion(sesionDir, paso++, "CONFIGURACIÓN", 
+                $"Ambiente: {ambiente}\nModo: {modo}\nURL QR Base: {urlQrBase}\nCertificado: {p12Path}\nIdVenta: {IdVentaCargar}");
+
             // Extraer rDE del XML pegado
             string? rdeXml = SistemIA.ExternalXmlExtractor.TryExtractRde(Xml!);
             if (string.IsNullOrWhiteSpace(rdeXml))
             { Resultado = "ERROR: No se pudo encontrar un nodo rDE válido."; return; }
+            
+            // PASO 2: Guardar XML de entrada
+            Sifen.LogPasoSesion(sesionDir, paso++, "XML DE ENTRADA (rDE)", $"Tamaño: {rdeXml.Length} caracteres");
+            Sifen.GuardarArchivoSesion(sesionDir, "01_XML_INPUT.xml", rdeXml, "XML de entrada (rDE sin firmar)");
 
             string codigo = "", mensaje = "", soapEnviado = "", respRecibida = "";
 
@@ -407,7 +434,14 @@
             {
                 var urlEnvio = SistemIA.Utils.SifenConfig.GetEnvioLoteUrl(ambiente);
                 LastUrl = urlEnvio;
+                
+                // PASO 3: Log de URL de envío
+                Sifen.LogPasoSesion(sesionDir, paso++, "URL ENVÍO LOTE", urlEnvio);
+                
                 var resultJson = await Sifen.FirmarYEnviar(urlEnvio, urlQrBase, rdeXml!, p12Path, p12Pass);
+                
+                // Guardar resultado JSON completo
+                Sifen.GuardarArchivoSesion(sesionDir, "04_RESULTADO_JSON.json", resultJson, "Resultado completo de FirmarYEnviar");
                 
                 using var doc = System.Text.Json.JsonDocument.Parse(resultJson);
                 codigo = doc.RootElement.TryGetProperty("codigo", out var pCod) && pCod.ValueKind == System.Text.Json.JsonValueKind.String ? pCod.GetString() ?? "" : "";
@@ -417,14 +451,36 @@
                 soapEnviado = doc.RootElement.TryGetProperty("documento", out var pDoc) && pDoc.ValueKind == System.Text.Json.JsonValueKind.String ? pDoc.GetString() ?? "" : "";
                 respRecibida = doc.RootElement.TryGetProperty("respuesta", out var pResp) && pResp.ValueKind == System.Text.Json.JsonValueKind.String ? pResp.GetString() ?? "" : "";
                 
+                // PASO 4: Log del resultado
+                Sifen.LogPasoSesion(sesionDir, paso++, "RESULTADO LOTE", 
+                    $"Código: {codigo}\nMensaje: {mensaje}\nCDC: {Cdc}\nIdLote: {IdLote}");
+                
+                // Guardar SOAP y respuesta si están disponibles
+                if (!string.IsNullOrWhiteSpace(soapEnviado))
+                    Sifen.GuardarArchivoSesion(sesionDir, "02_SOAP_ENVIADO.xml", soapEnviado, "SOAP Envelope enviado a SIFEN");
+                if (!string.IsNullOrWhiteSpace(respRecibida))
+                    Sifen.GuardarArchivoSesion(sesionDir, "03_RESPUESTA_SIFEN.xml", respRecibida, "Respuesta recibida de SIFEN");
+                
                 Resultado = $"Modo: lote | Código: {codigo} | Mensaje: {mensaje}\nCDC: {Cdc}\nIdLote: {IdLote}\n\nRespuesta SIFEN:\n{Sifen.FormatearXML(respRecibida)}";
             }
             else // sync
             {
                 var urlEnvioDe = SistemIA.Utils.SifenConfig.GetEnvioDeUrl(ambiente);
                 LastUrl = urlEnvioDe;
+                
+                // PASO 3: Log de URL de envío
+                Sifen.LogPasoSesion(sesionDir, paso++, "URL ENVÍO SYNC", urlEnvioDe);
+                
                 soapEnviado = Sifen.FirmarSinEnviar(urlQrBase, rdeXml!, p12Path, p12Pass, "1", true);
+                
+                // Guardar SOAP antes de enviar
+                Sifen.GuardarArchivoSesion(sesionDir, "02_SOAP_ENVIADO.xml", soapEnviado, "SOAP Envelope a enviar (modo sync)");
+                Sifen.LogPasoSesion(sesionDir, paso++, "SOAP GENERADO", $"Tamaño SOAP: {soapEnviado.Length} caracteres");
+                
                 respRecibida = await Sifen.Enviar(urlEnvioDe, soapEnviado, p12Path, p12Pass);
+                
+                // Guardar respuesta
+                Sifen.GuardarArchivoSesion(sesionDir, "03_RESPUESTA_SIFEN.xml", respRecibida, "Respuesta recibida de SIFEN");
                 
                 codigo = Sifen.GetTagValue(respRecibida, "ns2:dCodRes");
                 if (string.IsNullOrWhiteSpace(codigo) || codigo == "Tag not found.") codigo = Sifen.GetTagValue(respRecibida, "dCodRes");
@@ -433,8 +489,24 @@
                 Cdc = Sifen.GetTagValue(respRecibida, "ns2:dCDC");
                 if (string.IsNullOrWhiteSpace(Cdc) || Cdc == "Tag not found.") Cdc = Sifen.GetTagValue(respRecibida, "dCDC");
                 
+                // PASO 5: Log del resultado
+                Sifen.LogPasoSesion(sesionDir, paso++, "RESULTADO SYNC", 
+                    $"Código: {codigo}\nMensaje: {mensaje}\nCDC: {Cdc}");
+                
                 Resultado = $"Modo: sync | Código: {codigo} | Mensaje: {mensaje}\nCDC: {Cdc}\n\nRespuesta SIFEN:\n{Sifen.FormatearXML(respRecibida)}";
             }
+            
+            // PASO FINAL: Resumen
+            Sifen.LogPasoSesion(sesionDir, 99, "RESUMEN FINAL", 
+                $"═══════════════════════════════════════════════════\n" +
+                $"CÓDIGO: {codigo}\n" +
+                $"MENSAJE: {mensaje}\n" +
+                $"CDC: {Cdc}\n" +
+                $"ID LOTE: {IdLote}\n" +
+                $"MODO: {modo}\n" +
+                $"AMBIENTE: {ambiente}\n" +
+                $"═══════════════════════════════════════════════════\n" +
+                $"Archivos guardados en: {sesionDir}");
 
             LastP12 = p12Path;
             LastAmbiente = ambiente;
@@ -444,6 +516,10 @@
         catch (Exception ex)
         {
             Resultado = $"ERROR: {ex.Message}";
+            if (!string.IsNullOrWhiteSpace(SesionLogActiva))
+            {
+                Sifen.LogPasoSesion(SesionLogActiva, 0, "ERROR EXCEPCIÓN", $"{ex.GetType().Name}: {ex.Message}\n\nStack:\n{ex.StackTrace}");
+            }
         }
         finally
         {
@@ -519,6 +595,15 @@
     private int IdVentaCargar { get; set; }
     private string MensajeVenta { get; set; } = "";
     private bool MensajeVentaError { get; set; }
+    private string? SesionLogActiva { get; set; }
+    
+    private void IniciarSesionDeLog()
+    {
+        var descripcion = $"Prueba XML - Modo: {Modo} - Ambiente: {Ambiente}";
+        SesionLogActiva = Sifen.IniciarSesionDebug(descripcion, IdVentaCargar > 0 ? IdVentaCargar : null);
+        MensajeVenta = $"✓ Sesión de log iniciada en: {SesionLogActiva}";
+        MensajeVentaError = false;
+    }
 
     private async Task CargarXmlDesdeVenta()
     {

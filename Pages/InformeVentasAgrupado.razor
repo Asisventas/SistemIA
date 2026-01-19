@@ -285,7 +285,7 @@
     if (fTurnoDesde.HasValue) q = q.Where(x => (x.Turno ?? int.MinValue) >= fTurnoDesde.Value);
     if (fTurnoHasta.HasValue) q = q.Where(x => (x.Turno ?? int.MaxValue) <= fTurnoHasta.Value);
 
-    var data = await q.OrderBy(x => x.Fecha).ThenBy(x => x.IdVenta).Take(5000).ToListAsync();
+    var data = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdVenta).Take(5000).ToListAsync();
 
     filas = data.Select(x => {
       var codMon = x.Moneda ?? "PYG";

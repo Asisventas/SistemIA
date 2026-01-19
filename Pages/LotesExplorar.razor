@@ -1,0 +1,645 @@
+@page "/inventario/lotes"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Services
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ILoteService LoteService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageProtection Modulo="/inventario/lotes" Permiso="VIEW">
+
+<div class="container-fluid px-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-box-seam text-primary me-2"></i>
+            Gestión de Lotes
+        </h3>
+        <div class="text-muted">
+            <i class="bi bi-collection me-1"></i>
+            Total: <span class="fw-bold">@_lotes.Count</span> lote(s)
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-light py-2">
+            <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros de Búsqueda</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Producto</label>
+                    <input type="text" class="form-control" placeholder="Buscar producto..." 
+                           @bind="_filtroProducto" @bind:event="oninput" @onkeyup="FiltrarAsync" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Número de Lote</label>
+                    <input type="text" class="form-control" placeholder="Nro. lote..." 
+                           @bind="_filtroLote" @bind:event="oninput" @onkeyup="FiltrarAsync" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Depósito</label>
+                    <select class="form-select" @bind="_filtroDeposito" @bind:after="FiltrarAsync">
+                        <option value="0">Todos</option>
+                        @foreach (var dep in _depositos)
+                        {
+                            <option value="@dep.IdDeposito">@dep.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Estado Stock</label>
+                    <select class="form-select" @bind="_filtroEstado" @bind:after="FiltrarAsync">
+                        <option value="">Todos</option>
+                        <option value="con_stock">Con Stock</option>
+                        <option value="sin_stock">Sin Stock</option>
+                        <option value="stock_bajo">Stock Bajo (&lt;10)</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Vencimiento</label>
+                    <select class="form-select" @bind="_filtroVencimiento" @bind:after="FiltrarAsync">
+                        <option value="">Todos</option>
+                        <option value="vencido">Vencidos</option>
+                        <option value="prox_30">Próximos 30 días</option>
+                        <option value="prox_60">Próximos 60 días</option>
+                        <option value="prox_90">Próximos 90 días</option>
+                    </select>
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button class="btn btn-outline-secondary w-100" @onclick="LimpiarFiltros" title="Limpiar filtros">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <div class="card border-primary h-100">
+                <div class="card-body py-2 text-center">
+                    <div class="text-muted small">Total Lotes</div>
+                    <div class="fs-4 fw-bold text-primary">@_lotes.Count</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success h-100">
+                <div class="card-body py-2 text-center">
+                    <div class="text-muted small">Con Stock</div>
+                    <div class="fs-4 fw-bold text-success">@_lotes.Count(l => l.Stock > 0)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-warning h-100">
+                <div class="card-body py-2 text-center">
+                    <div class="text-muted small">Próximos a Vencer</div>
+                    <div class="fs-4 fw-bold text-warning">@_lotes.Count(l => l.FechaVencimiento.HasValue && l.FechaVencimiento.Value <= DateTime.Today.AddDays(30) && l.FechaVencimiento.Value > DateTime.Today)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-danger h-100">
+                <div class="card-body py-2 text-center">
+                    <div class="text-muted small">Vencidos</div>
+                    <div class="fs-4 fw-bold text-danger">@_lotes.Count(l => l.FechaVencimiento.HasValue && l.FechaVencimiento.Value < DateTime.Today)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Lotes -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white border-bottom py-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-table me-2"></i>Listado de Lotes</h6>
+                <div>
+                    <button class="btn btn-sm btn-outline-success me-2" @onclick="ExportarExcel" title="Exportar a Excel">
+                        <i class="bi bi-file-earmark-excel"></i>
+                    </button>
+                    <button class="btn btn-sm btn-primary" @onclick="() => _mostrarModalNuevo = true">
+                        <i class="bi bi-plus-lg me-1"></i>Nuevo Lote
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 5%"><i class="bi bi-hash"></i></th>
+                        <th style="width: 25%">Producto</th>
+                        <th style="width: 12%">Nro. Lote</th>
+                        <th style="width: 10%">Depósito</th>
+                        <th style="width: 10%" class="text-end">Stock</th>
+                        <th style="width: 10%">Vencimiento</th>
+                        <th style="width: 10%">Fecha Ingreso</th>
+                        <th style="width: 8%" class="text-center">Estado</th>
+                        <th style="width: 10%" class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_cargando)
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status"></div>
+                                <div class="mt-2 text-muted">Cargando lotes...</div>
+                            </td>
+                        </tr>
+                    }
+                    else if (!_lotes.Any())
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No se encontraron lotes con los filtros aplicados
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var lote in _lotes)
+                        {
+                            var estado = ObtenerEstadoLote(lote);
+                            <tr class="@(estado.Clase)">
+                                <td>@lote.IdProductoLote</td>
+                                <td>
+                                    <div class="fw-semibold">@lote.Producto?.Descripcion</div>
+                                    <small class="text-muted">@lote.Producto?.CodigoBarras</small>
+                                </td>
+                                <td><span class="badge bg-secondary">@lote.NumeroLote</span></td>
+                                <td>@lote.Deposito?.Nombre</td>
+                                <td class="text-end">
+                                    <span class="@(lote.Stock <= 0 ? "text-danger" : lote.Stock < 10 ? "text-warning" : "text-success") fw-bold">
+                                        @lote.Stock.ToString("N0")
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (lote.FechaVencimiento.HasValue)
+                                    {
+                                        <span class="@estado.TextoClase">
+                                            @lote.FechaVencimiento.Value.ToString("dd/MM/yyyy")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td>@lote.FechaIngreso.ToString("dd/MM/yyyy")</td>
+                                <td class="text-center">
+                                    <span class="badge @estado.BadgeClase">@estado.Texto</span>
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" title="Editar" @onclick="() => EditarLote(lote)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-info" title="Ver movimientos" @onclick="() => VerMovimientos(lote)">
+                                            <i class="bi bi-clock-history"></i>
+                                        </button>
+                                        @if (lote.Stock <= 0)
+                                        {
+                                            <button class="btn btn-outline-danger" title="Eliminar" @onclick="() => ConfirmarEliminar(lote)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo/Editar Lote -->
+@if (_mostrarModalNuevo || _loteEditando != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white py-2">
+                    <h5 class="modal-title">
+                        <i class="bi bi-box-seam me-2"></i>
+                        @(_loteEditando == null ? "Nuevo Lote" : "Editar Lote")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Producto <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" placeholder="Buscar producto..." 
+                               @bind="_busquedaProducto" @bind:event="oninput" @onkeyup="BuscarProductosAsync"
+                               disabled="@(_loteEditando != null)" />
+                        @if (_productosEncontrados.Any() && _loteEditando == null)
+                        {
+                            <div class="list-group mt-1 shadow-sm" style="max-height: 200px; overflow-y: auto;">
+                                @foreach (var prod in _productosEncontrados.Take(10))
+                                {
+                                    <button type="button" class="list-group-item list-group-item-action py-1"
+                                            @onclick="() => SeleccionarProducto(prod)">
+                                        <div class="d-flex justify-content-between">
+                                            <span>@prod.Descripcion</span>
+                                            <small class="text-muted">@prod.CodigoBarras</small>
+                                        </div>
+                                    </button>
+                                }
+                            </div>
+                        }
+                        @if (_productoSeleccionado != null)
+                        {
+                            <div class="alert alert-info py-1 px-2 mt-1 mb-0">
+                                <i class="bi bi-check-circle me-1"></i>@_productoSeleccionado.Descripcion
+                            </div>
+                        }
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Número de Lote <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_nuevoNumeroLote" placeholder="Ej: LOT-2026-001" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha Vencimiento</label>
+                            <input type="date" class="form-control" @bind="_nuevoFechaVencimiento" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Depósito <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="_nuevoIdDeposito" disabled="@(_loteEditando != null)">
+                                <option value="0">-- Seleccionar --</option>
+                                @foreach (var dep in _depositos)
+                                {
+                                    <option value="@dep.IdDeposito">@dep.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Stock Inicial</label>
+                            <input type="number" class="form-control" @bind="_nuevoStock" min="0" 
+                                   disabled="@(_loteEditando != null)" />
+                            @if (_loteEditando != null)
+                            {
+                                <small class="text-muted">El stock se modifica mediante ajustes o ventas</small>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button class="btn btn-outline-secondary" @onclick="CerrarModal">
+                        <i class="bi bi-x-lg me-1"></i>Cancelar
+                    </button>
+                    <button class="btn btn-primary" @onclick="GuardarLoteAsync" disabled="@_guardando">
+                        @if (_guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Confirmar Eliminar -->
+@if (_loteEliminar != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white py-2">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Confirmar Eliminación</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _loteEliminar = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Está seguro de eliminar el lote <strong>@_loteEliminar.NumeroLote</strong>?</p>
+                    <p class="text-muted small">Esta acción no se puede deshacer.</p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button class="btn btn-outline-secondary" @onclick="() => _loteEliminar = null">Cancelar</button>
+                    <button class="btn btn-danger" @onclick="EliminarLoteAsync">
+                        <i class="bi bi-trash me-1"></i>Eliminar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private List<ProductoLote> _lotes = new();
+    private List<Deposito> _depositos = new();
+    private List<Producto> _productosEncontrados = new();
+    private Producto? _productoSeleccionado;
+    private ProductoLote? _loteEditando;
+    private ProductoLote? _loteEliminar;
+    
+    private bool _cargando = true;
+    private bool _guardando;
+    private bool _mostrarModalNuevo;
+    
+    // Filtros
+    private string _filtroProducto = "";
+    private string _filtroLote = "";
+    private int _filtroDeposito;
+    private string _filtroEstado = "";
+    private string _filtroVencimiento = "";
+    
+    // Nuevo lote
+    private string _busquedaProducto = "";
+    private string _nuevoNumeroLote = "";
+    private DateTime? _nuevoFechaVencimiento;
+    private int _nuevoIdDeposito;
+    private decimal _nuevoStock;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosAsync();
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        _cargando = true;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            _depositos = await ctx.Depositos.Where(d => d.Activo).OrderBy(d => d.Nombre).ToListAsync();
+            
+            await FiltrarAsync();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task FiltrarAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        var query = ctx.ProductosLotes
+            .Include(l => l.Producto)
+            .Include(l => l.Deposito)
+            .AsQueryable();
+
+        // Filtro por producto
+        if (!string.IsNullOrWhiteSpace(_filtroProducto))
+        {
+            var filtro = _filtroProducto.ToLower();
+            query = query.Where(l => l.Producto!.Descripcion.ToLower().Contains(filtro) ||
+                                     (l.Producto.CodigoBarras != null && l.Producto.CodigoBarras.ToLower().Contains(filtro)));
+        }
+
+        // Filtro por lote
+        if (!string.IsNullOrWhiteSpace(_filtroLote))
+        {
+            query = query.Where(l => l.NumeroLote.Contains(_filtroLote));
+        }
+
+        // Filtro por depósito
+        if (_filtroDeposito > 0)
+        {
+            query = query.Where(l => l.IdDeposito == _filtroDeposito);
+        }
+
+        // Filtro por estado stock
+        switch (_filtroEstado)
+        {
+            case "con_stock":
+                query = query.Where(l => l.Stock > 0);
+                break;
+            case "sin_stock":
+                query = query.Where(l => l.Stock <= 0);
+                break;
+            case "stock_bajo":
+                query = query.Where(l => l.Stock > 0 && l.Stock < 10);
+                break;
+        }
+
+        // Filtro por vencimiento
+        var hoy = DateTime.Today;
+        switch (_filtroVencimiento)
+        {
+            case "vencido":
+                query = query.Where(l => l.FechaVencimiento.HasValue && l.FechaVencimiento.Value < hoy);
+                break;
+            case "prox_30":
+                query = query.Where(l => l.FechaVencimiento.HasValue && 
+                                         l.FechaVencimiento.Value >= hoy && 
+                                         l.FechaVencimiento.Value <= hoy.AddDays(30));
+                break;
+            case "prox_60":
+                query = query.Where(l => l.FechaVencimiento.HasValue && 
+                                         l.FechaVencimiento.Value >= hoy && 
+                                         l.FechaVencimiento.Value <= hoy.AddDays(60));
+                break;
+            case "prox_90":
+                query = query.Where(l => l.FechaVencimiento.HasValue && 
+                                         l.FechaVencimiento.Value >= hoy && 
+                                         l.FechaVencimiento.Value <= hoy.AddDays(90));
+                break;
+        }
+
+        _lotes = await query.OrderBy(l => l.FechaVencimiento).ThenBy(l => l.Producto!.Descripcion).ToListAsync();
+        _cargando = false;
+        StateHasChanged();
+    }
+
+    private void LimpiarFiltros()
+    {
+        _filtroProducto = "";
+        _filtroLote = "";
+        _filtroDeposito = 0;
+        _filtroEstado = "";
+        _filtroVencimiento = "";
+        _ = FiltrarAsync();
+    }
+
+    private (string Texto, string Clase, string TextoClase, string BadgeClase) ObtenerEstadoLote(ProductoLote lote)
+    {
+        if (lote.Stock <= 0)
+            return ("Sin Stock", "table-secondary", "text-muted", "bg-secondary");
+            
+        if (!lote.FechaVencimiento.HasValue)
+            return ("OK", "", "", "bg-success");
+            
+        var diasRestantes = (lote.FechaVencimiento.Value - DateTime.Today).Days;
+        
+        if (diasRestantes < 0)
+            return ("Vencido", "table-danger", "text-danger fw-bold", "bg-danger");
+        if (diasRestantes <= 30)
+            return ("Próximo", "table-warning", "text-warning fw-bold", "bg-warning text-dark");
+        if (diasRestantes <= 60)
+            return ("Atención", "table-info", "text-info", "bg-info text-dark");
+            
+        return ("OK", "", "text-success", "bg-success");
+    }
+
+    private async Task BuscarProductosAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_busquedaProducto) || _busquedaProducto.Length < 2)
+        {
+            _productosEncontrados.Clear();
+            return;
+        }
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var filtro = _busquedaProducto.ToLower();
+        
+        _productosEncontrados = await ctx.Productos
+            .Where(p => p.Activo && p.ControlaLote &&
+                       (p.Descripcion.ToLower().Contains(filtro) ||
+                        (p.CodigoBarras != null && p.CodigoBarras.Contains(filtro))))
+            .Take(10)
+            .ToListAsync();
+    }
+
+    private void SeleccionarProducto(Producto producto)
+    {
+        _productoSeleccionado = producto;
+        _busquedaProducto = producto.Descripcion;
+        _productosEncontrados.Clear();
+    }
+
+    private void EditarLote(ProductoLote lote)
+    {
+        _loteEditando = lote;
+        _productoSeleccionado = lote.Producto;
+        _busquedaProducto = lote.Producto?.Descripcion ?? "";
+        _nuevoNumeroLote = lote.NumeroLote;
+        _nuevoFechaVencimiento = lote.FechaVencimiento;
+        _nuevoIdDeposito = lote.IdDeposito;
+        _nuevoStock = lote.Stock;
+    }
+
+    private void CerrarModal()
+    {
+        _mostrarModalNuevo = false;
+        _loteEditando = null;
+        _productoSeleccionado = null;
+        _busquedaProducto = "";
+        _nuevoNumeroLote = "";
+        _nuevoFechaVencimiento = null;
+        _nuevoIdDeposito = 0;
+        _nuevoStock = 0;
+        _productosEncontrados.Clear();
+    }
+
+    private async Task GuardarLoteAsync()
+    {
+        // Validaciones
+        if (_loteEditando == null && _productoSeleccionado == null)
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar un producto");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_nuevoNumeroLote))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe ingresar el número de lote");
+            return;
+        }
+        if (_nuevoIdDeposito <= 0 && _loteEditando == null)
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar un depósito");
+            return;
+        }
+
+        _guardando = true;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            if (_loteEditando != null)
+            {
+                // Actualizar existente (solo número y fecha vencimiento)
+                var lote = await ctx.ProductosLotes.FindAsync(_loteEditando.IdProductoLote);
+                if (lote != null)
+                {
+                    lote.NumeroLote = _nuevoNumeroLote;
+                    lote.FechaVencimiento = _nuevoFechaVencimiento;
+                    await ctx.SaveChangesAsync();
+                }
+            }
+            else
+            {
+                // Crear nuevo
+                var nuevoLote = new ProductoLote
+                {
+                    IdProducto = _productoSeleccionado!.IdProducto,
+                    IdDeposito = _nuevoIdDeposito,
+                    NumeroLote = _nuevoNumeroLote,
+                    FechaVencimiento = _nuevoFechaVencimiento,
+                    FechaIngreso = DateTime.Now,
+                    Stock = _nuevoStock,
+                    StockInicial = _nuevoStock,
+                    CostoUnitario = 0,
+                    Estado = "Activo"
+                };
+                ctx.ProductosLotes.Add(nuevoLote);
+                await ctx.SaveChangesAsync();
+            }
+
+            CerrarModal();
+            await FiltrarAsync();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}");
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private void ConfirmarEliminar(ProductoLote lote)
+    {
+        _loteEliminar = lote;
+    }
+
+    private async Task EliminarLoteAsync()
+    {
+        if (_loteEliminar == null) return;
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var lote = await ctx.ProductosLotes.FindAsync(_loteEliminar.IdProductoLote);
+            if (lote != null)
+            {
+                ctx.ProductosLotes.Remove(lote);
+                await ctx.SaveChangesAsync();
+            }
+            _loteEliminar = null;
+            await FiltrarAsync();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al eliminar: {ex.Message}");
+        }
+    }
+
+    private void VerMovimientos(ProductoLote lote)
+    {
+        Nav.NavigateTo($"/inventario/movimientos-lote/{lote.IdProductoLote}");
+    }
+
+    private async Task ExportarExcel()
+    {
+        // TODO: Implementar exportación a Excel
+        await JS.InvokeVoidAsync("alert", "Funcionalidad en desarrollo");
+    }
+}

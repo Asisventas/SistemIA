@@ -134,14 +134,17 @@
             <th class="text-end">Precio Gs</th>
             <th class="text-end">Precio $</th>
             <th class="text-end">Stock</th>
+            <th class="text-end">Paq.</th>
             <th class="text-end">Stock Mín.</th>
+            <th class="text-center">Lotes</th>
+            <th>Prox. Venc.</th>
             <th>Estado</th>
           </tr>
         </thead>
         <tbody>
           @if (!filas.Any())
           {
-            <tr><td colspan="15" class="text-muted text-center py-3">Sin resultados</td></tr>
+            <tr><td colspan="18" class="text-muted text-center py-3">Sin resultados</td></tr>
           }
           else
           {
@@ -202,7 +205,46 @@
                     @r.Stock.ToString("N2")
                   }
                 </td>
+                <td class="text-end">
+                  @if (cantPaq > 1 && paquetes > 0)
+                  {
+                    <span class="text-info fw-semibold" title="@cantPaq unid/paq">@paquetes.ToString("N0")@(unidadesSueltas > 0 ? $" +{unidadesSueltas:N0}" : "")</span>
+                  }
+                  else if (cantPaq > 1)
+                  {
+                    <span class="text-muted" title="@cantPaq unid/paq">0</span>
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
+                </td>
                 <td class="text-end">@r.StockMinimo.ToString("N2")</td>
+                <td class="text-center">
+                  @if (r.CantidadLotes > 0)
+                  {
+                    <span class="badge bg-info" title="Lotes con stock">@r.CantidadLotes</span>
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
+                </td>
+                <td>
+                  @if (r.ProximoVencimiento.HasValue)
+                  {
+                    var diasPara = (r.ProximoVencimiento.Value.Date - DateTime.Today).TotalDays;
+                    var colorVenc = diasPara < 0 ? "text-danger fw-bold" : (diasPara <= 30 ? "text-warning" : "text-muted");
+                    var iconVenc = diasPara < 0 ? "bi-exclamation-triangle-fill" : (diasPara <= 30 ? "bi-exclamation-circle" : "bi-calendar3");
+                    <span class="@colorVenc" title="@(diasPara < 0 ? "VENCIDO" : $"Vence en {diasPara:N0} días")">
+                      <i class="bi @iconVenc me-1"></i>@r.ProximoVencimiento.Value.ToString("dd/MM/yy")
+                    </span>
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
+                </td>
                 <td>
                   @if (r.Activo)
                   {
@@ -224,6 +266,9 @@
             <th class="text-end">@filas.Sum(x => x.PrecioGs).ToString("N0")</th>
             <th class="text-end">@filas.Sum(x => x.PrecioUsd ?? 0).ToString("N2")</th>
             <th class="text-end">@filas.Sum(x => x.Stock).ToString("N2")</th>
+            <th></th>
+            <th></th>
+            <th class="text-center">@filas.Sum(x => x.CantidadLotes)</th>
             <th></th>
             <th></th>
           </tr>
@@ -374,12 +419,28 @@
 
     var data = await q.OrderBy(x => x.Descripcion).Take(5000).ToListAsync();
 
+    // Obtener información de lotes por producto (con stock > 0)
+    var productIds = data.Select(x => x.IdProducto).ToHashSet();
+    var lotesInfo = await ctx.ProductosLotes.AsNoTracking()
+      .Where(l => productIds.Contains(l.IdProducto) && l.Stock > 0)
+      .GroupBy(l => l.IdProducto)
+      .Select(g => new {
+        IdProducto = g.Key,
+        CantidadLotes = g.Count(),
+        ProximoVencimiento = g.Where(l => l.FechaVencimiento.HasValue).Min(l => l.FechaVencimiento)
+      })
+      .ToListAsync();
+    var lotesPorProducto = lotesInfo.ToDictionary(x => x.IdProducto, x => (CantLotes: x.CantidadLotes, Venc: x.ProximoVencimiento));
+
     filas = data.Select(x => {
       // Determinar stock y stock mínimo según filtro de depósito
       decimal stock, stockMin;
       // Stock del depósito seleccionado o suma de todos los depósitos
       stock = stocksPorProducto.GetValueOrDefault(x.IdProducto, 0);
       stockMin = stockMinPorProducto.GetValueOrDefault(x.IdProducto, 0);
+      
+      // Info de lotes
+      var lotesData = lotesPorProducto.GetValueOrDefault(x.IdProducto, (CantLotes: 0, Venc: null));
       
       return new Fila {
         IdProducto = x.IdProducto,
@@ -398,7 +459,9 @@
         PrecioUsd = x.PrecioUnitarioUsd,
         Stock = stock,
         StockMinimo = stockMin,
-        Activo = x.Activo
+        Activo = x.Activo,
+        CantidadLotes = lotesData.CantLotes,
+        ProximoVencimiento = lotesData.Venc
       };
     }).ToList();
     
@@ -468,7 +531,7 @@
 
     // Tabla
     sb.AppendLine("  <table class=\"table table-sm tabla\">");
-    sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th>Cód. Barras</th><th>Marca</th><th>Clasif.</th><th>Unidad</th><th>IVA</th><th>Tipo</th><th class='right'>Costo Gs</th><th class='right'>Precio Gs</th><th class='right'>Precio $</th><th class='right'>Stock</th><th class='right'>Stock Mín.</th><th>Estado</th></tr></thead>");
+    sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th>Cód. Barras</th><th>Marca</th><th>Clasif.</th><th>Unidad</th><th>IVA</th><th>Tipo</th><th class='right'>Costo Gs</th><th class='right'>Precio Gs</th><th class='right'>Precio $</th><th class='right'>Stock</th><th class='right'>Paq.</th><th class='right'>Stock Mín.</th><th>Estado</th></tr></thead>");
     sb.AppendLine("    <tbody>");
     int n = 0;
     foreach (var r in filas)
@@ -476,10 +539,14 @@
       var rowClass = (r.Stock < r.StockMinimo && r.StockMinimo > 0) ? "bajo-stock" : "";
       var tipo = r.TipoItem == 1 ? "Prod" : "Serv";
       var estado = r.Activo ? "Activo" : "Inactivo";
-      sb.AppendLine($"      <tr class='{rowClass}'><td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoBarras ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.UnidadMedida)}</td><td>{System.Net.WebUtility.HtmlEncode(r.TipoIva)}</td><td>{tipo}</td><td class='right'>{(r.CostoGs.HasValue ? r.CostoGs.Value.ToString("N0") : "-")}</td><td class='right'>{r.PrecioGs:N0}</td><td class='right'>{(r.PrecioUsd.HasValue ? r.PrecioUsd.Value.ToString("N2") : "-")}</td><td class='right'>{r.Stock:N2}</td><td class='right'>{r.StockMinimo:N2}</td><td>{estado}</td></tr>");
+      var cantPaqPrint = r.CantidadPorPaquete ?? 1;
+      var paqCalc = cantPaqPrint > 1 ? Math.Floor(r.Stock / cantPaqPrint) : 0;
+      var unidSueltasCalc = cantPaqPrint > 1 ? r.Stock % cantPaqPrint : 0;
+      var paqDisplay = cantPaqPrint > 1 ? (paqCalc > 0 ? $"{paqCalc:N0}{(unidSueltasCalc > 0 ? $" +{unidSueltasCalc:N0}" : "")}" : "0") : "-";
+      sb.AppendLine($"      <tr class='{rowClass}'><td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoBarras ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.UnidadMedida)}</td><td>{System.Net.WebUtility.HtmlEncode(r.TipoIva)}</td><td>{tipo}</td><td class='right'>{(r.CostoGs.HasValue ? r.CostoGs.Value.ToString("N0") : "-")}</td><td class='right'>{r.PrecioGs:N0}</td><td class='right'>{(r.PrecioUsd.HasValue ? r.PrecioUsd.Value.ToString("N2") : "-")}</td><td class='right'>{r.Stock:N2}</td><td class='right'>{paqDisplay}</td><td class='right'>{r.StockMinimo:N2}</td><td>{estado}</td></tr>");
     }
     sb.AppendLine("    </tbody>");
-    sb.AppendLine($"    <tfoot><tr><th colspan='9' class='right'>Totales</th><th class='right'>{filas.Sum(x => x.CostoGs ?? 0):N0}</th><th class='right'>{filas.Sum(x => x.PrecioGs):N0}</th><th class='right'>{filas.Sum(x => x.PrecioUsd ?? 0):N2}</th><th class='right'>{filas.Sum(x => x.Stock):N2}</th><th></th><th></th></tr></tfoot>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='9' class='right'>Totales</th><th class='right'>{filas.Sum(x => x.CostoGs ?? 0):N0}</th><th class='right'>{filas.Sum(x => x.PrecioGs):N0}</th><th class='right'>{filas.Sum(x => x.PrecioUsd ?? 0):N2}</th><th class='right'>{filas.Sum(x => x.Stock):N2}</th><th></th><th></th><th></th></tr></tfoot>");
     sb.AppendLine("  </table>");
     sb.AppendLine("</div>");
 
@@ -495,10 +562,12 @@
     var usuario = auth.User?.Identity?.Name ?? "";
     var suc = SucursalProvider.GetSucursalNombre() ?? "";
     sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
-    sb.AppendLine(string.Join(sep, new[] { "Nro", "Código", "Descripción", "Cód. Barras", "Marca", "Clasificación", "Unidad", "IVA", "Tipo", "Costo Gs", "Precio Gs", "Precio $", "Stock", "Stock Mín.", "Estado" }));
+    sb.AppendLine(string.Join(sep, new[] { "Nro", "Código", "Descripción", "Cód. Barras", "Marca", "Clasificación", "Unidad", "IVA", "Tipo", "Costo Gs", "Precio Gs", "Precio $", "Stock", "Paq.", "Stock Mín.", "Cant. Lotes", "Prox. Venc.", "Estado" }));
     int n = 0;
     foreach (var r in filas)
     {
+      var cantPaqCsv = r.CantidadPorPaquete ?? 1;
+      var paqCalcCsv = cantPaqCsv > 1 ? Math.Floor(r.Stock / cantPaqCsv) : 0;
       string[] cols = new[]
       {
         (++n).ToString(),
@@ -514,7 +583,10 @@
         r.PrecioGs.ToString(System.Globalization.CultureInfo.InvariantCulture),
         (r.PrecioUsd ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
         r.Stock.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        cantPaqCsv > 1 ? paqCalcCsv.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-",
         r.StockMinimo.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.CantidadLotes.ToString(),
+        r.ProximoVencimiento?.ToString("yyyy-MM-dd") ?? "",
         r.Activo ? "Activo" : "Inactivo"
       };
       var line = string.Join(sep, cols.Select(v => !string.IsNullOrEmpty(v) && (v.Contains(sep) || v.Contains('"') || v.Contains('\n')) ? $"\"{v.Replace("\"", "\"\"")}\"" : v ?? ""));
@@ -541,13 +613,15 @@
     ws.Cell(row, 1).Value = "Usuario"; ws.Cell(row, 2).Value = usuario; row++;
     ws.Cell(row, 1).Value = "Sucursal"; ws.Cell(row, 2).Value = suc; row += 2;
 
-    var headers = new[] { "#", "Código", "Descripción", "Cód. Barras", "Marca", "Clasificación", "Unidad", "IVA", "Tipo", "Costo Gs", "Precio Gs", "Precio $", "Stock", "Stock Mín.", "Estado" };
+    var headers = new[] { "#", "Código", "Descripción", "Cód. Barras", "Marca", "Clasificación", "Unidad", "IVA", "Tipo", "Costo Gs", "Precio Gs", "Precio $", "Stock", "Paq.", "Stock Mín.", "Lotes", "Prox. Venc.", "Estado" };
     for (int c = 0; c < headers.Length; c++) ws.Cell(row, c + 1).Value = headers[c];
     ws.Range(row, 1, row, headers.Length).Style.Font.Bold = true; row++;
 
-    int n = 0; decimal totalCostoGs = 0, totalPrecioGs = 0, totalPrecioUsd = 0, totalStock = 0;
+    int n = 0; decimal totalCostoGs = 0, totalPrecioGs = 0, totalPrecioUsd = 0, totalStock = 0; int totalLotes = 0;
     foreach (var r in filas)
     {
+      var cantPaqXls = r.CantidadPorPaquete ?? 1;
+      var paqCalcXls = cantPaqXls > 1 ? Math.Floor(r.Stock / cantPaqXls) : 0;
       ws.Cell(row, 1).Value = ++n;
       ws.Cell(row, 2).Value = r.CodigoInterno;
       ws.Cell(row, 3).Value = r.Descripcion;
@@ -561,17 +635,30 @@
       ws.Cell(row, 11).Value = r.PrecioGs; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0";
       ws.Cell(row, 12).Value = r.PrecioUsd ?? 0m; ws.Cell(row, 12).Style.NumberFormat.Format = "#,##0.00";
       ws.Cell(row, 13).Value = r.Stock; ws.Cell(row, 13).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row, 14).Value = r.StockMinimo; ws.Cell(row, 14).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row, 15).Value = r.Activo ? "Activo" : "Inactivo";
+      if (cantPaqXls > 1) { ws.Cell(row, 14).Value = paqCalcXls; ws.Cell(row, 14).Style.NumberFormat.Format = "#,##0"; }
+      else { ws.Cell(row, 14).Value = "-"; }
+      ws.Cell(row, 15).Value = r.StockMinimo; ws.Cell(row, 15).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row, 16).Value = r.CantidadLotes; ws.Cell(row, 16).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row, 17).Value = r.ProximoVencimiento; if (r.ProximoVencimiento.HasValue) ws.Cell(row, 17).Style.DateFormat.Format = "yyyy-MM-dd";
+      ws.Cell(row, 18).Value = r.Activo ? "Activo" : "Inactivo";
       
       // Resaltar bajo stock
       if (r.Stock < r.StockMinimo && r.StockMinimo > 0)
         ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.LightYellow;
       
+      // Resaltar próximo a vencer (rojo si vencido, amarillo si <30 días)
+      if (r.ProximoVencimiento.HasValue)
+      {
+        var diasPara = (r.ProximoVencimiento.Value.Date - DateTime.Today).TotalDays;
+        if (diasPara < 0) ws.Cell(row, 17).Style.Font.FontColor = XLColor.Red;
+        else if (diasPara <= 30) ws.Cell(row, 17).Style.Font.FontColor = XLColor.Orange;
+      }
+      
       totalCostoGs += r.CostoGs ?? 0;
       totalPrecioGs += r.PrecioGs;
       totalPrecioUsd += r.PrecioUsd ?? 0;
       totalStock += r.Stock;
+      totalLotes += r.CantidadLotes;
       row++;
     }
 
@@ -580,6 +667,7 @@
     ws.Cell(row, 11).Value = totalPrecioGs; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 11).Style.Font.Bold = true;
     ws.Cell(row, 12).Value = totalPrecioUsd; ws.Cell(row, 12).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 12).Style.Font.Bold = true;
     ws.Cell(row, 13).Value = totalStock; ws.Cell(row, 13).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 13).Style.Font.Bold = true;
+    ws.Cell(row, 16).Value = totalLotes; ws.Cell(row, 16).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 16).Style.Font.Bold = true;
     
     ws.Columns().AdjustToContents();
     using var ms = new System.IO.MemoryStream();
@@ -608,6 +696,9 @@
     public decimal Stock { get; set; }
     public decimal StockMinimo { get; set; }
     public bool Activo { get; set; }
+    // Información de lotes (FEFO)
+    public int CantidadLotes { get; set; } // Cantidad de lotes con stock
+    public DateTime? ProximoVencimiento { get; set; } // Fecha de vencimiento más próxima
   }
 
   private string ObtenerFiltrosTexto()
@@ -642,13 +733,27 @@
     sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Costo Gs</th>");
     sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Precio Gs</th>");
     sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Stock</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Paq.</th>");
     sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Stock Mín.</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:center;'>Lotes</th>");
+    sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Prox. Venc.</th>");
     sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Estado</th>");
     sb.AppendLine("</tr></thead><tbody>");
     int n = 0;
     foreach (var r in filas)
     {
       var rowStyle = (r.Stock < r.StockMinimo && r.StockMinimo > 0) ? "background:#fff3cd;" : "";
+      var cantPaqHtml = r.CantidadPorPaquete ?? 1;
+      var paqCalcHtml = cantPaqHtml > 1 ? Math.Floor(r.Stock / cantPaqHtml) : 0;
+      var paqDisplayHtml = cantPaqHtml > 1 ? paqCalcHtml.ToString("N0") : "-";
+      var vencStr = r.ProximoVencimiento.HasValue ? r.ProximoVencimiento.Value.ToString("dd/MM/yy") : "-";
+      var vencStyle = "";
+      if (r.ProximoVencimiento.HasValue)
+      {
+        var diasPara = (r.ProximoVencimiento.Value.Date - DateTime.Today).TotalDays;
+        if (diasPara < 0) vencStyle = "color:red;font-weight:bold;";
+        else if (diasPara <= 30) vencStyle = "color:orange;";
+      }
       sb.AppendLine($"<tr style='{rowStyle}'>");
       sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{++n}</td>");
       sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td>");
@@ -659,7 +764,10 @@
       sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(r.CostoGs.HasValue ? r.CostoGs.Value.ToString("N0") : "-")}</td>");
       sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.PrecioGs:N0}</td>");
       sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.Stock:N2}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{paqDisplayHtml}</td>");
       sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{r.StockMinimo:N2}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:center;'>{(r.CantidadLotes > 0 ? r.CantidadLotes.ToString() : "-")}</td>");
+      sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;{vencStyle}'>{vencStr}</td>");
       sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{(r.Activo ? "Activo" : "Inactivo")}</td>");
       sb.AppendLine("</tr>");
     }
@@ -669,6 +777,8 @@
     sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{filas.Sum(x => x.CostoGs ?? 0):N0}</td>");
     sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{filas.Sum(x => x.PrecioGs):N0}</td>");
     sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{filas.Sum(x => x.Stock):N2}</td>");
+    sb.AppendLine($"<td colspan='2' style='border:1px solid #ddd;padding:4px;'></td>");
+    sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:center;'>{filas.Sum(x => x.CantidadLotes)}</td>");
     sb.AppendLine($"<td colspan='2' style='border:1px solid #ddd;padding:4px;'></td>");
     sb.AppendLine("</tr></tfoot></table>");
     return Task.FromResult(sb.ToString());

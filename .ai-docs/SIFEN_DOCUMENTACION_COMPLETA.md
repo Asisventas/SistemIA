@@ -1514,21 +1514,23 @@ El XML generado por SistemIA **pasó todas las validaciones** del prevalidador o
 
 ### 🔧 Correcciones Clave Implementadas
 
-#### 1. URL del QR: Producción vs Test
-**IMPORTANTE:** El prevalidador rechaza URLs de test (`consultas-test/qr`). Debe usarse siempre la URL de producción:
+#### 1. URL del QR: Según Ambiente
+La URL del QR debe corresponder al ambiente configurado en `sociedad.ServidorSifen`:
 
 | Ambiente | URL QR Correcta |
 |----------|-----------------|
-| Test | `https://ekuatia.set.gov.py/consultas/qr?` |
+| Test | `https://ekuatia.set.gov.py/consultas-test/qr?` |
 | Producción | `https://ekuatia.set.gov.py/consultas/qr?` |
 
-**Archivo modificado:** `Services/DEXmlBuilder.cs` línea 506
+**Implementación en** `Services/DEXmlBuilder.cs` línea 506:
 ```csharp
-// ANTES (rechazado por prevalidador):
-string defaultQr = "https://ekuatia.set.gov.py/consultas-test/qr?";
+// URL según ambiente configurado
+string defaultQr = ambiente == "prod" 
+    ? "https://ekuatia.set.gov.py/consultas/qr?"
+    : "https://ekuatia.set.gov.py/consultas-test/qr?";
 
-// DESPUÉS (aceptado):
-string defaultQr = "https://ekuatia.set.gov.py/consultas/qr?";
+// PRIORIDAD: URL de BD (sociedad.DeUrlQr) > default según ambiente
+string urlQrBase = sociedad.DeUrlQr ?? defaultQr;
 ```
 
 #### 2. Escape de Ampersand en QR: Simple, NO Doble
@@ -1630,3 +1632,153 @@ var soap = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
 2. **Comparar con librería Java** - Ejecutar la librería de Roshka y capturar su tráfico
 3. **Probar sin declaración XML** - Algunos servidores no la esperan en SOAP
 4. **Verificar TLS/SSL** - Asegurar que el certificado cliente se envía correctamente
+
+---
+
+## 🔴 Sesión 16-Ene-2026: DESCUBRIMIENTO CRÍTICO - Estructura XML del Signature
+
+### ⚠️ HALLAZGO DEFINITIVO: 3 Diferencias Estructurales Críticas
+
+Se comparó el XML generado (`v285_debug.json`) con el XML de referencia **APROBADO** por SIFEN (`xmlRequestVenta_273_sync.xml`) y se encontraron **3 diferencias críticas** que causan el error 0160:
+
+| Elemento | XML Referencia (FUNCIONA) | Nuestro XML (ERROR 0160) |
+|----------|---------------------------|--------------------------|
+| `<gCamGen />` | ❌ **NO presente** | ✅ Elemento vacío existe |
+| `<Signature>` namespace | `xmlns="http://www.w3.org/2000/09/xmldsig#"` | Sin namespace (se removía) |
+| Posición de Signature | **FUERA** de `</DE>`, hermano bajo `<rDE>` | **DENTRO** de `</DE>` como hijo |
+
+### 📐 Estructura XML Correcta (SIFEN Aprobado)
+
+```xml
+<rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" ...>
+  <dVerFor>150</dVerFor>
+  <DE Id="01004952197001002000027312026011516374472594">
+    <dDVId>4</dDVId>
+    <dFecFirma>2026-01-15T16:37:44</dFecFirma>
+    ... contenido del DE ...
+    <gTotSub>...</gTotSub>
+  </DE>                                    <!-- DE cierra AQUÍ -->
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>...</SignedInfo>           <!-- Signature FUERA de DE -->
+    <SignatureValue>...</SignatureValue>
+    <KeyInfo>...</KeyInfo>
+  </Signature>
+  <gCamFuFD>
+    <dCarQR>...</dCarQR>
+  </gCamFuFD>
+</rDE>
+```
+
+### 📐 Estructura XML Incorrecta (Nuestro código anterior)
+
+```xml
+<rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" ...>
+  <dVerFor>150</dVerFor>
+  <DE Id="...">
+    ... contenido del DE ...
+    <gTotSub>...</gTotSub>
+    <gCamGen />                            <!-- ❌ NO debe existir vacío -->
+    <Signature>                            <!-- ❌ SIN namespace -->
+      ...                                  <!-- ❌ DENTRO de DE -->
+    </Signature>
+  </DE>
+  <gCamFuFD>...</gCamFuFD>
+</rDE>
+```
+
+### ✅ Correcciones Aplicadas
+
+#### 1. Eliminado `<gCamGen />` vacío (DEXmlBuilder.cs)
+```csharp
+// FIX 16-Ene-2026: gCamGen NO aparece en el XML de referencia APROBADO por SIFEN
+// El XML xmlRequestVenta_273_sync.xml NO tiene <gCamGen /> vacío
+// Solo agregar si hay contenido real (condiciones de pago a crédito, etc.)
+// Para ventas simples al contado, NO incluir gCamGen
+
+var de = new XElement(NsSifen + "DE",
+    // ... campos ...
+    gTotSub
+    // gCamGen ELIMINADO - no aparece en XML de referencia APROBADO
+);
+```
+
+#### 2. Signature CON namespace XMLDSIG (Sifen.cs)
+```csharp
+// ANTES (INCORRECTO):
+QuitarNamespaceRecursivo(signature);  // ❌ Removía el namespace
+
+// DESPUÉS (CORRECTO):
+// NO quitar el namespace - Signature DEBE tener xmlns="http://www.w3.org/2000/09/xmldsig#"
+// El XML de referencia APROBADO tiene: <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+```
+
+#### 3. Signature FUERA de `</DE>` (Sifen.cs)
+```csharp
+// ANTES (INCORRECTO):
+// Insertaba Signature DENTRO de DE, después de gCamGen
+node.InsertAfter(importedSignature, gCamGen);  // ❌ node = DE
+
+// DESPUÉS (CORRECTO):
+// Insertar Signature FUERA de DE, como hermano bajo rDE, ANTES de gCamFuFD
+var gCamFuFDNode = doc.GetElementsByTagName("gCamFuFD").Cast<XmlNode>().FirstOrDefault();
+if (gCamFuFDNode != null)
+    rDE.InsertBefore(importedSignature, gCamFuFDNode);  // ✅ Antes de gCamFuFD
+else
+    rDE.InsertAfter(importedSignature, node);           // ✅ Después de DE (node)
+```
+
+### 📁 Archivos Modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `Services/DEXmlBuilder.cs` | Eliminado `<gCamGen />` vacío del elemento DE |
+| `Models/Sifen.cs` | Signature: mantener namespace, posicionar FUERA de DE |
+
+### 🔍 Archivos de Referencia Usados
+
+| Archivo | Descripción |
+|---------|-------------|
+| `Debug/v285_debug.json` | XML generado por SistemIA (con errores) |
+| `.ai-docs/SIFEN/respuesta_correoSifen/xmlRequestVenta_273_sync.xml` | XML **APROBADO** por SIFEN |
+
+### 📋 Tabla Resumen de Cambios en Sifen.cs
+
+| Método | Líneas | Cambio |
+|--------|--------|--------|
+| `FirmarXml` | ~900-920 | gCamGen: de CREAR a ELIMINAR vacíos |
+| `FirmarXml` | ~970-1030 | Signature: FUERA de DE, CON namespace |
+| `FirmarSinEnviar` | ~1680-1780 | Mismos cambios aplicados |
+
+### 🧪 Verificación de Posición de Signature
+
+```powershell
+# Script para verificar posición de Signature vs cierre de DE
+$xml = (Get-Content "Debug\v285_firmado.xml" -Raw)
+$posDE = $xml.IndexOf("</DE>")
+$posSig = $xml.IndexOf("<Signature")
+
+if ($posSig -gt $posDE) {
+    Write-Host "✅ CORRECTO: Signature FUERA de DE" -ForegroundColor Green
+} else {
+    Write-Host "❌ INCORRECTO: Signature DENTRO de DE" -ForegroundColor Red
+}
+
+Write-Host "Posición </DE>: $posDE"
+Write-Host "Posición <Signature: $posSig"
+```
+
+### 🔴 Estado Actual
+
+- ✅ DEXmlBuilder.cs corregido (gCamGen eliminado)
+- ✅ Sifen.cs corregido (Signature con namespace, fuera de DE)
+- ⏳ Pendiente: Compilar, reiniciar servidor y probar envío
+
+### 📖 Referencia: XML de Power Builder que FUNCIONA
+
+El XML `xmlRequestVenta_273_sync.xml` fue generado por el sistema **Power Builder** de la empresa que **SÍ es aceptado** por SIFEN. Este archivo sirvió como referencia definitiva para identificar las diferencias estructurales.
+
+**Características del XML de referencia:**
+- CDC: `01004952197001002000027312026011516374472594`
+- Sin elemento `<gCamGen />` vacío
+- Signature con `xmlns="http://www.w3.org/2000/09/xmldsig#"`
+- Signature posicionado entre `</DE>` y `<gCamFuFD>`

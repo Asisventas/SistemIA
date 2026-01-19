@@ -203,7 +203,8 @@
                                     <tr>
                                         <th style="width:80px;">Código</th>
                                         <th>Descripción</th>
-                                        <th style="width:90px;" class="text-end">Cantidad</th>
+                                        <th style="width:60px;" class="text-end">Paq.</th>
+                                        <th style="width:130px;" class="text-end">Cantidad</th>
                                         <th style="width:110px;" class="text-end">P. Unitario</th>
                                         <th style="width:80px;" class="text-end">% Desc.</th>
                                         <th style="width:70px;" class="text-center">IVA</th>
@@ -214,14 +215,46 @@
                                 <tbody>
                                     @foreach (var det in _detalles)
                                     {
+                                        var esPaquete = (det.CantidadPorPaquete ?? det.CantidadPorPaqueteMomento ?? 1) > 1;
+                                        var cantPorPaq = (int)(det.CantidadPorPaquete ?? det.CantidadPorPaqueteMomento ?? 1);
                                         <tr>
                                             <td>@det.CodigoProducto</td>
                                             <td>@det.NombreProducto</td>
+                                            <td class="text-center">
+                                                @if (esPaquete)
+                                                {
+                                                    <span class="badge bg-info text-dark" title="@cantPorPaq und/paq">x@cantPorPaq</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted" title="CPP:@(det.CantidadPorPaquete?.ToString() ?? "null") CPM:@(det.CantidadPorPaqueteMomento?.ToString() ?? "null")">-</span>
+                                                }
+                                            </td>
                                             <td>
-                                                <input type="number" class="form-control form-control-sm text-end" 
-                                                       step="@(det.PermiteDecimal ? "0.01" : "1")" 
-                                                       min="@(det.PermiteDecimal ? "0.01" : "1")" 
-                                                       @bind="det.Cantidad" @bind:after="() => ValidarYRecalcularLinea(det)" />
+                                                @if (esPaquete)
+                                                {
+                                                    <div class="d-flex gap-1 align-items-center">
+                                                        <select class="form-select form-select-sm" style="width:70px;" 
+                                                                @bind="det.ModoIngreso" @bind:after="() => OnModoIngresoNCChanged(det)">
+                                                            <option value="paquete">Paq</option>
+                                                            <option value="unidad">Und</option>
+                                                        </select>
+                                                        <input type="number" class="form-control form-control-sm text-end" style="width:60px;"
+                                                               step="1" min="1"
+                                                               @bind="det.CantidadIngresada" @bind:after="() => OnCantidadIngresadaNCChanged(det)" />
+                                                    </div>
+                                                    @if (det.ModoIngreso == "paquete")
+                                                    {
+                                                        <small class="text-muted">= @det.Cantidad.ToString("N0") und.</small>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <input type="number" class="form-control form-control-sm text-end" 
+                                                           step="@(det.PermiteDecimal ? "0.01" : "1")" 
+                                                           min="@(det.PermiteDecimal ? "0.01" : "1")" 
+                                                           @bind="det.Cantidad" @bind:after="() => ValidarYRecalcularLinea(det)" />
+                                                }
                                             </td>
                                             <td>
                                                 <input type="number" class="form-control form-control-sm text-end" 
@@ -243,7 +276,7 @@
                                     @if (!_detalles.Any())
                                     {
                                         <tr>
-                                            <td colspan="8" class="text-center text-muted py-3">
+                                            <td colspan="9" class="text-center text-muted py-3">
                                                 No hay productos. Haga clic en "Agregar" para comenzar.
                                             </td>
                                         </tr>
@@ -667,10 +700,31 @@
             _nc = nc;
             _detalles = nc.Detalles?.ToList() ?? new();
             
-            // Asignar PermiteDecimal desde el Producto cargado
+            // Asignar PermiteDecimal y campos de paquete desde el Producto cargado
             foreach (var det in _detalles)
             {
                 det.PermiteDecimal = det.Producto?.PermiteDecimal ?? false;
+                det.CantidadPorPaquete = det.Producto?.CantidadPorPaquete ?? det.CantidadPorPaqueteMomento ?? 1;
+                
+                // Restaurar modo de ingreso si existe, sino calcular
+                if (!string.IsNullOrEmpty(det.ModoIngresoPersistido))
+                {
+                    det.ModoIngreso = det.ModoIngresoPersistido;
+                    var cantPorPaq = (int)(det.CantidadPorPaquete ?? 1);
+                    if (det.ModoIngreso == "paquete" && cantPorPaq > 1)
+                    {
+                        det.CantidadIngresada = det.Cantidad / cantPorPaq;
+                    }
+                    else
+                    {
+                        det.CantidadIngresada = det.Cantidad;
+                    }
+                }
+                else
+                {
+                    det.ModoIngreso = "unidad";
+                    det.CantidadIngresada = det.Cantidad;
+                }
             }
             
             _clienteSeleccionado = nc.Cliente;
@@ -998,20 +1052,28 @@
     {
         var tasa = p.TipoIva?.Porcentaje ?? 10;
         
+        // Determinar si es producto con paquete
+        var cantPorPaq = p.CantidadPorPaquete ?? 1;
+        var esPaquete = (p.UnidadMedidaCodigo == "006" || p.UnidadMedidaCodigo == "005") && cantPorPaq > 1;
+        
         var det = new NotaCreditoVentaDetalle
         {
             IdProducto = p.IdProducto,
-            // NO asignar Producto = p para evitar conflictos de tracking
             CodigoProducto = p.CodigoInterno,
             NombreProducto = p.Descripcion,
-            Cantidad = 1,
+            Cantidad = esPaquete ? cantPorPaq : 1, // Si es paquete, cantidad inicial = 1 paquete
             PrecioUnitario = p.PrecioUnitarioGs,
             PorcentajeDescuento = 0,
             MontoDescuento = 0,
             TasaIVA = (int)tasa,
             IdTipoIva = p.IdTipoIva,
             CambioDelDia = _nc.CambioDelDia,
-            PermiteDecimal = p.PermiteDecimal
+            PermiteDecimal = p.PermiteDecimal,
+            // Campos de paquete
+            CantidadPorPaquete = cantPorPaq,
+            CantidadPorPaqueteMomento = cantPorPaq,
+            ModoIngreso = esPaquete ? "paquete" : "unidad",
+            CantidadIngresada = 1
         };
         
         CalcularLinea(det);
@@ -1025,6 +1087,40 @@
     {
         _detalles.Remove(det);
         RecalcularTotales();
+    }
+    
+    // ========== MÉTODOS PARA MODO PAQUETE/UNIDAD ==========
+    
+    private void OnModoIngresoNCChanged(NotaCreditoVentaDetalle det)
+    {
+        RecalcularCantidadNCPorModo(det);
+        CalcularLinea(det);
+        RecalcularTotales();
+    }
+    
+    private void OnCantidadIngresadaNCChanged(NotaCreditoVentaDetalle det)
+    {
+        if (det.CantidadIngresada < 1) det.CantidadIngresada = 1;
+        RecalcularCantidadNCPorModo(det);
+        CalcularLinea(det);
+        RecalcularTotales();
+    }
+    
+    private void RecalcularCantidadNCPorModo(NotaCreditoVentaDetalle det)
+    {
+        var cantPorPaq = (int)(det.CantidadPorPaquete ?? det.CantidadPorPaqueteMomento ?? 1);
+        
+        if (det.ModoIngreso == "paquete" && cantPorPaq > 1)
+        {
+            det.Cantidad = det.CantidadIngresada * cantPorPaq;
+        }
+        else
+        {
+            det.Cantidad = det.CantidadIngresada;
+        }
+        
+        // Actualizar modo persistido
+        det.ModoIngresoPersistido = det.ModoIngreso;
     }
 
     private void ValidarYRecalcularLinea(NotaCreditoVentaDetalle det)

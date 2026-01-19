@@ -1,5 +1,19 @@
 # 📋 Historial de Cambios - SistemIA
 
+## Versión 2026.01.06
+
+### 👥 Módulo de Asistencia - Mejoras
+- **NUEVO**: Campo Turno en registro de asistencia (entrada/salida)
+- **NUEVO**: Campo Caja asociada al registro de asistencia
+- **MEJORA**: Informe de Asistencia con formato profesional de impresión
+  - Header con logo, empresa, RUC y sucursal
+  - Tabla con badges de colores para estado y tipo
+  - Formato A4 landscape para mejor visualización
+- **MEJORA**: Exportación a CSV y Excel con ClosedXML
+- **MEJORA**: Botones compactos estilo Resumen de Caja (Buscar, CSV, Excel, Imprimir, Correo)
+
+---
+
 ## Versión 2026.01.05
 
 ### 🤖 Asistente IA - Sincronización Automática

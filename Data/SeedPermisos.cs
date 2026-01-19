@@ -97,6 +97,34 @@ namespace SistemIA.Data
                         RutaPagina = "/reportes/productos-detallado"
                     });
                 }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/inventario/alertas-vencimiento"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Alertas de Vencimiento",
+                        Descripcion = "Control de productos próximos a vencer",
+                        Icono = "bi-exclamation-triangle",
+                        Orden = 6,
+                        IdModuloPadre = inventario.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/inventario/alertas-vencimiento"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/inventario/lotes"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Gestión de Lotes",
+                        Descripcion = "Administración de lotes de productos",
+                        Icono = "bi-box-seam",
+                        Orden = 7,
+                        IdModuloPadre = inventario.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/inventario/lotes"
+                    });
+                }
             }
 
             // Agregar submódulos de Clientes si no existen

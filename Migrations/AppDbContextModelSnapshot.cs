@@ -1891,6 +1891,9 @@ namespace SistemIA.Migrations
                     b.Property<decimal>("Cantidad")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<decimal?>("CantidadPorPaqueteMomento")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal>("Exenta")
                         .HasColumnType("decimal(18,4)");
 
@@ -1927,13 +1930,30 @@ namespace SistemIA.Migrations
                     b.Property<int>("IdProducto")
                         .HasColumnType("int");
 
+                    b.Property<int?>("IdProductoLote")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("Importe")
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("ModoIngresoPersistido")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("NumeroLote")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<decimal?>("PorcentajeMargen")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal?>("PrecioMinisterio")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("PrecioMinisterioPaqueteMomento")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("PrecioPaqueteMomento")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal>("PrecioUnitario")
@@ -1955,6 +1975,8 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdDepositoItem");
 
                     b.HasIndex("IdProducto");
+
+                    b.HasIndex("IdProductoLote");
 
                     b.ToTable("ComprasDetalles", (string)null);
                 });
@@ -3262,6 +3284,72 @@ namespace SistemIA.Migrations
                     b.ToTable("MovimientosInventario", (string)null);
                 });
 
+            modelBuilder.Entity("SistemIA.Models.MovimientoLote", b =>
+                {
+                    b.Property<int>("IdMovimientoLote")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdMovimientoLote"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("FechaMovimiento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdDocumento")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdDocumentoDetalle")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdProductoLote")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdProductoLoteDestino")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Motivo")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ReferenciaDocumento")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("StockAnterior")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("StockPosterior")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("TipoDocumento")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("TipoMovimiento")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Usuario")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("IdMovimientoLote");
+
+                    b.HasIndex("FechaMovimiento");
+
+                    b.HasIndex("IdProductoLote");
+
+                    b.HasIndex("IdProductoLoteDestino");
+
+                    b.HasIndex("TipoDocumento", "IdDocumento");
+
+                    b.ToTable("MovimientosLotes", (string)null);
+                });
+
             modelBuilder.Entity("SistemIA.Models.NotaCreditoCompra", b =>
                 {
                     b.Property<int>("IdNotaCreditoCompra")
@@ -3443,6 +3531,9 @@ namespace SistemIA.Migrations
                     b.Property<decimal>("Cantidad")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<decimal?>("CantidadPorPaqueteMomento")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<string>("CodigoProducto")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -3479,6 +3570,10 @@ namespace SistemIA.Migrations
 
                     b.Property<decimal>("Importe")
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("ModoIngresoPersistido")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<decimal>("MontoDescuento")
                         .HasColumnType("decimal(18,4)");
@@ -3697,6 +3792,9 @@ namespace SistemIA.Migrations
                     b.Property<decimal>("Cantidad")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<decimal?>("CantidadPorPaqueteMomento")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<string>("CodigoProducto")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -3737,6 +3835,10 @@ namespace SistemIA.Migrations
                     b.Property<string>("Lote")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ModoIngresoPersistido")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<decimal>("MontoDescuento")
                         .HasColumnType("decimal(18,4)");
@@ -4367,11 +4469,20 @@ namespace SistemIA.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<bool>("ControlaLote")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ControlaVencimiento")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("ControladoReceta")
                         .HasColumnType("bit");
 
                     b.Property<bool>("ControlarVencimiento")
                         .HasColumnType("bit");
+
+                    b.Property<decimal?>("CostoPaqueteGs")
+                        .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal?>("CostoUnitarioGs")
                         .HasColumnType("decimal(18,4)");
@@ -4387,12 +4498,18 @@ namespace SistemIA.Migrations
                     b.Property<decimal?>("DescuentoMaximoProducto")
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<int>("DiasAlertaVencimiento")
+                        .HasColumnType("int");
+
                     b.Property<bool>("EsCombo")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
                     b.Property<decimal?>("FactorMultiplicador")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("FactorPaquete")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<DateTime>("FechaCreacion")
@@ -4431,7 +4548,13 @@ namespace SistemIA.Migrations
                     b.Property<int>("IdTipoIva")
                         .HasColumnType("int");
 
+                    b.Property<bool>("LoteInicialCreado")
+                        .HasColumnType("bit");
+
                     b.Property<decimal?>("MargenAdicionalCajeroProducto")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("MarkupPaquetePct")
                         .HasColumnType("decimal(5,2)");
 
                     b.Property<bool>("PermiteDecimal")
@@ -4446,7 +4569,16 @@ namespace SistemIA.Migrations
                     b.Property<bool>("PermiteVentaPorUnidad")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("PermiteVentaVencido")
+                        .HasColumnType("bit");
+
                     b.Property<decimal?>("PrecioMinisterio")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("PrecioMinisterioPaquete")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("PrecioPaqueteGs")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal>("PrecioUnitarioGs")
@@ -4594,6 +4726,91 @@ namespace SistemIA.Migrations
                         .IsUnique();
 
                     b.ToTable("ProductosDepositos", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.ProductoLote", b =>
+                {
+                    b.Property<int>("IdProductoLote")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdProductoLote"));
+
+                    b.Property<decimal?>("CostoUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<bool>("EsLoteInicial")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Activo");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFabricacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaIngreso")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaVencimiento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdCompra")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCompraDetalle")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdDeposito")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdProducto")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NumeroLote")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Observacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal>("Stock")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("StockInicial")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("UsuarioCreacion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("UsuarioModificacion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("IdProductoLote");
+
+                    b.HasIndex("FechaVencimiento");
+
+                    b.HasIndex("IdCompra");
+
+                    b.HasIndex("IdDeposito");
+
+                    b.HasIndex("IdProducto", "IdDeposito", "NumeroLote")
+                        .IsUnique();
+
+                    b.ToTable("ProductosLotes", (string)null);
                 });
 
             modelBuilder.Entity("SistemIA.Models.ProveedorLegacy", b =>
@@ -6105,11 +6322,17 @@ namespace SistemIA.Migrations
                     b.Property<decimal>("Cantidad")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<decimal?>("CantidadPorPaqueteMomento")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal?>("CostoUnitario")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal>("Exenta")
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime?>("FechaVencimientoLoteMomento")
+                        .HasColumnType("datetime2");
 
                     b.Property<decimal>("Grabado10")
                         .HasColumnType("decimal(18,4)");
@@ -6126,6 +6349,9 @@ namespace SistemIA.Migrations
                     b.Property<int>("IdProducto")
                         .HasColumnType("int");
 
+                    b.Property<int?>("IdProductoLote")
+                        .HasColumnType("int");
+
                     b.Property<int?>("IdTipoIva")
                         .HasColumnType("int");
 
@@ -6135,10 +6361,24 @@ namespace SistemIA.Migrations
                     b.Property<decimal>("Importe")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<string>("ModoIngresoPersistido")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("NumeroLoteMomento")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<decimal?>("PorcentajeDescuento")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal?>("PrecioMinisterio")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("PrecioMinisterioPaqueteMomento")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("PrecioPaqueteMomento")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal>("PrecioUnitario")
@@ -6147,6 +6387,8 @@ namespace SistemIA.Migrations
                     b.HasKey("IdVentaDetalle");
 
                     b.HasIndex("IdProducto");
+
+                    b.HasIndex("IdProductoLote");
 
                     b.HasIndex("IdVenta");
 
@@ -6642,11 +6884,17 @@ namespace SistemIA.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SistemIA.Models.ProductoLote", "ProductoLote")
+                        .WithMany()
+                        .HasForeignKey("IdProductoLote");
+
                     b.Navigation("Compra");
 
                     b.Navigation("DepositoItem");
 
                     b.Navigation("Producto");
+
+                    b.Navigation("ProductoLote");
                 });
 
             modelBuilder.Entity("SistemIA.Models.ConfiguracionCorreo", b =>
@@ -6913,6 +7161,23 @@ namespace SistemIA.Migrations
                     b.Navigation("Producto");
 
                     b.Navigation("Sucursal");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.MovimientoLote", b =>
+                {
+                    b.HasOne("SistemIA.Models.ProductoLote", "ProductoLote")
+                        .WithMany("Movimientos")
+                        .HasForeignKey("IdProductoLote")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.ProductoLote", "ProductoLoteDestino")
+                        .WithMany()
+                        .HasForeignKey("IdProductoLoteDestino");
+
+                    b.Navigation("ProductoLote");
+
+                    b.Navigation("ProductoLoteDestino");
                 });
 
             modelBuilder.Entity("SistemIA.Models.NotaCreditoCompra", b =>
@@ -7281,6 +7546,32 @@ namespace SistemIA.Migrations
                     b.Navigation("Producto");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.ProductoLote", b =>
+                {
+                    b.HasOne("SistemIA.Models.Compra", "Compra")
+                        .WithMany()
+                        .HasForeignKey("IdCompra")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Deposito", "Deposito")
+                        .WithMany()
+                        .HasForeignKey("IdDeposito")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Producto", "Producto")
+                        .WithMany("Lotes")
+                        .HasForeignKey("IdProducto")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Compra");
+
+                    b.Navigation("Deposito");
+
+                    b.Navigation("Producto");
+                });
+
             modelBuilder.Entity("SistemIA.Models.ProveedorSifenMejorado", b =>
                 {
                     b.HasOne("SistemIA.Models.TiposContribuyentes", "TipoContribuyenteCatalogo")
@@ -7614,6 +7905,10 @@ namespace SistemIA.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SistemIA.Models.ProductoLote", "ProductoLote")
+                        .WithMany()
+                        .HasForeignKey("IdProductoLote");
+
                     b.HasOne("SistemIA.Models.Venta", "Venta")
                         .WithMany()
                         .HasForeignKey("IdVenta")
@@ -7621,6 +7916,8 @@ namespace SistemIA.Migrations
                         .IsRequired();
 
                     b.Navigation("Producto");
+
+                    b.Navigation("ProductoLote");
 
                     b.Navigation("Venta");
                 });
@@ -7776,7 +8073,14 @@ namespace SistemIA.Migrations
                 {
                     b.Navigation("Componentes");
 
+                    b.Navigation("Lotes");
+
                     b.Navigation("StocksPorDeposito");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.ProductoLote", b =>
+                {
+                    b.Navigation("Movimientos");
                 });
 
             modelBuilder.Entity("SistemIA.Models.RemisionInterna", b =>

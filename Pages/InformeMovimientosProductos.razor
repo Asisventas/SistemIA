@@ -208,6 +208,7 @@
                         <th>Turno</th>
                         <th>Sucursal</th>
                         <th style="min-width:200px;">Producto</th>
+                        <th class="text-center" style="width:70px;" title="Paquetes calculados">Paq.</th>
                         <th>Depósito</th>
                         <th class="text-center">Tipo</th>
                         <th class="text-end">Anterior</th>
@@ -226,17 +227,22 @@
                 <tbody>
                     @if (movimientos is null)
                     {
-                        <tr><td colspan="18" class="text-center py-4 text-muted">Aplique filtros y presione Buscar</td></tr>
+                        <tr><td colspan="19" class="text-center py-4 text-muted">Aplique filtros y presione Buscar</td></tr>
                     }
                     else if (!movimientos.Any())
                     {
-                        <tr><td colspan="18" class="text-center py-4 text-muted">No se encontraron movimientos</td></tr>
+                        <tr><td colspan="19" class="text-center py-4 text-muted">No se encontraron movimientos</td></tr>
                     }
                     else
                     {
                         foreach (var m in movimientos)
                         {
                             var esEntrada = m.Tipo == 1;
+                            var cantPaq = (int)(m.Producto?.CantidadPorPaquete ?? 1);
+                            var umCod = m.Producto?.UnidadMedidaCodigo;
+                            var esPaq = (umCod == "006" || umCod == "005") && cantPaq > 1;
+                            var paqVal = esPaq ? Math.Floor(m.Cantidad / cantPaq) : 0m;
+                            var sueltVal = esPaq ? m.Cantidad % cantPaq : 0m;
                             <tr>
                                 <td>@m.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
                                 <td>@(m.FechaCaja?.ToString("dd/MM/yyyy") ?? "—")</td>
@@ -245,6 +251,16 @@
                                 <td>
                                     <div class="fw-semibold">@(m.Producto?.Descripcion ?? $"#{m.IdProducto}")</div>
                                     <div class="small text-muted">@(m.Producto?.CodigoInterno ?? "")</div>
+                                </td>
+                                <td class="text-center" title="@(esPaq ? $"{paqVal:N0} paq. +{sueltVal:N0} u (de {cantPaq} u/paq)" : "")">
+                                    @if (esPaq)
+                                    {
+                                        <span>@paqVal.ToString("N0")@(sueltVal > 0 ? $" +{sueltVal:N0}" : "")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
                                 </td>
                                 <td>@(m.Deposito?.Nombre ?? $"#{m.IdDeposito}")</td>
                                 <td class="text-center">
@@ -277,7 +293,7 @@
                     var salidas = movimientos.Where(m => m.Tipo == 2);
                     <tfoot class="table-light fw-bold">
                         <tr>
-                            <td colspan="8" class="text-end">TOTALES:</td>
+                            <td colspan="9" class="text-end">TOTALES:</td>
                             <td class="text-end">
                                 <span class="text-success">+@entradas.Sum(m => m.Cantidad).ToString("N2")</span> /
                                 <span class="text-danger">-@salidas.Sum(m => m.Cantidad).ToString("N2")</span>
@@ -533,7 +549,7 @@
         sb.AppendLine("<table>");
         sb.AppendLine("<thead><tr>");
         sb.AppendLine("<th>Fecha Equipo</th><th>F. Caja</th><th>T</th><th>Sucursal</th>");
-        sb.AppendLine("<th>Producto</th><th>Depósito</th><th class=\"text-center\">Tipo</th>");
+        sb.AppendLine("<th>Producto</th><th class=\"text-center\">Paq.</th><th>Depósito</th><th class=\"text-center\">Tipo</th>");
         sb.AppendLine("<th class=\"text-end\">Anterior</th><th class=\"text-end\">Cantidad</th><th class=\"text-end\">Saldo</th>");
         sb.AppendLine("<th class=\"text-end\">Costo</th><th class=\"text-end\">Venta</th><th>Mon</th><th class=\"text-end\">Cambio</th>");
         sb.AppendLine("<th class=\"text-end\">Costo Gs</th><th class=\"text-end\">Venta Gs</th>");
@@ -546,12 +562,19 @@
             var esEntrada = m.Tipo == 1;
             var badgeClass = esEntrada ? "badge-entrada" : "badge-salida";
             var colorClass = esEntrada ? "text-success" : "text-danger";
+            var cantPaq = (int)(m.Producto?.CantidadPorPaquete ?? 1);
+            var umCod = m.Producto?.UnidadMedidaCodigo;
+            var esPaq = (umCod == "006" || umCod == "005") && cantPaq > 1;
+            var paqVal = esPaq ? Math.Floor(m.Cantidad / cantPaq) : 0m;
+            var sueltVal = esPaq ? m.Cantidad % cantPaq : 0m;
+            var paqTxt = esPaq ? $"{paqVal:N0}{(sueltVal > 0 ? $" +{sueltVal:N0}" : "")}" : "-";
             sb.AppendLine("<tr>");
             sb.AppendLine($"<td>{m.Fecha:dd/MM/yyyy HH:mm}</td>");
             sb.AppendLine($"<td>{(m.FechaCaja?.ToString("dd/MM") ?? "—")}</td>");
             sb.AppendLine($"<td>{(m.Turno?.ToString() ?? "—")}</td>");
             sb.AppendLine($"<td>{Escape(m.Sucursal?.NombreSucursal ?? "")}</td>");
             sb.AppendLine($"<td>{Escape(m.Producto?.Descripcion ?? $"#{m.IdProducto}")}</td>");
+            sb.AppendLine($"<td class=\"text-center\">{paqTxt}</td>");
             sb.AppendLine($"<td>{Escape(m.Deposito?.Nombre ?? "")}</td>");
             sb.AppendLine($"<td class=\"text-center\"><span class=\"{badgeClass}\">{(esEntrada ? "E" : "S")}</span></td>");
             sb.AppendLine($"<td class=\"text-end\">{(m.CantidadAnterior?.ToString("N2") ?? "—")}</td>");
@@ -574,7 +597,7 @@
         var entradas = movimientos.Where(m => m.Tipo == 1);
         var salidas = movimientos.Where(m => m.Tipo == 2);
         sb.AppendLine("<tfoot><tr>");
-        sb.AppendLine("<td colspan=\"8\" class=\"text-end\">TOTALES:</td>");
+        sb.AppendLine("<td colspan=\"9\" class=\"text-end\">TOTALES:</td>");
         sb.AppendLine($"<td class=\"text-end\"><span class=\"text-success\">+{entradas.Sum(m => m.Cantidad):N2}</span> / <span class=\"text-danger\">-{salidas.Sum(m => m.Cantidad):N2}</span></td>");
         sb.AppendLine("<td colspan=\"5\"></td>");
         sb.AppendLine($"<td class=\"text-end\"><span class=\"text-success\">{entradas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0):N0}</span> / <span class=\"text-danger\">{salidas.Sum(m => m.PrecioCostoGs * m.Cantidad ?? 0):N0}</span></td>");
@@ -598,13 +621,19 @@
         if (movimientos is null || !movimientos.Any()) return;
 
         var csv = new System.Text.StringBuilder();
-        csv.AppendLine("Fecha Equipo,Fecha Caja,Turno,Sucursal,Producto,Código,Depósito,Tipo,Anterior,Cantidad,Saldo,Costo,Venta,Moneda,Cambio,Costo Gs,Venta Gs,Costo Total Gs,Venta Total Gs,Motivo,Usuario");
+        csv.AppendLine("Fecha Equipo,Fecha Caja,Turno,Sucursal,Producto,Código,Paq.,Depósito,Tipo,Anterior,Cantidad,Saldo,Costo,Venta,Moneda,Cambio,Costo Gs,Venta Gs,Costo Total Gs,Venta Total Gs,Motivo,Usuario");
 
         foreach (var m in movimientos)
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             var costoTotalGs = (m.PrecioCostoGs ?? 0) * m.Cantidad;
             var ventaTotalGs = (m.PrecioVentaGs ?? 0) * m.Cantidad;
+            var cantPaq = (int)(m.Producto?.CantidadPorPaquete ?? 1);
+            var umCod = m.Producto?.UnidadMedidaCodigo;
+            var esPaq = (umCod == "006" || umCod == "005") && cantPaq > 1;
+            var paqVal = esPaq ? Math.Floor(m.Cantidad / cantPaq) : 0m;
+            var sueltVal = esPaq ? m.Cantidad % cantPaq : 0m;
+            var paqTxt = esPaq ? $"{paqVal:N0}{(sueltVal > 0 ? $" +{sueltVal:N0}" : "")}" : "";
             
             csv.AppendLine($"\"{m.Fecha:dd/MM/yyyy HH:mm}\"," +
                 $"\"{(m.FechaCaja?.ToString("dd/MM/yyyy") ?? "")}\"," +
@@ -612,6 +641,7 @@
                 $"\"{EscapeCsv(m.Sucursal?.NombreSucursal ?? "")}\"," +
                 $"\"{EscapeCsv(m.Producto?.Descripcion ?? "")}\"," +
                 $"\"{EscapeCsv(m.Producto?.CodigoInterno ?? "")}\"," +
+                $"\"{paqTxt}\"," +
                 $"\"{EscapeCsv(m.Deposito?.Nombre ?? "")}\"," +
                 $"\"{(m.Tipo == 1 ? "Entrada" : "Salida")}\"," +
                 $"{(m.CantidadAnterior?.ToString("0.0000", inv) ?? "")}," +
@@ -665,6 +695,7 @@
         sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>F.Caja</th>");
         sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Sucursal</th>");
         sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Producto</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:center;'>Paq.</th>");
         sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Depósito</th>");
         sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:center;'>Tipo</th>");
         sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Cantidad</th>");
@@ -677,11 +708,18 @@
         {
             var esEntrada = m.Tipo == 1;
             var colorCant = esEntrada ? "color:#198754;" : "color:#dc3545;";
+            var cantPaq = (int)(m.Producto?.CantidadPorPaquete ?? 1);
+            var umCod = m.Producto?.UnidadMedidaCodigo;
+            var esPaq = (umCod == "006" || umCod == "005") && cantPaq > 1;
+            var paqVal = esPaq ? Math.Floor(m.Cantidad / cantPaq) : 0m;
+            var sueltVal = esPaq ? m.Cantidad % cantPaq : 0m;
+            var paqTxt = esPaq ? $"{paqVal:N0}{(sueltVal > 0 ? $" +{sueltVal:N0}" : "")}" : "-";
             sb.AppendLine("<tr>");
             sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{m.Fecha:dd/MM/yyyy HH:mm}</td>");
             sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{(m.FechaCaja?.ToString("dd/MM") ?? "—")}</td>");
             sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{Escape(m.Sucursal?.NombreSucursal ?? "")}</td>");
             sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{Escape(m.Producto?.Descripcion ?? $"#{m.IdProducto}")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:center;'>{paqTxt}</td>");
             sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{Escape(m.Deposito?.Nombre ?? "")}</td>");
             sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:center;'>{(esEntrada ? "Entrada" : "Salida")}</td>");
             sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;{colorCant}'>{(esEntrada ? "+" : "-")}{m.Cantidad:N2}</td>");
@@ -695,7 +733,7 @@
         var entradas = movimientos.Where(x => x.Tipo == 1);
         var salidas = movimientos.Where(x => x.Tipo == 2);
         sb.AppendLine($"<tr style='background:#f0f0f0;font-weight:bold;'>");
-        sb.AppendLine($"<td colspan='6' style='border:1px solid #ddd;padding:4px;text-align:right;'>Totales</td>");
+        sb.AppendLine($"<td colspan='7' style='border:1px solid #ddd;padding:4px;text-align:right;'>Totales</td>");
         sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'><span style='color:#198754;'>+{entradas.Sum(x => x.Cantidad):N2}</span> / <span style='color:#dc3545;'>-{salidas.Sum(x => x.Cantidad):N2}</span></td>");
         sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'></td>");
         sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(entradas.Sum(x => x.PrecioCostoGs * x.Cantidad ?? 0) - salidas.Sum(x => x.PrecioCostoGs * x.Cantidad ?? 0)):N0}</td>");

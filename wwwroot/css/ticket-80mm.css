@@ -162,6 +162,17 @@
     flex-shrink: 0 !important;
 }
 
+.col-lote {
+    text-align: center !important;
+    font-size: 8px !important;
+    color: #17a2b8 !important;
+    width: 50px !important;
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
 /* Totales */
 .ticket-totales {
     font-size: 12px !important;

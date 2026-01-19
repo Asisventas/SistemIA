@@ -88,6 +88,7 @@ builder.Services.AddScoped<IHtmlToPdfService, HtmlToPdfService>();
 builder.Services.AddScoped<IInformePdfService, InformePdfService>();
 builder.Services.AddScoped<IHistorialCambiosService, HistorialCambiosService>();
 builder.Services.AddScoped<ISaAuthenticationService, SaAuthenticationService>(); // Autenticación SA con memoria de 30 min
+builder.Services.AddScoped<ILoteService, LoteService>(); // Gestión de lotes FEFO para farmacia
 builder.Services.AddSingleton<ChatStateService>(); // Estado del chat (singleton por circuito)
 builder.Services.AddSingleton<RutasSistemaService>(); // Escaneo automático de rutas del sistema
 builder.Services.AddSingleton<ITrackingService, TrackingService>(); // Tracking de acciones del usuario
@@ -658,7 +659,8 @@ app.MapGet("/debug/ventas/{idVenta:int}/probar-credenciales", async (
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad; configure certificados y CSC." });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "2" : "1"; // 1=test, 2=prod según util
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower() == "prod" ? "2" : "1"; // 1=test, 2=prod según util
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
         var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
@@ -833,7 +835,8 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen", async (
         // 2) Resolver ambiente y certificados
         // - Factura Electrónica: usar datos de SOCIEDAD
         // - Factura Autoimpresor: usar datos de SUCURSAL
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         // Para rEnvioLote vista, usar recepción de lote - PRIORIDAD: BD > SifenConfig
         var urlEnvio = sociedad.DeUrlEnvioDocumentoLote ?? SistemIA.Utils.SifenConfig.GetEnvioLoteUrl(ambiente);
         var urlQrBase = sociedad.DeUrlQr ?? (SistemIA.Utils.SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
@@ -957,7 +960,8 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen-sync", async (
         // 2) Resolver ambiente, URL de envío SINCRÓNICO y certificados
         // - Factura Electrónica: usar datos de SOCIEDAD
         // - Factura Autoimpresor: usar datos de SUCURSAL
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         // PRIORIDAD: URL de BD > SifenConfig
         var urlEnvioDe = sociedad.DeUrlEnvioDocumento ?? SistemIA.Utils.SifenConfig.GetEnvioDeUrl(ambiente);
         var urlQrBase = sociedad.DeUrlQr ?? (SistemIA.Utils.SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
@@ -1066,7 +1070,8 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen-powerbuilder", async (
 
         // 2) Resolver ambiente, URLs y certificados
         // FIX 12-Ene-2026: rEnvioLote corresponde al endpoint LOTE (async), NO sync
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         // PRIORIDAD: URL de BD > SifenConfig
         var urlEnvio = sociedad.DeUrlEnvioDocumentoLote ?? SistemIA.Utils.SifenConfig.GetEnvioLoteUrl(ambiente);  // LOTE! (recibe-lote.wsdl)
         var urlQrBase = ambiente == "prod"
@@ -1215,7 +1220,8 @@ app.MapGet("/ventas/{idVenta:int}/consultar-sifen", async (
             string.Equals(idLoteLocal, "null", StringComparison.OrdinalIgnoreCase))
             return Results.BadRequest(new { ok = false, error = "No se encontró idLote en la respuesta previa; reintente el envío o verifique MensajeSifen." });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         // PRIORIDAD: URL de BD > SifenConfig
         var urlConsulta = sociedad.DeUrlConsultaDocumentoLote ?? SistemIA.Utils.SifenConfig.GetConsultaLoteUrl(ambiente);
         // Siempre usar certificado de Sociedad para Factura Electrónica
@@ -1560,7 +1566,8 @@ app.MapPost("/debug/ventas/{idVenta:int}/probar-variantes", async (
             return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
         // Obtener configuración - PRIORIDAD: URL de BD > SifenConfig
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlEnvioDe = sociedad.DeUrlEnvioDocumento ?? SistemIA.Utils.SifenConfig.GetEnvioDeUrl(ambiente);
         var urlEnvioLote = sociedad.DeUrlEnvioDocumentoLote ?? SistemIA.Utils.SifenConfig.GetEnvioLoteUrl(ambiente); // URL para LOTE
         var urlQrBase = sociedad.DeUrlQr ?? (SistemIA.Utils.SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
@@ -1696,7 +1703,8 @@ app.MapGet("/debug/ventas/{idVenta:int}/xde", async (
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
@@ -1747,6 +1755,222 @@ app.MapGet("/debug/ventas/{idVenta:int}/emisor", async (
     return Results.Ok(new { ok = true, emisor });
 });
 
+// Endpoint para obtener el SOAP completo (sync) listo para enviar - DEBUG
+app.MapGet("/debug/ventas/{idVenta:int}/soap-sync", async (
+    int idVenta,
+    IDbContextFactory<AppDbContext> dbFactory,
+    DEXmlBuilder xmlBuilder,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var venta = await db.Ventas
+            .Include(v => v.Sucursal)
+            .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+        if (venta == null) return Results.NotFound(new { ok = false, error = "Venta no encontrada" });
+
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
+
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
+        var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(p12Path) || string.IsNullOrWhiteSpace(p12Pass))
+            return Results.BadRequest(new { ok = false, error = "Falta configurar ruta/contraseña del certificado (.p12)." });
+
+        var xmlString = await xmlBuilder.ConstruirXmlAsync(idVenta);
+        // FirmarSinEnviar con devolverBase64Zip=true devuelve el SOAP completo para envío sync
+        var soapSync = sifen.FirmarSinEnviar(urlQrBase, xmlString, p12Path, p12Pass, "1", true);
+        
+        // Extraer solo el inicio para ver estructura
+        var inicio500 = soapSync.Length > 500 ? soapSync.Substring(0, 500) : soapSync;
+        
+        return Results.Ok(new { 
+            ok = true, 
+            vista = "soap_sync_completo",
+            descripcion = "SOAP completo listo para enviar al endpoint recibe.wsdl",
+            inicio500chars = inicio500,
+            soapCompleto = soapSync,
+            largoTotal = soapSync.Length
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint para enviar un SOAP desde archivo a SIFEN - útil para probar XMLs de referencia
+// Uso: POST /debug/enviar-soap-archivo?archivo=c:\ruta\al\archivo.xml
+app.MapPost("/debug/enviar-soap-archivo", async (
+    string archivo,
+    Sifen sifen,
+    IDbContextFactory<AppDbContext> dbFactory
+) =>
+{
+    try
+    {
+        if (!System.IO.File.Exists(archivo))
+            return Results.BadRequest(new { ok = false, error = $"Archivo no existe: {archivo}" });
+        
+        var soapXml = await System.IO.File.ReadAllTextAsync(archivo, Encoding.UTF8);
+        Sifen.LogSifenDebug($"ENVÍO DESDE ARCHIVO: {archivo}", $"Longitud: {soapXml.Length}\n\n{soapXml}");
+        
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
+        
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlEnvioDe = sociedad.DeUrlEnvioDocumento ?? SifenConfig.GetEnvioDeUrl(ambiente);
+        var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+        
+        if (string.IsNullOrWhiteSpace(p12Path))
+            return Results.BadRequest(new { ok = false, error = "Falta PathCertificadoP12 en Sociedad" });
+        
+        var respuesta = await sifen.Enviar(urlEnvioDe, soapXml, p12Path, p12Pass);
+        
+        var codigo = sifen.GetTagValue(respuesta, "ns2:dCodRes");
+        var mensaje = sifen.GetTagValue(respuesta, "ns2:dMsgRes");
+        var estado = sifen.GetTagValue(respuesta, "ns2:dEstRes");
+        
+        return Results.Ok(new {
+            ok = true,
+            archivoEnviado = archivo,
+            urlDestino = urlEnvioDe,
+            codigo,
+            mensaje,
+            estado,
+            respuestaCompleta = respuesta
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message, stack = ex.StackTrace });
+    }
+});
+
+// Endpoint para probar envío SIFEN con headers MÍNIMOS (estilo Java SOAP puro)
+// Algunos proxies rechazan headers adicionales como X-Requested-With, Origin, etc.
+app.MapPost("/debug/ventas/{idVenta:int}/enviar-sifen-minimo", async (
+    int idVenta,
+    IDbContextFactory<AppDbContext> dbFactory,
+    DEXmlBuilder xmlBuilder,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var venta = await db.Ventas
+            .Include(v => v.Sucursal)
+            .Include(v => v.Cliente)
+            .Include(v => v.Caja)
+            .Include(v => v.Moneda)
+            .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+        if (venta == null)
+            return Results.NotFound(new { ok = false, error = "Venta no encontrada" });
+        
+        var sociedad = await db.Sociedades.FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No hay Sociedad configurada" });
+        
+        // Generar XML (sin firmar aún)
+        var xmlSinFirmar = await xmlBuilder.ConstruirXmlAsync(venta.IdVenta);
+        var p12Path = sociedad.PathCertificadoP12 ?? "";
+        var p12Pass = sociedad.PasswordCertificadoP12 ?? "";
+        
+        if (string.IsNullOrWhiteSpace(p12Path))
+            return Results.BadRequest(new { ok = false, error = "Falta certificado P12" });
+        
+        // URL del QR para firmar
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        string urlQr = ambiente == "prod" 
+            ? "https://ekuatia.set.gov.py/consultas/qr?"
+            : "https://ekuatia.set.gov.py/consultas-test/qr?";
+        
+        // Firmar el XML (devuelve XML firmado en texto plano)
+        var xdeFirmado = sifen.FirmarSinEnviar(urlQr, xmlSinFirmar, p12Path, p12Pass, "1", false);
+        if (xdeFirmado.StartsWith("{\"error\":"))
+            return Results.BadRequest(new { ok = false, error = xdeFirmado });
+        
+        // Construir SOAP
+        var dIdEnvio = DateTime.Now.ToString("yyyyMMddHHmmssfff");
+        var soap = $@"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""no""?>
+<env:Envelope
+	xmlns:env=""http://www.w3.org/2003/05/soap-envelope"">
+	<env:Header/>
+	<env:Body>
+		<rEnviDe
+			xmlns=""http://ekuatia.set.gov.py/sifen/xsd"">
+			<dId>{dIdEnvio}</dId>
+			<xDE>
+				{xdeFirmado}
+			</xDE>
+		</rEnviDe>
+	</env:Body>
+</env:Envelope>";
+        
+        // ENVIAR CON HEADERS MÍNIMOS
+        var url = sociedad.DeUrlEnvioDocumento ?? SifenConfig.GetEnvioDeUrl(ambiente);
+        
+        Sifen.ClearSifenDebugLog();
+        Sifen.LogSifenDebug("ENVÍO CON HEADERS MÍNIMOS", $"URL: {url}\nLongitud SOAP: {soap.Length}");
+        
+        // Configurar HttpClient con headers mínimos
+        var handler = new HttpClientHandler();
+        var cert = new System.Security.Cryptography.X509Certificates.X509Certificate2(p12Path, p12Pass, 
+            System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.Exportable);
+        handler.ClientCertificates.Add(cert);
+        handler.ServerCertificateCustomValidationCallback = (msg, c, chain, errors) => true;
+        handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+        
+        using var client = new HttpClient(handler);
+        client.Timeout = TimeSpan.FromSeconds(120);
+        
+        // *** HEADERS IDÉNTICOS A LA LIBRERÍA JAVA OFICIAL (Roshka) ***
+        // Java usa: Content-Type: application/xml; charset=utf-8
+        // Java usa: User-Agent: rshk-jsifenlib/x.x.x (LVEA)
+        using var content = new StringContent(soap, Encoding.UTF8);
+        content.Headers.Clear();
+        content.Headers.TryAddWithoutValidation("Content-Type", "application/xml; charset=utf-8");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "rshk-jsifenlib/1.0.0 (LVEA)");
+        
+        Sifen.LogSifenDebug("Headers de envío (ESTILO JAVA ROSHKA)", "Content-Type: application/xml; charset=utf-8\nUser-Agent: rshk-jsifenlib/1.0.0 (LVEA)");
+        Sifen.LogSifenDebug("SOAP completo", soap);
+        
+        var response = await client.PostAsync(url, content);
+        var respuestaStr = await response.Content.ReadAsStringAsync();
+        
+        Sifen.LogSifenDebug($"RESPUESTA - Status: {response.StatusCode}", respuestaStr);
+        
+        var codigo = sifen.GetTagValue(respuestaStr, "ns2:dCodRes") ?? sifen.GetTagValue(respuestaStr, "dCodRes");
+        var mensaje = sifen.GetTagValue(respuestaStr, "ns2:dMsgRes") ?? sifen.GetTagValue(respuestaStr, "dMsgRes");
+        
+        return Results.Ok(new {
+            ok = true,
+            modo = "Headers estilo Java Roshka (application/xml)",
+            url,
+            statusCode = (int)response.StatusCode,
+            codigo,
+            mensaje,
+            idVenta,
+            dId = dIdEnvio,
+            verLogCompleto = "Debug/sifen_debug.log"
+        });
+    }
+    catch (Exception ex)
+    {
+        Sifen.LogSifenDebug("ERROR", $"{ex.Message}\n{ex.StackTrace}");
+        return Results.BadRequest(new { ok = false, error = ex.Message, stack = ex.StackTrace });
+    }
+});
+
 // Endpoint para obtener el DE firmado en texto plano (sin gzip/base64), para comparar con el ejemplo oficial
 app.MapGet("/debug/ventas/{idVenta:int}/de-firmado", async (
     int idVenta,
@@ -1766,7 +1990,8 @@ app.MapGet("/debug/ventas/{idVenta:int}/de-firmado", async (
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
@@ -1805,7 +2030,8 @@ app.MapGet("/debug/ventas/{idVenta:int}/soap-zip-contenido", async (
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
         var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
@@ -1871,7 +2097,8 @@ app.MapGet("/ventas/{idVenta:int}/xml", async (
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
@@ -1914,7 +2141,8 @@ app.MapGet("/debug/ventas/{idVenta:int}/validar-xsd", async (
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
@@ -2130,7 +2358,8 @@ app.MapGet("/debug/ventas/{idVenta:int}/soap-lote", async (
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
@@ -2174,7 +2403,8 @@ app.MapGet("/debug/ventas/{idVenta:int}/comparar-xml", async (
         if (venta == null) return Results.NotFound(new { ok = false, error = "Venta no encontrada" });
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
@@ -2225,7 +2455,8 @@ app.MapGet("/debug/ventas/{idVenta:int}/comparar-xml-oficial", async (
         if (venta == null) return Results.NotFound(new { ok = false, error = "Venta no encontrada" });
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
@@ -2284,7 +2515,8 @@ app.MapPost("/debug/ventas/{idVenta:int}/comparar-xml", async (
 
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null) return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
                 var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));
         // Siempre usar certificado de Sociedad para Factura Electrónica
         var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
@@ -2335,7 +2567,8 @@ app.MapPost("/debug/ventas/{idVenta:int}/diagnostico-0160", async (
         if (sociedad == null)
             return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
-        var ambiente = venta.Sucursal?.Ambiente?.ToLower() == "prod" ? "prod" : "test";
+        // FIX 14-Ene-2026: Ambiente debe tomarse de Sociedad.ServidorSifen, no de Sucursal
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
         // PRIORIDAD: URL de BD > SifenConfig
         var urlEnvio = sociedad.DeUrlEnvioDocumentoLote ?? SifenConfig.GetEnvioLoteUrl(ambiente);
         var urlQrBase = sociedad.DeUrlQr ?? (SifenConfig.GetBaseUrl(ambiente) + (ambiente == "prod" ? "/consultas/qr?" : "/consultas-test/qr?"));

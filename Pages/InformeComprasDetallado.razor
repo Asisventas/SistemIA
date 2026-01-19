@@ -97,7 +97,9 @@
             <th>Doc.</th>
             <th>Proveedor</th>
             <th>Producto</th>
-            <th class="text-end">Cant.</th>
+            <th>Lote</th>
+            <th class="text-end">Paq.</th>
+            <th class="text-end">Unid.</th>
             <th class="text-end">Precio</th>
             <th class="text-end">P. Venta</th>
             <th class="text-end">P.Min.</th>
@@ -116,7 +118,7 @@
         <tbody>
           @if (!filas.Any())
           {
-            <tr><td colspan="19" class="text-muted text-center py-3">Sin resultados</td></tr>
+            <tr><td colspan="21" class="text-muted text-center py-3">Sin resultados</td></tr>
           }
           else
           {
@@ -133,11 +135,66 @@
                 <td>
                   <div class="fw-semibold">@r.Producto</div>
                   <div class="small text-muted">Cod: @r.Codigo</div>
+                  @if (r.FueCompraPorPaquete)
+                  {
+                    <span class="badge bg-info text-dark" title="Compra por paquete de @r.CantidadPorPaquete unidades">📦 Paq. x@(r.CantidadPorPaquete)</span>
+                  }
+                  else
+                  {
+                    <span class="badge bg-secondary" title="Compra por unidad">🔢 Unidad</span>
+                  }
                 </td>
-                <td class="text-end">@r.Cantidad.ToString("N2")</td>
+                <td>
+                  @if (!string.IsNullOrEmpty(r.NumeroLote))
+                  {
+                    <div><span class="badge bg-warning text-dark"><i class="bi bi-box-seam me-1"></i>@r.NumeroLote</span></div>
+                    @if (r.FechaVencimiento.HasValue)
+                    {
+                      var diasPara = (r.FechaVencimiento.Value.Date - DateTime.Today).TotalDays;
+                      var colorVenc = diasPara < 0 ? "text-danger" : (diasPara <= 30 ? "text-warning" : "text-muted");
+                      <small class="@colorVenc">Venc: @r.FechaVencimiento.Value.ToString("dd/MM/yy")</small>
+                    }
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
+                </td>
+                <td class="text-end">
+                  @if (r.FueCompraPorPaquete)
+                  {
+                    <span title="@r.CantidadPaquetes paquetes de @r.CantidadPorPaquete unidades c/u">@r.CantidadPaquetes.ToString(r.CantidadPaquetes == Math.Floor(r.CantidadPaquetes) ? "N0" : "N2")</span>
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
+                </td>
+                <td class="text-end">
+                  <span>@r.CantidadUnidades.ToString(r.CantidadUnidades == Math.Floor(r.CantidadUnidades) ? "N0" : "N2")</span>
+                </td>
                 <td class="text-end">@r.Precio.ToString(r.Formato)</td>
-                <td class="text-end text-success">@r.PrecioVenta.ToString("N0")</td>
-                <td class="text-end text-info">@(r.PrecioMinisterio.HasValue ? r.PrecioMinisterio.Value.ToString("N0") : "-")</td>
+                <td class="text-end text-success">
+                  @r.PrecioVenta.ToString("N0")
+                  @if (r.FueCompraPorPaquete && r.CantidadPorPaquete > 0)
+                  {
+                    <br/><small class="opacity-75">(@((r.PrecioVenta / r.CantidadPorPaquete).ToString("N0"))/u)</small>
+                  }
+                </td>
+                <td class="text-end text-info">
+                  @if (r.PrecioMinisterio.HasValue)
+                  {
+                    @r.PrecioMinisterio.Value.ToString("N0")
+                    @if (r.FueCompraPorPaquete && r.CantidadPorPaquete > 0)
+                    {
+                      <br/><small class="opacity-75">(@((r.PrecioMinisterio.Value / r.CantidadPorPaquete).ToString("N0"))/u)</small>
+                    }
+                  }
+                  else
+                  {
+                    <span>-</span>
+                  }
+                </td>
                 <td class="text-end">
                   @if (r.Factor.HasValue && r.Factor.Value > 0)
                   {
@@ -173,7 +230,10 @@
         </tbody>
         <tfoot>
           <tr>
-            <th colspan="14" class="text-end">Totales</th>
+            <th colspan="5" class="text-end">Totales</th>
+            <th class="text-end">@filas.Sum(x=>x.CantidadPaquetes).ToString("N0")</th>
+            <th class="text-end">@filas.Sum(x=>x.CantidadUnidades).ToString("N0")</th>
+            <th colspan="7"></th>
             <th class="text-end">@filas.Sum(x=>x.ImporteGs).ToString("N0")</th>
             <th class="text-end">@filas.Sum(x=>x.ImporteUsd).ToString("N2")</th>
             <th></th>
@@ -277,7 +337,17 @@ END";
               PrecioVentaRef = d.PrecioVentaRef > 0 ? d.PrecioVentaRef : p.PrecioUnitarioGs,
               // Precio Ministerio del detalle
               PrecioMinisterio = d.PrecioMinisterio,
-              Usuario = (c.Usuario != null ? c.Usuario.UsuarioNombre : (c.UsuarioCreacion ?? c.Vendedor ?? ""))
+              Usuario = (c.Usuario != null ? c.Usuario.UsuarioNombre : (c.UsuarioCreacion ?? c.Vendedor ?? "")),
+              // Para mostrar precios según modo de ingreso (paquete/unidad)
+              // Usar valores guardados en el detalle (momento de compra) con fallback al producto actual
+              ModoIngreso = d.ModoIngresoPersistido ?? "unidad",
+              CantidadPorPaquete = d.CantidadPorPaqueteMomento ?? p.CantidadPorPaquete ?? 1,
+              // Precios por paquete guardados en el momento de la compra (para respaldo y cálculos)
+              PrecioPaqueteMomento = d.PrecioPaqueteMomento,
+              PrecioMinisterioPaqueteMomento = d.PrecioMinisterioPaqueteMomento,
+              // Lote (FEFO)
+              d.NumeroLote,
+              FechaVencimiento = d.FechaVencimientoItem
             };
 
     // Filtrar por sucursal seleccionada
@@ -318,7 +388,7 @@ END";
     if (fTurnoDesde.HasValue) q = q.Where(x => (x.Turno ?? int.MinValue) >= fTurnoDesde.Value);
     if (fTurnoHasta.HasValue) q = q.Where(x => (x.Turno ?? int.MaxValue) <= fTurnoHasta.Value);
 
-    var data = await q.OrderBy(x => x.Fecha).ThenBy(x => x.IdCompra).Take(5000).ToListAsync();
+    var data = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdCompra).Take(5000).ToListAsync();
 
     filas = data.Select(x => {
       var codMon = x.Moneda ?? "PYG";
@@ -337,6 +407,12 @@ END";
       if (x.CambioDet.HasValue && x.CambioDet.Value > 0) cambioParaMostrar = x.CambioDet;
       else if (codMon != "PYG" && x.CambioCab.HasValue && x.CambioCab.Value > 0) cambioParaMostrar = x.CambioCab;
       else if (codMon == "PYG") cambioParaMostrar = 1m; // PYG sin conversión explícita
+      
+      // Multiplicador para precios según modo de ingreso
+      var cantPaqInt = x.CantidadPorPaquete > 0 ? (int)x.CantidadPorPaquete : 1;
+      var fueCompraPorPaquete = x.ModoIngreso == "paquete" && cantPaqInt > 1;
+      var multPrecio = fueCompraPorPaquete ? cantPaqInt : 1;
+      
       return new Fila{
         IdCompra = x.IdCompra,
         Fecha = x.Fecha,
@@ -346,9 +422,14 @@ END";
         Producto = x.Descripcion ?? "",
         Codigo = x.CodigoInterno ?? "",
         Cantidad = x.Cantidad,
-        Precio = x.PrecioUnitario,
-        PrecioVenta = x.PrecioVentaRef,
-        PrecioMinisterio = x.PrecioMinisterio,
+        // Cantidades separadas para paquetes y unidades
+        CantidadPaquetes = fueCompraPorPaquete ? Math.Round(x.Cantidad / cantPaqInt, 2) : 0,
+        CantidadUnidades = x.Cantidad, // Siempre es la cantidad real en unidades (stock)
+        // Precio de compra: mostrar según modo de ingreso (paquete o unidad)
+        Precio = x.PrecioUnitario * multPrecio,
+        // Precio de venta y ministerio: mostrar según modo de ingreso (paquete o unidad)
+        PrecioVenta = x.PrecioVentaRef * multPrecio,
+        PrecioMinisterio = x.PrecioMinisterio.HasValue ? x.PrecioMinisterio.Value * multPrecio : (decimal?)null,
         Factor = x.FactorMultiplicador,
         PorcentajeMargen = x.PorcentajeMargen,
         Moneda = codMon,
@@ -359,7 +440,11 @@ END";
         ImporteUsd = impUsd,
         Usuario = x.Usuario ?? "",
         IdCaja = x.IdCaja,
-        Turno = x.Turno
+        Turno = x.Turno,
+        ModoIngreso = x.ModoIngreso ?? "unidad",
+        CantidadPorPaquete = cantPaqInt,
+        NumeroLote = x.NumeroLote ?? "",
+        FechaVencimiento = x.FechaVencimiento
       };
     }).ToList();
   }
@@ -423,7 +508,7 @@ END";
 
     // Tabla
     sb.AppendLine("  <table class=\"table table-sm tabla\">");
-    sb.AppendLine("    <thead><tr><th>#</th><th>Fecha</th><th>Doc.</th><th>Proveedor</th><th>Producto</th><th class='right'>Cant.</th><th class='right'>Precio</th><th class='right'>P.Venta</th><th class='right'>P.Min.</th><th class='right'>Factor</th><th class='right'>% Marg</th><th>Mon</th><th class='right'>Cambio</th><th class='right'>Importe</th><th class='right'>Importe Gs</th><th class='right'>Importe $</th><th>Usu</th><th>Caja</th><th>Turno</th></tr></thead>");
+    sb.AppendLine("    <thead><tr><th>#</th><th>Fecha</th><th>Doc.</th><th>Proveedor</th><th>Producto</th><th class='right'>Paq.</th><th class='right'>Unid.</th><th class='right'>Precio</th><th class='right'>P.Venta</th><th class='right'>P.Min.</th><th class='right'>Factor</th><th class='right'>% Marg</th><th>Mon</th><th class='right'>Cambio</th><th class='right'>Importe</th><th class='right'>Importe Gs</th><th class='right'>Importe $</th><th>Usu</th><th>Caja</th><th>Turno</th></tr></thead>");
     sb.AppendLine("    <tbody>");
     int n = 0;
     foreach (var r in filas)
@@ -431,10 +516,16 @@ END";
       var factorStr = r.Factor.HasValue && r.Factor.Value > 0 ? r.Factor.Value.ToString("N2") : "—";
       var margenStr = r.PorcentajeMargen.HasValue ? $"{r.PorcentajeMargen.Value:N2}%" : "—";
       var pminStr = r.PrecioMinisterio.HasValue ? r.PrecioMinisterio.Value.ToString("N0") : "—";
-      sb.AppendLine($"      <tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td class='right'>{r.Cantidad:N2}</td><td class='right'>{r.Precio.ToString(r.Formato)}</td><td class='right'>{r.PrecioVenta:N0}</td><td class='right'>{pminStr}</td><td class='right'>{factorStr}</td><td class='right'>{margenStr}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Importe.ToString(r.Formato)}</td><td class='right'>{r.ImporteGs:N0}</td><td class='right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
+      // Indicador de modo de ingreso (paquete o unidad)
+      var modoIndicador = r.FueCompraPorPaquete ? $" (Paq x{r.CantidadPorPaquete})" : " (Unidad)";
+      var productoConModo = System.Net.WebUtility.HtmlEncode(r.Producto) + modoIndicador;
+      // Cantidades separadas: paquetes y unidades
+      var cantPaqStr = r.FueCompraPorPaquete ? r.CantidadPaquetes.ToString(r.CantidadPaquetes == Math.Floor(r.CantidadPaquetes) ? "N0" : "N2") : "-";
+      var cantUnidStr = r.CantidadUnidades.ToString(r.CantidadUnidades == Math.Floor(r.CantidadUnidades) ? "N0" : "N2");
+      sb.AppendLine($"      <tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{productoConModo}</td><td class='right'>{cantPaqStr}</td><td class='right'>{cantUnidStr}</td><td class='right'>{r.Precio.ToString(r.Formato)}</td><td class='right'>{r.PrecioVenta:N0}</td><td class='right'>{pminStr}</td><td class='right'>{factorStr}</td><td class='right'>{margenStr}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Importe.ToString(r.Formato)}</td><td class='right'>{r.ImporteGs:N0}</td><td class='right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
     }
     sb.AppendLine("    </tbody>");
-    sb.AppendLine($"    <tfoot><tr><th colspan='14' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.ImporteGs):N0}</th><th class='right'>{filas.Sum(x=>x.ImporteUsd):N2}</th><th></th><th></th><th></th></tr></tfoot>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='5' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.CantidadPaquetes):N0}</th><th class='right'>{filas.Sum(x=>x.CantidadUnidades):N0}</th><th colspan='8'></th><th class='right'>{filas.Sum(x=>x.ImporteGs):N0}</th><th class='right'>{filas.Sum(x=>x.ImporteUsd):N2}</th><th></th><th></th><th></th></tr></tfoot>");
     sb.AppendLine("  </table>");
     sb.AppendLine("</div>");
 
@@ -450,18 +541,26 @@ END";
     var usuario = auth.User?.Identity?.Name ?? "";
     var suc = SucursalProvider.GetSucursalNombre() ?? "";
     sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
-    sb.AppendLine(string.Join(sep, new[]{"Nro","Fecha","Doc.","Proveedor","Producto","Cant.","Precio","P. Venta","P.Min.","Factor","% Margen","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"}));
+    sb.AppendLine(string.Join(sep, new[]{"Nro","Fecha","Doc.","Proveedor","Producto","Lote","Vencimiento","Cant. Paq.","Cant. Unid.","Precio","P. Venta","P.Min.","Factor","% Margen","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"}));
     int n=0;
     foreach (var r in filas)
     {
+      // Indicador de modo de ingreso (paquete o unidad)
+      var productoConModo = r.FueCompraPorPaquete ? $"{r.Producto} (Paq x{r.CantidadPorPaquete})" : $"{r.Producto} (Unidad)";
+      // Cantidades separadas para exportación
+      var cantPaqExport = r.FueCompraPorPaquete ? r.CantidadPaquetes.ToString(System.Globalization.CultureInfo.InvariantCulture) : "";
+      var cantUnidExport = r.CantidadUnidades.ToString(System.Globalization.CultureInfo.InvariantCulture);
       string[] cols = new[]
       {
         (++n).ToString(),
         r.Fecha.ToString("yyyy-MM-dd"),
         r.Numero,
         r.Proveedor,
-        r.Producto,
-        r.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        productoConModo,
+        r.NumeroLote ?? "",
+        r.FechaVencimiento?.ToString("yyyy-MM-dd") ?? "",
+        cantPaqExport,
+        cantUnidExport,
         r.Precio.ToString(System.Globalization.CultureInfo.InvariantCulture),
         r.PrecioVenta.ToString(System.Globalization.CultureInfo.InvariantCulture),
         (r.PrecioMinisterio ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -500,40 +599,50 @@ END";
     ws.Cell(row, 1).Value = "Usuario"; ws.Cell(row, 2).Value = usuario; row++;
     ws.Cell(row, 1).Value = "Sucursal"; ws.Cell(row, 2).Value = suc; row += 2;
 
-    var headers = new[]{"#","Fecha","Doc.","Proveedor","Producto","Cant.","Precio","P. Venta","P.Min.","Factor","% Margen","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"};
+    var headers = new[]{"#","Fecha","Doc.","Proveedor","Producto","Lote","Vencimiento","Cant. Paq.","Cant. Unid.","Precio","P. Venta","P.Min.","Factor","% Margen","Mon","Cambio","Importe","Importe Gs","Importe $","Usuario","Caja","Turno"};
     for (int c=0;c<headers.Length;c++) ws.Cell(row, c+1).Value = headers[c];
     ws.Range(row,1,row,headers.Length).Style.Font.Bold = true; row++;
 
-    int n = 0; decimal totalGs = 0, totalUsd = 0;
+    int n = 0; decimal totalGs = 0, totalUsd = 0, totalPaq = 0, totalUnid = 0;
     foreach (var r in filas)
     {
+      // Indicador de modo de ingreso (paquete o unidad)
+      var productoConModo = r.FueCompraPorPaquete ? $"{r.Producto} (Paq x{r.CantidadPorPaquete})" : $"{r.Producto} (Unidad)";
       ws.Cell(row,1).Value = ++n;
       ws.Cell(row,2).Value = r.Fecha; ws.Cell(row,2).Style.DateFormat.Format = "yyyy-MM-dd";
       ws.Cell(row,3).Value = r.Numero;
       ws.Cell(row,4).Value = r.Proveedor;
-      ws.Cell(row,5).Value = r.Producto;
-      ws.Cell(row,6).Value = r.Cantidad; ws.Cell(row,6).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,7).Value = r.Precio; ws.Cell(row,7).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
-      ws.Cell(row,8).Value = r.PrecioVenta; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row,9).Value = r.PrecioMinisterio ?? 0m; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row,10).Value = r.Factor ?? 0m; ws.Cell(row,10).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,11).Value = r.PorcentajeMargen ?? 0m; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,12).Value = r.Moneda;
-      ws.Cell(row,13).Value = r.Cambio ?? 0m; ws.Cell(row,13).Style.NumberFormat.Format = "0.00";
-      ws.Cell(row,14).Value = r.Importe; ws.Cell(row,14).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
-      ws.Cell(row,15).Value = r.ImporteGs; ws.Cell(row,15).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row,16).Value = r.ImporteUsd; ws.Cell(row,16).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,17).Value = r.Usuario;
-      ws.Cell(row,18).Value = r.IdCaja;
-      ws.Cell(row,19).Value = r.Turno;
+      ws.Cell(row,5).Value = productoConModo;
+      ws.Cell(row,6).Value = r.NumeroLote; // Lote
+      ws.Cell(row,7).Value = r.FechaVencimiento; if (r.FechaVencimiento.HasValue) ws.Cell(row,7).Style.DateFormat.Format = "yyyy-MM-dd"; // Vencimiento
+      // Cantidades separadas
+      ws.Cell(row,8).Value = r.FueCompraPorPaquete ? r.CantidadPaquetes : (decimal?)null; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0.##";
+      ws.Cell(row,9).Value = r.CantidadUnidades; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0.##";
+      ws.Cell(row,10).Value = r.Precio; ws.Cell(row,10).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
+      ws.Cell(row,11).Value = r.PrecioVenta; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,12).Value = r.PrecioMinisterio ?? 0m; ws.Cell(row,12).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,13).Value = r.Factor ?? 0m; ws.Cell(row,13).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,14).Value = r.PorcentajeMargen ?? 0m; ws.Cell(row,14).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,15).Value = r.Moneda;
+      ws.Cell(row,16).Value = r.Cambio ?? 0m; ws.Cell(row,16).Style.NumberFormat.Format = "0.00";
+      ws.Cell(row,17).Value = r.Importe; ws.Cell(row,17).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
+      ws.Cell(row,18).Value = r.ImporteGs; ws.Cell(row,18).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,19).Value = r.ImporteUsd; ws.Cell(row,19).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,20).Value = r.Usuario;
+      ws.Cell(row,21).Value = r.IdCaja;
+      ws.Cell(row,22).Value = r.Turno;
+      totalPaq += r.CantidadPaquetes;
+      totalUnid += r.CantidadUnidades;
       totalGs += r.ImporteGs;
       totalUsd += r.ImporteUsd;
       row++;
     }
 
-    ws.Cell(row,14).Value = "Totales"; ws.Cell(row,14).Style.Font.Bold = true;
-    ws.Cell(row,15).Value = totalGs; ws.Cell(row,15).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,15).Style.Font.Bold = true;
-    ws.Cell(row,16).Value = totalUsd; ws.Cell(row,16).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,16).Style.Font.Bold = true;
+    ws.Cell(row,5).Value = "Totales"; ws.Cell(row,5).Style.Font.Bold = true;
+    ws.Cell(row,8).Value = totalPaq; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,8).Style.Font.Bold = true;
+    ws.Cell(row,9).Value = totalUnid; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,9).Style.Font.Bold = true;
+    ws.Cell(row,18).Value = totalGs; ws.Cell(row,18).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,18).Style.Font.Bold = true;
+    ws.Cell(row,19).Value = totalUsd; ws.Cell(row,19).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,19).Style.Font.Bold = true;
     ws.Columns().AdjustToContents();
     using var ms = new System.IO.MemoryStream();
     wb.SaveAs(ms);
@@ -561,7 +670,7 @@ END";
     var sb = new System.Text.StringBuilder();
     sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:10px;'>");
     sb.AppendLine("<thead><tr style='background-color:#f0f0f0; font-weight:bold;'>");
-    sb.AppendLine("<th>ID</th><th>Fecha</th><th>Doc.</th><th>Proveedor</th><th>Producto</th><th style='text-align:right'>Cant.</th><th style='text-align:right'>Precio</th><th style='text-align:right'>P.Venta</th><th style='text-align:right'>P.Min.</th><th style='text-align:right'>Factor</th><th style='text-align:right'>% Marg</th><th>Mon</th><th style='text-align:right'>Cambio</th><th style='text-align:right'>Importe</th><th style='text-align:right'>Importe Gs</th><th style='text-align:right'>Importe $</th><th>Usu</th><th>Caja</th><th>Turno</th>");
+    sb.AppendLine("<th>ID</th><th>Fecha</th><th>Doc.</th><th>Proveedor</th><th>Producto</th><th>Lote</th><th>Venc.</th><th style='text-align:right'>Paq.</th><th style='text-align:right'>Unid.</th><th style='text-align:right'>Precio</th><th style='text-align:right'>P.Venta</th><th style='text-align:right'>P.Min.</th><th style='text-align:right'>Factor</th><th style='text-align:right'>% Marg</th><th>Mon</th><th style='text-align:right'>Cambio</th><th style='text-align:right'>Importe</th><th style='text-align:right'>Importe Gs</th><th style='text-align:right'>Importe $</th><th>Usu</th><th>Caja</th><th>Turno</th>");
     sb.AppendLine("</tr></thead>");
     sb.AppendLine("<tbody>");
     foreach (var r in filas)
@@ -569,13 +678,23 @@ END";
       var factorStr = r.Factor.HasValue && r.Factor.Value > 0 ? r.Factor.Value.ToString("N2") : "—";
       var margenStr = r.PorcentajeMargen.HasValue ? $"{r.PorcentajeMargen.Value:N2}%" : "—";
       var pminStr = r.PrecioMinisterio.HasValue ? r.PrecioMinisterio.Value.ToString("N0") : "—";
+      var cantPaqStr = r.FueCompraPorPaquete ? r.CantidadPaquetes.ToString(r.CantidadPaquetes == Math.Floor(r.CantidadPaquetes) ? "N0" : "N2") : "-";
+      var cantUnidStr = r.CantidadUnidades.ToString(r.CantidadUnidades == Math.Floor(r.CantidadUnidades) ? "N0" : "N2");
+      var vencStr = r.FechaVencimiento.HasValue ? r.FechaVencimiento.Value.ToString("dd/MM/yy") : "-";
+      var vencStyle = "";
+      if (r.FechaVencimiento.HasValue)
+      {
+        var dias = (r.FechaVencimiento.Value.Date - DateTime.Today).TotalDays;
+        if (dias < 0) vencStyle = "color:red;font-weight:bold;";
+        else if (dias <= 30) vencStyle = "color:orange;";
+      }
       sb.AppendLine("<tr>");
-      sb.AppendLine($"<td>{r.IdCompra}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td style='text-align:right'>{r.Cantidad:N2}</td><td style='text-align:right'>{r.Precio.ToString(r.Formato)}</td><td style='text-align:right'>{r.PrecioVenta:N0}</td><td style='text-align:right'>{pminStr}</td><td style='text-align:right'>{factorStr}</td><td style='text-align:right'>{margenStr}</td><td>{r.Moneda}</td><td style='text-align:right'>{(r.Cambio ?? 0):N2}</td><td style='text-align:right'>{r.Importe.ToString(r.Formato)}</td><td style='text-align:right'>{r.ImporteGs:N0}</td><td style='text-align:right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td>");
+      sb.AppendLine($"<td>{r.IdCompra}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td>{System.Net.WebUtility.HtmlEncode(r.NumeroLote ?? "-")}</td><td style='{vencStyle}'>{vencStr}</td><td style='text-align:right'>{cantPaqStr}</td><td style='text-align:right'>{cantUnidStr}</td><td style='text-align:right'>{r.Precio.ToString(r.Formato)}</td><td style='text-align:right'>{r.PrecioVenta:N0}</td><td style='text-align:right'>{pminStr}</td><td style='text-align:right'>{factorStr}</td><td style='text-align:right'>{margenStr}</td><td>{r.Moneda}</td><td style='text-align:right'>{(r.Cambio ?? 0):N2}</td><td style='text-align:right'>{r.Importe.ToString(r.Formato)}</td><td style='text-align:right'>{r.ImporteGs:N0}</td><td style='text-align:right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td>");
       sb.AppendLine("</tr>");
     }
     sb.AppendLine("</tbody>");
     sb.AppendLine("<tfoot><tr style='background-color:#f0f0f0; font-weight:bold;'>");
-    sb.AppendLine($"<td colspan='14' style='text-align:right'>Totales</td><td style='text-align:right'>{filas.Sum(x=>x.ImporteGs):N0}</td><td style='text-align:right'>{filas.Sum(x=>x.ImporteUsd):N2}</td><td></td><td></td><td></td>");
+    sb.AppendLine($"<td colspan='7' style='text-align:right'>Totales</td><td style='text-align:right'>{filas.Sum(x=>x.CantidadPaquetes):N0}</td><td style='text-align:right'>{filas.Sum(x=>x.CantidadUnidades):N0}</td><td colspan='8'></td><td style='text-align:right'>{filas.Sum(x=>x.ImporteGs):N0}</td><td style='text-align:right'>{filas.Sum(x=>x.ImporteUsd):N2}</td><td></td><td></td><td></td>");
     sb.AppendLine("</tr></tfoot>");
     sb.AppendLine("</table>");
     return Task.FromResult(sb.ToString());
@@ -605,5 +724,14 @@ END";
     public string Usuario { get; set; } = string.Empty;
     public int? IdCaja { get; set; }
     public int? Turno { get; set; }
+    // Para mostrar precios según modo de ingreso (paquete/unidad)
+    public string ModoIngreso { get; set; } = "unidad";
+    public int CantidadPorPaquete { get; set; } = 1;
+    public bool FueCompraPorPaquete => ModoIngreso == "paquete" && CantidadPorPaquete > 1;
+    // Columnas separadas para paquetes y unidades
+    public decimal CantidadPaquetes { get; set; } // Solo si fue compra por paquete
+    public decimal CantidadUnidades { get; set; } // Siempre es la cantidad real en unidades (stock)
+    public string NumeroLote { get; set; } = string.Empty; // Lote (FEFO)
+    public DateTime? FechaVencimiento { get; set; } // Fecha de vencimiento del lote
   }
 }

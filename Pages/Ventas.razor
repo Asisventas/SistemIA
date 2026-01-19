@@ -296,11 +296,11 @@
         <label class="form-label">Precio</label>
         @if (PuedeEditarPrecio)
         {
-          <input type="number" class="form-control" step="0.01" @bind="NuevoDetalle.PrecioUnitario" @bind:event="oninput" @bind:after="@(() => OnPrecioChanged())" />
+          <input type="number" class="form-control" step="0.01" @bind="PrecioMostrado" @bind:event="oninput" @bind:after="@(() => OnPrecioChanged())" />
         }
         else
         {
-          <input type="number" class="form-control" step="0.01" value="@NuevoDetalle.PrecioUnitario" readonly style="background-color: var(--bs-secondary-bg);" />
+          <input type="number" class="form-control" step="0.01" value="@PrecioMostrado" readonly style="background-color: var(--bs-secondary-bg);" />
         }
       </div>
       @if (PermitirVenderConDescuento)
@@ -382,7 +382,11 @@
       <thead class="table-light">
         <tr>
           <th>Producto</th>
-          <th class="text-end">Cantidad</th>
+          @if (ModoFarmaciaActivo)
+          {
+            <th style="width:90px">Lote</th>
+          }
+          <th class="text-center" style="width:85px">Paq./Unid.</th>
           <th class="text-end">Precio</th>
           @if (ModoFarmaciaActivo)
           {
@@ -401,16 +405,74 @@
         @foreach (var d in Detalles)
         {
           var prod = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
+          // Lógica de precio por paquete/unidad
+          var cantPorPaq = d.CantidadPorPaqueteMomento ?? prod?.CantidadPorPaquete ?? 1;
+          var fueVentaPorPaquete = d.ModoIngresoPersistido == "paquete" && cantPorPaq > 1;
+          var multiplicadorPrecio = fueVentaPorPaquete ? (int)cantPorPaq : 1;
+          var precioMostrar = d.PrecioUnitario * multiplicadorPrecio;
+          var cantidadPaquetes = fueVentaPorPaquete ? Math.Round(d.Cantidad / cantPorPaq, 2) : 0m;
+          var cantidadUnidades = d.Cantidad;
           <tr @onclick="() => SeleccionarDetalleGrid(d)" style="cursor: pointer;">
-            <td>@prod?.Descripcion</td>
-            <td class="text-end">@d.Cantidad.ToString("N2")</td>
-            <td class="text-end">@FormatearPrecio(d.PrecioUnitario)</td>
+            <td>
+              @prod?.Descripcion
+              @if (fueVentaPorPaquete)
+              {
+                <br/><small class="text-primary"><i class="bi bi-box-seam me-1"></i>Por paquete (@((int)cantPorPaq) u.)</small>
+              }
+              else
+              {
+                <br/><small class="text-muted"><i class="bi bi-1-square me-1"></i>Por unidad</small>
+              }
+            </td>
+            @if (ModoFarmaciaActivo)
+            {
+              <td>
+                @if (!string.IsNullOrEmpty(d.NumeroLoteMomento))
+                {
+                  <span class="badge bg-info"><i class="bi bi-box-seam me-1"></i>@d.NumeroLoteMomento</span>
+                  @if (d.FechaVencimientoLoteMomento.HasValue)
+                  {
+                    <br/><small class="text-muted">Venc: @d.FechaVencimientoLoteMomento.Value.ToString("dd/MM/yy")</small>
+                  }
+                }
+                else
+                {
+                  <span class="text-muted">-</span>
+                }
+              </td>
+            }
+            <td class="text-center">
+              @{
+                var paqStr = cantidadPaquetes == Math.Floor(cantidadPaquetes) ? cantidadPaquetes.ToString("N0") : cantidadPaquetes.ToString("N2");
+                var uniStr = cantidadUnidades == Math.Floor(cantidadUnidades) ? cantidadUnidades.ToString("N0") : cantidadUnidades.ToString("N2");
+              }
+              @if (fueVentaPorPaquete)
+              {
+                <span class="text-primary fw-semibold">@paqStr</span><span class="text-muted">/</span><span>@uniStr</span>
+              }
+              else
+              {
+                <span class="text-muted">-/</span><span>@uniStr</span>
+              }
+            </td>
+            <td class="text-end">
+              @FormatearPrecio(precioMostrar)
+              @if (fueVentaPorPaquete)
+              {
+                <br/><small class="text-muted">(@FormatearPrecio(d.PrecioUnitario)/u)</small>
+              }
+            </td>
             @if (ModoFarmaciaActivo)
             {
               <td class="text-end">
                 @if (d.PrecioMinisterio.HasValue)
                 {
-                  <span class="text-info">@FormatearPrecio(d.PrecioMinisterio.Value)</span>
+                  var precioMinMostrar = d.PrecioMinisterio.Value * multiplicadorPrecio;
+                  <span class="text-info">@FormatearPrecio(precioMinMostrar)</span>
+                  @if (fueVentaPorPaquete)
+                  {
+                    <br/><small class="text-muted">(@FormatearPrecio(d.PrecioMinisterio.Value)/u)</small>
+                  }
                 }
                 else
                 {

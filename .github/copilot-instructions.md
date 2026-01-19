@@ -1,6 +1,6 @@
 # Instrucciones para GitHub Copilot - SistemIA
 
-## � REGLA PRIMORDIAL - Ejecución del Servidor
+## 🔴 REGLA PRIMORDIAL - Ejecución del Servidor
 
 > **⚠️ CRÍTICO:** Al ejecutar el servidor (`dotnet run`) y luego hacer solicitudes HTTP (Invoke-RestMethod, curl, etc.) desde la misma terminal o proceso, **el servidor se cierra automáticamente**.
 
@@ -24,7 +24,47 @@ PowerShell en VS Code terminal comparte contexto y cuando el proceso hijo (dotne
 
 ---
 
-## �📋 Descripción del Proyecto
+## 🔴 PROBLEMA UTF-8 EN TERMINAL - CRÍTICO
+
+> **⚠️ PowerShell corrompe caracteres UTF-8** al mostrar respuestas JSON/XML con tildes (ó→├│, í→├¡, etc.)
+
+### ❌ NUNCA confiar en la terminal para analizar contenido UTF-8
+```powershell
+# ❌ INCORRECTO - Muestra caracteres corruptos
+$json = curl.exe -s "https://localhost:7060/api/data" | ConvertFrom-Json
+$json.contenido  # "Factura electr├│nica" - CORRUPTO
+```
+
+### ✅ Alternativas para Debugging UTF-8:
+
+1. **Guardar a archivo y leer con `read_file`:**
+```powershell
+curl.exe -k -s "https://localhost:7060/debug/ventas/273/soap-sync" -o "c:\asis\SistemIA\Debug\output.json"
+```
+Luego usar la herramienta `read_file` para ver el contenido correctamente.
+
+2. **Usar el archivo de logs SIFEN:**
+El sistema escribe logs UTF-8 correctos en `Debug/sifen_debug.log`.
+Usar `read_file` para ver los logs en tiempo real.
+
+3. **Endpoints de debug que escriben a archivo:**
+- `POST /debug/ventas/{id}/log-soap` - Guarda SOAP a archivo
+- Los logs del servidor van a `Debug/sifen_debug.log`
+
+### Logging SIFEN a Archivo
+El sistema guarda automáticamente en `Debug/sifen_debug.log`:
+- SOAP enviado (completo)
+- Respuesta SIFEN
+- Errores y diagnósticos
+
+Para ver los logs:
+```
+read_file("c:\asis\SistemIA\Debug\sifen_debug.log", 1, 200)
+```
+
+---
+
+## 📋 Descripción del Proyecto
 SistemIA es un sistema de gestión empresarial desarrollado en **Blazor Server** con integración a **SIFEN** (Facturación Electrónica de Paraguay - SET).
 
 ## 🛠️ Stack Tecnológico
@@ -1960,7 +2000,7 @@ En el prevalidador oficial `ekuatia.set.gov.py/prevalidador/validacion`:
 - ✅ "Pasó las Validaciones de SIFEN"
 
 **Correcciones implementadas:**
-1. **URL del QR**: Debe ser `consultas/qr` (producción) incluso para ambiente test
+1. **URL del QR**: Según ambiente (`consultas-test/qr` para test, `consultas/qr` para producción)
 2. **Escape `&`**: Escape simple `&amp;` (NO doble `&amp;amp;`)
 3. **IdCSC**: Sin ceros iniciales ("1" en vez de "0001")
 
@@ -1984,3 +2024,66 @@ A pesar de que el XML es 100% válido, el webservice retorna error 0160.
 - `Debug/venta_252_url_prod.xml` - XML válido con URL producción (pasa prevalidador)
 
 > **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md`
+
+---
+
+### Sesión 16 de Enero 2026 - DESCUBRIMIENTO CRÍTICO: Estructura del Signature
+
+#### ⚠️ HALLAZGO DEFINITIVO: 3 Diferencias Estructurales
+
+Se comparó el XML generado con el XML de referencia **APROBADO** por SIFEN (`xmlRequestVenta_273_sync.xml`) y se encontraron **3 diferencias críticas**:
+
+| Elemento | XML Referencia (FUNCIONA) | Nuestro XML (ERROR 0160) |
+|----------|---------------------------|--------------------------|
+| `<gCamGen />` | ❌ **NO presente** | ✅ Elemento vacío existía |
+| `<Signature>` namespace | `xmlns="http://www.w3.org/2000/09/xmldsig#"` | Sin namespace (se removía) |
+| Posición de Signature | **FUERA** de `</DE>`, hermano bajo `<rDE>` | **DENTRO** de `</DE>` como hijo |
+
+#### 📐 Estructura XML Correcta (SIFEN Aprobado)
+
+```xml
+<rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" ...>
+  <dVerFor>150</dVerFor>
+  <DE Id="...">
+    ... contenido del DE ...
+    <gTotSub>...</gTotSub>
+  </DE>                                    <!-- DE cierra AQUÍ -->
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    ...                                    <!-- Signature FUERA de DE -->
+  </Signature>
+  <gCamFuFD>
+    <dCarQR>...</dCarQR>
+  </gCamFuFD>
+</rDE>
+```
+
+#### ✅ Correcciones Aplicadas
+
+1. **Eliminado `<gCamGen />` vacío** (DEXmlBuilder.cs)
+   - El XML de referencia NO tiene este elemento vacío
+   - Solo incluir si hay contenido real
+
+2. **Signature CON namespace XMLDSIG** (Sifen.cs)
+   - Eliminado `QuitarNamespaceRecursivo(signature)`
+   - Signature DEBE tener `xmlns="http://www.w3.org/2000/09/xmldsig#"`
+
+3. **Signature FUERA de `</DE>`** (Sifen.cs)
+   - Insertar como hermano bajo `<rDE>`, ANTES de `<gCamFuFD>`
+   - NO como hijo de `<DE>`
+
+#### Archivos Modificados:
+- `Services/DEXmlBuilder.cs` - Eliminado `<gCamGen />` vacío
+- `Models/Sifen.cs` - Signature: mantener namespace, posicionar FUERA de DE
+
+#### 🧪 Script de Verificación:
+```powershell
+$xml = (Get-Content "Debug\venta_firmado.xml" -Raw)
+$posDE = $xml.IndexOf("</DE>")
+$posSig = $xml.IndexOf("<Signature")
+if ($posSig -gt $posDE) { "CORRECTO: Signature FUERA de DE" } else { "ERROR: Signature DENTRO de DE" }
+```
+
+#### 📖 Referencia: XML de Power Builder que FUNCIONA
+El XML `xmlRequestVenta_273_sync.xml` fue generado por Power Builder y **SÍ es aceptado** por SIFEN.
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 16-Ene-2026"

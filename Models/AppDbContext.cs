@@ -39,6 +39,8 @@ namespace SistemIA.Models
         public DbSet<TiposItem> TiposItem { get; set; }
         public DbSet<Deposito> Depositos { get; set; }
         public DbSet<ProductoDeposito> ProductosDepositos { get; set; }
+        public DbSet<ProductoLote> ProductosLotes { get; set; }
+        public DbSet<MovimientoLote> MovimientosLotes { get; set; }
         public DbSet<MovimientoInventario> MovimientosInventario { get; set; }
         public DbSet<ProductoComponente> ProductosComponentes { get; set; }
         public DbSet<Compra> Compras { get; set; }
@@ -602,6 +604,65 @@ namespace SistemIA.Models
                     .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasIndex(pd => new { pd.IdProducto, pd.IdDeposito }).IsUnique();
+            });
+
+            // --- ProductoLote (lotes con vencimiento) ---
+            modelBuilder.Entity<ProductoLote>(entity =>
+            {
+                entity.ToTable("ProductosLotes");
+                entity.HasKey(l => l.IdProductoLote);
+                entity.Property(l => l.NumeroLote).HasMaxLength(50).IsRequired();
+                entity.Property(l => l.Stock).HasColumnType("decimal(18,4)");
+                entity.Property(l => l.StockInicial).HasColumnType("decimal(18,4)");
+                entity.Property(l => l.CostoUnitario).HasColumnType("decimal(18,4)");
+                entity.Property(l => l.Estado).HasMaxLength(20).HasDefaultValue("Activo");
+                entity.Property(l => l.Observacion).HasMaxLength(500);
+
+                entity.HasOne(l => l.Producto)
+                    .WithMany(p => p.Lotes)
+                    .HasForeignKey(l => l.IdProducto)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(l => l.Deposito)
+                    .WithMany()
+                    .HasForeignKey(l => l.IdDeposito)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(l => l.Compra)
+                    .WithMany()
+                    .HasForeignKey(l => l.IdCompra)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                // Índice único: un lote no puede repetirse para el mismo producto/depósito
+                entity.HasIndex(l => new { l.IdProducto, l.IdDeposito, l.NumeroLote }).IsUnique();
+                
+                // Índice para búsqueda rápida por vencimiento
+                entity.HasIndex(l => l.FechaVencimiento);
+            });
+
+            // --- MovimientoLote (trazabilidad de lotes) ---
+            modelBuilder.Entity<MovimientoLote>(entity =>
+            {
+                entity.ToTable("MovimientosLotes");
+                entity.HasKey(m => m.IdMovimientoLote);
+                entity.Property(m => m.TipoMovimiento).HasMaxLength(30).IsRequired();
+                entity.Property(m => m.Cantidad).HasColumnType("decimal(18,4)");
+                entity.Property(m => m.StockAnterior).HasColumnType("decimal(18,4)");
+                entity.Property(m => m.StockPosterior).HasColumnType("decimal(18,4)");
+                entity.Property(m => m.TipoDocumento).HasMaxLength(50);
+                entity.Property(m => m.ReferenciaDocumento).HasMaxLength(100);
+                entity.Property(m => m.Motivo).HasMaxLength(500);
+
+                entity.HasOne(m => m.ProductoLote)
+                    .WithMany(l => l.Movimientos)
+                    .HasForeignKey(m => m.IdProductoLote)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Índice para búsqueda por documento
+                entity.HasIndex(m => new { m.TipoDocumento, m.IdDocumento });
+                
+                // Índice para búsqueda por fecha
+                entity.HasIndex(m => m.FechaMovimiento);
             });
 
             // --- Movimientos de Inventario ---

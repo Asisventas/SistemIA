@@ -102,11 +102,29 @@
                 }
               </td>
               <td class="col-iva">@p.TipoIva?.DescripcionCompleta</td>
-              <td class="col-costo text-end">@(p.CostoUnitarioGs.HasValue ? p.CostoUnitarioGs.Value.ToString("N0") : "-")</td>
-        <td class="col-precio text-end">@p.PrecioUnitarioGs.ToString("N0")</td>
+              <td class="col-costo text-end">
+                @(p.CostoUnitarioGs.HasValue ? p.CostoUnitarioGs.Value.ToString("N0") : "-")
+                @if ((p.UnidadMedidaCodigo == "006") && p.CantidadPorPaquete.HasValue && p.CantidadPorPaquete > 1 && p.CostoPaqueteGs.HasValue && p.CostoPaqueteGs > 0)
+                {
+                  <br/><small class="text-success">Paq: @p.CostoPaqueteGs.Value.ToString("N0")</small>
+                }
+              </td>
+        <td class="col-precio text-end">
+          @p.PrecioUnitarioGs.ToString("N0")
+          @if ((p.UnidadMedidaCodigo == "006") && p.CantidadPorPaquete.HasValue && p.CantidadPorPaquete > 1 && p.PrecioPaqueteGs.HasValue && p.PrecioPaqueteGs > 0)
+          {
+            <br/><small class="text-primary fw-semibold">Paq: @p.PrecioPaqueteGs.Value.ToString("N0")</small>
+          }
+        </td>
         @if (MostrarPrecioMinisterio)
         {
-          <td class="col-pmin text-end">@(p.PrecioMinisterio?.ToString("N0") ?? "—")</td>
+          <td class="col-pmin text-end">
+            @(p.PrecioMinisterio?.ToString("N0") ?? "—")
+            @if ((p.UnidadMedidaCodigo == "006") && p.CantidadPorPaquete.HasValue && p.CantidadPorPaquete > 1 && p.PrecioMinisterioPaquete.HasValue && p.PrecioMinisterioPaquete > 0)
+            {
+              <br/><small class="text-info">Paq: @p.PrecioMinisterioPaquete.Value.ToString("N0")</small>
+            }
+          </td>
         }
         <td class="col-stock text-end">
           @{
@@ -195,340 +213,480 @@
     }
   </div>
 
-  <!-- Modal -->
+  <!-- Modal Producto -->
   <div class="modal fade @(mostrarModal ? "show" : "")" style="display:@(mostrarModal?"block":"none")" tabindex="-1">
-    <div class="modal-dialog modal-xl">
+    <div class="modal-dialog" style="max-width: 95%; width: 1400px;">
       <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">@(editando.IdProducto > 0 ? "Editar Producto" : "Nuevo Producto")</h5>
-          <button type="button" class="btn-close" @onclick="Cerrar"></button>
+        <div class="modal-header bg-primary text-white py-2">
+          <h5 class="modal-title">
+            <i class="bi @(editando.IdProducto > 0 ? "bi-pencil-square" : "bi-plus-circle") me-2"></i>
+            @(editando.IdProducto > 0 ? "Editar Producto" : "Nuevo Producto")
+            @if (editando.IdProducto > 0)
+            {
+              <span class="badge bg-light text-primary ms-2">ID: @editando.IdProducto</span>
+            }
+          </h5>
+          <button type="button" class="btn-close btn-close-white" @onclick="Cerrar"></button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body p-4">
           <EditForm Model="editando" OnValidSubmit="@Guardar">
             <DataAnnotationsValidator />
             <ValidationSummary />
-            <div class="row g-3">
-              
-              @* ========== SECCIÓN: INFORMACIÓN BÁSICA ========== *@
-              <div class="col-12"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-info-circle me-1"></i>Información Básica</h6></div>
-              
-              <div class="col-md-3">
-                <label class="form-label">Código (dCodInt)</label>
-                <input type="text" class="form-control" value="@(string.IsNullOrEmpty(editando.CodigoInterno) ? "Se generará automáticamente" : editando.CodigoInterno)" disabled style="background-color: var(--bs-secondary-bg); cursor: not-allowed;" />
-                <div class="form-text">El sistema asignará el código al guardar.</div>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Descripción (dDesProSer) *</label>
-                <InputText class="form-control" @bind-Value="editando.Descripcion" />
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Código de Barras</label>
-                <InputText class="form-control" @bind-Value="editando.CodigoBarras" placeholder="GTIN-8/12/13/14" />
-              </div>
-              
-              @* ========== SECCIÓN: CLASIFICACIÓN ========== *@
-              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-tags me-1"></i>Clasificación</h6></div>
-              
-              <div class="col-md-3">
-                <label class="form-label">Tipo Ítem</label>
-                <div class="input-group">
-                  <select class="form-select" @bind="editando.TipoItem">
-                    @foreach (var t in tiposItem)
-                    {
-                      <option value="@t.IdTipoItem">@t.Nombre@(t.EsGasto ? " (Gasto)" : string.Empty)</option>
-                    }
-                  </select>
-                  <button class="btn btn-outline-secondary" type="button" title="Nuevo tipo" @onclick="AbrirNuevoTipoItem">+</button>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Marca</label>
-                <div class="input-group">
-                  <select class="form-select" @bind="editando.IdMarca">
-                    <option value="">(Sin marca)</option>
-                    @foreach (var m in marcas)
-                    {
-                      <option value="@m.IdMarca">@m.NombreMarca</option>
-                    }
-                  </select>
-                  <button class="btn btn-outline-secondary" type="button" title="Nueva marca" @onclick="AbrirNuevaMarca">+</button>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Clasificación</label>
-                <div class="input-group">
-                  <select class="form-select" @bind="editando.IdClasificacion">
-                    <option value="">(Sin clasificación)</option>
-                    @foreach (var c in clasificaciones)
-                    {
-                      <option value="@c.IdClasificacion">@c.Nombre</option>
-                    }
-                  </select>
-                  <button class="btn btn-outline-secondary" type="button" title="Nueva clasificación" @onclick="AbrirNuevaClasificacion">+</button>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Depósito Predeterminado</label>
-                <select class="form-select" @bind="editando.IdDepositoPredeterminado">
-                  <option value="">(Ninguno)</option>
-                  @foreach (var d in depositosCombo)
-                  {
-                    <option value="@d.IdDeposito">@d.Nombre (@(d.Sucursal?.NombreSucursal ?? $"Suc {d.IdSucursal}"))</option>
-                  }
-                </select>
-              </div>
-              
-              @* ========== SECCIÓN: UNIDAD E IMPUESTOS ========== *@
-              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-percent me-1"></i>Unidad e Impuestos</h6></div>
-              
-              <div class="col-md-4">
-                <label class="form-label">Unidad de Medida (cUniMed) *</label>
-                <select class="form-select" value="@editando.UnidadMedidaCodigo" @onchange="OnUnidadMedidaChanged">
-                  <option value="77">77 - Unidad</option>
-                  <option value="005">005 - Caja</option>
-                  <option value="003">003 - Kilogramo</option>
-                  <option value="001">001 - Metro</option>
-                  <option value="002">002 - Litro</option>
-                  <option value="006">006 - Paquete</option>
-                </select>
-                <div class="form-text">Códigos SIFEN más usados.</div>
-              </div>
-              
-              @* Campo Cantidad por Paquete - solo visible cuando UnidadMedida = Paquete o Caja *@
-              @if (editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")
-              {
-                <div class="col-md-4">
-                  <label class="form-label">📦 Cantidad por @(editando.UnidadMedidaCodigo == "006" ? "Paquete" : "Caja") *</label>
-                  <input type="number" class="form-control" min="1" step="1" 
-                         value="@(editando.CantidadPorPaquete?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" 
-                         @onchange="OnCantidadPorPaqueteChanged" placeholder="Ej: 10" />
-                  <div class="form-text">Cuántas unidades trae un @(editando.UnidadMedidaCodigo == "006" ? "paquete" : "caja").</div>
-                </div>
-                <div class="col-md-4">
-                  <div class="form-check form-switch mb-2">
-                    <input class="form-check-input" type="checkbox" id="permiteVentaUnidadSwitch" @bind="editando.PermiteVentaPorUnidad" />
-                    <label class="form-check-label" for="permiteVentaUnidadSwitch">🛒 Permitir Venta por Unidad</label>
+            
+            <div class="row">
+              <!-- COLUMNA IZQUIERDA: Información principal -->
+              <div class="col-lg-8">
+                
+                @* ========== CARD: INFORMACIÓN BÁSICA ========== *@
+                <div class="card mb-3 border-primary">
+                  <div class="card-header bg-primary bg-opacity-10 py-2">
+                    <h6 class="mb-0 text-primary"><i class="bi bi-info-circle me-2"></i>Información Básica</h6>
                   </div>
-                  <div class="form-text">Permite vender unidades sueltas del @(editando.UnidadMedidaCodigo == "006" ? "paquete" : "caja").</div>
-                </div>
-              }
-              <div class="col-md-4">
-                <label class="form-label">Tipo de IVA *</label>
-                <select class="form-select" @bind="editando.IdTipoIva">
-                  @foreach (var iva in tiposIva)
-                  {
-                    <option value="@iva.IdTipoIva">@iva.DescripcionCompleta</option>
-                  }
-                </select>
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">Moneda Predeterminada</label>
-                <select class="form-select" @bind="editando.IdMonedaPrecio">
-                  <option value="">(PYG por defecto)</option>
-                  @foreach (var m in monedas)
-                  {
-                    <option value="@m.IdMoneda">@m.Nombre (@m.CodigoISO)</option>
-                  }
-                </select>
-              </div>
-              
-              @* ========== SECCIÓN: PRECIOS ========== *@
-              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-currency-dollar me-1"></i>Precios</h6></div>
-              
-              <div class="col-md-3">
-                <label class="form-label">Costo Unitario Gs</label>
-                <input type="text" inputmode="numeric" class="form-control" value="@(editando.CostoUnitarioGs.HasValue ? ((long)editando.CostoUnitarioGs.Value).ToString(System.Globalization.CultureInfo.InvariantCulture) : "")" @onchange="OnCostoChanged" />
-                <div class="form-text">Costo de compra (referencial).</div>
-              </div>
-              <div class="col-md-2">
-                <label class="form-label">Factor</label>
-                <input type="text" inputmode="decimal" class="form-control" value="@(factorPrecio?.ToString(System.Globalization.CultureInfo.InvariantCulture))" @onchange="OnFactorChanged" placeholder="ej: 1.30" />
-                <div class="form-text">Multiplicador</div>
-              </div>
-              <div class="col-md-2">
-                <label class="form-label">% Mark-up</label>
-                <input type="text" inputmode="decimal" class="form-control" value="@(porcentajePrecio?.ToString(System.Globalization.CultureInfo.InvariantCulture))" @onchange="OnPorcentajeChanged" placeholder="ej: 30" />
-                @{
-                  decimal? pctUtilidad = null;
-                  if (editando.CostoUnitarioGs.HasValue && editando.CostoUnitarioGs.Value > 0 && editando.PrecioUnitarioGs > 0)
-                  {
-                    pctUtilidad = ((editando.PrecioUnitarioGs - editando.CostoUnitarioGs.Value) / editando.PrecioUnitarioGs) * 100;
-                  }
-                  var colorUtilidad = pctUtilidad.HasValue ? (pctUtilidad.Value >= 30 ? "text-primary" : "text-danger") : "text-muted";
-                }
-                <small class="@colorUtilidad" title="% Utilidad (sobre precio venta)">Util: @(pctUtilidad.HasValue ? $"{pctUtilidad.Value:N1}%" : "—")</small>
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Precio Unitario Gs *</label>
-                <input type="text" inputmode="numeric" class="form-control @(ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio ? "is-invalid" : "")" value="@((long)editando.PrecioUnitarioGs)" @onchange="OnPrecioChanged" />
-                @if (ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio)
-                {
-                  <div class="invalid-feedback">El precio no puede superar el Precio Ministerio (@editando.PrecioMinisterio.Value.ToString("N0") Gs)</div>
-                }
-              </div>
-              @if (MostrarPrecioMinisterio)
-              {
-                <div class="col-md-2">
-                  <label class="form-label">🏥 P. Ministerio</label>
-                  <input type="text" inputmode="numeric" class="form-control" value="@(editando.PrecioMinisterio.HasValue ? ((long)editando.PrecioMinisterio.Value).ToString() : "")" @onchange="OnPrecioMinisterioChanged" placeholder="Máx. regulado" />
-                </div>
-              }
-              
-              @* ========== SECCIÓN: OPCIONES DE VENTA ========== *@
-              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-cart-check me-1"></i>Opciones de Venta</h6></div>
-              
-              <div class="col-md-3">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" id="permiteDecimalSwitch" @bind="editando.PermiteDecimal" />
-                  <label class="form-check-label" for="permiteDecimalSwitch">⚖️ Permite Venta Decimal</label>
-                </div>
-                <div class="form-text">Permite vender fracciones (ej: 0.5 kg).</div>
-              </div>
-              <div class="col-md-3">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" id="controladoRecetaSwitch" @bind="editando.ControladoReceta" />
-                  <label class="form-check-label" for="controladoRecetaSwitch">🏥 Controlado con Receta</label>
-                </div>
-                <div class="form-text">Requiere datos de receta médica.</div>
-              </div>
-              <div class="col-md-3">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" id="controlarVencimientoSwitch" @bind="editando.ControlarVencimiento" />
-                  <label class="form-check-label" for="controlarVencimientoSwitch">📅 Controlar Vencimiento</label>
-                </div>
-                @if (editando.ControlarVencimiento)
-                {
-                  <InputDate class="form-control form-control-sm" @bind-Value="editando.FechaVencimiento" />
-                }
-              </div>
-              <div class="col-md-3">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" role="switch" id="activoSwitch" @bind="editando.Activo" />
-                  <label class="form-check-label" for="activoSwitch">✅ Activo</label>
-                </div>
-                <div class="form-text">Producto disponible para venta.</div>
-              </div>
-              <div class="col-md-3">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" id="permiteVentaBajoCostoSwitch" @bind="editando.PermiteVentaBajoCosto" />
-                  <label class="form-check-label" for="permiteVentaBajoCostoSwitch">💰 Permite Venta Bajo Costo</label>
-                </div>
-                <div class="form-text">Permite vender por debajo del precio de costo.</div>
-              </div>
-              
-              @* ========== SECCIÓN: IMAGEN ========== *@
-              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-image me-1"></i>Imagen</h6></div>
-              
-              <div class="col-md-4">
-                <div class="d-flex align-items-center gap-3">
-                  <img src="@(previewDataUrl ?? (string.IsNullOrWhiteSpace(editando.Foto) ? "/images/placeholder-product.svg" : editando.Foto))" alt="preview" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #ddd" />
-                  <div>
-                    <InputFile class="form-control form-control-sm file-no-text" OnChange="OnFileSelected" accept="image/*" />
-                    <div class="form-text">PNG/JPG/WEBP hasta 2 MB.</div>
+                  <div class="card-body">
+                    <div class="row g-3">
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Código (dCodInt)</label>
+                        <input type="text" class="form-control form-control-sm" value="@(string.IsNullOrEmpty(editando.CodigoInterno) ? "Automático" : editando.CodigoInterno)" disabled style="background-color: var(--bs-secondary-bg);" />
+                      </div>
+                      <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Descripción *</label>
+                        <InputText class="form-control" @bind-Value="editando.Descripcion" placeholder="Nombre del producto o servicio" />
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Código de Barras</label>
+                        <InputText class="form-control form-control-sm" @bind-Value="editando.CodigoBarras" placeholder="GTIN-8/12/13/14" />
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
               
-              @* ========== SECCIÓN: COMBO ========== *@
-              <div class="col-12 mt-3"><h6 class="text-primary border-bottom pb-1 mb-0"><i class="bi bi-boxes me-1"></i>Combo</h6></div>
-              
-              <div class="col-md-12">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" id="esComboSwitch" @bind="editando.EsCombo" />
-                  <label class="form-check-label" for="esComboSwitch">📦 Es un Combo</label>
+                @* ========== CARD: CLASIFICACIÓN Y UNIDADES ========== *@
+                <div class="card mb-3">
+                  <div class="card-header bg-light py-2">
+                    <h6 class="mb-0"><i class="bi bi-tags me-2"></i>Clasificación y Unidades</h6>
+                  </div>
+                  <div class="card-body">
+                    <div class="row g-3">
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Tipo Ítem</label>
+                        <div class="input-group input-group-sm">
+                          <select class="form-select" @bind="editando.TipoItem">
+                            @foreach (var t in tiposItem)
+                            {
+                              <option value="@t.IdTipoItem">@t.Nombre@(t.EsGasto ? " (Gasto)" : string.Empty)</option>
+                            }
+                          </select>
+                          <button class="btn btn-outline-secondary" type="button" title="Nuevo tipo" @onclick="AbrirNuevoTipoItem">+</button>
+                        </div>
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Marca</label>
+                        <div class="input-group input-group-sm">
+                          <select class="form-select" @bind="editando.IdMarca">
+                            <option value="">(Sin marca)</option>
+                            @foreach (var m in marcas)
+                            {
+                              <option value="@m.IdMarca">@m.NombreMarca</option>
+                            }
+                          </select>
+                          <button class="btn btn-outline-secondary" type="button" title="Nueva marca" @onclick="AbrirNuevaMarca">+</button>
+                        </div>
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Clasificación</label>
+                        <div class="input-group input-group-sm">
+                          <select class="form-select" @bind="editando.IdClasificacion">
+                            <option value="">(Sin clasificación)</option>
+                            @foreach (var c in clasificaciones)
+                            {
+                              <option value="@c.IdClasificacion">@c.Nombre</option>
+                            }
+                          </select>
+                          <button class="btn btn-outline-secondary" type="button" title="Nueva clasificación" @onclick="AbrirNuevaClasificacion">+</button>
+                        </div>
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Depósito Predeterminado</label>
+                        <select class="form-select form-select-sm" @bind="editando.IdDepositoPredeterminado">
+                          <option value="">(Ninguno)</option>
+                          @foreach (var d in depositosCombo)
+                          {
+                            <option value="@d.IdDeposito">@d.Nombre (@(d.Sucursal?.NombreSucursal ?? $"Suc {d.IdSucursal}"))</option>
+                          }
+                        </select>
+                      </div>
+
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Unidad de Medida *</label>
+                        <select class="form-select form-select-sm" value="@editando.UnidadMedidaCodigo" @onchange="OnUnidadMedidaChanged">
+                          <option value="77">77 - Unidad</option>
+                          <option value="005">005 - Caja</option>
+                          <option value="003">003 - Kilogramo</option>
+                          <option value="001">001 - Metro</option>
+                          <option value="002">002 - Litro</option>
+                          <option value="006">006 - Paquete</option>
+                        </select>
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Tipo de IVA *</label>
+                        <select class="form-select form-select-sm" @bind="editando.IdTipoIva">
+                          @foreach (var iva in tiposIva)
+                          {
+                            <option value="@iva.IdTipoIva">@iva.DescripcionCompleta</option>
+                          }
+                        </select>
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Moneda Precio</label>
+                        <select class="form-select form-select-sm" @bind="editando.IdMonedaPrecio">
+                          <option value="">(PYG por defecto)</option>
+                          @foreach (var m in monedas)
+                          {
+                            <option value="@m.IdMoneda">@m.Nombre (@m.CodigoISO)</option>
+                          }
+                        </select>
+                      </div>
+                      @if (editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")
+                      {
+                        <div class="col-md-3">
+                          <label class="form-label small fw-semibold">📦 Cant. por @(editando.UnidadMedidaCodigo == "006" ? "Paquete" : "Caja") *</label>
+                          <input type="number" class="form-control form-control-sm" min="1" step="1" 
+                                 value="@(editando.CantidadPorPaquete?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" 
+                                 @onchange="OnCantidadPorPaqueteChanged" placeholder="Ej: 10" />
+                        </div>
+                      }
+                    </div>
+                  </div>
                 </div>
+              
+                @* ========== CARD: PRECIOS ========== *@
+                <div class="card mb-3 border-success">
+                  <div class="card-header bg-success bg-opacity-10 py-2">
+                    <h6 class="mb-0 text-success"><i class="bi bi-currency-dollar me-2"></i>Precios y Costos</h6>
+                  </div>
+                  <div class="card-body">
+                    @* Precios por Paquete - solo si es Paquete o Caja *@
+                    @if (editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")
+                    {
+                      <div class="row g-2 mb-3 pb-3 border-bottom">
+                        <div class="col-12">
+                          <span class="badge bg-success">
+                            📦 @(editando.UnidadMedidaCodigo == "006" ? "PAQUETE" : "CAJA")
+                            @if (editando.CantidadPorPaquete.HasValue && editando.CantidadPorPaquete > 1)
+                            {
+                              <text> (@editando.CantidadPorPaquete.Value u/paq)</text>
+                            }
+                          </span>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label small">Costo Paq. Gs</label>
+                          <input type="text" inputmode="numeric" class="form-control form-control-sm" 
+                                 value="@(editando.CostoPaqueteGs.HasValue ? ((long)editando.CostoPaqueteGs.Value).ToString(System.Globalization.CultureInfo.InvariantCulture) : "")" 
+                                 @onchange="OnCostoPaqueteChanged" />
+                        </div>
+                        <div class="col-md-2">
+                          <label class="form-label small">Factor</label>
+                          <input type="text" inputmode="decimal" class="form-control form-control-sm" 
+                                 value="@(factorPrecioPaquete?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                                 @onchange="OnFactorPaqueteChanged" placeholder="1.25" />
+                        </div>
+                        <div class="col-md-2">
+                          <label class="form-label small">% Mark-up</label>
+                          <input type="text" inputmode="decimal" class="form-control form-control-sm" 
+                                 value="@(porcentajePrecioPaquete?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                                 @onchange="OnPorcentajePaqueteChanged" placeholder="25" />
+                          @{
+                            decimal? pctUtilidadPaq = null;
+                            if (editando.CostoPaqueteGs.HasValue && editando.CostoPaqueteGs.Value > 0 && editando.PrecioPaqueteGs.HasValue && editando.PrecioPaqueteGs > 0)
+                            {
+                              pctUtilidadPaq = ((editando.PrecioPaqueteGs.Value - editando.CostoPaqueteGs.Value) / editando.PrecioPaqueteGs.Value) * 100;
+                            }
+                            var colorUtilidadPaq = pctUtilidadPaq.HasValue ? (pctUtilidadPaq.Value >= 25 ? "text-success" : "text-danger") : "text-muted";
+                          }
+                          <small class="@colorUtilidadPaq">Util: @(pctUtilidadPaq.HasValue ? $"{pctUtilidadPaq.Value:N1}%" : "—")</small>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label small">Precio Paq. Gs</label>
+                          <input type="text" inputmode="numeric" class="form-control form-control-sm @(ValidarPrecioMinisterio && editando.PrecioMinisterioPaquete.HasValue && editando.PrecioPaqueteGs.HasValue && editando.PrecioPaqueteGs > editando.PrecioMinisterioPaquete ? "is-invalid" : "")" 
+                                 value="@(editando.PrecioPaqueteGs.HasValue ? ((long)editando.PrecioPaqueteGs.Value).ToString() : "")" 
+                                 @onchange="OnPrecioPaqueteChanged" />
+                          @if (ValidarPrecioMinisterio && editando.PrecioMinisterioPaquete.HasValue && editando.PrecioPaqueteGs.HasValue && editando.PrecioPaqueteGs > editando.PrecioMinisterioPaquete)
+                          {
+                            <div class="invalid-feedback">Máx: @editando.PrecioMinisterioPaquete.Value.ToString("N0")</div>
+                          }
+                        </div>
+                        @if (MostrarPrecioMinisterio)
+                        {
+                          <div class="col-md-2">
+                            <label class="form-label small">P.Min. Paq.</label>
+                            <input type="text" inputmode="numeric" class="form-control form-control-sm" 
+                                   value="@(editando.PrecioMinisterioPaquete.HasValue ? ((long)editando.PrecioMinisterioPaquete.Value).ToString() : "")" 
+                                   @onchange="OnPrecioMinisterioPaqueteChanged" />
+                          </div>
+                        }
+                      </div>
+                    }
+                    
+                    @* Precios Unitarios *@
+                    <div class="row g-2">
+                      <div class="col-12">
+                        <span class="badge bg-primary">🏷️ UNITARIO</span>
+                        @if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") && editando.CantidadPorPaquete.HasValue)
+                        {
+                          <small class="text-muted ms-2">(costo calculado desde paquete)</small>
+                        }
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label small">Costo Unit. Gs</label>
+                        <input type="text" inputmode="numeric" class="form-control form-control-sm @(editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005" ? "bg-light" : "")" 
+                               value="@(editando.CostoUnitarioGs.HasValue ? editando.CostoUnitarioGs.Value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture) : "")" 
+                               @onchange="OnCostoChanged" 
+                               readonly="@(editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")" />
+                        @if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") && editando.CostoPaqueteGs.HasValue && editando.CantidadPorPaquete.HasValue && editando.CantidadPorPaquete > 0)
+                        {
+                          <small class="text-info">= @editando.CostoPaqueteGs.Value.ToString("N0") ÷ @editando.CantidadPorPaquete.Value</small>
+                        }
+                      </div>
+                      <div class="col-md-2">
+                        <label class="form-label small">Factor</label>
+                        <input type="text" inputmode="decimal" class="form-control form-control-sm" 
+                               value="@(factorPrecio?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                               @onchange="OnFactorChanged" placeholder="1.30" />
+                      </div>
+                      <div class="col-md-2">
+                        <label class="form-label small">% Mark-up</label>
+                        <input type="text" inputmode="decimal" class="form-control form-control-sm" 
+                               value="@(porcentajePrecio?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                               @onchange="OnPorcentajeChanged" placeholder="30" />
+                        @{
+                          decimal? pctUtilidad = null;
+                          if (editando.CostoUnitarioGs.HasValue && editando.CostoUnitarioGs.Value > 0 && editando.PrecioUnitarioGs > 0)
+                          {
+                            pctUtilidad = ((editando.PrecioUnitarioGs - editando.CostoUnitarioGs.Value) / editando.PrecioUnitarioGs) * 100;
+                          }
+                          var colorUtilidad = pctUtilidad.HasValue ? (pctUtilidad.Value >= 30 ? "text-primary" : "text-danger") : "text-muted";
+                        }
+                        <small class="@colorUtilidad">Util: @(pctUtilidad.HasValue ? $"{pctUtilidad.Value:N1}%" : "—")</small>
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label small">Precio Unit. Gs *</label>
+                        <input type="text" inputmode="numeric" class="form-control form-control-sm @(ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio ? "is-invalid" : "")" 
+                               value="@((long)editando.PrecioUnitarioGs)" 
+                               @onchange="OnPrecioChanged" />
+                        @if (ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio)
+                        {
+                          <div class="invalid-feedback">Máx: @editando.PrecioMinisterio.Value.ToString("N0")</div>
+                        }
+                        @if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") && editando.PrecioPaqueteGs.HasValue && editando.CantidadPorPaquete.HasValue && editando.CantidadPorPaquete > 0)
+                        {
+                          <small class="text-muted">Sug: @(Math.Round(editando.PrecioPaqueteGs.Value / editando.CantidadPorPaquete.Value, 0).ToString("N0"))</small>
+                        }
+                      </div>
+                      @if (MostrarPrecioMinisterio)
+                      {
+                        <div class="col-md-2">
+                          <label class="form-label small">P. Ministerio</label>
+                          <input type="text" inputmode="numeric" class="form-control form-control-sm" 
+                                 value="@(editando.PrecioMinisterio.HasValue ? ((long)editando.PrecioMinisterio.Value).ToString() : "")" 
+                                 @onchange="OnPrecioMinisterioChanged" />
+                          @if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") && editando.PrecioMinisterioPaquete.HasValue && editando.CantidadPorPaquete.HasValue && editando.CantidadPorPaquete > 0)
+                          {
+                            <small class="text-muted">Sug: @(Math.Round(editando.PrecioMinisterioPaquete.Value / editando.CantidadPorPaquete.Value, 0).ToString("N0"))</small>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+                </div>
+                
+                @* ========== CARD: COMBO ========== *@
                 @if (editando.EsCombo)
                 {
-                  @if (editando.IdProducto == 0)
-                  {
-                    <div class="alert alert-info py-2">Guarde el producto para poder agregar componentes del combo.</div>
-                  }
-                  else
-                  {
-                    <div class="card mb-2">
-                      <div class="card-header py-2">Componentes del combo</div>
-                      <div class="card-body">
+                  <div class="card mb-3">
+                    <div class="card-header bg-light py-2">
+                      <h6 class="mb-0"><i class="bi bi-boxes me-2"></i>Combo - Componentes</h6>
+                    </div>
+                    <div class="card-body">
+                      @if (editando.IdProducto == 0)
+                      {
+                        <div class="alert alert-info py-2 mb-0">Guarde el producto para poder agregar componentes.</div>
+                      }
+                      else
+                      {
                         <div class="row g-2 align-items-end mb-2">
-                          <div class="col-md-6">
-                            <label class="form-label">Producto componente</label>
+                          <div class="col-md-5">
+                            <label class="form-label small">Producto componente</label>
                             <div class="position-relative">
-                              <input class="form-control" placeholder="Escriba nombre o código..." value="@componenteSearch" @oninput="OnComponenteSearchChanged" @onfocus="ShowComponenteOpciones" @onblur="OnComponenteBlur" @onkeydown="OnComponenteKeyDown" />
+                              <input class="form-control form-control-sm" placeholder="Escriba nombre o código..." value="@componenteSearch" @oninput="OnComponenteSearchChanged" @onfocus="ShowComponenteOpciones" @onblur="OnComponenteBlur" @onkeydown="OnComponenteKeyDown" />
                               @if (mostrandoOpciones && componenteOpciones.Count > 0)
                               {
-                                <div class="list-group position-absolute w-100 shadow-sm bg-white" style="z-index:1000; max-height:260px; overflow:auto;">
+                                <div class="list-group position-absolute w-100 shadow-sm bg-white" style="z-index:1000; max-height:200px; overflow:auto;">
                                   @for (int i = 0; i < componenteOpciones.Count; i++)
                                   {
                                     var pr = componenteOpciones[i];
-                                    var itemClass = $"list-group-item list-group-item-action d-flex justify-content-between align-items-center {(i == selectedOptionIndex ? "active" : string.Empty)}";
+                                    var itemClass = $"list-group-item list-group-item-action py-1 d-flex justify-content-between align-items-center {(i == selectedOptionIndex ? "active" : string.Empty)}";
                                     <button type="button" class="@itemClass" @onmousedown="(() => SeleccionarComponente(pr))" @onclick="(() => SeleccionarComponente(pr))">
-                                      <span>@pr.Descripcion</span>
-                                      <small class="text-muted">ID: @pr.IdProducto · @pr.UnidadMedidaCodigo</small>
+                                      <span class="small">@pr.Descripcion</span>
+                                      <small class="text-muted">@pr.UnidadMedidaCodigo</small>
                                     </button>
                                   }
-                                </div>
-                              }
-                              else if (mostrandoOpciones && !string.IsNullOrWhiteSpace(componenteSearch) && componenteOpciones.Count == 0)
-                              {
-                                <div class="list-group position-absolute w-100 shadow-sm bg-white" style="z-index:1000; max-height:260px; overflow:auto;">
-                                  <div class="list-group-item text-muted">Sin resultados</div>
                                 </div>
                               }
                             </div>
                           </div>
                           <div class="col-md-3">
-                            <label class="form-label">Cantidad a descontar</label>
-                            <input class="form-control" type="number" step="0.0001" @bind="cantidadComponente" />
-                            <div class="form-text">Se descuenta por cada unidad del combo vendida.</div>
+                            <label class="form-label small">Cantidad</label>
+                            <input class="form-control form-control-sm" type="number" step="0.0001" @bind="cantidadComponente" />
                           </div>
-                          <div class="col-md-3 text-end">
-                            <button type="button" class="btn btn-outline-primary" @onclick="AgregarComponente" disabled="@(selectedComponenteId==0 || cantidadComponente<=0)">Agregar</button>
+                          <div class="col-md-4 text-end">
+                            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="AgregarComponente" disabled="@(selectedComponenteId==0 || cantidadComponente<=0)">
+                              <i class="bi bi-plus-circle me-1"></i>Agregar
+                            </button>
                           </div>
                         </div>
-                        <div class="table-responsive">
-                          <table class="table table-sm table-striped">
-                            <thead>
-                              <tr>
-                                <th style="width:80px">ID</th>
-                                <th>Nombre</th>
-                                <th class="text-end" style="width:140px">Cant. Descontar</th>
-                                <th style="width:120px">Unidad</th>
-                                <th style="width:70px"></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              @if (componentesCombo.Count == 0)
-                              {
-                                <tr><td colspan="5" class="text-muted">Sin componentes</td></tr>
-                              }
-                              else
-                              {
+                        @if (componentesCombo.Count > 0)
+                        {
+                          <div class="table-responsive">
+                            <table class="table table-sm table-striped mb-0">
+                              <thead class="table-light">
+                                <tr>
+                                  <th>Componente</th>
+                                  <th class="text-end">Cantidad</th>
+                                  <th style="width:40px"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
                                 @foreach (var pc in componentesCombo)
                                 {
                                   <tr>
-                                    <td>@pc.IdComponente</td>
-                                    <td>@pc.Componente?.Descripcion</td>
-                                    <td class="text-end">@pc.Cantidad.ToString("N4")</td>
-                                    <td>@(pc.Componente?.UndMedida?.Trim())</td>
-                                    <td class="text-end">
-                                      <button type="button" class="btn btn-sm btn-outline-danger" title="Quitar" @onclick="() => QuitarComponente(pc.IdProductoComponente)"><i class="bi bi-trash"></i></button>
+                                    <td class="small">@pc.Componente?.Descripcion</td>
+                                    <td class="text-end small">@pc.Cantidad.ToString("N4") @(pc.Componente?.UndMedida?.Trim())</td>
+                                    <td>
+                                      <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" @onclick="() => QuitarComponente(pc.IdProductoComponente)"><i class="bi bi-trash"></i></button>
                                     </td>
                                   </tr>
                                 }
-                              }
-                            </tbody>
-                          </table>
+                              </tbody>
+                            </table>
+                          </div>
+                        }
+                      }
+                    </div>
+                  </div>
+                }
+                
+              </div><!-- Fin columna izquierda -->
+              
+              <!-- COLUMNA DERECHA: Opciones y configuración -->
+              <div class="col-lg-4">
+                
+                @* ========== CARD: IMAGEN ========== *@
+                <div class="card mb-3">
+                  <div class="card-header bg-light py-2">
+                    <h6 class="mb-0"><i class="bi bi-image me-2"></i>Imagen</h6>
+                  </div>
+                  <div class="card-body text-center">
+                    <img src="@(previewDataUrl ?? (string.IsNullOrWhiteSpace(editando.Foto) ? "/images/placeholder-product.svg" : editando.Foto))" 
+                         alt="preview" class="img-thumbnail mb-2" style="width:120px;height:120px;object-fit:cover;" />
+                    <InputFile class="form-control form-control-sm" OnChange="OnFileSelected" accept="image/*" />
+                    <small class="text-muted d-block mt-1">PNG/JPG/WEBP hasta 2 MB</small>
+                  </div>
+                </div>
+                
+                @* ========== CARD: ESTADO Y OPCIONES ========== *@
+                <div class="card mb-3">
+                  <div class="card-header bg-light py-2">
+                    <h6 class="mb-0"><i class="bi bi-toggles me-2"></i>Estado y Opciones</h6>
+                  </div>
+                  <div class="card-body">
+                    <div class="form-check form-switch mb-2">
+                      <input class="form-check-input" type="checkbox" id="activoSwitch2" @bind="editando.Activo" />
+                      <label class="form-check-label" for="activoSwitch2"><i class="bi bi-check-circle text-success me-1"></i>Activo</label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                      <input class="form-check-input" type="checkbox" id="permiteDecimalSwitch2" @bind="editando.PermiteDecimal" />
+                      <label class="form-check-label" for="permiteDecimalSwitch2"><i class="bi bi-distribute-vertical me-1"></i>Permite Decimal</label>
+                    </div>
+                    @if (editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")
+                    {
+                      <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="permiteVentaUnidadSwitch2" @bind="editando.PermiteVentaPorUnidad" />
+                        <label class="form-check-label" for="permiteVentaUnidadSwitch2"><i class="bi bi-box-arrow-up me-1"></i>Venta por Unidad</label>
+                      </div>
+                    }
+                    <div class="form-check form-switch mb-2">
+                      <input class="form-check-input" type="checkbox" id="permiteVentaBajoCostoSwitch2" @bind="editando.PermiteVentaBajoCosto" />
+                      <label class="form-check-label" for="permiteVentaBajoCostoSwitch2"><i class="bi bi-exclamation-triangle text-warning me-1"></i>Bajo Costo</label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                      <input class="form-check-input" type="checkbox" id="controladoRecetaSwitch2" @bind="editando.ControladoReceta" />
+                      <label class="form-check-label" for="controladoRecetaSwitch2"><i class="bi bi-file-medical text-danger me-1"></i>Con Receta</label>
+                    </div>
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="esComboSwitch2" @bind="editando.EsCombo" />
+                      <label class="form-check-label" for="esComboSwitch2"><i class="bi bi-collection me-1"></i>Es Combo</label>
+                    </div>
+                  </div>
+                </div>
+                
+                @* ========== CARD: CONTROL LOTES (FARMACIA) ========== *@
+                <div class="card mb-3 border-info">
+                  <div class="card-header bg-info bg-opacity-10 py-2">
+                    <h6 class="mb-0 text-info"><i class="bi bi-boxes me-2"></i>Control Lotes</h6>
+                  </div>
+                  <div class="card-body">
+                    <div class="form-check form-switch mb-2">
+                      <input class="form-check-input" type="checkbox" id="controlaLoteSwitch2" @bind="editando.ControlaLote" @bind:after="OnControlaLoteChanged" />
+                      <label class="form-check-label" for="controlaLoteSwitch2"><i class="bi bi-upc me-1"></i>Controla Lote</label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                      <input class="form-check-input" type="checkbox" id="controlaVencimientoLoteSwitch2" @bind="editando.ControlaVencimiento" disabled="@(!editando.ControlaLote)" />
+                      <label class="form-check-label" for="controlaVencimientoLoteSwitch2"><i class="bi bi-calendar-event me-1"></i>Controla Vencimiento</label>
+                    </div>
+                    @if (editando.ControlaVencimiento)
+                    {
+                      <div class="row g-2 mt-2">
+                        <div class="col-6">
+                          <label class="form-label small">Días Alerta</label>
+                          <input type="number" class="form-control form-control-sm" @bind="editando.DiasAlertaVencimiento" min="1" max="365" />
+                        </div>
+                        <div class="col-6">
+                          <div class="form-check form-switch mt-4">
+                            <input class="form-check-input" type="checkbox" id="permiteVentaVencidoSwitch2" @bind="editando.PermiteVentaVencido" />
+                            <label class="form-check-label small" for="permiteVentaVencidoSwitch2">Venta Vencido</label>
+                          </div>
                         </div>
                       </div>
+                    }
+                    @if (editando.ControlaLote && editando.IdProducto > 0)
+                    {
+                      <button type="button" class="btn btn-outline-info btn-sm w-100 mt-2" @onclick="AbrirModalLotes">
+                        <i class="bi bi-list-ul me-1"></i>Ver Lotes (@lotesProducto.Count)
+                      </button>
+                    }
+                  </div>
+                </div>
+                
+                @* ========== CARD: VENCIMIENTO SIMPLE ========== *@
+                @if (!editando.ControlaLote && editando.ControlarVencimiento)
+                {
+                  <div class="card mb-3">
+                    <div class="card-header bg-light py-2">
+                      <h6 class="mb-0"><i class="bi bi-calendar-x me-2"></i>Vencimiento</h6>
                     </div>
-                  }
+                    <div class="card-body">
+                      <InputDate class="form-control form-control-sm" @bind-Value="editando.FechaVencimiento" />
+                    </div>
+                  </div>
                 }
-              </div>
-            </div>
+                
+              </div><!-- Fin columna derecha -->
+            </div><!-- Fin row principal -->
           </EditForm>
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @onclick="Cerrar">Cancelar</button>
-          <button class="btn btn-primary" @onclick="SubmitForm"><i class="bi bi-save me-2"></i>Guardar</button>
+        <div class="modal-footer bg-light py-2">
+          <button class="btn btn-outline-secondary" @onclick="Cerrar"><i class="bi bi-x-lg me-1"></i>Cancelar</button>
+          <button class="btn btn-primary" @onclick="SubmitForm"><i class="bi bi-check-lg me-1"></i>Guardar</button>
         </div>
       </div>
     </div>
@@ -653,6 +811,205 @@
   {
     <div class="modal-backdrop fade show"></div>
   }
+
+  <!-- Modal: Administración de Lotes -->
+  <div class="modal fade @(mostrarModalLotes ? "show" : "")" style="display:@(mostrarModalLotes?"block":"none")" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="bi bi-boxes me-2"></i>Administración de Lotes - @editando.Descripcion</h5>
+          <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalLotes"></button>
+        </div>
+        <div class="modal-body">
+          @if (!string.IsNullOrEmpty(mensajeErrorLote))
+          {
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              <i class="bi bi-exclamation-triangle me-1"></i>@mensajeErrorLote
+              <button type="button" class="btn-close" @onclick="() => mensajeErrorLote = null"></button>
+            </div>
+          }
+          @if (!string.IsNullOrEmpty(mensajeExitoLote))
+          {
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+              <i class="bi bi-check-circle me-1"></i>@mensajeExitoLote
+              <button type="button" class="btn-close" @onclick="() => mensajeExitoLote = null"></button>
+            </div>
+          }
+
+          @* Info: Los lotes STOCK-INICIAL se crean automáticamente al guardar *@
+          @if (lotesProducto.Any(l => l.EsLoteInicial))
+          {
+            <div class="alert alert-info py-2 mb-3">
+              <i class="bi bi-info-circle me-2"></i>
+              <small>Los lotes marcados como <span class="badge bg-info">Inicial</span> fueron creados automáticamente con el stock existente. 
+              Puede editarlos para asignar fecha de vencimiento o dividirlos en lotes más específicos.</small>
+            </div>
+          }
+
+          <div class="row">
+            <!-- Lista de lotes existentes -->
+            <div class="col-md-7">
+              <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-list-ul me-1"></i>Lotes Registrados</h6>
+              @if (!lotesProducto.Any())
+              {
+                <div class="text-muted text-center py-4">
+                  <i class="bi bi-inbox display-4"></i>
+                  <p>No hay lotes registrados para este producto.</p>
+                  <small class="text-muted">Los lotes se crearán automáticamente al registrar compras o al guardar el producto con stock existente.</small>
+                </div>
+              }
+              else
+              {
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                  <table class="table table-sm table-hover align-middle">
+                    <thead class="table-light sticky-top">
+                      <tr>
+                        <th>Lote</th>
+                        <th>Depósito</th>
+                        <th class="text-center">Vencimiento</th>
+                        <th class="text-end">Stock</th>
+                        <th class="text-center">Estado</th>
+                        <th class="text-center" style="width:100px">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach (var lote in lotesProducto)
+                      {
+                        <tr class="@(lote.EstaVencido ? "table-danger" : (lote.EstaProximoAVencer ? "table-warning" : ""))">
+                          <td>
+                            <strong>@lote.NumeroLote</strong>
+                            @if (lote.EsLoteInicial)
+                            {
+                              <span class="badge bg-info ms-1" title="Lote migrado">Inicial</span>
+                            }
+                          </td>
+                          <td><small>@(lote.Deposito?.Nombre ?? "-")</small></td>
+                          <td class="text-center">
+                            @if (lote.FechaVencimiento.HasValue)
+                            {
+                              <span title="@lote.FechaVencimiento.Value.ToString("dd/MM/yyyy")">
+                                @lote.FechaVencimiento.Value.ToString("dd/MM/yy")
+                                @if (lote.DiasParaVencimiento.HasValue)
+                                {
+                                  <br><small class="@(lote.DiasParaVencimiento < 0 ? "text-danger" : (lote.DiasParaVencimiento < 30 ? "text-warning" : "text-muted"))">
+                                    @(lote.DiasParaVencimiento < 0 ? $"Vencido hace {-lote.DiasParaVencimiento} días" : $"{lote.DiasParaVencimiento} días")
+                                  </small>
+                                }
+                              </span>
+                            }
+                            else
+                            {
+                              <span class="text-muted">-</span>
+                            }
+                          </td>
+                          <td class="text-end fw-bold">@lote.Stock.ToString("N2")</td>
+                          <td class="text-center">
+                            <span class="@GetEstadoLoteBadge(lote)">@GetEstadoLoteTexto(lote)</span>
+                          </td>
+                          <td class="text-center">
+                            <div class="btn-group btn-group-sm">
+                              <button type="button" class="btn btn-outline-primary" @onclick="() => EditarLote(lote)" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                              </button>
+                              <button type="button" class="btn btn-outline-danger" @onclick="() => EliminarLote(lote)" title="Eliminar" disabled="@(lote.Stock > 0)">
+                                <i class="bi bi-trash"></i>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                    <tfoot class="table-light">
+                      <tr class="fw-bold">
+                        <td colspan="3">Total</td>
+                        <td class="text-end">@lotesProducto.Sum(l => l.Stock).ToString("N2")</td>
+                        <td colspan="2"></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              }
+            </div>
+
+            <!-- Formulario para agregar/editar lote -->
+            <div class="col-md-5">
+              <h6 class="border-bottom pb-2 mb-3">
+                <i class="bi bi-@(editandoLote ? "pencil" : "plus-circle") me-1"></i>
+                @(editandoLote ? "Editar Lote" : "Agregar Nuevo Lote")
+              </h6>
+              <EditForm Model="@nuevoLote" OnValidSubmit="GuardarLote">
+                <div class="row g-2">
+                  <div class="col-12">
+                    <label class="form-label small">Número de Lote *</label>
+                    <InputText class="form-control form-control-sm" @bind-Value="nuevoLote.NumeroLote" placeholder="Ej: L2026001" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small">Depósito *</label>
+                    <InputSelect class="form-select form-select-sm" @bind-Value="nuevoLote.IdDeposito">
+                      <option value="0">-- Seleccione --</option>
+                      @foreach (var dep in depositos)
+                      {
+                        <option value="@dep.IdDeposito">@dep.Nombre</option>
+                      }
+                    </InputSelect>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small">Fecha Vencimiento</label>
+                    <InputDate class="form-control form-control-sm" @bind-Value="nuevoLote.FechaVencimiento" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small">Fecha Fabricación</label>
+                    <InputDate class="form-control form-control-sm" @bind-Value="nuevoLote.FechaFabricacion" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small">Stock</label>
+                    <InputNumber class="form-control form-control-sm" @bind-Value="nuevoLote.Stock" />
+                    <div class="form-text">Solo para ajustes manuales.</div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small">Costo Unitario</label>
+                    <InputNumber class="form-control form-control-sm" @bind-Value="nuevoLote.CostoUnitario" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small">Estado</label>
+                    <InputSelect class="form-select form-select-sm" @bind-Value="nuevoLote.Estado">
+                      <option value="Activo">Activo</option>
+                      <option value="Bloqueado">Bloqueado</option>
+                      <option value="Agotado">Agotado</option>
+                    </InputSelect>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small">Observaciones</label>
+                    <InputTextArea class="form-control form-control-sm" @bind-Value="nuevoLote.Observacion" rows="2" />
+                  </div>
+                  <div class="col-12 d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+                      <i class="bi bi-check-lg me-1"></i>@(editandoLote ? "Actualizar" : "Agregar") Lote
+                    </button>
+                    @if (editandoLote)
+                    {
+                      <button type="button" class="btn btn-secondary btn-sm" @onclick="CancelarEdicionLote">
+                        <i class="bi bi-x-lg me-1"></i>Cancelar
+                      </button>
+                    }
+                  </div>
+                </div>
+              </EditForm>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @onclick="CerrarModalLotes">
+            <i class="bi bi-x-lg me-1"></i>Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  @if (mostrarModalLotes)
+  {
+    <div class="modal-backdrop fade show"></div>
+  }
 </div>
 
 @code {
@@ -703,6 +1060,11 @@
   private decimal? factorPrecio = null;
   private decimal? porcentajePrecio = null;
   private bool actualizandoPrecio = false; // evita recursión
+  
+  // Variables para cálculo de precio de PAQUETE desde costo paquete
+  private decimal? factorPrecioPaquete = null;
+  private decimal? porcentajePrecioPaquete = null;
+  private bool actualizandoPrecioPaquete = false; // evita recursión
   // Autocompletado de componentes
   private string componenteSearch = string.Empty;
   private List<Models.Producto> componenteOpciones = new();
@@ -714,6 +1076,14 @@
   private Models.ConfiguracionSistema? _config;
   private bool MostrarPrecioMinisterio => _config?.FarmaciaModoActivo == true && _config?.FarmaciaMostrarPrecioMinisterio == true;
   private bool ValidarPrecioMinisterio => _config?.FarmaciaModoActivo == true && _config?.FarmaciaValidarPrecioMinisterio == true;
+
+  // Control de Lotes
+  private bool mostrarModalLotes = false;
+  private List<Models.ProductoLote> lotesProducto = new();
+  private Models.ProductoLote nuevoLote = new();
+  private bool editandoLote = false;
+  private string? mensajeErrorLote;
+  private string? mensajeExitoLote;
 
   protected override async Task OnInitializedAsync()
   {
@@ -831,6 +1201,9 @@ END");
     previewDataUrl = null;
     factorPrecio = null;
     porcentajePrecio = null;
+    // Resetear variables de paquete
+    factorPrecioPaquete = null;
+    porcentajePrecioPaquete = null;
   componentesCombo = new();
   selectedComponenteId = 0;
   cantidadComponente = 1m;
@@ -888,12 +1261,33 @@ END");
       UsaDescuentoEspecifico = p.UsaDescuentoEspecifico,
       DescuentoAutomaticoProducto = p.DescuentoAutomaticoProducto,
       DescuentoMaximoProducto = p.DescuentoMaximoProducto,
-      MargenAdicionalCajeroProducto = p.MargenAdicionalCajeroProducto
+      MargenAdicionalCajeroProducto = p.MargenAdicionalCajeroProducto,
+      // Campos de precios de paquete
+      CostoPaqueteGs = p.CostoPaqueteGs,
+      FactorPaquete = p.FactorPaquete,
+      MarkupPaquetePct = p.MarkupPaquetePct,
+      PrecioPaqueteGs = p.PrecioPaqueteGs,
+      PrecioMinisterioPaquete = p.PrecioMinisterioPaquete,
+      // Campos de control de lotes (farmacia)
+      ControlaLote = p.ControlaLote,
+      ControlaVencimiento = p.ControlaVencimiento,
+      DiasAlertaVencimiento = p.DiasAlertaVencimiento,
+      PermiteVentaVencido = p.PermiteVentaVencido,
+      LoteInicialCreado = p.LoteInicialCreado
     };
     undMedidaValue = (p.UndMedida ?? "UNIDAD").Trim();
     pendingImage = null;
     previewDataUrl = null;
-    // Calcular factor y porcentaje inicial si hay costo
+    // Cargar lotes si el producto controla lotes
+    if (p.ControlaLote)
+    {
+      _ = CargarLotesProducto();
+    }
+    else
+    {
+      lotesProducto.Clear();
+    }
+    // Calcular factor y porcentaje inicial si hay costo (incluye paquete)
     CalcularFactorYPorcentajeDesdePrecios();
     mostrarModal = true;
     _ = CargarComponentesAsync(editando.IdProducto);
@@ -968,6 +1362,8 @@ END");
     if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var cantidad) && cantidad > 0)
     {
       editando.CantidadPorPaquete = cantidad;
+      // Recalcular precios unitarios al cambiar la cantidad por paquete
+      RecalcularPreciosUnitariosDesdesPaquete();
     }
     else
     {
@@ -1083,8 +1479,181 @@ END");
     }
   }
 
+  // ========== MÉTODOS PARA PRECIOS DE PAQUETE ==========
+  
+  private void OnCostoPaqueteChanged(ChangeEventArgs e)
+  {
+    if (actualizandoPrecioPaquete) return;
+    var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+    if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var costo))
+    {
+      editando.CostoPaqueteGs = costo;
+      // Si hay factor, recalcular precio paquete
+      if (factorPrecioPaquete.HasValue && factorPrecioPaquete.Value > 0 && costo > 0)
+      {
+        actualizandoPrecioPaquete = true;
+        editando.PrecioPaqueteGs = Math.Round(costo * factorPrecioPaquete.Value, 0);
+        actualizandoPrecioPaquete = false;
+      }
+      // Si hay porcentaje, recalcular precio paquete
+      else if (porcentajePrecioPaquete.HasValue && costo > 0)
+      {
+        actualizandoPrecioPaquete = true;
+        editando.PrecioPaqueteGs = Math.Round(costo * (1 + porcentajePrecioPaquete.Value / 100), 0);
+        actualizandoPrecioPaquete = false;
+      }
+      // Calcular costo unitario desde costo paquete
+      RecalcularPreciosUnitariosDesdesPaquete();
+    }
+    else
+    {
+      editando.CostoPaqueteGs = null;
+    }
+  }
+
+  private void OnFactorPaqueteChanged(ChangeEventArgs e)
+  {
+    if (actualizandoPrecioPaquete) return;
+    var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+    if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var factor) && factor > 0)
+    {
+      factorPrecioPaquete = factor;
+      editando.FactorPaquete = factor;
+      actualizandoPrecioPaquete = true;
+      // Calcular porcentaje equivalente: (factor - 1) * 100
+      porcentajePrecioPaquete = Math.Round((factor - 1) * 100, 2);
+      editando.MarkupPaquetePct = porcentajePrecioPaquete;
+      // Calcular precio si hay costo
+      if (editando.CostoPaqueteGs.HasValue && editando.CostoPaqueteGs.Value > 0)
+      {
+        editando.PrecioPaqueteGs = Math.Round(editando.CostoPaqueteGs.Value * factor, 0);
+      }
+      actualizandoPrecioPaquete = false;
+      
+      // Sincronizar factor y porcentaje a precios unitarios
+      factorPrecio = factor;
+      editando.FactorMultiplicador = factor;
+      porcentajePrecio = porcentajePrecioPaquete;
+      
+      // Recalcular precios unitarios
+      RecalcularPreciosUnitariosDesdesPaquete();
+    }
+    else
+    {
+      factorPrecioPaquete = null;
+      editando.FactorPaquete = null;
+    }
+  }
+
+  private void OnPorcentajePaqueteChanged(ChangeEventArgs e)
+  {
+    if (actualizandoPrecioPaquete) return;
+    var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+    if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var porcentaje))
+    {
+      porcentajePrecioPaquete = porcentaje;
+      editando.MarkupPaquetePct = porcentaje;
+      actualizandoPrecioPaquete = true;
+      // Calcular factor equivalente: 1 + porcentaje/100
+      factorPrecioPaquete = Math.Round(1 + porcentaje / 100, 4);
+      editando.FactorPaquete = factorPrecioPaquete;
+      // Calcular precio si hay costo
+      if (editando.CostoPaqueteGs.HasValue && editando.CostoPaqueteGs.Value > 0)
+      {
+        editando.PrecioPaqueteGs = Math.Round(editando.CostoPaqueteGs.Value * (1 + porcentaje / 100), 0);
+      }
+      actualizandoPrecioPaquete = false;
+      
+      // Sincronizar factor y porcentaje a precios unitarios
+      factorPrecio = factorPrecioPaquete;
+      editando.FactorMultiplicador = factorPrecioPaquete;
+      porcentajePrecio = porcentaje;
+      
+      // Recalcular precios unitarios
+      RecalcularPreciosUnitariosDesdesPaquete();
+    }
+    else
+    {
+      porcentajePrecioPaquete = null;
+      editando.MarkupPaquetePct = null;
+    }
+  }
+
+  private void OnPrecioPaqueteChanged(ChangeEventArgs e)
+  {
+    if (actualizandoPrecioPaquete) return;
+    var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+    if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precio))
+    {
+      editando.PrecioPaqueteGs = precio;
+      // Si hay costo paquete, recalcular factor y porcentaje
+      if (editando.CostoPaqueteGs.HasValue && editando.CostoPaqueteGs.Value > 0)
+      {
+        actualizandoPrecioPaquete = true;
+        var costo = editando.CostoPaqueteGs.Value;
+        factorPrecioPaquete = Math.Round(precio / costo, 4);
+        editando.FactorPaquete = factorPrecioPaquete;
+        porcentajePrecioPaquete = Math.Round((precio / costo - 1) * 100, 2);
+        editando.MarkupPaquetePct = porcentajePrecioPaquete;
+        
+        // Sincronizar a unitarios
+        factorPrecio = factorPrecioPaquete;
+        editando.FactorMultiplicador = factorPrecioPaquete;
+        porcentajePrecio = porcentajePrecioPaquete;
+        
+        actualizandoPrecioPaquete = false;
+      }
+      // Recalcular precio unitario
+      RecalcularPreciosUnitariosDesdesPaquete();
+    }
+  }
+
+  private void OnPrecioMinisterioPaqueteChanged(ChangeEventArgs e)
+  {
+    var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+    if (string.IsNullOrWhiteSpace(valorStr))
+    {
+      editando.PrecioMinisterioPaquete = null;
+    }
+    else if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precio))
+    {
+      editando.PrecioMinisterioPaquete = precio;
+      // Calcular precio ministerio unitario
+      RecalcularPreciosUnitariosDesdesPaquete();
+    }
+  }
+
+  /// <summary>
+  /// Recalcula los precios unitarios diviendo los precios de paquete entre CantidadPorPaquete.
+  /// Solo aplica si el producto es tipo Paquete (código 006) o Caja (código 005).
+  /// </summary>
+  private void RecalcularPreciosUnitariosDesdesPaquete()
+  {
+    // Solo aplicar si es Paquete o Caja y hay cantidad definida
+    if ((editando.UnidadMedidaCodigo != "006" && editando.UnidadMedidaCodigo != "005") || 
+        !editando.CantidadPorPaquete.HasValue || editando.CantidadPorPaquete.Value <= 0)
+    {
+      return;
+    }
+    
+    var cantidadPorPaquete = editando.CantidadPorPaquete.Value;
+    
+    // Calcular Costo Unitario = Costo Paquete / Cantidad (CON DECIMALES)
+    if (editando.CostoPaqueteGs.HasValue && editando.CostoPaqueteGs.Value > 0)
+    {
+      editando.CostoUnitarioGs = Math.Round(editando.CostoPaqueteGs.Value / cantidadPorPaquete, 2);
+    }
+    
+    // NO recalcular Precio Unitario automáticamente - el usuario puede editarlo manualmente
+    // Solo sugerir el valor en el form-text
+    
+    // NO recalcular Precio Ministerio automáticamente - el usuario puede editarlo manualmente
+    // Solo sugerir el valor en el form-text
+  }
+
   private void CalcularFactorYPorcentajeDesdePrecios()
   {
+    // Calcular factor y porcentaje para precio unitario
     if (editando.CostoUnitarioGs.HasValue && editando.CostoUnitarioGs.Value > 0 && editando.PrecioUnitarioGs > 0)
     {
       var costo = editando.CostoUnitarioGs.Value;
@@ -1096,6 +1665,25 @@ END");
     {
       factorPrecio = null;
       porcentajePrecio = null;
+    }
+    
+    // Calcular factor y porcentaje para precio de paquete
+    if (editando.CostoPaqueteGs.HasValue && editando.CostoPaqueteGs.Value > 0 && editando.PrecioPaqueteGs.HasValue && editando.PrecioPaqueteGs > 0)
+    {
+      var costo = editando.CostoPaqueteGs.Value;
+      var precio = editando.PrecioPaqueteGs.Value;
+      factorPrecioPaquete = Math.Round(precio / costo, 4);
+      porcentajePrecioPaquete = Math.Round((precio / costo - 1) * 100, 2);
+    }
+    else if (editando.FactorPaquete.HasValue)
+    {
+      factorPrecioPaquete = editando.FactorPaquete;
+      porcentajePrecioPaquete = editando.MarkupPaquetePct;
+    }
+    else
+    {
+      factorPrecioPaquete = null;
+      porcentajePrecioPaquete = null;
     }
   }
   // ========== FIN MÉTODOS CÁLCULO PRECIO ==========
@@ -1176,6 +1764,14 @@ END");
       db.Productos.Update(editando);
       await db.SaveChangesAsync();
     }
+
+    // ========== CREAR LOTE INICIAL AUTOMÁTICAMENTE ==========
+    // Si se activó control de lotes y no se ha creado el lote inicial, crearlo automáticamente
+    if (editando.ControlaLote && !editando.LoteInicialCreado)
+    {
+      await CrearLoteInicialAutomatico(db);
+    }
+
   // Limpiar estado de imagen temporal
   pendingImage = null;
   previewDataUrl = null;
@@ -1566,6 +2162,379 @@ END");
     mostrarStocks = false;
     productoStocks = null;
     stocksDepositos = null;
+  }
+
+  // ========== MÉTODOS DE CONTROL DE LOTES ==========
+
+  /// <summary>
+  /// Crea automáticamente lotes STOCK-INICIAL para el stock existente al activar control de lotes.
+  /// Este método se llama desde Guardar() cuando se activa ControlaLote.
+  /// </summary>
+  private async Task CrearLoteInicialAutomatico(AppDbContext db)
+  {
+    // Obtener stock actual por depósito
+    var stocksPorDeposito = await db.ProductosDepositos
+      .Where(pd => pd.IdProducto == editando.IdProducto && pd.Stock > 0)
+      .ToListAsync();
+
+    if (!stocksPorDeposito.Any())
+    {
+      // No hay stock, solo marcar como creado
+      editando.LoteInicialCreado = true;
+      db.Productos.Update(editando);
+      await db.SaveChangesAsync();
+      return;
+    }
+
+    foreach (var pd in stocksPorDeposito)
+    {
+      // Verificar que no exista ya un lote inicial para este depósito
+      var yaExiste = await db.ProductosLotes
+        .AnyAsync(l => l.IdProducto == editando.IdProducto 
+                    && l.IdDeposito == pd.IdDeposito 
+                    && l.NumeroLote == "STOCK-INICIAL");
+      
+      if (yaExiste) continue;
+
+      var loteInicial = new Models.ProductoLote
+      {
+        IdProducto = editando.IdProducto,
+        IdDeposito = pd.IdDeposito,
+        NumeroLote = "STOCK-INICIAL",
+        FechaVencimiento = null, // Sin vencimiento definido
+        Stock = pd.Stock,
+        StockInicial = pd.Stock,
+        Estado = "Activo",
+        EsLoteInicial = true,
+        FechaCreacion = DateTime.Now,
+        UsuarioCreacion = "Sistema",
+        Observacion = "Lote creado automáticamente al activar control de lotes"
+      };
+
+      db.ProductosLotes.Add(loteInicial);
+      await db.SaveChangesAsync();
+
+      // Registrar movimiento inicial
+      var movimiento = new Models.MovimientoLote
+      {
+        IdProductoLote = loteInicial.IdProductoLote,
+        TipoMovimiento = TipoMovimientoLote.Inicial,
+        Cantidad = pd.Stock,
+        StockAnterior = 0,
+        StockPosterior = pd.Stock,
+        Motivo = "Migración automática de stock existente al activar control de lotes",
+        FechaMovimiento = DateTime.Now,
+        Usuario = "Sistema"
+      };
+      db.MovimientosLotes.Add(movimiento);
+    }
+
+    // Marcar que ya se creó el lote inicial
+    editando.LoteInicialCreado = true;
+    db.Productos.Update(editando);
+    await db.SaveChangesAsync();
+  }
+  
+  private async Task OnControlaLoteChanged()
+  {
+    // Si se activa el control de lotes y el producto ya existe, cargar lotes
+    if (editando.ControlaLote && editando.IdProducto > 0)
+    {
+      await CargarLotesProducto();
+    }
+    
+    // Si se activa control de lote, también activar control de vencimiento por defecto
+    if (editando.ControlaLote && !editando.ControlaVencimiento)
+    {
+      editando.ControlaVencimiento = true;
+    }
+  }
+
+  private async Task CargarLotesProducto()
+  {
+    if (editando.IdProducto <= 0) return;
+    
+    await using var db = await DbFactory.CreateDbContextAsync();
+    lotesProducto = await db.ProductosLotes
+      .Include(l => l.Deposito)
+      .Where(l => l.IdProducto == editando.IdProducto)
+      .OrderBy(l => l.FechaVencimiento)
+      .ThenBy(l => l.NumeroLote)
+      .ToListAsync();
+  }
+
+  private async Task AbrirModalLotes()
+  {
+    await CargarLotesProducto();
+    InicializarNuevoLote();
+    editandoLote = false;
+    mensajeErrorLote = null;
+    mensajeExitoLote = null;
+    mostrarModalLotes = true;
+  }
+
+  private void CerrarModalLotes()
+  {
+    mostrarModalLotes = false;
+    editandoLote = false;
+    mensajeErrorLote = null;
+    mensajeExitoLote = null;
+  }
+
+  private void InicializarNuevoLote()
+  {
+    nuevoLote = new Models.ProductoLote
+    {
+      IdProducto = editando.IdProducto,
+      IdDeposito = editando.IdDepositoPredeterminado ?? depositos.FirstOrDefault()?.IdDeposito ?? 0,
+      NumeroLote = string.Empty,
+      FechaVencimiento = DateTime.Today.AddYears(1),
+      Stock = 0,
+      Estado = "Activo"
+    };
+    editandoLote = false;
+  }
+
+  private void EditarLote(Models.ProductoLote lote)
+  {
+    nuevoLote = new Models.ProductoLote
+    {
+      IdProductoLote = lote.IdProductoLote,
+      IdProducto = lote.IdProducto,
+      IdDeposito = lote.IdDeposito,
+      NumeroLote = lote.NumeroLote,
+      FechaVencimiento = lote.FechaVencimiento,
+      FechaFabricacion = lote.FechaFabricacion,
+      Stock = lote.Stock,
+      StockInicial = lote.StockInicial,
+      CostoUnitario = lote.CostoUnitario,
+      Estado = lote.Estado,
+      Observacion = lote.Observacion,
+      EsLoteInicial = lote.EsLoteInicial
+    };
+    editandoLote = true;
+    mensajeErrorLote = null;
+    mensajeExitoLote = null;
+  }
+
+  private void CancelarEdicionLote()
+  {
+    InicializarNuevoLote();
+    mensajeErrorLote = null;
+    mensajeExitoLote = null;
+  }
+
+  private async Task GuardarLote()
+  {
+    mensajeErrorLote = null;
+    mensajeExitoLote = null;
+
+    // Validaciones
+    if (string.IsNullOrWhiteSpace(nuevoLote.NumeroLote))
+    {
+      mensajeErrorLote = "El número de lote es obligatorio.";
+      return;
+    }
+    if (nuevoLote.IdDeposito <= 0)
+    {
+      mensajeErrorLote = "Debe seleccionar un depósito.";
+      return;
+    }
+
+    await using var db = await DbFactory.CreateDbContextAsync();
+
+    // Verificar duplicado (mismo lote/producto/depósito)
+    var duplicado = await db.ProductosLotes
+      .AnyAsync(l => l.IdProducto == nuevoLote.IdProducto 
+                  && l.IdDeposito == nuevoLote.IdDeposito 
+                  && l.NumeroLote == nuevoLote.NumeroLote
+                  && l.IdProductoLote != nuevoLote.IdProductoLote);
+    
+    if (duplicado)
+    {
+      mensajeErrorLote = $"Ya existe un lote '{nuevoLote.NumeroLote}' para este producto en ese depósito.";
+      return;
+    }
+
+    try
+    {
+      if (nuevoLote.IdProductoLote == 0)
+      {
+        // Crear nuevo lote
+        nuevoLote.IdProducto = editando.IdProducto;
+        nuevoLote.StockInicial = nuevoLote.Stock;
+        nuevoLote.FechaCreacion = DateTime.Now;
+        nuevoLote.UsuarioCreacion = "Sistema"; // TODO: obtener usuario actual
+        
+        db.ProductosLotes.Add(nuevoLote);
+        await db.SaveChangesAsync();
+
+        // Registrar movimiento inicial
+        var movimiento = new Models.MovimientoLote
+        {
+          IdProductoLote = nuevoLote.IdProductoLote,
+          TipoMovimiento = TipoMovimientoLote.Inicial,
+          Cantidad = nuevoLote.Stock,
+          StockAnterior = 0,
+          StockPosterior = nuevoLote.Stock,
+          Motivo = "Creación manual de lote",
+          FechaMovimiento = DateTime.Now,
+          Usuario = "Sistema"
+        };
+        db.MovimientosLotes.Add(movimiento);
+        await db.SaveChangesAsync();
+
+        mensajeExitoLote = $"Lote '{nuevoLote.NumeroLote}' creado correctamente.";
+      }
+      else
+      {
+        // Actualizar lote existente
+        var loteDb = await db.ProductosLotes.FindAsync(nuevoLote.IdProductoLote);
+        if (loteDb != null)
+        {
+          var stockAnterior = loteDb.Stock;
+          
+          loteDb.NumeroLote = nuevoLote.NumeroLote;
+          loteDb.FechaVencimiento = nuevoLote.FechaVencimiento;
+          loteDb.FechaFabricacion = nuevoLote.FechaFabricacion;
+          loteDb.CostoUnitario = nuevoLote.CostoUnitario;
+          loteDb.Estado = nuevoLote.Estado;
+          loteDb.Observacion = nuevoLote.Observacion;
+          loteDb.FechaModificacion = DateTime.Now;
+          loteDb.UsuarioModificacion = "Sistema";
+
+          // Si cambió el stock, registrar ajuste
+          if (loteDb.Stock != nuevoLote.Stock)
+          {
+            var diferencia = nuevoLote.Stock - loteDb.Stock;
+            loteDb.Stock = nuevoLote.Stock;
+            
+            var movimiento = new Models.MovimientoLote
+            {
+              IdProductoLote = loteDb.IdProductoLote,
+              TipoMovimiento = TipoMovimientoLote.Ajuste,
+              Cantidad = diferencia,
+              StockAnterior = stockAnterior,
+              StockPosterior = nuevoLote.Stock,
+              Motivo = "Ajuste manual desde administración de lotes",
+              FechaMovimiento = DateTime.Now,
+              Usuario = "Sistema"
+            };
+            db.MovimientosLotes.Add(movimiento);
+          }
+
+          await db.SaveChangesAsync();
+          mensajeExitoLote = $"Lote '{nuevoLote.NumeroLote}' actualizado correctamente.";
+        }
+      }
+
+      await CargarLotesProducto();
+      InicializarNuevoLote();
+    }
+    catch (Exception ex)
+    {
+      mensajeErrorLote = $"Error al guardar: {ex.Message}";
+    }
+  }
+
+  private async Task EliminarLote(Models.ProductoLote lote)
+  {
+    if (lote.Stock > 0)
+    {
+      mensajeErrorLote = $"No se puede eliminar el lote '{lote.NumeroLote}' porque tiene stock ({lote.Stock:N2}).";
+      return;
+    }
+
+    await using var db = await DbFactory.CreateDbContextAsync();
+    
+    var loteDb = await db.ProductosLotes.FindAsync(lote.IdProductoLote);
+    if (loteDb != null)
+    {
+      db.ProductosLotes.Remove(loteDb);
+      await db.SaveChangesAsync();
+      mensajeExitoLote = $"Lote '{lote.NumeroLote}' eliminado.";
+      await CargarLotesProducto();
+    }
+  }
+
+  private async Task CrearLoteInicial()
+  {
+    // Crear lote STOCK-INICIAL con el stock actual del producto
+    await using var db = await DbFactory.CreateDbContextAsync();
+    
+    // Obtener stock actual por depósito
+    var stocksPorDeposito = await db.ProductosDepositos
+      .Where(pd => pd.IdProducto == editando.IdProducto && pd.Stock > 0)
+      .ToListAsync();
+
+    if (!stocksPorDeposito.Any())
+    {
+      mensajeExitoLote = "No hay stock actual para migrar a lotes.";
+      return;
+    }
+
+    foreach (var pd in stocksPorDeposito)
+    {
+      var loteInicial = new Models.ProductoLote
+      {
+        IdProducto = editando.IdProducto,
+        IdDeposito = pd.IdDeposito,
+        NumeroLote = "STOCK-INICIAL",
+        FechaVencimiento = null, // Sin vencimiento definido
+        Stock = pd.Stock,
+        StockInicial = pd.Stock,
+        Estado = "Activo",
+        EsLoteInicial = true,
+        FechaCreacion = DateTime.Now,
+        UsuarioCreacion = "Sistema",
+        Observacion = "Lote creado automáticamente por migración de stock existente"
+      };
+
+      db.ProductosLotes.Add(loteInicial);
+      await db.SaveChangesAsync();
+
+      // Registrar movimiento
+      var movimiento = new Models.MovimientoLote
+      {
+        IdProductoLote = loteInicial.IdProductoLote,
+        TipoMovimiento = TipoMovimientoLote.Inicial,
+        Cantidad = pd.Stock,
+        StockAnterior = 0,
+        StockPosterior = pd.Stock,
+        Motivo = "Migración de stock existente al activar control de lotes",
+        FechaMovimiento = DateTime.Now,
+        Usuario = "Sistema"
+      };
+      db.MovimientosLotes.Add(movimiento);
+    }
+
+    // Marcar que ya se creó el lote inicial
+    var producto = await db.Productos.FindAsync(editando.IdProducto);
+    if (producto != null)
+    {
+      producto.LoteInicialCreado = true;
+      await db.SaveChangesAsync();
+      editando.LoteInicialCreado = true;
+    }
+
+    await CargarLotesProducto();
+    mensajeExitoLote = $"Se crearon {stocksPorDeposito.Count} lote(s) STOCK-INICIAL con el stock existente.";
+  }
+
+  private string GetEstadoLoteBadge(Models.ProductoLote lote)
+  {
+    if (lote.EstaVencido) return "badge bg-danger";
+    if (lote.EstaProximoAVencer) return "badge bg-warning text-dark";
+    if (lote.Stock <= 0) return "badge bg-secondary";
+    return "badge bg-success";
+  }
+
+  private string GetEstadoLoteTexto(Models.ProductoLote lote)
+  {
+    if (lote.EstaVencido) return "Vencido";
+    if (lote.EstaProximoAVencer) return $"Vence en {lote.DiasParaVencimiento} días";
+    if (lote.Stock <= 0) return "Agotado";
+    return "Activo";
   }
 }
 

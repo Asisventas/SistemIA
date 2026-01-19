@@ -295,9 +295,13 @@ else
           <tr>
             <th style="width:10%">Código</th>
             <th>Descripción</th>
+            @if (_modoFarmaciaActivo)
+            {
+              <th style="width:8%">Lote</th>
+            }
             <th style="width:9%">Unidad Medida</th>
-            <th style="width:6%">Cajas</th>
-            <th style="width:8%">Cantidad</th>
+            <th style="width:6%">Paq.</th>
+            <th style="width:8%">Unid.</th>
             <th style="width:10%">Precio Unitario</th>
             @if (_modoFarmaciaActivo)
             {
@@ -316,16 +320,59 @@ else
             // Calcular valores de venta CON IVA incluido
             var valorVenta5 = d.Grabado5 + d.IVA5;
             var valorVenta10 = d.Grabado10 + d.IVA10;
+            
+            // ========== CALCULAR CAJAS Y CANTIDAD SEGÚN MODO DE INGRESO PERSISTIDO ==========
+            var cantPorPaq = d.CantidadPorPaqueteMomento ?? d.Producto?.CantidadPorPaquete ?? 1m;
+            var fueVentaPorPaquete = d.ModoIngresoPersistido == "paquete" && cantPorPaq > 1;
+            var fueVentaPorUnidad = d.ModoIngresoPersistido == "unidad" && cantPorPaq > 1;
+            
+            // Cajas: solo si fue venta por paquete, mostrar cantidad de paquetes
+            var cajasVendidas = fueVentaPorPaquete ? (d.Cantidad / cantPorPaq) : 0m;
+            // Cantidad: siempre mostrar las unidades totales
+            var unidadesDisplay = d.Cantidad;
+            
+            // Precio a mostrar: si fue por paquete, mostrar precio por paquete (PrecioUnitario * cantPorPaq)
+            var multiplicador = fueVentaPorPaquete ? cantPorPaq : 1m;
+            var precioDisplay = d.PrecioUnitario * multiplicador;
+            
+            // Precio Ministerio: aplicar misma lógica
+            var precioMinDisplay = d.PrecioMinisterio.HasValue 
+                ? d.PrecioMinisterio.Value * multiplicador 
+                : (decimal?)null;
+            
+            // Descripción: agregar indicador de paquete o unidad
+            var descripcion = d.Producto?.Descripcion ?? "";
+            if (fueVentaPorPaquete)
+            {
+                descripcion += $" (Paq x{(int)cantPorPaq})";
+            }
+            else if (fueVentaPorUnidad)
+            {
+                descripcion += " (Unidad)";
+            }
+            
+            // Formato de cantidad: sin decimales si es número entero
+            var cantidadFormateada = unidadesDisplay == Math.Floor(unidadesDisplay) 
+                ? unidadesDisplay.ToString("N0") 
+                : unidadesDisplay.ToString("N2").TrimEnd('0').TrimEnd(',').TrimEnd('.');
+            var cajasFormateadas = cajasVendidas == Math.Floor(cajasVendidas) 
+                ? cajasVendidas.ToString("N0") 
+                : cajasVendidas.ToString("N2").TrimEnd('0').TrimEnd(',').TrimEnd('.');
+            
             <tr>
               <td>@codigo</td>
-              <td>@d.Producto?.Descripcion</td>
-              <td class="t-center">@d.Producto?.UndMedida</td>
-              <td class="t-center">1,00</td>
-              <td class="t-right">@d.Cantidad.ToString("N2")</td>
-              <td class="t-right">@d.PrecioUnitario.ToString("N0")</td>
+              <td>@descripcion</td>
               @if (_modoFarmaciaActivo)
               {
-                <td class="t-right">@(d.PrecioMinisterio?.ToString("N0") ?? "—")</td>
+                <td class="t-center">@(d.NumeroLoteMomento ?? "")</td>
+              }
+              <td class="t-center">@(fueVentaPorPaquete ? "PAQ" : d.Producto?.UndMedida)</td>
+              <td class="t-center">@(fueVentaPorPaquete ? cajasFormateadas : "")</td>
+              <td class="t-right">@cantidadFormateada</td>
+              <td class="t-right">@precioDisplay.ToString("N0")</td>
+              @if (_modoFarmaciaActivo)
+              {
+                <td class="t-right">@(precioMinDisplay?.ToString("N0") ?? "—")</td>
               }
               <td class="t-right">@((d.PorcentajeDescuento ?? 0).ToString("N0"))</td>
               <td class="t-right">@(d.Exenta > 0 ? d.Exenta.ToString("N0") : "")</td>

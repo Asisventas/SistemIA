@@ -272,10 +272,35 @@ else
         <label class="form-label">Stock disponible</label>
         <input class="form-control" value="@stockDisponible.ToString("N2")" disabled />
       </div>
-      <div class="col-md-2">
-        <label class="form-label">Cantidad a transferir</label>
-        <input class="form-control" type="number" step="0.01" min="0" @bind-value="cantidad" @bind-value:event="oninput" disabled="@(idProductoSeleccionado==0 || guardando)" />
-      </div>
+      @* ========== CANTIDAD CON SELECTOR PAQUETE/UNIDAD ========== *@
+      @if (productoEsPaquete)
+      {
+        <div class="col-md-1">
+          <label class="form-label">Modo</label>
+          <select class="form-select form-select-sm" value="@modoIngresoTransferencia" @onchange="OnModoIngresoTransferenciaChanged">
+            <option value="paquete">@nombreUnidadTransferencia</option>
+            <option value="unidad">Unidad</option>
+          </select>
+        </div>
+        <div class="col-md-1">
+          <label class="form-label">Cant.</label>
+          <input class="form-control" type="number" step="1" min="1" 
+                 value="@cantidadIngresada" 
+                 @oninput="OnCantidadIngresadaChanged" 
+                 disabled="@(idProductoSeleccionado==0 || guardando)" />
+          @if (modoIngresoTransferencia == "paquete" && cantidadPorPaqueteActual > 1)
+          {
+            <small class="text-muted">= @((cantidadIngresada * (cantidadPorPaqueteActual ?? 1)).ToString("N0")) und.</small>
+          }
+        </div>
+      }
+      else
+      {
+        <div class="col-md-2">
+          <label class="form-label">Cantidad a transferir</label>
+          <input class="form-control" type="number" step="0.01" min="0" @bind-value="cantidad" @bind-value:event="oninput" disabled="@(idProductoSeleccionado==0 || guardando)" />
+        </div>
+      }
       <div class="col-md-2 text-end">
         <button class="btn btn-success w-100" @onclick="AgregarLinea" disabled="@(idProductoSeleccionado==0 || idDepositoOrigen==0 || cantidad<=0 || guardando)">
           <i class="bi bi-plus-lg"></i> Agregar
@@ -292,6 +317,7 @@ else
             <th style="width:50px;">#</th>
             <th>Código</th>
             <th>Producto</th>
+            <th class="text-end">Paq.</th>
             <th class="text-end">Stock origen</th>
             <th class="text-end">Cantidad</th>
             <th class="text-end">Costo unit.</th>
@@ -302,18 +328,37 @@ else
         <tbody>
           @if (!lineas.Any())
           {
-            <tr><td colspan="8" class="text-center text-muted py-4">Sin productos agregados</td></tr>
+            <tr><td colspan="9" class="text-center text-muted py-4">Sin productos agregados</td></tr>
           }
           else
           {
             var idx = 0;
             foreach (var l in lineas)
             {
+              var esPaq = (l.UnidadMedidaCodigo == "006" || l.UnidadMedidaCodigo == "005") && l.CantidadPorPaquete > 1;
+              var paqStock = esPaq ? Math.Floor(l.StockOrigen / l.CantidadPorPaquete) : 0m;
+              var paqSueltas = esPaq ? l.StockOrigen % l.CantidadPorPaquete : 0m;
               <tr>
                 <td>@(++idx)</td>
                 <td><span class="badge bg-secondary">@l.CodigoInterno</span></td>
                 <td>
                   <div class="fw-semibold">@l.Descripcion</div>
+                  @if (esPaq)
+                  {
+                    <small class="text-info">📦 @l.CantidadPorPaquete u/paq</small>
+                  }
+                </td>
+                <td class="text-end">
+                  @if (esPaq)
+                  {
+                    <span class="text-info fw-semibold" title="@paqStock paquetes + @paqSueltas unidades sueltas">
+                      @paqStock.ToString("N0")@(paqSueltas > 0 ? $" +{paqSueltas:N0}" : "")
+                    </span>
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
                 </td>
                 <td class="text-end">@l.StockOrigen.ToString("N2")</td>
                 <td class="text-end">
@@ -357,6 +402,13 @@ else
   private decimal cantidad;
   private string? buscarProducto;
   private bool mostrarSugProductos;
+  
+  // ========== VARIABLES PARA TRANSFERENCIA POR PAQUETE/UNIDAD ==========
+  private string modoIngresoTransferencia = "paquete"; // "paquete" o "unidad"
+  private decimal cantidadIngresada = 1;
+  private int? cantidadPorPaqueteActual = null;
+  private string nombreUnidadTransferencia = "Paquete";
+  private bool productoEsPaquete = false;
   
   private string? errorMsg;
   private string? okMsg;
@@ -567,7 +619,7 @@ else
     }
     
     sb.AppendLine("<table class='table-trans'>");
-    sb.AppendLine("  <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th style='text-align:right;width:120px;'>Cantidad</th><th style='text-align:right;width:130px;'>Costo unit.</th><th style='text-align:right;width:130px;'>Costo total</th></tr></thead>");
+    sb.AppendLine("  <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th style='text-align:right;width:70px;'>Paq.</th><th style='text-align:right;width:100px;'>Cantidad</th><th style='text-align:right;width:110px;'>Costo unit.</th><th style='text-align:right;width:110px;'>Costo total</th></tr></thead>");
     sb.AppendLine("  <tbody>");
     var idx = 0;
     foreach (var d in dets)
@@ -576,12 +628,20 @@ else
       var desc = d.Producto?.Descripcion ?? $"Producto #{d.IdProducto}";
       var codigo = d.Producto?.CodigoInterno ?? "-";
       var costoTotal = d.Cantidad * (d.CostoUnitario ?? 0);
-      sb.AppendLine($"    <tr><td style='font-weight:600;'>{idx}</td><td style='font-weight:600;'>{System.Net.WebUtility.HtmlEncode(codigo)}</td><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td style='text-align:right;font-weight:600;'>{d.Cantidad:N2}</td><td style='text-align:right;'>{(d.CostoUnitario ?? 0):N0}</td><td style='text-align:right;font-weight:700;'>{costoTotal:N0}</td></tr>");
+      // Calcular paquetes transferidos
+      var cantPaq = d.Producto?.CantidadPorPaquete ?? 1;
+      var uniMed = d.Producto?.UnidadMedidaCodigo;
+      var esPaq = (uniMed == "006" || uniMed == "005") && cantPaq > 1;
+      var paqTransf = esPaq ? Math.Floor(d.Cantidad / cantPaq) : 0m;
+      var sueltas = esPaq ? d.Cantidad % cantPaq : 0m;
+      var paqDisplay = esPaq ? (paqTransf > 0 ? $"{paqTransf:N0}{(sueltas > 0 ? $" +{sueltas:N0}" : "")}" : (sueltas > 0 ? $"+{sueltas:N0}" : "0")) : "-";
+      var descHtml = System.Net.WebUtility.HtmlEncode(desc) + (esPaq ? $"<br/><small style='color:#17a2b8;'>📦 {cantPaq} u/paq</small>" : "");
+      sb.AppendLine($"    <tr><td style='font-weight:600;'>{idx}</td><td style='font-weight:600;'>{System.Net.WebUtility.HtmlEncode(codigo)}</td><td>{descHtml}</td><td style='text-align:right;color:#17a2b8;font-weight:600;'>{paqDisplay}</td><td style='text-align:right;font-weight:600;'>{d.Cantidad:N2}</td><td style='text-align:right;'>{(d.CostoUnitario ?? 0):N0}</td><td style='text-align:right;font-weight:700;'>{costoTotal:N0}</td></tr>");
     }
     sb.AppendLine("  </tbody>");
     sb.AppendLine("  <tfoot>");
     var totalCosto = dets.Sum(d => d.Cantidad * (d.CostoUnitario ?? 0));
-    sb.AppendLine($"    <tr><td colspan='5' style='text-align:right;font-size:16px;'>TOTAL</td><td style='text-align:right;font-size:16px;'>{totalCosto:N0}</td></tr>");
+    sb.AppendLine($"    <tr><td colspan='6' style='text-align:right;font-size:16px;'>TOTAL</td><td style='text-align:right;font-size:16px;'>{totalCosto:N0}</td></tr>");
     sb.AppendLine("  </tfoot>");
     sb.AppendLine("</table>");
     
@@ -655,7 +715,31 @@ else
     idProductoSeleccionado = p.IdProducto;
     buscarProducto = p.Descripcion ?? string.Empty;
     mostrarSugProductos = false;
-    cantidad = 1;
+    
+    // Configurar modo paquete/unidad
+    cantidadPorPaqueteActual = (int?)(p.CantidadPorPaquete ?? 1);
+    productoEsPaquete = (p.UnidadMedidaCodigo == "006" || p.UnidadMedidaCodigo == "005") && (cantidadPorPaqueteActual ?? 1) > 1;
+    
+    if (productoEsPaquete)
+    {
+      // Determinar nombre de la unidad de empaque
+      if (p.UnidadMedidaCodigo == "006") nombreUnidadTransferencia = "Paquete";
+      else if (p.UnidadMedidaCodigo == "005") nombreUnidadTransferencia = "Caja";
+      else nombreUnidadTransferencia = "Paquete";
+      
+      // Por defecto, iniciar en modo paquete con 1 paquete
+      modoIngresoTransferencia = "paquete";
+      cantidadIngresada = 1;
+      cantidad = cantidadPorPaqueteActual ?? 1; // La cantidad real es 1 paquete = X unidades
+    }
+    else
+    {
+      // Producto normal, sin paquetes
+      modoIngresoTransferencia = "unidad";
+      cantidadIngresada = 1;
+      cantidad = 1;
+    }
+    
     await CargarStockDisponible();
     StateHasChanged();
   }
@@ -684,6 +768,44 @@ else
   private void OnProductoBlur(FocusEventArgs _)
   {
     // Manejado por onpointerdown
+  }
+
+  // ========== MÉTODOS PARA MODO PAQUETE/UNIDAD ==========
+  private void OnModoIngresoTransferenciaChanged(ChangeEventArgs e)
+  {
+    modoIngresoTransferencia = e.Value?.ToString() ?? "paquete";
+    RecalcularCantidadPorModo();
+  }
+
+  private void OnCantidadIngresadaChanged(ChangeEventArgs e)
+  {
+    if (decimal.TryParse(e.Value?.ToString(), out var val) && val >= 0)
+    {
+      cantidadIngresada = val;
+      RecalcularCantidadPorModo();
+    }
+  }
+
+  private void RecalcularCantidadPorModo()
+  {
+    if (!productoEsPaquete)
+    {
+      cantidad = cantidadIngresada;
+      return;
+    }
+    
+    var cantPorPaq = cantidadPorPaqueteActual ?? 1;
+    
+    if (modoIngresoTransferencia == "paquete" && cantPorPaq > 1)
+    {
+      // Modo paquete: cantidad = paquetes * unidades por paquete
+      cantidad = cantidadIngresada * cantPorPaq;
+    }
+    else
+    {
+      // Modo unidad: cantidad directa
+      cantidad = cantidadIngresada;
+    }
   }
 
   private async Task AgregarLinea()
@@ -719,7 +841,9 @@ else
         Descripcion = p.Descripcion,
         StockOrigen = stockDisponible,
         Cantidad = cantidad,
-        CostoUnitario = p.CostoUnitarioGs ?? 0
+        CostoUnitario = p.CostoUnitarioGs ?? 0,
+        CantidadPorPaquete = (int)(p.CantidadPorPaquete ?? 1),
+        UnidadMedidaCodigo = p.UnidadMedidaCodigo
       };
       RecalcularLinea(l);
       lineas.Add(l);
@@ -731,6 +855,11 @@ else
     cantidad = 0;
     buscarProducto = string.Empty;
     mostrarSugProductos = false;
+    // Limpiar variables de paquete
+    productoEsPaquete = false;
+    cantidadPorPaqueteActual = null;
+    modoIngresoTransferencia = "paquete";
+    cantidadIngresada = 1;
   }
 
   private void RecalcularLinea(LineaVM l)
@@ -899,6 +1028,12 @@ else
     cantidad = 0;
     buscarProducto = null;
     mostrarSugProductos = false;
+    // Reset variables de paquete/unidad
+    productoEsPaquete = false;
+    cantidadPorPaqueteActual = null;
+    modoIngresoTransferencia = "paquete";
+    cantidadIngresada = 1;
+    nombreUnidadTransferencia = null;
   }
 
   private async Task Imprimir()
@@ -1007,7 +1142,7 @@ else
       }
       
       sb.AppendLine("  <table class=\"table table-sm table-trans\">");
-      sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th class=\"text-end\">Cantidad</th><th class=\"text-end\">Costo unit.</th><th class=\"text-end\">Costo total</th></tr></thead>");
+      sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th class=\"text-end\">Paq.</th><th class=\"text-end\">Cantidad</th><th class=\"text-end\">Costo unit.</th><th class=\"text-end\">Costo total</th></tr></thead>");
       sb.AppendLine("    <tbody>");
       var idx = 0;
       foreach (var d in dets)
@@ -1016,12 +1151,20 @@ else
         var desc = d.Producto?.Descripcion ?? $"Producto #{d.IdProducto}";
         var codigo = d.Producto?.CodigoInterno ?? "-";
         var costoTotal = d.Cantidad * (d.CostoUnitario ?? 0);
-        sb.AppendLine($"      <tr><td>{idx}</td><td>{System.Net.WebUtility.HtmlEncode(codigo)}</td><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{(d.CostoUnitario ?? 0):N0}</td><td class=\"text-end\">{costoTotal:N0}</td></tr>");
+        // Calcular paquetes transferidos
+        var cantPaq = d.Producto?.CantidadPorPaquete ?? 1;
+        var uniMed = d.Producto?.UnidadMedidaCodigo;
+        var esPaq = (uniMed == "006" || uniMed == "005") && cantPaq > 1;
+        var paqTransf = esPaq ? Math.Floor(d.Cantidad / cantPaq) : 0m;
+        var sueltas = esPaq ? d.Cantidad % cantPaq : 0m;
+        var paqDisplay = esPaq ? (paqTransf > 0 ? $"{paqTransf:N0}{(sueltas > 0 ? $" +{sueltas:N0}" : "")}" : (sueltas > 0 ? $"+{sueltas:N0}" : "0")) : "-";
+        var descHtml = System.Net.WebUtility.HtmlEncode(desc) + (esPaq ? $" <small style='color:#17a2b8;'>📦x{cantPaq}</small>" : "");
+        sb.AppendLine($"      <tr><td>{idx}</td><td>{System.Net.WebUtility.HtmlEncode(codigo)}</td><td>{descHtml}</td><td class=\"text-end\" style=\"color:#17a2b8;\">{paqDisplay}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{(d.CostoUnitario ?? 0):N0}</td><td class=\"text-end\">{costoTotal:N0}</td></tr>");
       }
       sb.AppendLine("    </tbody>");
       sb.AppendLine("    <tfoot>");
       var totalCosto = dets.Sum(d => d.Cantidad * (d.CostoUnitario ?? 0));
-      sb.AppendLine($"      <tr class=\"fw-bold\"><td colspan=\"5\" class=\"text-end\">Total</td><td class=\"text-end\">{totalCosto:N0}</td></tr>");
+      sb.AppendLine($"      <tr class=\"fw-bold\"><td colspan=\"6\" class=\"text-end\">Total</td><td class=\"text-end\">{totalCosto:N0}</td></tr>");
       sb.AppendLine("    </tfoot>");
       sb.AppendLine("  </table>");
       
@@ -1045,5 +1188,7 @@ else
     public decimal Cantidad { get; set; }
     public decimal CostoUnitario { get; set; }
     public decimal CostoTotal { get; set; }
+    public int CantidadPorPaquete { get; set; } = 1;
+    public string? UnidadMedidaCodigo { get; set; }
   }
 }

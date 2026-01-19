@@ -57,6 +57,152 @@ namespace SistemIA.Models
         }
 
         /// <summary>
+        /// Escribe un log al archivo Debug/sifen_debug.log con encoding UTF-8.
+        /// Esta función garantiza que los caracteres especiales se guarden correctamente,
+        /// evitando la corrupción de UTF-8 que ocurre en la terminal de PowerShell.
+        /// </summary>
+        public static void LogSifenDebug(string mensaje, string? contenido = null)
+        {
+            try
+            {
+                // Usar ruta fija para garantizar que se encuentre el archivo
+                var debugDir = @"c:\asis\SistemIA\Debug";
+                if (!Directory.Exists(debugDir))
+                    Directory.CreateDirectory(debugDir);
+                    
+                var logFile = Path.Combine(debugDir, "sifen_debug.log");
+                var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                
+                var sb = new StringBuilder();
+                sb.AppendLine($"\n{new string('=', 80)}");
+                sb.AppendLine($"[{timestamp}] {mensaje}");
+                sb.AppendLine($"{new string('=', 80)}");
+                
+                if (!string.IsNullOrEmpty(contenido))
+                {
+                    sb.AppendLine(contenido);
+                }
+                
+                // Usar UTF8 encoding sin BOM para preservar caracteres especiales
+                File.AppendAllText(logFile, sb.ToString(), new UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LogSifenDebug] Error escribiendo log: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Limpia el archivo de log SIFEN para empezar una nueva sesión de debugging.
+        /// </summary>
+        public static void ClearSifenDebugLog()
+        {
+            try
+            {
+                var logFile = @"c:\asis\SistemIA\Debug\sifen_debug.log";
+                if (File.Exists(logFile))
+                {
+                    File.Delete(logFile);
+                }
+            }
+            catch { }
+        }
+        
+        /// <summary>
+        /// Inicia una nueva sesión de debugging SIFEN con nombre descriptivo.
+        /// Guarda archivos individuales en Debug/sesion_{timestamp}/ para análisis posterior.
+        /// </summary>
+        public static string IniciarSesionDebug(string descripcion, int? idVenta = null)
+        {
+            try
+            {
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var sesionId = $"sesion_{timestamp}";
+                var sesionDir = Path.Combine(@"c:\asis\SistemIA\Debug", sesionId);
+                
+                if (!Directory.Exists(sesionDir))
+                    Directory.CreateDirectory(sesionDir);
+                
+                // Limpiar log principal
+                ClearSifenDebugLog();
+                
+                // Crear archivo de sesión
+                var infoPath = Path.Combine(sesionDir, "00_INFO.txt");
+                var sb = new StringBuilder();
+                sb.AppendLine($"═══════════════════════════════════════════════════════════════════");
+                sb.AppendLine($"SESIÓN DE PRUEBAS SIFEN - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                sb.AppendLine($"═══════════════════════════════════════════════════════════════════");
+                sb.AppendLine($"Descripción: {descripcion}");
+                if (idVenta.HasValue) sb.AppendLine($"ID Venta: {idVenta}");
+                sb.AppendLine($"Sesión ID: {sesionId}");
+                sb.AppendLine($"Directorio: {sesionDir}");
+                sb.AppendLine($"═══════════════════════════════════════════════════════════════════");
+                sb.AppendLine();
+                
+                File.WriteAllText(infoPath, sb.ToString(), new UTF8Encoding(false));
+                LogSifenDebug($"NUEVA SESIÓN: {descripcion}", $"Sesión ID: {sesionId}\nVenta ID: {idVenta}");
+                
+                return sesionDir;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[IniciarSesionDebug] Error: {ex.Message}");
+                return @"c:\asis\SistemIA\Debug";
+            }
+        }
+        
+        /// <summary>
+        /// Guarda un archivo de debug en la sesión actual.
+        /// </summary>
+        public static void GuardarArchivoSesion(string sesionDir, string nombreArchivo, string contenido, string? descripcion = null)
+        {
+            try
+            {
+                if (!Directory.Exists(sesionDir))
+                    Directory.CreateDirectory(sesionDir);
+                    
+                var filePath = Path.Combine(sesionDir, nombreArchivo);
+                
+                if (!string.IsNullOrEmpty(descripcion))
+                {
+                    var header = $"<!-- {descripcion} - {DateTime.Now:yyyy-MM-dd HH:mm:ss} -->\n";
+                    contenido = header + contenido;
+                }
+                
+                File.WriteAllText(filePath, contenido, new UTF8Encoding(false));
+                LogSifenDebug($"ARCHIVO GUARDADO: {nombreArchivo}", $"Path: {filePath}\nTamaño: {contenido.Length} caracteres");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GuardarArchivoSesion] Error: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Agrega un paso al log de la sesión actual.
+        /// </summary>
+        public static void LogPasoSesion(string sesionDir, int numeroPaso, string titulo, string? detalle = null)
+        {
+            try
+            {
+                var logPath = Path.Combine(sesionDir, "00_PASOS.txt");
+                var sb = new StringBuilder();
+                sb.AppendLine($"\n[{DateTime.Now:HH:mm:ss.fff}] PASO {numeroPaso}: {titulo}");
+                sb.AppendLine(new string('-', 60));
+                if (!string.IsNullOrEmpty(detalle))
+                    sb.AppendLine(detalle);
+                sb.AppendLine();
+                
+                File.AppendAllText(logPath, sb.ToString(), new UTF8Encoding(false));
+                LogSifenDebug($"PASO {numeroPaso}: {titulo}", detalle);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LogPasoSesion] Error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// <summary>
         /// Comprime XML usando ZIP real para envío a SIFEN (modo LOTE).
         /// ========================================================================
@@ -92,6 +238,25 @@ namespace SistemIA.Models
             }
             Console.WriteLine($"[SIFEN DEBUG] StringToZip ZIP bytes: {compressedBytes.Length}");
             return Convert.ToBase64String(compressedBytes);
+        }
+
+        /// <summary>
+        /// Quita el atributo xmlns de un elemento XML y todos sus descendientes recursivamente.
+        /// FIX 16-Ene-2026: Necesario para que la Signature herede el namespace SIFEN del padre.
+        /// </summary>
+        private void QuitarNamespaceRecursivo(XmlElement element)
+        {
+            // Quitar xmlns del elemento actual
+            element.RemoveAttribute("xmlns");
+            
+            // Procesar todos los hijos que sean elementos
+            foreach (XmlNode child in element.ChildNodes)
+            {
+                if (child is XmlElement childElement)
+                {
+                    QuitarNamespaceRecursivo(childElement);
+                }
+            }
         }
 
         /// <summary>
@@ -337,10 +502,11 @@ namespace SistemIA.Models
                 }
                 catch { /* noop */ }
                 
-                // IMPORTANTE: Según implementación PHP de referencia (sifen.php línea 522),
-                // SIFEN acepta Content-Type: application/xml (sin charset ni action)
-                // Referencia: curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/xml'));
-                string contentType = "application/xml";
+                // IMPORTANTE: El código Java de PowerBuilder usa:
+                // con.setRequestProperty("Content-Type", "text/xml; charset=utf-8");
+                // Esto es CRÍTICO para que SIFEN acepte el XML
+                // Ver: SifenResource.java línea 350-351
+                string contentType = "text/xml; charset=utf-8";
                 content.Headers.Add("Content-Type", contentType);
                 // Fallback adicional: incluir SOAPAction como header (algunos balanceadores lo usan aún con SOAP 1.2)
                 // Solo para operaciones que NO son consultas
@@ -366,8 +532,24 @@ namespace SistemIA.Models
                     Console.WriteLine($"  {header.Key}: {string.Join(", ", header.Value)}");
                 }
                 
+                // *** LOGGING A ARCHIVO (evita problemas de UTF-8 en terminal) ***
+                var headersStr = new StringBuilder();
+                foreach (var header in client.DefaultRequestHeaders)
+                {
+                    headersStr.AppendLine($"  {header.Key}: {string.Join(", ", header.Value)}");
+                }
+                LogSifenDebug($"ENVÍO SIFEN - URL: {url}", 
+                    $"Content-Type: {contentType}\nDocumento Length: {documento.Length}\n\n" +
+                    $"HEADERS:\n{headersStr}\n\n" +
+                    $"SOAP ENVIADO:\n{documento}");
+                
                 using var response = await client.PostAsync(url, content);
                 var responseString = await response.Content.ReadAsStringAsync();
+                
+                // *** LOGGING RESPUESTA A ARCHIVO ***
+                LogSifenDebug($"RESPUESTA SIFEN - Status: {response.StatusCode} ({(int)response.StatusCode})", 
+                    $"Response Length: {responseString.Length}\n\n" +
+                    $"RESPUESTA:\n{responseString}");
                 
                 Console.WriteLine($"[DEBUG] Status Code: {response.StatusCode} ({(int)response.StatusCode})");
                 Console.WriteLine($"[DEBUG] Response Headers:");
@@ -538,6 +720,13 @@ namespace SistemIA.Models
             try
             {
                 var doc = new XmlDocument();
+                // ========================================================================
+                // FIX CRÍTICO 15-Ene-2026: PreserveWhitespace ANTES de LoadXml
+                // ========================================================================
+                // Sin esto, el DOM normaliza espacios y el DigestValue no coincide
+                // SIFEN rechaza con "El documento XML no tiene firma"
+                // ========================================================================
+                doc.PreserveWhitespace = true;
                 doc.LoadXml(xmlString);
 
                 // Eliminar cualquier firma existente (reemplazar por nuestra firma)
@@ -574,56 +763,81 @@ namespace SistemIA.Models
                 var nodeId = idAttribute.Value;
 
                 // ========================================================================
-                // FIX 13-Ene-2026: Usar RSACryptoServiceProvider con ProviderType 24
-                // Copiado EXACTAMENTE del DLL de Power que FUNCIONA
-                // El ProviderType 24 = "Microsoft Enhanced RSA and AES Cryptographic Provider"
-                // que soporta SHA-256 nativamente para firma
+                // FIX 14-Ene-2026: Usar API RSA MODERNA (sin RSACryptoServiceProvider)
                 // ========================================================================
-                using var cert = new X509Certificate2(p12FilePath, certificatePassword, 
-                    X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
+                // PROBLEMA: RSACryptoServiceProvider con CspParameters(24) falla en Windows 10/11
+                // con error "Se ha especificado un tipo de proveedor no válido"
+                //
+                // SOLUCIÓN: Usar GetRSAPrivateKey() directamente como hace el DLL funcional
+                // del proyecto SifenProyecto2026 (versión 26 - CORREGIDA)
+                //
+                // El DLL funcional tiene código exacto:
+                //   RSA rsaKey = cert.GetRSAPrivateKey();
+                //   signedXml.SigningKey = rsaKey;  // SIN RSACryptoServiceProvider
+                //
+                // Referencia: .ai-docs/SIFEN/SifenProyecto2026/Sifen2026Proyec/DOCUMENTACION_SOLUCION_FINAL.md
+                // ========================================================================
                 
-                // Crear RSA con proveedor AES (24) para SHA-256 - IGUAL que DLL Power
-                RSACryptoServiceProvider key = new RSACryptoServiceProvider(new CspParameters(24));
-                key.PersistKeyInCsp = false;
-                
-                // Importar clave desde certificado
-                try
+                // Cargar certificado con diferentes flags hasta encontrar compatible
+                X509Certificate2? cert = null;
+                Exception? lastFlagException = null;
+                X509KeyStorageFlags[] flagsToTry = new X509KeyStorageFlags[]
                 {
-                    var originalCsp = cert.PrivateKey as RSACryptoServiceProvider;
-                    if (originalCsp != null)
+                    X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable,
+                    X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.Exportable,
+                    X509KeyStorageFlags.DefaultKeySet | X509KeyStorageFlags.Exportable,
+                    X509KeyStorageFlags.Exportable
+                };
+                
+                foreach (var flags in flagsToTry)
+                {
+                    try
                     {
-                        key.FromXmlString(originalCsp.ToXmlString(true));
-                        Console.WriteLine($"[FIRMA] RSA Key importada via RSACryptoServiceProvider.ToXmlString");
-                    }
-                    else
-                    {
-                        // Fallback: GetRSAPrivateKey para certificados modernos (CNG)
-                        var rsaKey = cert.GetRSAPrivateKey();
-                        if (rsaKey != null)
+                        Console.WriteLine($"[FIRMA] Intentando cargar certificado con flags: {flags}");
+                        cert = new X509Certificate2(p12FilePath, certificatePassword, flags);
+                        if (cert.HasPrivateKey)
                         {
-                            RSAParameters rsaParams = rsaKey.ExportParameters(true);
-                            key.ImportParameters(rsaParams);
-                            Console.WriteLine($"[FIRMA] RSA Key importada via GetRSAPrivateKey().ExportParameters");
+                            Console.WriteLine($"[FIRMA] Certificado cargado OK con flags: {flags}");
+                            break;
                         }
                         else
                         {
-                            throw new CryptographicException("No se pudo obtener RSA PrivateKey");
+                            Console.WriteLine($"[FIRMA] Certificado sin clave privada con flags: {flags}");
+                            cert.Dispose();
+                            cert = null;
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[FIRMA] Fallo con flags {flags}: {ex.Message}");
+                        lastFlagException = ex;
+                        cert?.Dispose();
+                        cert = null;
+                    }
                 }
-                catch (Exception exKey)
+                
+                if (cert == null)
                 {
-                    Console.WriteLine($"[FIRMA] Error en método primario: {exKey.Message}, usando fallback");
-                    // Último intento: GetRSAPrivateKey con ExportParameters
-                    var rsaKey = cert.GetRSAPrivateKey() 
-                        ?? throw new InvalidOperationException("No se pudo obtener la clave RSA");
-                    RSAParameters rsaParams = rsaKey.ExportParameters(true);
-                    key.ImportParameters(rsaParams);
+                    throw new CryptographicException(
+                        "No se pudo cargar el certificado con ninguna combinación de flags", 
+                        lastFlagException);
                 }
+                
                 Console.WriteLine($"[FIRMA] Certificado: {cert.Subject}");
-                Console.WriteLine($"[FIRMA] Key Size: {key.KeySize}");
+                Console.WriteLine($"[FIRMA] Thumbprint: {cert.Thumbprint}");
+                Console.WriteLine($"[FIRMA] HasPrivateKey: {cert.HasPrivateKey}");
+                
+                // MÉTODO RSA MODERNO (Compatible Windows 10/11)
+                // Usar GetRSAPrivateKey() directamente - NO RSACryptoServiceProvider
+                RSA rsaKey = cert.GetRSAPrivateKey() 
+                    ?? throw new CryptographicException("No se pudo obtener clave RSA del certificado");
+                
+                Console.WriteLine($"[FIRMA] RSA obtenida via GetRSAPrivateKey()");
+                Console.WriteLine($"[FIRMA] RSA KeySize: {rsaKey.KeySize}");
+                Console.WriteLine($"[FIRMA] RSA SignatureAlgorithm: {rsaKey.SignatureAlgorithm}");
 
-                var signedXml = new SignedXmlWithId(doc) { SigningKey = key };
+                // Usar la clave RSA directamente (sin conversiones ni RSACryptoServiceProvider)
+                var signedXml = new SignedXmlWithId(doc) { SigningKey = rsaKey };
                 
                 var reference = new Reference
                 {
@@ -667,40 +881,159 @@ namespace SistemIA.Models
                 catch (Exception exDebug) { Console.WriteLine($"[FIRMA DEBUG ERROR] {exDebug.Message}"); }
                 // ========================================================================
                 
-                // La firma debe ser ENVELOPED pero colocada FUERA de DE, como sibling en rDE
+                // ========================================================================
+                // FIX 15-Ene-2026 v3: CORRECCIÓN DEFINITIVA SEGÚN MANUAL SIFEN v150
+                // ========================================================================
+                // Estructura OBLIGATORIA según Manual Técnico SIFEN v150:
+                //   <rDE>
+                //     <dVerFor>150</dVerFor>
+                //     <DE>
+                //       ... contenido ...
+                //       <gTotSub>...</gTotSub>
+                //       <gCamGen/>              ← OBLIGATORIO (aunque esté vacío)
+                //       <Signature>...</Signature>  ← DENTRO de DE, ÚLTIMO hijo
+                //     </DE>
+                //     <gCamFuFD>...</gCamFuFD>    ← FUERA de DE
+                //   </rDE>
+                //
+                // IMPORTANTE: El prevalidador web valida XSD general.
+                // El backend SIFEN valida XSD estricto + canonicalización + orden.
+                // ========================================================================
+                
+                // ========================================================================
+                // FIX 16-Ene-2026 v2: ELIMINAR gCamGen vacío
+                // ========================================================================
+                // DESCUBRIMIENTO: El XML aprobado (xmlRequestVenta_273_sync.xml) NO tiene
+                // elemento <gCamGen /> vacío. Si existe y está vacío, ELIMINARLO.
+                // ========================================================================
+                var gCamGenNodes = doc.GetElementsByTagName("gCamGen");
+                foreach (XmlNode gCamGenNode in gCamGenNodes)
+                {
+                    if (gCamGenNode != null && !gCamGenNode.HasChildNodes)
+                    {
+                        gCamGenNode.ParentNode?.RemoveChild(gCamGenNode);
+                        Console.WriteLine("[FIRMA] gCamGen vacío ELIMINADO (no está en XML de referencia)");
+                    }
+                }
+                
+                // 2) Asegurar que gCamFuFD esté FUERA de DE (como hijo de rDE)
                 var rdeNode = doc.DocumentElement;
                 if (rdeNode != null)
-                {
-                    rdeNode.InsertAfter(doc.ImportNode(signature, true), node);
-                }
-
-                // Reubicar gCamFuFD: debe ser hermano de DE (bajo rDE), después de Signature
-                try
                 {
                     var gCamFuFDNodes = doc.GetElementsByTagName("gCamFuFD");
                     if (gCamFuFDNodes.Count > 0)
                     {
                         var gCamFuFD = gCamFuFDNodes[0];
-                        if (gCamFuFD != null && gCamFuFD.ParentNode != null)
+                        if (gCamFuFD != null && gCamFuFD.ParentNode != rdeNode)
                         {
-                            var parent = gCamFuFD.ParentNode;
-                            parent.RemoveChild(gCamFuFD);
-                            // Insertar después de Signature
-                            var signatureNodes = doc.GetElementsByTagName("Signature");
-                            if (signatureNodes.Count > 0)
-                            {
-                                var signatureNode = signatureNodes[0];
-                                parent.InsertAfter(gCamFuFD, signatureNode);
-                            }
-                            else
-                            {
-                                // Fallback, después de DE
-                                parent.InsertAfter(gCamFuFD, node);
-                            }
+                            // Mover gCamFuFD para que sea hijo directo de rDE
+                            gCamFuFD.ParentNode?.RemoveChild(gCamFuFD);
+                            rdeNode.AppendChild(gCamFuFD);
+                            Console.WriteLine("[FIRMA] gCamFuFD movido como hijo de rDE (fuera de DE)");
                         }
                     }
                 }
-                catch { /* no crítico */ }
+                
+                // ========================================================================
+                // 3) INSERCIÓN CRÍTICA DE FIRMA - FIX 16-Ene-2026 v2
+                // ========================================================================
+                // CORRECCIÓN: La firma va FUERA de </DE>, como hijo de <rDE>
+                // Estructura: <rDE> <dVerFor/> <DE>...</DE> <Signature/> <gCamFuFD/> </rDE>
+                // ========================================================================
+                
+                // VERIFICAR que node es realmente <DE>
+                Console.WriteLine($"[FIRMA INSERT] node.LocalName = '{node.LocalName}'");
+                Console.WriteLine($"[FIRMA INSERT] node.NamespaceURI = '{node.NamespaceURI}'");
+                
+                if (node.LocalName != "DE")
+                {
+                    throw new InvalidOperationException($"CRÍTICO: node no es <DE>, es <{node.LocalName}>");
+                }
+                
+                // VERIFICAR que signature existe y tiene contenido
+                Console.WriteLine($"[FIRMA INSERT] signature != null: {signature != null}");
+                Console.WriteLine($"[FIRMA INSERT] signature.OuterXml.Length: {signature?.OuterXml?.Length ?? 0}");
+                
+                if (signature == null || string.IsNullOrEmpty(signature.OuterXml))
+                {
+                    throw new InvalidOperationException("CRÍTICO: signature es null o vacío");
+                }
+                
+                // ========================================================================
+                // FIX 16-Ene-2026: POSICIÓN DE SIGNATURE - CORREGIDO 16-Ene-2026 v2
+                // ========================================================================
+                // DESCUBRIMIENTO CRÍTICO (analizando xmlRequestVenta_273_sync.xml aprobado):
+                // 
+                // 1. <Signature> DEBE TENER su namespace xmlns="http://www.w3.org/2000/09/xmldsig#"
+                // 2. <Signature> debe estar FUERA de </DE>, como hijo de <rDE>, después de </DE>
+                // 3. NO hay <gCamGen /> vacío en el XML aprobado
+                //
+                // Estructura correcta (xmlRequestVenta_273_sync.xml):
+                //   <rDE>
+                //     <dVerFor>150</dVerFor>
+                //     <DE Id="...">
+                //       ... contenido ...
+                //       <gTotSub>...</gTotSub>
+                //     </DE>                           ← </DE> cierra aquí
+                //     <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+                //       ...                           ← FUERA de DE, hermano de DE
+                //     </Signature>
+                //     <gCamFuFD>...</gCamFuFD>         ← DESPUÉS de Signature
+                //   </rDE>
+                // ========================================================================
+                
+                // NO quitar el namespace de Signature - debe conservar xmlns="http://www.w3.org/2000/09/xmldsig#"
+                Console.WriteLine($"[FIRMA] Namespace de Signature: {signature.GetAttribute("xmlns")}");
+                
+                // IMPORTAR la firma al documento - conservando su namespace XMLDSIG
+                XmlNode importedSignature = doc.ImportNode(signature, true);
+                
+                Console.WriteLine($"[FIRMA INSERT] importedSignature != null: {importedSignature != null}");
+                Console.WriteLine($"[FIRMA INSERT] importedSignature.OwnerDocument == doc: {importedSignature.OwnerDocument == doc}");
+                
+                // INSERTAR Signature como hijo de rDE (doc.DocumentElement), DESPUÉS de DE
+                // Posición: rDE > DE > (fin), luego Signature, luego gCamFuFD
+                var rDE = doc.DocumentElement;
+                if (rDE == null)
+                    throw new InvalidOperationException("CRÍTICO: No se encontró elemento raíz rDE");
+                
+                // Buscar gCamFuFD para insertar Signature ANTES de él
+                var gCamFuFDNode = doc.GetElementsByTagName("gCamFuFD").Cast<XmlNode>().FirstOrDefault();
+                
+                if (gCamFuFDNode != null)
+                {
+                    // Insertar Signature ANTES de gCamFuFD (después de DE)
+                    rDE.InsertBefore(importedSignature, gCamFuFDNode);
+                    Console.WriteLine("[FIRMA INSERT] Signature insertado ANTES de gCamFuFD, como hijo de rDE");
+                }
+                else
+                {
+                    // Si no hay gCamFuFD, insertar Signature después de DE
+                    rDE.InsertAfter(importedSignature, node);
+                    Console.WriteLine("[FIRMA INSERT] Signature insertado después de DE (no hay gCamFuFD)");
+                }
+                
+                // VERIFICAR QUE SE INSERTÓ (ahora debe estar en rDE, no en node)
+                bool firmaInsertada = importedSignature.ParentNode == rDE;
+                Console.WriteLine($"[FIRMA INSERT] ✅ Firma insertada en rDE: {firmaInsertada}");
+                
+                if (!firmaInsertada)
+                {
+                    throw new InvalidOperationException("CRÍTICO: La firma NO se insertó en <rDE>");
+                }
+                
+                // VERIFICAR contando nodos Signature en el documento
+                var signaturesPostInsert = doc.GetElementsByTagName("Signature");
+                Console.WriteLine($"[FIRMA INSERT] Cantidad de <Signature> después de insertar: {signaturesPostInsert.Count}");
+                
+                // GUARDAR XML FIRMADO A ARCHIVO PARA DEBUG
+                try
+                {
+                    var debugPath = @"c:\asis\SistemIA\Debug\xml_firmado_verificacion.xml";
+                    File.WriteAllText(debugPath, doc.OuterXml, new UTF8Encoding(false));
+                    Console.WriteLine($"[FIRMA INSERT] XML firmado guardado en: {debugPath}");
+                }
+                catch (Exception exSave) { Console.WriteLine($"[FIRMA INSERT] Error guardando: {exSave.Message}"); }
 
                 var digestValue = doc.GetElementsByTagName("DigestValue")
                     .Cast<XmlNode>()
@@ -799,18 +1132,42 @@ namespace SistemIA.Models
                         Console.WriteLine($"[QR DEBUG] Hash calculado (params+CSC): {qrHash}");
                         
                         // ========================================================================
-                        // FIX 12-Ene-2026: InnerText escapa automáticamente & a &amp; (escape simple)
-                        // El XML válido de SIFEN usa &amp; simple, NO doble escape
+                        // FIX 14-Ene-2026 (CORREGIDO 14-Ene-2026 noche):
+                        // El XML APROBADO por PowerBuilder usa &amp; (escape SIMPLE, NO doble)
+                        // CDC aprobado: 01004952197001002000006112026011410720743237
+                        // ========================================================================
+                        // XmlWriter automáticamente escapa & → &amp; al serializar
+                        // Por lo tanto, el InnerText debe tener & literal (sin escapar)
+                        // Resultado en XML: &amp; (correcto)
                         // ========================================================================
                         qrNode.InnerText = qrText;
                 }
 
                 // ========================================================================
+                // VERIFICACIÓN CRÍTICA: Confirmar que Signature está en el XML
+                // ========================================================================
+                var signaturesInDoc = doc.GetElementsByTagName("Signature");
+                Console.WriteLine($"[FIRMA VERIFICACION] Cantidad de <Signature> en doc: {signaturesInDoc.Count}");
+                if (signaturesInDoc.Count > 0)
+                {
+                    var sigNode = signaturesInDoc[0];
+                    Console.WriteLine($"[FIRMA VERIFICACION] Signature padre: {sigNode.ParentNode?.Name}");
+                    Console.WriteLine($"[FIRMA VERIFICACION] Signature namespace: {sigNode.NamespaceURI}");
+                    Console.WriteLine($"[FIRMA VERIFICACION] Signature tiene SignatureValue: {sigNode.SelectSingleNode("//*[local-name()='SignatureValue']") != null}");
+                }
+                else
+                {
+                    Console.WriteLine("[FIRMA VERIFICACION] ❌ ERROR CRÍTICO: NO HAY <Signature> EN EL DOCUMENTO!");
+                }
+                
+                // ========================================================================
                 // FIX CRÍTICO: Serializar XML con encoding UTF-8 explícito
                 // ========================================================================
                 // PROBLEMA: doc.OuterXml puede corromper caracteres UTF-8 como "í" → "├¡"
                 // SOLUCIÓN: Usar XmlWriter con UTF8Encoding explícito (sin BOM)
-                // FIX 10-Ene-2026: OmitXmlDeclaration = true porque SIFEN/Java no espera declaración
+                // FIX 14-Ene-2026 NOCHE: OmitXmlDeclaration = false
+                // El XML aprobado de PowerBuilder TIENE declaración XML
+                // CDC aprobado: 01004952197001002000006112026011410720743237
                 // ========================================================================
                 string xmlContent;
                 using (var ms = new MemoryStream())
@@ -819,7 +1176,7 @@ namespace SistemIA.Models
                     {
                         Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
                         Indent = false,
-                        OmitXmlDeclaration = true  // 10-Ene-2026: NO declaración XML (igual que Java)
+                        OmitXmlDeclaration = false  // 14-Ene-2026 NOCHE: CON declaración XML (igual que PowerBuilder)
                     }))
                     {
                         doc.WriteTo(writer);
@@ -830,25 +1187,63 @@ namespace SistemIA.Models
                     xmlContent = reader.ReadToEnd();
                 }
                 
+                // ========================================================================
+                // FIX CRÍTICO 16-Ene-2026: Quitar namespace XMLDSIG de <Signature>
+                // ========================================================================
+                // PROBLEMA: .NET SignedXml.GetXml() genera <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+                // SIFEN backend (Java JAXB) RECHAZA este namespace externo dentro del DE
+                // SOLUCIÓN: Quitar el xmlns de Signature para que herede el namespace SIFEN del padre
+                // Referencia: XML aprobado en producción NO tiene este namespace en Signature
+                // ========================================================================
+                const string nsXmlDsig = " xmlns=\"http://www.w3.org/2000/09/xmldsig#\"";
+                if (xmlContent.Contains(nsXmlDsig))
+                {
+                    xmlContent = xmlContent.Replace(nsXmlDsig, "");
+                    Console.WriteLine("[FIRMA] ✅ Quitado namespace XMLDSIG de <Signature>");
+                }
+                
+                // ========================================================================
+                // VERIFICACIÓN FINAL: El XML serializado debe contener <Signature>
+                // ========================================================================
+                if (xmlContent.Contains("<Signature"))
+                {
+                    Console.WriteLine("[FIRMA VERIFICACION] ✅ XML serializado CONTIENE <Signature>");
+                    // Mostrar posición de la firma en el XML
+                    var posSignature = xmlContent.IndexOf("<Signature");
+                    var posDE = xmlContent.IndexOf("</DE>");
+                    Console.WriteLine($"[FIRMA VERIFICACION] Posición <Signature>: {posSignature}, Posición </DE>: {posDE}");
+                    if (posSignature < posDE)
+                    {
+                        Console.WriteLine("[FIRMA VERIFICACION] ✅ Signature está ANTES de </DE> (CORRECTO)");
+                    }
+                    else
+                    {
+                        Console.WriteLine("[FIRMA VERIFICACION] ❌ Signature está DESPUÉS de </DE> (INCORRECTO)");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[FIRMA VERIFICACION] ❌ ERROR: XML serializado NO contiene <Signature>!");
+                    // Guardar XML para debug
+                    LogSifenDebug("XML SIN FIRMA - ERROR CRÍTICO", xmlContent);
+                }
+                
                 // El XML válido de SIFEN (producción) usa &amp; simple en dCarQR, NO doble escape
                 
                 // ========================================================================
-                // FIX 13-Ene-2026: FORMATO EXACTO del DLL de Power que FUNCIONA
+                // FIX 31-Ene-2026: FORMATO CORRECTO CONFIRMADO con datos reales del DLL
                 // ========================================================================
-                // El DLL de Power comprime DIRECTAMENTE doc.OuterXml (el <rDE> firmado)
-                // SIN envolverlo en <rLoteDE>. Ver Sifen_Fuente/Sifen.cs líneas 370-377:
-                //   StringBuilder builder = new StringBuilder(doc.OuterXml);
-                //   base64String = StringToZip(builder.ToString());
-                //
-                // Esto significa que dentro del ZIP va:
-                //   <rDE xmlns="...">...(firma)...</rDE>
-                // NO:
-                //   <rLoteDE><rDE xmlns="...">...</rDE></rLoteDE>
+                // Los datos de ejecución de Datostxt/xml_firmado.txt muestran CLARAMENTE que:
+                //   <rLoteDE><rDE xmlns="...">...(firma)...</rDE></rLoteDE>
+                // 
+                // El XML firmado DEBE estar envuelto en <rLoteDE> antes de comprimirse.
+                // Esto fue confirmado con la respuesta exitosa 0300 "Lote recibido con éxito"
                 // ========================================================================
-                string variante = "Power_DLL_format";
+                string variante = "Power_DLL_format_rLoteDE";
                 
-                // Comprimir directamente el XML firmado (sin <rLoteDE>)
-                var zippedXml = StringToZip(xmlContent);
+                // Envolver el XML firmado en <rLoteDE> ANTES de comprimir
+                var xmlConWrapper = $"<rLoteDE>{xmlContent}</rLoteDE>";
+                var zippedXml = StringToZip(xmlConWrapper);
                 
                 // Generar dId único
                 var dIdValue = string.IsNullOrWhiteSpace(dId) 
@@ -1224,6 +1619,8 @@ namespace SistemIA.Models
         public string FirmarSinEnviar(string urlQR, string xmlString, string p12FilePath, string certificatePassword, string tipoFirmado = "1", bool devolverBase64Zip = true)
         {
             var doc = new XmlDocument();
+            // FIX CRÍTICO: PreserveWhitespace para canonicalización correcta
+            doc.PreserveWhitespace = true;
             doc.LoadXml(xmlString);
 
             // Eliminar cualquier firma existente (reemplazar por nuestra firma)
@@ -1273,40 +1670,91 @@ namespace SistemIA.Models
 
             signedXml.ComputeSignature();
             var signature = signedXml.GetXml();
-            // La firma debe ir como sibling de DE en rDE, no dentro de DE
+            
+            // ========================================================================
+            // FIX 16-Ene-2026 v2: Signature FUERA de DE, con namespace XMLDSIG
+            // ========================================================================
+            // CORRECCIÓN basada en xmlRequestVenta_273_sync.xml aprobado:
+            // - <Signature> va FUERA de </DE>, como hermano
+            // - <Signature> DEBE tener xmlns="http://www.w3.org/2000/09/xmldsig#"
+            // - NO hay <gCamGen /> vacío
+            // ========================================================================
+            
+            // 1) ELIMINAR gCamGen vacío si existe (no está en XML de referencia)
+            var gCamGenNodes = doc.GetElementsByTagName("gCamGen");
+            foreach (XmlNode gCamGenNode in gCamGenNodes)
+            {
+                if (gCamGenNode != null && !gCamGenNode.HasChildNodes)
+                {
+                    gCamGenNode.ParentNode?.RemoveChild(gCamGenNode);
+                    Console.WriteLine("[FIRMA LOTE] gCamGen vacío ELIMINADO");
+                }
+            }
+            
+            // 2) Asegurar que gCamFuFD esté FUERA de DE
             var rdeNode = doc.DocumentElement;
             if (rdeNode != null)
-            {
-                rdeNode.InsertAfter(doc.ImportNode(signature, true), node);
-            }
-
-            // Reubicar gCamFuFD a nivel de rDE (hermano de DE), después de Signature
-            try
             {
                 var gCamFuFDNodes = doc.GetElementsByTagName("gCamFuFD");
                 if (gCamFuFDNodes.Count > 0)
                 {
                     var gCamFuFD = gCamFuFDNodes[0];
-                    if (gCamFuFD != null && gCamFuFD.ParentNode != null)
+                    if (gCamFuFD != null && gCamFuFD.ParentNode != rdeNode)
                     {
-                        var parent = gCamFuFD.ParentNode;
-                        parent.RemoveChild(gCamFuFD);
-                        // Insertar después de Signature
-                        var signatureNodes = doc.GetElementsByTagName("Signature");
-                        if (signatureNodes.Count > 0)
-                        {
-                            var signatureNode = signatureNodes[0];
-                            parent.InsertAfter(gCamFuFD, signatureNode);
-                        }
-                        else
-                        {
-                            // Fallback, después de DE
-                            parent.InsertAfter(gCamFuFD, node);
-                        }
+                        gCamFuFD.ParentNode?.RemoveChild(gCamFuFD);
+                        rdeNode.AppendChild(gCamFuFD);
+                        Console.WriteLine("[FIRMA LOTE] gCamFuFD movido fuera de DE");
                     }
                 }
             }
-            catch { /* no crítico */ }
+            
+            // 3) Insertar Signature FUERA de DE, como hijo de rDE
+            // ========================================================================
+            // FIX 16-Ene-2026 v2: Signature FUERA de </DE>, CON namespace XMLDSIG
+            // ========================================================================
+            Console.WriteLine("[FIRMA LOTE INSERT] === INICIO INSERCIÓN ===");
+            Console.WriteLine($"[FIRMA LOTE INSERT] node.LocalName = '{node.LocalName}'");
+            
+            if (node.LocalName != "DE")
+                throw new InvalidOperationException($"[FIRMA LOTE] node NO es DE, es '{node.LocalName}'");
+            
+            if (signature == null)
+                throw new InvalidOperationException("[FIRMA LOTE] signature es NULL - ComputeSignature() falló");
+            
+            // NO quitar namespace - Signature DEBE tener xmlns="http://www.w3.org/2000/09/xmldsig#"
+            Console.WriteLine($"[FIRMA LOTE] Namespace de Signature: {signature.GetAttribute("xmlns")}");
+            
+            XmlNode importedSignature = doc.ImportNode(signature, true);
+            Console.WriteLine($"[FIRMA LOTE INSERT] importedSignature.OwnerDocument == doc? {importedSignature.OwnerDocument == doc}");
+            
+            if (importedSignature.OwnerDocument != doc)
+                throw new InvalidOperationException("[FIRMA LOTE] importedSignature NO pertenece al documento");
+            
+            // INSERTAR Signature como hijo de rDE (FUERA de DE), antes de gCamFuFD
+            if (rdeNode == null)
+                throw new InvalidOperationException("[FIRMA LOTE] rDE es null");
+            
+            var gCamFuFDNode = doc.GetElementsByTagName("gCamFuFD").Cast<XmlNode>().FirstOrDefault();
+            
+            if (gCamFuFDNode != null)
+            {
+                rdeNode.InsertBefore(importedSignature, gCamFuFDNode);
+                Console.WriteLine("[FIRMA LOTE] Signature insertado ANTES de gCamFuFD");
+            }
+            else
+            {
+                rdeNode.InsertAfter(importedSignature, node);
+                Console.WriteLine("[FIRMA LOTE] Signature insertado después de DE");
+            }
+            
+            // Verificación POST-inserción
+            bool firmaInsertada = importedSignature.ParentNode == rdeNode;
+            Console.WriteLine($"[FIRMA LOTE INSERT] ✅ Firma insertada en rDE: {firmaInsertada}");
+            
+            if (!firmaInsertada)
+                throw new InvalidOperationException("[FIRMA LOTE] La firma NO quedó como hijo de rDE");
+            
+            Console.WriteLine("[FIRMA LOTE INSERT] === FIN INSERCIÓN ===");
 
             // Reemplazar Digest en dCarQR y calcular cHashQR
             var digestValue = doc.GetElementsByTagName("DigestValue")
@@ -1367,8 +1815,15 @@ namespace SistemIA.Models
                 
                 // Construir URL final con el hash calculado
                 qrText = urlCompleta + "&cHashQR=" + qrHash;
-                // FIX 12-Ene-2026: InnerText escapa automáticamente & a &amp; (escape simple)
-                // El XML válido de SIFEN usa &amp; simple, NO doble escape
+                // ========================================================================
+                // FIX 14-Ene-2026 (CORREGIDO 14-Ene-2026 noche):
+                // El XML APROBADO por PowerBuilder usa &amp; (escape SIMPLE, NO doble)
+                // CDC aprobado: 01004952197001002000006112026011410720743237
+                // ========================================================================
+                // XmlWriter automáticamente escapa & → &amp; al serializar
+                // Por lo tanto, el InnerText debe tener & literal (sin escapar)
+                // Resultado en XML: &amp; (correcto)
+                // ========================================================================
                 qrNode.InnerText = qrText;
             }
 
@@ -1377,6 +1832,7 @@ namespace SistemIA.Models
             // ========================================================================
             // PROBLEMA: doc.OuterXml puede corromper caracteres UTF-8 como "í" → "├¡"
             // SOLUCIÓN: Usar XmlWriter con UTF8Encoding explícito (sin BOM)
+            // FIX 14-Ene-2026 NOCHE: CON declaración XML (igual que PowerBuilder aprobado)
             // ========================================================================
             string xmlFirmado;
             using (var ms = new MemoryStream())
@@ -1385,7 +1841,7 @@ namespace SistemIA.Models
                 {
                     Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
                     Indent = false,
-                    OmitXmlDeclaration = true  // 31-Ene-2026: Sin declaración XML (igual que Java/PHP)
+                    OmitXmlDeclaration = false  // 14-Ene-2026 NOCHE: CON declaración XML
                 }))
                 {
                     doc.WriteTo(writer);
@@ -1394,6 +1850,25 @@ namespace SistemIA.Models
                 ms.Position = 0;
                 using var reader = new StreamReader(ms, Encoding.UTF8);
                 xmlFirmado = reader.ReadToEnd();
+            }
+            
+            // ========================================================================
+            // FIX 16-Ene-2026: QUITAR NAMESPACE XMLDSIG DE <Signature>
+            // ========================================================================
+            // SIFEN Paraguay NO acepta el namespace estándar XMLDSIG en <Signature>.
+            // El backend SIFEN (parser Java JAXB) requiere que <Signature> herede
+            // el namespace del documento padre (http://ekuatia.set.gov.py/sifen/xsd).
+            //
+            // El método QuitarNamespaceRecursivo() no funciona completamente porque
+            // XmlDocument mantiene el namespace original al serializar.
+            // SOLUCIÓN: Reemplazar el namespace directamente en el string XML.
+            // ========================================================================
+            const string nsXmlDsig = " xmlns=\"http://www.w3.org/2000/09/xmldsig#\"";
+            if (xmlFirmado.Contains(nsXmlDsig))
+            {
+                Console.WriteLine("[FIRMA FIX NS STRING] Quitando namespace XMLDSIG del string XML");
+                xmlFirmado = xmlFirmado.Replace(nsXmlDsig, "");
+                Console.WriteLine($"[FIRMA FIX NS STRING] Namespace XMLDSIG encontrado y eliminado: {!xmlFirmado.Contains(nsXmlDsig)}");
             }
             
             // El XML válido de SIFEN (producción) usa &amp; simple en dCarQR, NO doble escape
@@ -1442,23 +1917,72 @@ namespace SistemIA.Models
                 }
                 
                 // ========================================================================
-                // FIX 12-Ene-2026: Formato SOAP según PDF "Recomendaciones y mejores prácticas SIFEN"
+                // FIX 14-Ene-2026: Formato SOAP EXACTO del archivo xmlRequestVenta_273_sync.xml
+                // que SIFEN confirmó que está correcto (correo de Jonathan Garay, Analista SIFEN)
                 // ========================================================================
-                // El PDF oficial del SET (Octubre 2024, página 8) muestra:
-                // <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
-                //                xmlns:xsd="http://ekuatia.set.gov.py/sifen/xsd">
-                //   <soap:Header/>
-                //   <soap:Body>
-                //     <xsd:rEnvioLote>           <- CON prefijo xsd:
-                //       <xsd:dId>...</xsd:dId>
-                //       <xsd:xDE>...</xsd:xDE>
-                //     </xsd:rEnvioLote>
-                //   </soap:Body>
-                // </soap:Envelope>
+                // El archivo .ai-docs/SIFEN/respuesta_correoSifen/xmlRequestVenta_273_sync.xml
+                // muestra el formato EXACTO que SIFEN recibe y valida correctamente:
                 //
-                // NOTA: Para endpoint SYNC usamos rEnviDe en lugar de rEnvioLote
+                // <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+                // <env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope">
+                //   <env:Header/>
+                //   <env:Body>
+                //     <rEnviDe xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+                //       <dId>123456</dId>
+                //       <xDE>
+                //         <rDE xmlns="..." ...>...</rDE>
+                //       </xDE>
+                //     </rEnviDe>
+                //   </env:Body>
+                // </env:Envelope>
+                //
+                // CONFIRMADO también por librería PHP (sifen.php líneas 497-508):
+                //   - Prefijo "env:" (SOAP 1.2 estándar)
+                //   - Declaración XML con standalone="no" (opcional pero recomendado)
+                //   - Header vacío <env:Header/>
+                //   - Body con <env:Body>
                 // ========================================================================
-                var soap = $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsd=\"http://ekuatia.set.gov.py/sifen/xsd\"><soap:Header/><soap:Body><xsd:rEnviDe><xsd:dId>{dId}</xsd:dId><xsd:xDE>{xmlContent}</xsd:xDE></xsd:rEnviDe></soap:Body></soap:Envelope>";
+                // ========================================================================
+                // FIX 15-Ene-2026: Formato SOAP según diagnóstico de ChatGPT
+                // ========================================================================
+                // CAMBIOS CRÍTICOS:
+                // 1. Usar prefijo "soap:" en lugar de "env:"
+                // 2. NO incluir <soap:Header/> 
+                // 3. Sin espacios/indentación para evitar problemas de parsing
+                // 
+                // ERRORES QUE CAUSABAN 0160:
+                // ❌ <?xml version="1.0"?> dentro de <xDE>
+                // ❌ ZIP/Base64 en endpoint SYNC
+                // ❌ <rLoteDE> en endpoint SYNC
+                // ❌ CDATA en <xDE>
+                // ❌ <soap:Header/> vacío (algunos parsers lo rechazan)
+                // ========================================================================
+                
+                // Validaciones pre-envío (diagnóstico ChatGPT)
+                if (xmlContent.Contains("<?xml"))
+                    throw new Exception("SIFEN: XML declaration detectada dentro del rDE - esto causa error 0160");
+                
+                if (!xmlContent.Contains("<Signature"))
+                    throw new Exception("SIFEN: Firma NO presente en el XML");
+                    
+                if (!xmlContent.Contains("<gCamGen"))
+                    throw new Exception("SIFEN: gCamGen faltante en el XML");
+                
+                // Verificar que Signature está DENTRO de DE (no después)
+                var posSig = xmlContent.IndexOf("<Signature");
+                var posEndDE = xmlContent.IndexOf("</DE>");
+                if (posSig > posEndDE)
+                    throw new Exception("SIFEN: Signature está FUERA de DE - debe estar dentro");
+                
+                // Formato SOAP corregido según ChatGPT (15-Ene-2026)
+                var soap = $@"<soap:Envelope xmlns:soap=""http://www.w3.org/2003/05/soap-envelope"">
+  <soap:Body>
+    <rEnviDe xmlns=""http://ekuatia.set.gov.py/sifen/xsd"">
+      <dId>{dId}</dId>
+      <xDE>{xmlContent}</xDE>
+    </rEnviDe>
+  </soap:Body>
+</soap:Envelope>";
                 return soap;
             }
             return xmlFirmado;

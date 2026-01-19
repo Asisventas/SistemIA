@@ -95,6 +95,7 @@
             <th style="width:50px;">ID</th>
             <th>Fecha</th>
             <th>Producto</th>
+            <th class="text-center" style="width:60px;">Paq.</th>
             <th>Depósito</th>
             <th class="text-end">Stock Sistema</th>
             <th class="text-end">Stock Ajuste</th>
@@ -109,7 +110,7 @@
         <tbody>
           @if (!filas.Any())
           {
-            <tr><td colspan="12" class="text-muted text-center py-3">Sin resultados</td></tr>
+            <tr><td colspan="13" class="text-muted text-center py-3">Sin resultados</td></tr>
           }
           else
           {
@@ -123,6 +124,21 @@
                 <td>
                   <div class="fw-semibold">@r.Producto</div>
                   <div class="small text-muted">Cod: @r.Codigo</div>
+                </td>
+                @{
+                  var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+                  var paqSist = esPaq ? Math.Floor(r.StockSistema / r.CantidadPorPaquete) : 0m;
+                  var sueltSist = esPaq ? r.StockSistema % r.CantidadPorPaquete : 0m;
+                }
+                <td class="text-center small">
+                  @if (esPaq)
+                  {
+                    <span title="@paqSist paq. +@sueltSist u (de @r.CantidadPorPaquete u/paq)">@paqSist.ToString("N0")@(sueltSist > 0 ? $" +{sueltSist:N0}" : "")</span>
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
                 </td>
                 <td>@r.Deposito</td>
                 <td class="text-end">@r.StockSistema.ToString("N2")</td>
@@ -141,7 +157,7 @@
         </tbody>
         <tfoot>
           <tr class="table-secondary fw-bold">
-            <th colspan="4" class="text-end">Totales</th>
+            <th colspan="5" class="text-end">Totales</th>
             <th class="text-end">@filas.Sum(x=>x.StockSistema).ToString("N2")</th>
             <th class="text-end">@filas.Sum(x=>x.StockAjuste).ToString("N2")</th>
             <th class="text-end @(filas.Sum(x=>x.Diferencia) >= 0 ? "text-success" : "text-danger")">@filas.Sum(x=>x.Diferencia).ToString("N2")</th>
@@ -149,7 +165,7 @@
             <th colspan="4"></th>
           </tr>
           <tr class="small text-muted">
-            <td colspan="12">
+            <td colspan="13">
               <i class="bi bi-arrow-up-circle-fill text-success me-1"></i> Sobrantes: @filas.Where(x=>x.Diferencia>0).Sum(x=>x.Diferencia).ToString("N2") unidades (@filas.Where(x=>x.Diferencia>0).Sum(x=>x.Monto).ToString("N0") Gs)
               &nbsp;&nbsp;|&nbsp;&nbsp;
               <i class="bi bi-arrow-down-circle-fill text-danger me-1"></i> Faltantes: @filas.Where(x=>x.Diferencia<0).Sum(x=>x.Diferencia).ToString("N2") unidades (@filas.Where(x=>x.Diferencia<0).Sum(x=>x.Monto).ToString("N0") Gs)
@@ -225,6 +241,8 @@
               d.Monto,
               p.Descripcion,
               p.CodigoInterno,
+              p.CantidadPorPaquete,
+              p.UnidadMedidaCodigo,
               d.IdDeposito,
               Deposito = dep != null ? dep.Nombre : ""
             };
@@ -270,7 +288,9 @@
       Comentario = x.Comentario ?? "",
       Usuario = x.Usuario ?? "",
       IdCaja = x.IdCaja,
-      Turno = x.Turno
+      Turno = x.Turno,
+      CantidadPorPaquete = (int)(x.CantidadPorPaquete ?? 1),
+      UnidadMedidaCodigo = x.UnidadMedidaCodigo
     }).ToList();
   }
 
@@ -292,6 +312,7 @@
     head.AppendLine(".factura-header .empresa .small{color:#555;}");
     head.AppendLine(".tabla th,.tabla td{padding:.35rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
     head.AppendLine(".right{text-align:right}");
+    head.AppendLine(".center{text-align:center}");
     head.AppendLine(".muted{color:#666}");
     head.AppendLine(".text-success{color:#198754!important}");
     head.AppendLine(".text-danger{color:#dc3545!important}");
@@ -333,17 +354,21 @@
     sb.AppendLine("  </div>");
 
     sb.AppendLine("  <table class=\"table table-sm tabla\">");
-    sb.AppendLine("    <thead><tr><th>#</th><th>Fecha</th><th>Producto</th><th>Depósito</th><th class='right'>Stock Sistema</th><th class='right'>Stock Ajuste</th><th class='right'>Diferencia</th><th class='right'>Monto</th><th>Comentario</th><th>Usu</th><th>Caja</th><th>Turno</th></tr></thead>");
+    sb.AppendLine("    <thead><tr><th>#</th><th>Fecha</th><th>Producto</th><th class='center'>Paq.</th><th>Depósito</th><th class='right'>Stock Sistema</th><th class='right'>Stock Ajuste</th><th class='right'>Diferencia</th><th class='right'>Monto</th><th>Comentario</th><th>Usu</th><th>Caja</th><th>Turno</th></tr></thead>");
     sb.AppendLine("    <tbody>");
     int n = 0;
     foreach (var r in filas)
     {
       var colorDif = r.Diferencia > 0 ? "text-success" : (r.Diferencia < 0 ? "text-danger" : "");
-      sb.AppendLine($"      <tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy HH:mm}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}<br/><small class='muted'>Cod: {r.Codigo}</small></td><td>{System.Net.WebUtility.HtmlEncode(r.Deposito)}</td><td class='right'>{r.StockSistema:N2}</td><td class='right'>{r.StockAjuste:N2}</td><td class='right {colorDif}'>{r.Diferencia:N2}</td><td class='right {colorDif}'>{r.Monto:N0}</td><td>{System.Net.WebUtility.HtmlEncode(r.Comentario)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
+      var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+      var paqSist = esPaq ? Math.Floor(r.StockSistema / r.CantidadPorPaquete) : 0m;
+      var sueltSist = esPaq ? r.StockSistema % r.CantidadPorPaquete : 0m;
+      var paqTxt = esPaq ? $"{paqSist:N0}{(sueltSist > 0 ? $" +{sueltSist:N0}" : "")}" : "-";
+      sb.AppendLine($"      <tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy HH:mm}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}<br/><small class='muted'>Cod: {r.Codigo}</small></td><td class='center'>{paqTxt}</td><td>{System.Net.WebUtility.HtmlEncode(r.Deposito)}</td><td class='right'>{r.StockSistema:N2}</td><td class='right'>{r.StockAjuste:N2}</td><td class='right {colorDif}'>{r.Diferencia:N2}</td><td class='right {colorDif}'>{r.Monto:N0}</td><td>{System.Net.WebUtility.HtmlEncode(r.Comentario)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
     }
     sb.AppendLine("    </tbody>");
     var colorTotal = filas.Sum(x=>x.Diferencia) >= 0 ? "text-success" : "text-danger";
-    sb.AppendLine($"    <tfoot><tr><th colspan='4' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.StockSistema):N2}</th><th class='right'>{filas.Sum(x=>x.StockAjuste):N2}</th><th class='right {colorTotal}'>{filas.Sum(x=>x.Diferencia):N2}</th><th class='right {colorTotal}'>{filas.Sum(x=>x.Monto):N0}</th><th colspan='4'></th></tr></tfoot>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='5' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.StockSistema):N2}</th><th class='right'>{filas.Sum(x=>x.StockAjuste):N2}</th><th class='right {colorTotal}'>{filas.Sum(x=>x.Diferencia):N2}</th><th class='right {colorTotal}'>{filas.Sum(x=>x.Monto):N0}</th><th colspan='4'></th></tr></tfoot>");
     sb.AppendLine("  </table>");
     sb.AppendLine($"  <p class='small muted'>Sobrantes: {filas.Where(x=>x.Diferencia>0).Sum(x=>x.Diferencia):N2} u ({filas.Where(x=>x.Diferencia>0).Sum(x=>x.Monto):N0} Gs) &nbsp;|&nbsp; Faltantes: {filas.Where(x=>x.Diferencia<0).Sum(x=>x.Diferencia):N2} u ({filas.Where(x=>x.Diferencia<0).Sum(x=>x.Monto):N0} Gs)</p>");
     sb.AppendLine("</div>");
@@ -360,10 +385,14 @@
     var usuario = auth.User?.Identity?.Name ?? "";
     var suc = SucursalProvider.GetSucursalNombre() ?? "";
     sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
-    sb.AppendLine(string.Join(sep, new[]{"Nro","ID Ajuste","Fecha","Producto","Código","Depósito","Stock Sistema","Stock Ajuste","Diferencia","Monto","Comentario","Usuario","Caja","Turno"}));
+    sb.AppendLine(string.Join(sep, new[]{"Nro","ID Ajuste","Fecha","Producto","Código","Paq.","Depósito","Stock Sistema","Stock Ajuste","Diferencia","Monto","Comentario","Usuario","Caja","Turno"}));
     int n=0;
     foreach (var r in filas)
     {
+      var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+      var paqSist = esPaq ? Math.Floor(r.StockSistema / r.CantidadPorPaquete) : 0m;
+      var sueltSist = esPaq ? r.StockSistema % r.CantidadPorPaquete : 0m;
+      var paqTxt = esPaq ? $"{paqSist:N0}{(sueltSist > 0 ? $" +{sueltSist:N0}" : "")}" : "-";
       string[] cols = new[]
       {
         (++n).ToString(),
@@ -371,6 +400,7 @@
         r.Fecha.ToString("yyyy-MM-dd HH:mm"),
         r.Producto,
         r.Codigo,
+        paqTxt,
         r.Deposito,
         r.StockSistema.ToString(System.Globalization.CultureInfo.InvariantCulture),
         r.StockAjuste.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -405,7 +435,7 @@
     ws.Cell(row, 1).Value = "Usuario"; ws.Cell(row, 2).Value = usuario; row++;
     ws.Cell(row, 1).Value = "Sucursal"; ws.Cell(row, 2).Value = suc; row += 2;
 
-    var headers = new[]{"#","ID Ajuste","Fecha","Producto","Código","Depósito","Stock Sistema","Stock Ajuste","Diferencia","Monto","Comentario","Usuario","Caja","Turno"};
+    var headers = new[]{"#","ID Ajuste","Fecha","Producto","Código","Paq.","Depósito","Stock Sistema","Stock Ajuste","Diferencia","Monto","Comentario","Usuario","Caja","Turno"};
     for (int c=0;c<headers.Length;c++) ws.Cell(row, c+1).Value = headers[c];
     ws.Range(row,1,row,headers.Length).Style.Font.Bold = true; row++;
 
@@ -413,24 +443,29 @@
     decimal totalStockSistema = 0, totalStockAjuste = 0, totalDif = 0, totalMonto = 0;
     foreach (var r in filas)
     {
+      var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+      var paqSist = esPaq ? Math.Floor(r.StockSistema / r.CantidadPorPaquete) : 0m;
+      var sueltSist = esPaq ? r.StockSistema % r.CantidadPorPaquete : 0m;
+      var paqTxt = esPaq ? $"{paqSist:N0}{(sueltSist > 0 ? $" +{sueltSist:N0}" : "")}" : "-";
       ws.Cell(row,1).Value = ++n;
       ws.Cell(row,2).Value = r.IdAjuste;
       ws.Cell(row,3).Value = r.Fecha; ws.Cell(row,3).Style.DateFormat.Format = "yyyy-MM-dd HH:mm";
       ws.Cell(row,4).Value = r.Producto;
       ws.Cell(row,5).Value = r.Codigo;
-      ws.Cell(row,6).Value = r.Deposito;
-      ws.Cell(row,7).Value = r.StockSistema; ws.Cell(row,7).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,8).Value = r.StockAjuste; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,9).Value = r.Diferencia; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0.00";
-      if (r.Diferencia > 0) ws.Cell(row,9).Style.Font.FontColor = XLColor.Green;
-      else if (r.Diferencia < 0) ws.Cell(row,9).Style.Font.FontColor = XLColor.Red;
-      ws.Cell(row,10).Value = r.Monto; ws.Cell(row,10).Style.NumberFormat.Format = "#,##0";
-      if (r.Monto > 0) ws.Cell(row,10).Style.Font.FontColor = XLColor.Green;
-      else if (r.Monto < 0) ws.Cell(row,10).Style.Font.FontColor = XLColor.Red;
-      ws.Cell(row,11).Value = r.Comentario;
-      ws.Cell(row,12).Value = r.Usuario;
-      ws.Cell(row,13).Value = r.IdCaja;
-      ws.Cell(row,14).Value = r.Turno;
+      ws.Cell(row,6).Value = paqTxt;
+      ws.Cell(row,7).Value = r.Deposito;
+      ws.Cell(row,8).Value = r.StockSistema; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,9).Value = r.StockAjuste; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,10).Value = r.Diferencia; ws.Cell(row,10).Style.NumberFormat.Format = "#,##0.00";
+      if (r.Diferencia > 0) ws.Cell(row,10).Style.Font.FontColor = XLColor.Green;
+      else if (r.Diferencia < 0) ws.Cell(row,10).Style.Font.FontColor = XLColor.Red;
+      ws.Cell(row,11).Value = r.Monto; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0";
+      if (r.Monto > 0) ws.Cell(row,11).Style.Font.FontColor = XLColor.Green;
+      else if (r.Monto < 0) ws.Cell(row,11).Style.Font.FontColor = XLColor.Red;
+      ws.Cell(row,12).Value = r.Comentario;
+      ws.Cell(row,13).Value = r.Usuario;
+      ws.Cell(row,14).Value = r.IdCaja;
+      ws.Cell(row,15).Value = r.Turno;
       totalStockSistema += r.StockSistema;
       totalStockAjuste += r.StockAjuste;
       totalDif += r.Diferencia;
@@ -438,11 +473,11 @@
       row++;
     }
 
-    ws.Cell(row,6).Value = "Totales"; ws.Cell(row,6).Style.Font.Bold = true;
-    ws.Cell(row,7).Value = totalStockSistema; ws.Cell(row,7).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,7).Style.Font.Bold = true;
-    ws.Cell(row,8).Value = totalStockAjuste; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,8).Style.Font.Bold = true;
-    ws.Cell(row,9).Value = totalDif; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,9).Style.Font.Bold = true;
-    ws.Cell(row,10).Value = totalMonto; ws.Cell(row,10).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,10).Style.Font.Bold = true;
+    ws.Cell(row,7).Value = "Totales"; ws.Cell(row,7).Style.Font.Bold = true;
+    ws.Cell(row,8).Value = totalStockSistema; ws.Cell(row,8).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,8).Style.Font.Bold = true;
+    ws.Cell(row,9).Value = totalStockAjuste; ws.Cell(row,9).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,9).Style.Font.Bold = true;
+    ws.Cell(row,10).Value = totalDif; ws.Cell(row,10).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,10).Style.Font.Bold = true;
+    ws.Cell(row,11).Value = totalMonto; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,11).Style.Font.Bold = true;
     ws.Columns().AdjustToContents();
     using var ms = new System.IO.MemoryStream();
     wb.SaveAs(ms);
@@ -466,6 +501,8 @@
     public string Usuario { get; set; } = string.Empty;
     public int? IdCaja { get; set; }
     public int? Turno { get; set; }
+    public int CantidadPorPaquete { get; set; } = 1;
+    public string? UnidadMedidaCodigo { get; set; }
   }
 
   private string ObtenerFiltrosTexto()
@@ -485,17 +522,21 @@
     if (!filas.Any()) return Task.FromResult("<p>Sin datos para mostrar</p>");
     var sb = new System.Text.StringBuilder();
     sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse;width:100%;font-size:12px;'>");
-    sb.AppendLine("<thead><tr style='background:#f0f0f0;'><th>#</th><th>Fecha</th><th>Producto</th><th>Código</th><th>Depósito</th><th style='text-align:right'>Stock Sistema</th><th style='text-align:right'>Stock Ajuste</th><th style='text-align:right'>Diferencia</th><th style='text-align:right'>Monto</th><th>Usuario</th></tr></thead>");
+    sb.AppendLine("<thead><tr style='background:#f0f0f0;'><th>#</th><th>Fecha</th><th>Producto</th><th>Código</th><th style='text-align:center'>Paq.</th><th>Depósito</th><th style='text-align:right'>Stock Sistema</th><th style='text-align:right'>Stock Ajuste</th><th style='text-align:right'>Diferencia</th><th style='text-align:right'>Monto</th><th>Usuario</th></tr></thead>");
     sb.AppendLine("<tbody>");
     int n = 0;
     foreach (var r in filas)
     {
       var colorDif = r.Diferencia > 0 ? "color:green" : (r.Diferencia < 0 ? "color:red" : "");
-      sb.AppendLine($"<tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy HH:mm}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td>{r.Codigo}</td><td>{System.Net.WebUtility.HtmlEncode(r.Deposito)}</td><td style='text-align:right'>{r.StockSistema:N2}</td><td style='text-align:right'>{r.StockAjuste:N2}</td><td style='text-align:right;{colorDif}'>{r.Diferencia:N2}</td><td style='text-align:right;{colorDif}'>{r.Monto:N0}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td></tr>");
+      var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+      var paqSist = esPaq ? Math.Floor(r.StockSistema / r.CantidadPorPaquete) : 0m;
+      var sueltSist = esPaq ? r.StockSistema % r.CantidadPorPaquete : 0m;
+      var paqTxt = esPaq ? $"{paqSist:N0}{(sueltSist > 0 ? $" +{sueltSist:N0}" : "")}" : "-";
+      sb.AppendLine($"<tr><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy HH:mm}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td>{r.Codigo}</td><td style='text-align:center'>{paqTxt}</td><td>{System.Net.WebUtility.HtmlEncode(r.Deposito)}</td><td style='text-align:right'>{r.StockSistema:N2}</td><td style='text-align:right'>{r.StockAjuste:N2}</td><td style='text-align:right;{colorDif}'>{r.Diferencia:N2}</td><td style='text-align:right;{colorDif}'>{r.Monto:N0}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td></tr>");
     }
     sb.AppendLine("</tbody>");
     var totalColor = filas.Sum(x => x.Diferencia) >= 0 ? "color:green" : "color:red";
-    sb.AppendLine($"<tfoot><tr style='background:#e0e0e0;font-weight:bold;'><td colspan='5'>Totales</td><td style='text-align:right'>{filas.Sum(x => x.StockSistema):N2}</td><td style='text-align:right'>{filas.Sum(x => x.StockAjuste):N2}</td><td style='text-align:right;{totalColor}'>{filas.Sum(x => x.Diferencia):N2}</td><td style='text-align:right;{totalColor}'>{filas.Sum(x => x.Monto):N0}</td><td></td></tr></tfoot>");
+    sb.AppendLine($"<tfoot><tr style='background:#e0e0e0;font-weight:bold;'><td colspan='6'>Totales</td><td style='text-align:right'>{filas.Sum(x => x.StockSistema):N2}</td><td style='text-align:right'>{filas.Sum(x => x.StockAjuste):N2}</td><td style='text-align:right;{totalColor}'>{filas.Sum(x => x.Diferencia):N2}</td><td style='text-align:right;{totalColor}'>{filas.Sum(x => x.Monto):N0}</td><td></td></tr></tfoot>");
     sb.AppendLine("</table>");
     sb.AppendLine($"<p style='margin-top:10px;font-size:11px;'>Sobrantes: {filas.Where(x => x.Diferencia > 0).Sum(x => x.Diferencia):N2} uds | Faltantes: {filas.Where(x => x.Diferencia < 0).Sum(x => x.Diferencia):N2} uds</p>");
     return Task.FromResult(sb.ToString());

@@ -940,6 +940,254 @@ WITH FORMAT, COMPRESSION;
                     PalabrasClave = "precio, lista precio, descuento, mayorista, minorista, precio especial, cliente precio",
                     RutaNavegacion = "/configuracion/precios-descuentos", Icono = "bi-tags", Prioridad = 7,
                     FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+
+                // ========== INVENTARIO - LOTES Y VENCIMIENTOS ==========
+                new()
+                {
+                    Categoria = "Inventario", Subcategoria = "Lotes", Titulo = "Gestión de Lotes y Vencimientos (FEFO)",
+                    Contenido = @"El sistema soporta **control de lotes con FEFO** (First Expired, First Out) ideal para farmacias y productos perecederos.
+
+## ¿Qué es FEFO?
+FEFO significa **""Primero en Vencer, Primero en Salir""**. El sistema automáticamente selecciona el lote más próximo a vencer al realizar una venta.
+
+## Cómo funciona:
+1️⃣ Activa **""Controla Lote""** en el producto
+2️⃣ Al comprar, ingresa el **número de lote** y **fecha de vencimiento**
+3️⃣ Al vender, el sistema selecciona automáticamente el lote que vence primero
+4️⃣ El stock se descuenta de ese lote específico
+
+## ⚠️ Importante:
+- El control de lotes es **OPCIONAL** y se activa por producto
+- Los productos sin control de lote funcionan igual que antes
+- Cada lote pertenece a un depósito específico
+- El stock total del producto es la suma de todos sus lotes
+
+## Páginas disponibles:
+- **Inventario → Gestión de Lotes**: ver todos los lotes
+- **Inventario → Alertas de Vencimiento**: productos próximos a vencer",
+                    PalabrasClave = "lote, vencimiento, fefo, farmacia, lotes, fecha vencimiento, control lote, perecedero, caducidad",
+                    RutaNavegacion = "/inventario/lotes", Icono = "bi-box-seam", Prioridad = 9,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+                new()
+                {
+                    Categoria = "Inventario", Subcategoria = "Lotes", Titulo = "Crear un nuevo lote de producto",
+                    Contenido = @"Para **crear un nuevo lote** de producto:
+
+1️⃣ Ve a **Inventario → Gestión de Lotes**
+2️⃣ Click en **Nuevo Lote**
+3️⃣ Busca el **producto** (debe tener ""Controla Lote"" activado)
+4️⃣ Ingresa:
+   - **Número de Lote** (ej: LOT-2026-001)
+   - **Fecha de Vencimiento**
+   - **Depósito** donde estará el stock
+   - **Stock Inicial** (cantidad)
+5️⃣ **Guarda** el lote
+
+💡 **Tips**:
+- También puedes crear lotes automáticamente al registrar una compra
+- El número de lote suele venir impreso en el producto
+- Los lotes sin stock se pueden eliminar",
+                    PalabrasClave = "crear lote, nuevo lote, agregar lote, registrar lote, ingresar lote",
+                    RutaNavegacion = "/inventario/lotes", Icono = "bi-plus-square", Prioridad = 8,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+                new()
+                {
+                    Categoria = "Inventario", Subcategoria = "Lotes", Titulo = "Alertas de Vencimiento",
+                    Contenido = @"Para ver **productos próximos a vencer**:
+
+1️⃣ Ve a **Inventario → Alertas de Vencimiento**
+2️⃣ Verás un resumen con:
+   - 🔴 **Vencidos**: productos ya expirados
+   - 🟠 **Próximos 30 días**: vencen pronto
+   - 🟡 **Próximos 60 días**: atención
+   - 🟢 **Próximos 90 días**: monitorear
+
+## Acciones recomendadas:
+- **Vencidos**: dar de baja con ajuste de inventario
+- **Próximos a vencer**: promocionar para rotación
+- **Con poco stock**: verificar si conviene reponer
+
+💡 El sistema usa colores para facilitar la identificación visual.",
+                    PalabrasClave = "vencimiento, alerta vencimiento, producto vencido, caducidad, expirar, vencer",
+                    RutaNavegacion = "/inventario/alertas-vencimiento", Icono = "bi-exclamation-triangle", Prioridad = 8,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+                new()
+                {
+                    Categoria = "Inventario", Subcategoria = "Lotes", Titulo = "Relación entre Lotes y Depósitos",
+                    Contenido = @"## ¿Los lotes afectan los depósitos?
+
+**NO**, el sistema de lotes es **independiente y opcional**:
+
+| Aspecto | Comportamiento |
+|---------|----------------|
+| Stock normal | Sigue en `Producto.Stock` sin cambios |
+| Stock por lote | Cada lote tiene su propio stock |
+| Depósitos | Funcionan igual que antes |
+
+## ¿Cómo se relacionan?
+- Cada **lote** pertenece a **UN depósito**
+- El stock del producto es la **suma** de todos sus lotes
+- Las **transferencias** entre depósitos mueven lotes completos
+
+## Ejemplo:
+```
+Depósito ""Principal""
+├── Producto A (sin control lote) → Stock: 100
+└── Producto B (con control lote)
+    ├── Lote L001 (vence 15/02) → Stock: 30
+    ├── Lote L002 (vence 20/03) → Stock: 50
+    └── Stock total: 80
+```
+
+💡 Si no activas ""Controla Lote"" en ningún producto, todo funciona exactamente igual que antes.",
+                    PalabrasClave = "lote deposito, relacion lote, stock lote, deposito stock, lote almacen",
+                    RutaNavegacion = "/inventario/lotes", Icono = "bi-diagram-3", Prioridad = 7,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+                new()
+                {
+                    Categoria = "Inventario", Subcategoria = "Lotes", Titulo = "Activar control de lotes en un producto",
+                    Contenido = @"Para **activar el control de lotes** en un producto:
+
+1️⃣ Ve a **Productos → Administrar Productos**
+2️⃣ Busca y **edita** el producto
+3️⃣ Activa la opción **""Controla Lote""** ✅
+4️⃣ **Guarda** el producto
+
+## ¿Cuándo activarlo?
+✅ **Activar** para:
+- Medicamentos y productos farmacéuticos
+- Alimentos perecederos
+- Productos con fecha de vencimiento
+- Cualquier producto que requiera trazabilidad
+
+❌ **No necesario** para:
+- Productos sin vencimiento
+- Artículos de ferretería
+- Productos de consumo duradero
+
+⚠️ **Importante**: Una vez que un producto tiene movimientos con lote, no se recomienda desactivar el control.",
+                    PalabrasClave = "activar lote, habilitar lote, controla lote, producto lote, configurar lote",
+                    RutaNavegacion = "/productos", Icono = "bi-toggle-on", Prioridad = 8,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+
+                // ========== VENTAS - PAQUETES Y UNIDADES ==========
+                new()
+                {
+                    Categoria = "Ventas", Subcategoria = "Paquetes", Titulo = "Vender por paquete o por unidad",
+                    Contenido = @"El sistema permite vender productos **por paquete o por unidad**:
+
+## ¿Qué es?
+Un producto puede tener un **paquete** (caja, blister, pack) que contiene varias unidades. Por ejemplo:
+- Caja de 12 unidades
+- Blister de 10 pastillas
+- Pack de 6 botellas
+
+## En la venta:
+1️⃣ Al agregar un producto, elige el **modo de venta**:
+   - **Por Unidad**: precio individual
+   - **Por Paquete**: precio del paquete completo
+2️⃣ El sistema calcula automáticamente:
+   - Stock afectado (en unidades)
+   - Precio correcto según modo
+
+## Ejemplo:
+- Producto: Paracetamol 500mg
+- Caja de 10 unidades a Gs 50.000
+- Unidad a Gs 5.500
+
+💡 El stock siempre se maneja en **unidades**, pero puedes vender en paquetes.",
+                    PalabrasClave = "paquete, unidad, caja, blister, pack, vender caja, venta paquete, precio caja",
+                    RutaNavegacion = "/ventas", Icono = "bi-box2", Prioridad = 9,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+                new()
+                {
+                    Categoria = "Productos", Subcategoria = "Paquetes", Titulo = "Configurar producto con paquete",
+                    Contenido = @"Para configurar un producto que se vende **por paquete y unidad**:
+
+1️⃣ Ve a **Productos → Administrar Productos**
+2️⃣ **Edita** el producto
+3️⃣ Configura:
+   - **Cantidad por Paquete**: cuántas unidades tiene el paquete (ej: 12)
+   - **Precio de Venta**: precio POR UNIDAD
+   - **Precio Paquete** (opcional): precio especial del paquete completo
+4️⃣ **Guarda** el producto
+
+## Cálculo de precios:
+- Si defines **Precio Paquete**: se usa ese precio al vender por paquete
+- Si no lo defines: se calcula como Precio Unidad × Cantidad
+
+## Ejemplo:
+```
+Cantidad por Paquete: 12
+Precio Unidad: Gs 5.000
+Precio Paquete: Gs 55.000 (descuento por caja)
+```
+
+💡 El stock siempre se lleva en unidades, el sistema convierte automáticamente.",
+                    PalabrasClave = "configurar paquete, cantidad paquete, precio paquete, unidades por caja, producto caja",
+                    RutaNavegacion = "/productos", Icono = "bi-box2-fill", Prioridad = 8,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+                new()
+                {
+                    Categoria = "Compras", Subcategoria = "Paquetes", Titulo = "Comprar por paquete o unidad",
+                    Contenido = @"Al registrar una **compra**, puedes ingresar por paquete o unidad:
+
+## Modos de ingreso:
+1️⃣ **Por Unidad**: ingresas la cantidad exacta de unidades
+2️⃣ **Por Paquete**: ingresas cantidad de cajas/paquetes
+
+## Ejemplo de compra por paquete:
+- Producto: Ibuprofeno 400mg (caja de 20)
+- Compras: 5 cajas
+- El sistema registra: 100 unidades en stock
+
+## Beneficios:
+- ✅ Precio de costo correcto por unidad
+- ✅ Control de margen por caja
+- ✅ Reportes muestran ambas métricas
+- ✅ El informe de compras detalla: cajas y unidades
+
+💡 El modo se guarda con la compra para referencia futura.",
+                    PalabrasClave = "compra paquete, comprar caja, ingreso paquete, costo paquete, precio caja proveedor",
+                    RutaNavegacion = "/compras", Icono = "bi-bag-plus", Prioridad = 8,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+                new()
+                {
+                    Categoria = "Ventas", Subcategoria = "Paquetes", Titulo = "Ver ventas por paquete en reportes",
+                    Contenido = @"Los **reportes** muestran información de paquetes vs unidades:
+
+## En el Ticket de Venta:
+- Muestra: ""2p/24u"" = 2 paquetes (24 unidades)
+- El precio mostrado es por paquete si se vendió así
+
+## En KuDE (Factura A4):
+- Columna **U/M**: muestra ""PAQ"" o la unidad de medida
+- Columna **Cajas**: cantidad de paquetes vendidos
+- Descripción incluye ""(x12)"" indicando unidades por paquete
+
+## En Informe de Ventas Detallado:
+- Indica con badge 📦 si fue venta por paquete
+- Muestra cantidad de paquetes y unidades totales
+- Precio unitario calculado por unidad
+
+## En Informe de Compras:
+- Badge 📦 indica compra por paquete
+- Columnas separadas para paquetes y unidades
+- Precio por paquete y precio calculado por unidad
+
+💡 Esta información se guarda con cada transacción para histórico.",
+                    PalabrasClave = "reporte paquete, informe caja, ver paquetes, ticket paquete, factura caja",
+                    RutaNavegacion = "/informes/ventas-detallado", Icono = "bi-file-earmark-bar-graph", Prioridad = 7,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
                 }
             };
         }

@@ -691,12 +691,19 @@
         cliente = cliente?.RazonSocial ?? "",
         clienteRuc = cliente?.RUC ?? "",
         condicion = tipoPago?.Nombre ?? "CONTADO",
-        items = detalles.Select(d => new
-        {
-          descripcion = d.Producto?.Descripcion ?? "",
-          cantidad = d.Cantidad,
-          precio = FormatearImporte(d.PrecioUnitario),
-          total = FormatearImporte(d.Importe)
+        items = detalles.Select(d => {
+          var cantPorPaq = d.CantidadPorPaqueteMomento ?? d.Producto?.CantidadPorPaquete ?? 1;
+          var fueVentaPorPaquete = d.ModoIngresoPersistido == "paquete" && cantPorPaq > 1;
+          var multiplicadorPrecio = fueVentaPorPaquete ? (int)cantPorPaq : 1;
+          var precioMostrar = d.PrecioUnitario * multiplicadorPrecio;
+          var cantidadMostrar = fueVentaPorPaquete ? d.Cantidad / cantPorPaq : d.Cantidad;
+          return new
+          {
+            descripcion = (d.Producto?.Descripcion ?? "") + (fueVentaPorPaquete ? $" (x{(int)cantPorPaq})" : ""),
+            cantidad = cantidadMostrar,
+            precio = FormatearImporte(precioMostrar),
+            total = FormatearImporte(d.Importe)
+          };
         }).ToArray(),
         subtotal = FormatearImporte(subtotalGravadas),
         iva10 = totalIva10 > 0 ? FormatearImporte(totalIva10) : "",

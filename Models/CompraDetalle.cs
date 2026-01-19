@@ -57,6 +57,40 @@ namespace SistemIA.Models
     [Display(Name = "Precio Ministerio")]
     public decimal? PrecioMinisterio { get; set; }
 
+    // Modo de ingreso: "paquete" o "unidad" - persistido para mostrar correctamente al reabrir
+    [MaxLength(20)]
+    [Display(Name = "Modo Ingreso")]
+    public string? ModoIngresoPersistido { get; set; }
+
+    // Cantidad por paquete al momento de la compra (para mostrar correctamente al reimprimir)
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Cantidad por Paquete")]
+    public decimal? CantidadPorPaqueteMomento { get; set; }
+
+    // Precio de venta por paquete al momento de la compra
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Precio Paquete Momento")]
+    public decimal? PrecioPaqueteMomento { get; set; }
+
+    // Precio ministerio por paquete al momento de la compra
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Precio Ministerio Paquete Momento")]
+    public decimal? PrecioMinisterioPaqueteMomento { get; set; }
+
+    // ========== CONTROL DE LOTES (FARMACIA) ==========
+    
+    /// <summary>ID del lote creado o actualizado por esta compra</summary>
+    public int? IdProductoLote { get; set; }
+    
+    /// <summary>Número de lote ingresado en la compra</summary>
+    [MaxLength(50)]
+    [Display(Name = "Número de Lote")]
+    public string? NumeroLote { get; set; }
+    
+    // Navegación al lote
+    [ForeignKey(nameof(IdProductoLote))]
+    public virtual ProductoLote? ProductoLote { get; set; }
+
         // Auditoría básica
         public DateTime FechaCreacion { get; set; } = DateTime.Now;
         public string? UsuarioCreacion { get; set; }
@@ -80,9 +114,13 @@ namespace SistemIA.Models
         [NotMapped]
         public bool PermiteVentaPorUnidad { get; set; } = true;
         
-        // Modo de ingreso: "paquete" o "unidad"
+        // Modo de ingreso: "paquete" o "unidad" - ahora usa ModoIngresoPersistido si existe
         [NotMapped]
-        public string ModoIngreso { get; set; } = "unidad";
+        public string ModoIngreso 
+        { 
+            get => ModoIngresoPersistido ?? "unidad";
+            set => ModoIngresoPersistido = value;
+        }
         
         // Cantidad ingresada en el modo seleccionado (antes de convertir a unidades)
         [NotMapped]

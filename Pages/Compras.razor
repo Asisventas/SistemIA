@@ -15,6 +15,7 @@
 @inject SistemIA.Services.IRucDnitService RucService
 @inject SistemIA.Services.ITrackingService TrackingService
 @inject AuditoriaService AuditoriaService
+@inject ILoteService LoteService
 @using Microsoft.AspNetCore.Components.Authorization
 @using static SistemIA.Models.AsistenteIA.TipoAccionTracking
 @using static SistemIA.Models.AsistenteIA.CategoriaAccion
@@ -291,12 +292,12 @@
         @* ========== CANTIDAD CON SELECTOR PAQUETE/UNIDAD ========== *@
         @{
             var productoActual = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
-            var esPaqueteOCaja = productoActual?.UnidadMedidaCodigo == "006" || productoActual?.UnidadMedidaCodigo == "005";
-            var nombreUnidadCompra = productoActual?.UnidadMedidaCodigo == "006" ? "Paquete" : (productoActual?.UnidadMedidaCodigo == "005" ? "Caja" : "Unidad");
+            var esPaquete = productoActual?.UnidadMedidaCodigo == "006";
+            var nombreUnidadCompra = esPaquete ? "Paquete" : "Unidad";
             var cantidadPorPaq = productoActual?.CantidadPorPaquete ?? 1;
             var permiteUnidad = productoActual?.PermiteVentaPorUnidad ?? true;
         }
-        @if (esPaqueteOCaja && cantidadPorPaq > 1)
+        @if (esPaquete && cantidadPorPaq > 1)
         {
             <div class="col-md-1">
                 <label class="form-label">Modo</label>
@@ -366,7 +367,17 @@
         }
         @{
             var productoSeleccionado = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
-            var productoRequiereVencimiento = productoSeleccionado?.ControlarVencimiento == true;
+            var productoRequiereLote = productoSeleccionado?.ControlaLote == true;
+            var productoRequiereVencimiento = productoSeleccionado?.ControlarVencimiento == true || productoSeleccionado?.ControlaVencimiento == true;
+        }
+        @if (productoRequiereLote)
+        {
+            <div class="col-md-2">
+                <label class="form-label">
+                    <i class="bi bi-box-seam me-1 text-info"></i>Nro. Lote
+                </label>
+                <input id="inputNumeroLoteCompras" type="text" class="form-control" @bind="NumeroLoteInput" placeholder="Ej: L2024-001" title="Número de lote del proveedor" />
+            </div>
         }
         @if (productoRequiereVencimiento)
         {
@@ -438,11 +449,15 @@
                 <tr>
                     <th>Producto</th>
                     <th>Depósito</th>
+                    @if (AlgunDetalleConLote)
+                    {
+                        <th><i class="bi bi-box-seam me-1"></i>Lote</th>
+                    }
                     @if (AlgunDetalleConVencimiento)
                     {
                         <th>Vencimiento</th>
                     }
-                    <th class="text-end">Cantidad</th>
+                    <th class="text-center" style="width:90px">Paq./Unid.</th>
                     <th class="text-end">Pre. Unit. Compra</th>
                     <th class="text-end">Importe Compra</th>
                     <th class="text-end">Factor</th>
@@ -462,8 +477,24 @@
         {
             var prod = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
             var deposito = Depositos.FirstOrDefault(dep => dep.IdDeposito == d.IdDepositoItem);
+            // Variables para mostrar precios según modo de ingreso (paquete/unidad)
+            // Usar CantidadPorPaqueteMomento si está guardada, sino usar la actual del producto
+            var cantPaqDet = d.CantidadPorPaqueteMomento ?? prod?.CantidadPorPaquete ?? 1;
+            var fueCompraPorPaquete = d.ModoIngreso == "paquete" && cantPaqDet > 1;
+            // Si la compra fue por paquete, mostrar precios de venta/ministerio multiplicados
+            var multiplicadorPrecio = fueCompraPorPaquete ? cantPaqDet : 1;
             <tr @onclick="() => SeleccionarDetalleCompra(prod)" style="cursor: pointer;" class="@(ProductoImagenUrl == prod?.Foto ? "table-active" : "")" title="Clic para ver imagen">
-                <td>@prod?.Descripcion</td>
+                <td>
+                    <span>@prod?.Descripcion</span>
+                    @if (fueCompraPorPaquete)
+                    {
+                        <br/><small class="text-info"><i class="bi bi-box-seam me-1"></i>Por paquete (@((int)cantPaqDet) u.)</small>
+                    }
+                    else
+                    {
+                        <br/><small class="text-muted"><i class="bi bi-1-square me-1"></i>Por unidad</small>
+                    }
+                </td>
                 <td>
                     @if (d.IdDepositoItem.HasValue)
                     {
@@ -475,6 +506,19 @@
                         <span class="text-muted small">(Sin depósito)</span>
                     }
                 </td>
+                @if (AlgunDetalleConLote)
+                {
+                    <td>
+                        @if (!string.IsNullOrEmpty(d.NumeroLote))
+                        {
+                            <span class="badge bg-info"><i class="bi bi-box-seam me-1"></i>@d.NumeroLote</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">-</span>
+                        }
+                    </td>
+                }
                 @if (AlgunDetalleConVencimiento)
                 {
                     <td>
@@ -490,26 +534,32 @@
                         }
                     </td>
                 }
-                <td class="text-end">
+                <td class="text-center">
                     @{
-                        var prodDetalle = Productos.FirstOrDefault(x => x.IdProducto == d.IdProducto);
-                        var cantPaq = prodDetalle?.CantidadPorPaquete ?? 1;
-                        var esPaq = (prodDetalle?.UnidadMedidaCodigo == "006" || prodDetalle?.UnidadMedidaCodigo == "005") && cantPaq > 1;
+                        var esPaq = fueCompraPorPaquete && cantPaqDet > 1;
+                        var cantidadPaquetes = esPaq ? Math.Round(d.Cantidad / cantPaqDet, 2) : 0m;
+                        var cantidadUnidades = d.Cantidad;
+                        var paqStr = cantidadPaquetes == Math.Floor(cantidadPaquetes) ? cantidadPaquetes.ToString("N0") : cantidadPaquetes.ToString("N2");
+                        var uniStr = cantidadUnidades == Math.Floor(cantidadUnidades) ? cantidadUnidades.ToString("N0") : cantidadUnidades.ToString("N2");
                     }
                     @if (esPaq)
                     {
-                        var numPaquetes = Math.Floor(d.Cantidad / cantPaq);
-                        var unidadesSueltas = d.Cantidad % cantPaq;
-                        <strong>@d.Cantidad.ToString("N0")</strong>
-                        <br/><small class="text-muted">(@numPaquetes.ToString("N0") paq.@(unidadesSueltas > 0 ? $" + {unidadesSueltas:N0} u." : ""))</small>
+                        <span class="text-info fw-semibold">@paqStr</span><span class="text-muted">/</span><span>@uniStr</span>
                     }
                     else
                     {
-                        <strong>@d.Cantidad</strong>
+                        <span class="text-muted">-/</span><span>@uniStr</span>
                     }
                 </td>
-                <td class="text-end text-primary fw-semibold">@FormatearPrecio(d.PrecioUnitario)</td>
-                <td class="text-end text-success fw-bold">@FormatearPrecio(d.Importe)</td>
+                @* Precio Unitario Compra: mostrar según modo de ingreso (paquete o unidad) *@
+                <td class="text-end fw-semibold" style="color: var(--bs-cyan);">
+                    @FormatearPrecio(d.PrecioUnitario * multiplicadorPrecio)
+                    @if (fueCompraPorPaquete)
+                    {
+                        <br/><small class="opacity-75">(@FormatearPrecio(d.PrecioUnitario)/u)</small>
+                    }
+                </td>
+                <td class="text-end fw-bold" style="color: var(--bs-green);">@FormatearPrecio(d.Importe)</td>
                 <td class="text-end">
                     @if (d.FactorMultiplicador.HasValue && d.FactorMultiplicador.Value > 0)
                     {
@@ -535,38 +585,51 @@
                       {
                         pctUtilidadDet = ((d.PrecioVentaRef - d.PrecioUnitario) / d.PrecioVentaRef) * 100;
                       }
-                      var colorUtilidadDet = pctUtilidadDet.HasValue ? (pctUtilidadDet.Value >= 30m ? "text-primary" : "text-danger") : "text-muted";
+                      var colorUtilidadDet = pctUtilidadDet.HasValue ? (pctUtilidadDet.Value >= 30m ? "" : "text-danger") : "opacity-50";
                     }
                     <br/><small class="@colorUtilidadDet">Ut: @(pctUtilidadDet.HasValue ? $"{pctUtilidadDet.Value:N1}%" : "—")</small>
                 </td>
-                <td class="text-end text-info fw-semibold">@FormatearPrecio(d.PrecioVentaRef)</td>
+                @* Precio de Venta: mostrar según modo de ingreso (paquete o unidad) *@
+                <td class="text-end fw-semibold" style="color: var(--bs-teal);">
+                    @FormatearPrecio(d.PrecioVentaRef * multiplicadorPrecio)
+                    @if (fueCompraPorPaquete)
+                    {
+                        <br/><small class="opacity-75">(@FormatearPrecio(d.PrecioVentaRef)/u)</small>
+                    }
+                </td>
                 @if (MostrarPrecioMinisterioEnCompras)
                 {
                     // Usar precio ministerio del detalle si existe, sino del producto
-                    var precioMin = d.PrecioMinisterio ?? prod?.PrecioMinisterio;
+                    // Mostrar según modo de ingreso (paquete o unidad)
+                    var precioMinBase = d.PrecioMinisterio ?? prod?.PrecioMinisterio;
+                    var precioMinMostrar = precioMinBase.HasValue ? precioMinBase.Value * multiplicadorPrecio : (decimal?)null;
                     var precioVenta = d.PrecioVentaRef;
-                    var superaPrecio = ValidarPrecioMinisterio && precioMin.HasValue && precioVenta > precioMin.Value;
+                    var superaPrecio = ValidarPrecioMinisterio && precioMinBase.HasValue && precioVenta > precioMinBase.Value;
                     <td class="text-end">
-                        @if (precioMin.HasValue)
+                        @if (precioMinMostrar.HasValue)
                         {
-                            <span class="@(superaPrecio ? "text-danger fw-bold" : "text-warning")">
-                                @FormatearPrecio(precioMin.Value)
+                            <span class="@(superaPrecio ? "text-danger fw-bold" : "")" style="@(superaPrecio ? "" : "color: var(--bs-orange);")">
+                                @FormatearPrecio(precioMinMostrar.Value)
                                 @if (superaPrecio)
                                 {
                                     <i class="bi bi-exclamation-triangle-fill" title="El precio de venta supera el precio ministerio"></i>
+                                }
+                                @if (fueCompraPorPaquete)
+                                {
+                                    <br/><small class="opacity-75">(@FormatearPrecio(precioMinBase.Value)/u)</small>
                                 }
                             </span>
                         }
                         else
                         {
-                            <span class="text-muted">—</span>
+                            <span class="opacity-50">—</span>
                         }
                     </td>
                 }
                 @{ var codOriTc = Monedas.FirstOrDefault(m => m.IdMoneda == (prod?.IdMonedaPrecio ?? Compra.IdMoneda))?.CodigoISO ?? string.Empty;
                     var codDesTc = Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda)?.CodigoISO ?? string.Empty;
                     var txTxt = d.CambioDelDia.HasValue ? ($"{GetCurrencyFlag(codOriTc)} {codOriTc}/{codDesTc} {GetCurrencyFlag(codDesTc)} {d.CambioDelDia.Value.ToString("N4")}") : "—"; }
-                <td class="text-end"><span class="text-muted">@txTxt</span></td>
+                <td class="text-end"><span class="opacity-75">@txTxt</span></td>
                 <td>@(prod?.TipoIva?.Descripcion ?? prod?.TipoIva?.CodigoAbreviado)</td>
                 <td>
                     <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => QuitarDetalle(d)">Quitar</button>
@@ -820,7 +883,6 @@
                             <select class="form-select" @bind="_nuevoProducto.UnidadMedidaCodigo" @bind:after="OnUnidadMedidaChanged">
                                 <option value="77">Unidad</option>
                                 <option value="006">Paquete</option>
-                                <option value="005">Caja</option>
                                 <option value="71">Kg</option>
                                 <option value="72">Litro</option>
                                 <option value="73">Metro</option>
@@ -853,41 +915,192 @@
                             </select>
                         </div>
 
-                        @* Opciones de Venta *@
+                        @* ========== SECCIÓN: PRECIOS POR PAQUETE (solo si es Paquete o Caja) ========== *@
+                        @if (_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005")
+                        {
+                            <div class="col-12 mt-3">
+                                <h6 class="text-success border-bottom pb-1 mb-2">
+                                    <i class="bi bi-box-seam me-1"></i>Precios por @(_nuevoProducto.UnidadMedidaCodigo == "006" ? "Paquete" : "Caja")
+                                    @if (_nuevoProducto.CantidadPorPaquete.HasValue && _nuevoProducto.CantidadPorPaquete > 1)
+                                    {
+                                        <small class="text-muted ms-2">(@_nuevoProducto.CantidadPorPaquete.Value.ToString("N0") unidades)</small>
+                                    }
+                                </h6>
+                            </div>
+                            
+                            <div class="col-md-3">
+                                <label class="form-label">📦 Costo @(_nuevoProducto.UnidadMedidaCodigo == "006" ? "Paquete" : "Caja") Gs</label>
+                                <input type="text" inputmode="numeric" class="form-control" 
+                                       value="@(_nuevoProducto.CostoPaqueteGs.HasValue ? ((long)_nuevoProducto.CostoPaqueteGs.Value).ToString(System.Globalization.CultureInfo.InvariantCulture) : "")" 
+                                       @onchange="OnCostoPaqueteNPChanged" />
+                                <div class="form-text text-info">
+                                    <i class="bi bi-arrow-down-circle me-1"></i>Ingrese aquí y se calcula el unitario
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Factor Paq.</label>
+                                <input type="text" inputmode="decimal" class="form-control" 
+                                       value="@(_factorPrecioPaqueteNP?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                                       @onchange="OnFactorPaqueteNPChanged" placeholder="ej: 1.25" />
+                                <div class="form-text">Multiplicador</div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">% Mark-up Paq.</label>
+                                <input type="text" inputmode="decimal" class="form-control" 
+                                       value="@(_porcentajePrecioPaqueteNP?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                                       @onchange="OnPorcentajePaqueteNPChanged" placeholder="ej: 25" />
+                                @{
+                                    decimal? pctUtilidadPaq = null;
+                                    if (_nuevoProducto.CostoPaqueteGs.HasValue && _nuevoProducto.CostoPaqueteGs.Value > 0 && _nuevoProducto.PrecioPaqueteGs.HasValue && _nuevoProducto.PrecioPaqueteGs > 0)
+                                    {
+                                        pctUtilidadPaq = ((_nuevoProducto.PrecioPaqueteGs.Value - _nuevoProducto.CostoPaqueteGs.Value) / _nuevoProducto.PrecioPaqueteGs.Value) * 100;
+                                    }
+                                    var colorUtilidadPaq = pctUtilidadPaq.HasValue ? (pctUtilidadPaq.Value >= 25 ? "text-success" : "text-danger") : "text-muted";
+                                }
+                                <small class="@colorUtilidadPaq" title="% Utilidad sobre precio paquete">Util: @(pctUtilidadPaq.HasValue ? $"{pctUtilidadPaq.Value:N1}%" : "—")</small>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">📦 Precio @(_nuevoProducto.UnidadMedidaCodigo == "006" ? "Paquete" : "Caja") Gs</label>
+                                <input type="text" inputmode="numeric" class="form-control @(_nuevoProducto.PrecioMinisterioPaquete.HasValue && _nuevoProducto.PrecioPaqueteGs.HasValue && _nuevoProducto.PrecioPaqueteGs > _nuevoProducto.PrecioMinisterioPaquete ? "is-invalid" : "")" 
+                                       value="@(_nuevoProducto.PrecioPaqueteGs.HasValue ? ((long)_nuevoProducto.PrecioPaqueteGs.Value).ToString() : "")" 
+                                       @onchange="OnPrecioPaqueteNPChanged" />
+                                @if (_nuevoProducto.PrecioMinisterioPaquete.HasValue && _nuevoProducto.PrecioPaqueteGs.HasValue && _nuevoProducto.PrecioPaqueteGs > _nuevoProducto.PrecioMinisterioPaquete)
+                                {
+                                    <div class="invalid-feedback">El precio no puede superar el P. Ministerio Paq. (@_nuevoProducto.PrecioMinisterioPaquete.Value.ToString("N0") Gs)</div>
+                                }
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">🏥 P.Min. Paq.</label>
+                                <input type="text" inputmode="numeric" class="form-control" 
+                                       value="@(_nuevoProducto.PrecioMinisterioPaquete.HasValue ? ((long)_nuevoProducto.PrecioMinisterioPaquete.Value).ToString() : "")" 
+                                       @onchange="OnPrecioMinisterioPaqueteNPChanged" placeholder="Máx. regulado" />
+                            </div>
+                        }
+
+                        @* ========== SECCIÓN: PRECIOS UNITARIOS ========== *@
                         <div class="col-12 mt-3">
-                            <h6 class="text-success border-bottom pb-1 mb-2"><i class="bi bi-toggles me-1"></i>Opciones de Venta</h6>
+                            <h6 class="text-primary border-bottom pb-1 mb-2">
+                                <i class="bi bi-tag me-1"></i>Precios Unitarios
+                                @if (_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005")
+                                {
+                                    <small class="text-muted ms-2">(costo calculado desde paquete, precios editables)</small>
+                                }
+                            </h6>
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">💰 Costo Unitario Gs</label>
+                            <input type="text" inputmode="numeric" class="form-control @(_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005" ? "bg-light" : "")" 
+                                   value="@(_nuevoProducto.CostoUnitarioGs.HasValue ? _nuevoProducto.CostoUnitarioGs.Value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture) : "")" 
+                                   @onchange="OnCostoNPChanged" 
+                                   readonly="@(_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005")" />
+                            <div class="form-text">
+                                @if ((_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005") && _nuevoProducto.CostoPaqueteGs.HasValue && _nuevoProducto.CantidadPorPaquete.HasValue && _nuevoProducto.CantidadPorPaquete > 0)
+                                {
+                                    <span class="text-info"><i class="bi bi-calculator me-1"></i>= @_nuevoProducto.CostoPaqueteGs.Value.ToString("N0") ÷ @_nuevoProducto.CantidadPorPaquete.Value</span>
+                                }
+                                else
+                                {
+                                    <span>Costo de compra unitario</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Factor</label>
+                            <input type="text" inputmode="decimal" class="form-control" 
+                                   value="@(_factorPrecioNP?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                                   @onchange="OnFactorNPChanged" placeholder="ej: 1.30" />
+                            <div class="form-text">Multiplicador</div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">% Mark-up</label>
+                            <input type="text" inputmode="decimal" class="form-control" 
+                                   value="@(_porcentajePrecioNP?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
+                                   @onchange="OnPorcentajeNPChanged" placeholder="ej: 30" />
+                            @{
+                                decimal? pctUtilidadUnit = null;
+                                if (_nuevoProducto.CostoUnitarioGs.HasValue && _nuevoProducto.CostoUnitarioGs.Value > 0 && _nuevoProducto.PrecioUnitarioGs > 0)
+                                {
+                                    pctUtilidadUnit = ((_nuevoProducto.PrecioUnitarioGs - _nuevoProducto.CostoUnitarioGs.Value) / _nuevoProducto.PrecioUnitarioGs) * 100;
+                                }
+                                var colorUtilidadUnit = pctUtilidadUnit.HasValue ? (pctUtilidadUnit.Value >= 30 ? "text-primary" : "text-danger") : "text-muted";
+                            }
+                            <small class="@colorUtilidadUnit" title="% Utilidad (sobre precio venta)">Util: @(pctUtilidadUnit.HasValue ? $"{pctUtilidadUnit.Value:N1}%" : "—")</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">🏷️ Precio Unitario Gs *</label>
+                            <input type="text" inputmode="numeric" class="form-control @(_nuevoProducto.PrecioMinisterio.HasValue && _nuevoProducto.PrecioUnitarioGs > _nuevoProducto.PrecioMinisterio ? "is-invalid" : "")" 
+                                   value="@((long)_nuevoProducto.PrecioUnitarioGs)" 
+                                   @onchange="OnPrecioNPChanged" />
+                            @if (_nuevoProducto.PrecioMinisterio.HasValue && _nuevoProducto.PrecioUnitarioGs > _nuevoProducto.PrecioMinisterio)
+                            {
+                                <div class="invalid-feedback">El precio no puede superar el Precio Ministerio (@_nuevoProducto.PrecioMinisterio.Value.ToString("N0") Gs)</div>
+                            }
+                            <div class="form-text">
+                                @if ((_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005") && _nuevoProducto.PrecioPaqueteGs.HasValue && _nuevoProducto.CantidadPorPaquete.HasValue && _nuevoProducto.CantidadPorPaquete > 0)
+                                {
+                                    <span class="text-muted"><i class="bi bi-info-circle me-1"></i>Sugerido: @(Math.Round(_nuevoProducto.PrecioPaqueteGs.Value / _nuevoProducto.CantidadPorPaquete.Value, 0).ToString("N0")) (÷@_nuevoProducto.CantidadPorPaquete.Value)</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">🏥 P. Ministerio</label>
+                            <input type="text" inputmode="numeric" class="form-control" 
+                                   value="@(_nuevoProducto.PrecioMinisterio.HasValue ? ((long)_nuevoProducto.PrecioMinisterio.Value).ToString() : "")" 
+                                   @onchange="OnPrecioMinisterioNPChanged" placeholder="Máx. regulado" />
+                            <div class="form-text">
+                                @if ((_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005") && _nuevoProducto.PrecioMinisterioPaquete.HasValue && _nuevoProducto.CantidadPorPaquete.HasValue && _nuevoProducto.CantidadPorPaquete > 0)
+                                {
+                                    <span class="text-muted"><i class="bi bi-info-circle me-1"></i>Sugerido: @(Math.Round(_nuevoProducto.PrecioMinisterioPaquete.Value / _nuevoProducto.CantidadPorPaquete.Value, 0).ToString("N0"))</span>
+                                }
+                            </div>
+                        </div>
+
+                        @* Opciones de Venta y Control de Inventario *@
+                        <div class="col-12 mt-3">
+                            <h6 class="text-success border-bottom pb-1 mb-2"><i class="bi bi-toggles me-1"></i>Opciones de Venta y Control</h6>
                         </div>
                         <div class="col-md-3">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="npPermiteDecimal" @bind="_nuevoProducto.PermiteDecimal" />
                                 <label class="form-check-label" for="npPermiteDecimal">
-                                    <i class="bi bi-123 me-1"></i>Permite Venta Decimal
+                                    <i class="bi bi-123 me-1"></i>Venta Decimal
                                 </label>
                             </div>
-                            <small class="text-muted">Ej: 0.5 kg</small>
+                            <small class="text-muted">Ej: 0.5 kg, 1.25 L</small>
                         </div>
                         <div class="col-md-3">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="npControladoReceta" @bind="_nuevoProducto.ControladoReceta" />
                                 <label class="form-check-label" for="npControladoReceta">
-                                    <i class="bi bi-file-medical me-1"></i>Controlado con Receta
+                                    <i class="bi bi-file-medical me-1 text-danger"></i>Con Receta
                                 </label>
                             </div>
                             <small class="text-muted">Requiere receta médica</small>
                         </div>
                         <div class="col-md-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="npControlarVenc" @bind="_nuevoProducto.ControlarVencimiento" />
-                                <label class="form-check-label" for="npControlarVenc">
-                                    <i class="bi bi-calendar-x me-1"></i>Controlar Vencimiento
+                                <input class="form-check-input" type="checkbox" id="npControlaLote" @bind="_nuevoProducto.ControlaLote" @bind:after="OnControlaLoteChanged" />
+                                <label class="form-check-label" for="npControlaLote">
+                                    <i class="bi bi-box-seam me-1 text-info"></i>Controla Lote
                                 </label>
                             </div>
+                            <small class="text-muted">Registro FEFO</small>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="npControlarVenc" @bind="_nuevoProducto.ControlarVencimiento" />
+                                <label class="form-check-label" for="npControlarVenc">
+                                    <i class="bi bi-calendar-x me-1 text-warning"></i>Controla Venc.
+                                </label>
+                            </div>
+                            <small class="text-muted">Alertas vencimiento</small>
                         </div>
                         <div class="col-md-3">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="npActivo" @bind="_nuevoProducto.Activo" />
                                 <label class="form-check-label" for="npActivo">
-                                    <i class="bi bi-check-circle me-1"></i>Activo
+                                    <i class="bi bi-check-circle me-1 text-success"></i>Activo
                                 </label>
                             </div>
                             <small class="text-muted">Disponible para venta</small>
@@ -1141,6 +1354,13 @@
     private IBrowserFile? _imagenProductoPendiente;
     private string? _previewImagenProducto;
     
+    // Variables para precios por paquete en modal de nuevo producto
+    private decimal? _factorPrecioPaqueteNP;
+    private decimal? _porcentajePrecioPaqueteNP;
+    private decimal? _factorPrecioNP;
+    private decimal? _porcentajePrecioNP;
+    private bool _actualizandoPrecioPaqueteNP;
+    
     // Variables para modal de nueva marca rápida
     private bool _mostrarModalMarcaRapida;
     private bool _guardandoMarcaRapida;
@@ -1155,7 +1375,43 @@
 
     private decimal Gravado10; private decimal Gravado5; private decimal Exenta; private decimal IVATotal10; private decimal IVATotal5;
     private decimal CantidadInput { get => NuevoDetalle.Cantidad; set { NuevoDetalle.Cantidad = value; RecalcularNuevoDetalle(); } }
-    private decimal PrecioInput { get => NuevoDetalle.PrecioUnitario; set { NuevoDetalle.PrecioUnitario = value; RecalcularNuevoDetalle(); } }
+    
+    /// <summary>
+    /// Precio mostrado en la UI según el modo de ingreso (paquete/unidad).
+    /// - Modo Paquete: Muestra el precio total del paquete (PrecioUnitario * CantidadPorPaquete)
+    /// - Modo Unidad: Muestra el precio unitario directamente
+    /// </summary>
+    private decimal PrecioInput 
+    { 
+        get 
+        {
+            var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var cantPorPaq = prod?.CantidadPorPaquete ?? 1;
+            
+            // En modo paquete, mostrar el precio del paquete completo
+            if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
+            {
+                return NuevoDetalle.PrecioUnitario * cantPorPaq;
+            }
+            return NuevoDetalle.PrecioUnitario;
+        }
+        set 
+        {
+            var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var cantPorPaq = prod?.CantidadPorPaquete ?? 1;
+            
+            // En modo paquete, el usuario ingresa precio del paquete, guardar como unitario
+            if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
+            {
+                NuevoDetalle.PrecioUnitario = value / cantPorPaq;
+            }
+            else
+            {
+                NuevoDetalle.PrecioUnitario = value;
+            }
+            RecalcularNuevoDetalle(); 
+        } 
+    }
     
     // ========== VARIABLES PARA COMPRA POR PAQUETE/UNIDAD ==========
     private string ModoIngresoCompra { get; set; } = "paquete"; // "paquete" o "unidad"
@@ -1173,7 +1429,7 @@
     private void OnModoIngresoCompraChanged(ChangeEventArgs e)
     {
         ModoIngresoCompra = e.Value?.ToString() ?? "paquete";
-        RecalcularCantidadPorModo();
+        RecalcularCantidadYPrecioPorModo();
     }
     
     private void RecalcularCantidadPorModo()
@@ -1190,31 +1446,177 @@
         }
         RecalcularNuevoDetalle();
     }
+    
+    /// <summary>
+    /// Recalcula cantidad Y precio según el modo seleccionado (paquete/unidad).
+    /// Usa el CostoPaqueteGs cuando está en modo paquete y el producto lo tiene.
+    /// </summary>
+    private void RecalcularCantidadYPrecioPorModo()
+    {
+        var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+        if (prod == null) return;
+        
+        var cantPorPaq = prod.CantidadPorPaquete ?? 1;
+        
+        // Recalcular cantidad según modo
+        if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
+        {
+            NuevoDetalle.Cantidad = _cantidadIngresadaCompra * cantPorPaq;
+        }
+        else
+        {
+            NuevoDetalle.Cantidad = _cantidadIngresadaCompra;
+        }
+        
+        // Recalcular precio según modo
+        decimal precioBaseEnGs;
+        if (ModoIngresoCompra == "paquete" && prod.CostoPaqueteGs.HasValue && prod.CostoPaqueteGs > 0 && cantPorPaq > 1)
+        {
+            // CostoPaqueteGs es el precio total del paquete, lo dividimos entre unidades para tener costo unitario
+            precioBaseEnGs = prod.CostoPaqueteGs.Value / cantPorPaq;
+        }
+        else
+        {
+            // Modo unidad o producto sin precio de paquete: usar costo unitario normal
+            precioBaseEnGs = prod.CostoUnitarioGs ?? prod.PrecioUnitarioGs;
+        }
+        
+        // Aplicar conversión de moneda si es necesario
+        decimal precio = precioBaseEnGs;
+        var idMonedaCompra = Compra.IdMoneda;
+        
+        if (idMonedaCompra.HasValue)
+        {
+            var monCompra = Monedas.FirstOrDefault(m => m.IdMoneda == idMonedaCompra.Value);
+            if (monCompra?.EsMonedaBase == false)
+            {
+                // Usar TC existente
+                var cambio = NuevoDetalle.CambioDelDia ?? Compra.CambioDelDia ?? 1m;
+                if (cambio > 0)
+                    precio = Math.Round(precioBaseEnGs / cambio, 4);
+            }
+        }
+        
+        NuevoDetalle.PrecioUnitario = precio;
+        
+        RecalcularNuevoDetalle();
+    }
 
     // Variables para crédito y cuotas
     private int NumeroCuotasCompra { get; set; } = 1;
     private bool MostrarCamposCredito { get; set; } = false;
     private bool TipoPagoEsCredito => Compra.IdTipoPago.HasValue && TiposPago.FirstOrDefault(t => t.IdTipoPago == Compra.IdTipoPago)?.EsCredito == true;
 
-    // Variables para depósito y vencimiento del item
+    // Variables para depósito, lote y vencimiento del item
     private int? IdDepositoItemSeleccionado;
     private DateTime? FechaVencimientoItemSeleccionada;
+    private string? NumeroLoteInput;
     
     // Factor multiplicador para calcular precio de venta
     private decimal? FactorMultiplicador;
     private decimal? PorcentajeMargen;
-    private decimal? PrecioVentaCalculado;
+    private decimal? _precioVentaCalculadoUnitario; // Precio de venta UNITARIO (interno)
     private bool _actualizandoFactorPorcentaje = false;
     
-    // Precio Ministerio para el producto actual (entrada)
-    private decimal? PrecioMinisterioInput;
+    /// <summary>
+    /// Precio de venta mostrado según el modo (paquete = unitario * cantPorPaq, unidad = unitario)
+    /// </summary>
+    private decimal? PrecioVentaCalculado
+    {
+        get
+        {
+            if (!_precioVentaCalculadoUnitario.HasValue) return null;
+            
+            var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var cantPorPaq = prod?.CantidadPorPaquete ?? 1;
+            
+            // En modo paquete, mostrar el precio de venta del paquete completo
+            if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
+            {
+                return _precioVentaCalculadoUnitario.Value * cantPorPaq;
+            }
+            return _precioVentaCalculadoUnitario.Value;
+        }
+        set
+        {
+            if (!value.HasValue)
+            {
+                _precioVentaCalculadoUnitario = null;
+                return;
+            }
+            
+            var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var cantPorPaq = prod?.CantidadPorPaquete ?? 1;
+            
+            // En modo paquete, el usuario ingresa precio del paquete, guardar como unitario
+            if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
+            {
+                _precioVentaCalculadoUnitario = value.Value / cantPorPaq;
+            }
+            else
+            {
+                _precioVentaCalculadoUnitario = value.Value;
+            }
+        }
+    }
+    
+    // Precio Ministerio para el producto actual (entrada) - Valor UNITARIO interno
+    private decimal? _precioMinisterioUnitario;
+    
+    /// <summary>
+    /// Precio Ministerio mostrado según el modo (paquete = unitario * cantPorPaq, unidad = unitario)
+    /// </summary>
+    private decimal? PrecioMinisterioInput
+    {
+        get
+        {
+            if (!_precioMinisterioUnitario.HasValue) return null;
+            
+            var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var cantPorPaq = prod?.CantidadPorPaquete ?? 1;
+            
+            // En modo paquete, mostrar el precio ministerio del paquete completo
+            if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
+            {
+                return _precioMinisterioUnitario.Value * cantPorPaq;
+            }
+            return _precioMinisterioUnitario.Value;
+        }
+        set
+        {
+            if (!value.HasValue)
+            {
+                _precioMinisterioUnitario = null;
+                return;
+            }
+            
+            var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
+            var cantPorPaq = prod?.CantidadPorPaquete ?? 1;
+            
+            // En modo paquete, el usuario ingresa precio del paquete, guardar como unitario
+            if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
+            {
+                _precioMinisterioUnitario = value.Value / cantPorPaq;
+            }
+            else
+            {
+                _precioMinisterioUnitario = value.Value;
+            }
+        }
+    }
     
     // Control para prevenir el comportamiento por defecto de Tab en el botón Agregar
     private bool _prevenirTabEnAgregar = false;
     
     // Indica si algún detalle tiene producto con control de vencimiento
     private bool AlgunDetalleConVencimiento => Detalles.Any(d => 
-        Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto)?.ControlarVencimiento == true);
+        Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto)?.ControlarVencimiento == true ||
+        Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto)?.ControlaVencimiento == true);
+    
+    // Indica si algún detalle tiene producto con control de lotes O ya tiene lote cargado
+    private bool AlgunDetalleConLote => Detalles.Any(d => 
+        Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto)?.ControlaLote == true ||
+        !string.IsNullOrEmpty(d.NumeroLote));
     
     // Diccionario para guardar el factor aplicado a cada producto (para actualizar al guardar)
     private Dictionary<int, decimal> _factoresPorProducto = new();
@@ -1468,6 +1870,15 @@
                 FactorMultiplicador = d.FactorMultiplicador,
                 PorcentajeMargen = d.PorcentajeMargen,
                 PrecioVentaRef = d.PrecioVentaRef,
+                PrecioMinisterio = d.PrecioMinisterio, // Cargar precio ministerio guardado
+                ModoIngresoPersistido = d.ModoIngresoPersistido, // Cargar modo ingreso (paquete/unidad)
+                // Cargar datos de paquete del momento de la compra
+                CantidadPorPaqueteMomento = d.CantidadPorPaqueteMomento,
+                PrecioPaqueteMomento = d.PrecioPaqueteMomento,
+                PrecioMinisterioPaqueteMomento = d.PrecioMinisterioPaqueteMomento,
+                // Cargar datos de lote (FEFO)
+                NumeroLote = d.NumeroLote,
+                IdProductoLote = d.IdProductoLote,
                 // Asociar el producto para mostrar descripción en grilla
                 Producto = Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto)
             }).ToList();
@@ -1854,7 +2265,13 @@ END
             PrecioUnitario = NuevoDetalle.PrecioUnitario,
             CambioDelDia = NuevoDetalle.CambioDelDia,
             IdDepositoItem = depositoItem,
-            FechaVencimientoItem = prod.ControlarVencimiento ? FechaVencimientoItemSeleccionada : null
+            FechaVencimientoItem = (prod.ControlarVencimiento == true || prod.ControlaVencimiento == true) ? FechaVencimientoItemSeleccionada : null,
+            NumeroLote = prod.ControlaLote == true ? NumeroLoteInput : null, // Número de lote para productos controlados
+            ModoIngreso = ModoIngresoCompra, // Guardar si fue compra por paquete o unidad
+            // Guardar datos de paquete del momento de la compra
+            CantidadPorPaqueteMomento = prod.CantidadPorPaquete,
+            PrecioPaqueteMomento = prod.PrecioPaqueteGs,
+            PrecioMinisterioPaqueteMomento = prod.PrecioMinisterioPaquete
         };
         // Precio de venta de referencia convertido a moneda de la compra
     try
@@ -1915,17 +2332,19 @@ END
     }
     
     // Guardar precio de venta ingresado directamente (para actualizar al guardar)
-    if (PrecioVentaCalculado.HasValue && PrecioVentaCalculado.Value > 0)
+    // Usar siempre el valor UNITARIO interno
+    if (_precioVentaCalculadoUnitario.HasValue && _precioVentaCalculadoUnitario.Value > 0)
     {
-        _preciosVentaPorProducto[prod.IdProducto] = PrecioVentaCalculado.Value;
-        det.PrecioVentaRef = PrecioVentaCalculado.Value;
+        _preciosVentaPorProducto[prod.IdProducto] = _precioVentaCalculadoUnitario.Value;
+        det.PrecioVentaRef = _precioVentaCalculadoUnitario.Value;
     }
     
     // Guardar precio ministerio en el detalle y en el diccionario para actualizar al guardar
-    if (MostrarPrecioMinisterioEnCompras && PrecioMinisterioInput.HasValue && PrecioMinisterioInput.Value > 0)
+    // Usar el valor UNITARIO interno (_precioMinisterioUnitario)
+    if (MostrarPrecioMinisterioEnCompras && _precioMinisterioUnitario.HasValue && _precioMinisterioUnitario.Value > 0)
     {
-        det.PrecioMinisterio = PrecioMinisterioInput.Value;
-        _preciosMinisterioPorProducto[prod.IdProducto] = PrecioMinisterioInput.Value;
+        det.PrecioMinisterio = _precioMinisterioUnitario.Value;
+        _preciosMinisterioPorProducto[prod.IdProducto] = _precioMinisterioUnitario.Value;
     }
     else if (prod.PrecioMinisterio.HasValue)
     {
@@ -1934,12 +2353,14 @@ END
     }
     
     // Validar si el precio de venta supera el precio ministerio (solo si está activa la validación)
+    // Usar precios UNITARIOS para la comparación
     var precioMinValidar = det.PrecioMinisterio ?? prod.PrecioMinisterio;
-    if (ValidarPrecioMinisterio && precioMinValidar.HasValue && det.PrecioVentaRef > 0)
+    var precioVentaUnitarioValidar = _precioVentaCalculadoUnitario ?? det.PrecioVentaRef;
+    if (ValidarPrecioMinisterio && precioMinValidar.HasValue && precioVentaUnitarioValidar > 0)
     {
-        if (det.PrecioVentaRef > precioMinValidar.Value)
+        if (precioVentaUnitarioValidar > precioMinValidar.Value)
         {
-            Error = $"⚠️ Advertencia: El precio de venta ({det.PrecioVentaRef:N0} Gs) supera el Precio Ministerio ({precioMinValidar.Value:N0} Gs) para '{prod.Descripcion}'";
+            Error = $"⚠️ Advertencia: El precio de venta ({precioVentaUnitarioValidar:N0} Gs) supera el Precio Ministerio ({precioMinValidar.Value:N0} Gs) para '{prod.Descripcion}'";
         }
     }
     
@@ -1947,6 +2368,7 @@ END
     NuevoDetalle = new SistemIA.Models.CompraDetalle { Cantidad = 1, PrecioUnitario = 0 };
     IdDepositoItemSeleccionado = null;
     FechaVencimientoItemSeleccionada = null;
+    NumeroLoteInput = null; // Limpiar número de lote
     FactorMultiplicador = null;
     PorcentajeMargen = null;
     PrecioVentaCalculado = null;
@@ -2026,11 +2448,12 @@ END
     {
         if (FactorMultiplicador.HasValue && FactorMultiplicador.Value > 0 && NuevoDetalle.PrecioUnitario > 0)
         {
-            PrecioVentaCalculado = Math.Round(NuevoDetalle.PrecioUnitario * FactorMultiplicador.Value, 0);
+            // Calcular precio de venta UNITARIO (interno)
+            _precioVentaCalculadoUnitario = Math.Round(NuevoDetalle.PrecioUnitario * FactorMultiplicador.Value, 0);
         }
         else
         {
-            PrecioVentaCalculado = null;
+            _precioVentaCalculadoUnitario = null;
         }
     }
 
@@ -2101,17 +2524,20 @@ END
     private void OnPrecioVentaInputChanged(ChangeEventArgs e)
     {
         var valor = e.Value?.ToString();
-        if (decimal.TryParse(valor, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precioVenta) && precioVenta > 0)
+        if (decimal.TryParse(valor, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precioVentaIngresado) && precioVentaIngresado > 0)
         {
-            PrecioVentaCalculado = precioVenta;
+            // El setter de PrecioVentaCalculado convierte automáticamente a unitario si es modo paquete
+            PrecioVentaCalculado = precioVentaIngresado;
             
-            // Calcular Factor y Markup basados en el precio de venta
-            if (NuevoDetalle.PrecioUnitario > 0)
+            // Para calcular Factor y Markup, usar el precio de venta UNITARIO (interno)
+            var precioVentaUnitario = _precioVentaCalculadoUnitario ?? 0;
+            
+            if (NuevoDetalle.PrecioUnitario > 0 && precioVentaUnitario > 0)
             {
                 _actualizandoFactorPorcentaje = true;
                 
-                // Factor = PrecioVenta / Costo
-                FactorMultiplicador = Math.Round(precioVenta / NuevoDetalle.PrecioUnitario, 4);
+                // Factor = PrecioVentaUnitario / CostoUnitario
+                FactorMultiplicador = Math.Round(precioVentaUnitario / NuevoDetalle.PrecioUnitario, 4);
                 
                 // Markup = (Factor - 1) * 100
                 PorcentajeMargen = Math.Round((FactorMultiplicador.Value - 1) * 100, 2);
@@ -2340,7 +2766,8 @@ END
     // Sin validación de Caja en Compras
 
         await using var ctx = await DbFactory.CreateDbContextAsync();
-        using var trx = await ctx.Database.BeginTransactionAsync();
+        // NOTA: No usar transacción externa porque LoteService e InventarioService crean
+        // sus propias conexiones, lo que causa deadlock. Cada SaveChangesAsync es atómico.
         try
         {
             Compra.FechaCreacion = DateTime.Now;
@@ -2463,18 +2890,54 @@ END
             Compra.TipoPago = null;
             Compra.TipoDocumentoOperacion = null;
             
+            // ⚠️ CRÍTICO: Limpiar la colección Detalles del modelo para evitar que EF intente insertarlos
+            // Los detalles se insertarán manualmente después para evitar error de IDENTITY_INSERT
+            Compra.Detalles.Clear();
+            
             // Asegurar que IdCompra sea 0 para que EF genere uno nuevo
             Compra.IdCompra = 0;
+            Console.WriteLine($"[COMPRAS] Insertando cabecera con IdCompra={Compra.IdCompra}, Detalles.Count en modelo={Compra.Detalles.Count}");
             ctx.Compras.Add(Compra);
             await ctx.SaveChangesAsync();
+            Console.WriteLine($"[COMPRAS] Compra #{Compra.IdCompra} guardada, ahora insertando {Detalles.Count} detalles...");
 
+            // Crear nuevos objetos detalle para evitar problemas de identity tracking
+            var detallesNuevos = new List<SistemIA.Models.CompraDetalle>();
             foreach (var d in Detalles)
             {
-                d.IdCompraDetalle = 0; // Asegurar que EF genere un nuevo ID
-                d.IdCompra = Compra.IdCompra;
-                d.Producto = null; // Evitar tracking conflict
-                d.UsuarioCreacion = _usuarioNombre ?? d.UsuarioCreacion ?? "Sistema";
-                ctx.ComprasDetalles.Add(d);
+                // Log para debug
+                Console.WriteLine($"[COMPRAS] Detalle original IdCompraDetalle={d.IdCompraDetalle}, IdProducto={d.IdProducto}");
+                
+                var detNuevo = new SistemIA.Models.CompraDetalle
+                {
+                    // NO asignar IdCompraDetalle - EF lo generará automáticamente
+                    IdCompra = Compra.IdCompra,
+                    IdProducto = d.IdProducto,
+                    PrecioUnitario = d.PrecioUnitario,
+                    Cantidad = d.Cantidad,
+                    Importe = d.Importe,
+                    IVA10 = d.IVA10,
+                    IVA5 = d.IVA5,
+                    Exenta = d.Exenta,
+                    Grabado10 = d.Grabado10,
+                    Grabado5 = d.Grabado5,
+                    PrecioVentaRef = d.PrecioVentaRef,
+                    CambioDelDia = d.CambioDelDia,
+                    IdDepositoItem = d.IdDepositoItem,
+                    FechaVencimientoItem = d.FechaVencimientoItem,
+                    NumeroLote = d.NumeroLote,
+                    FactorMultiplicador = d.FactorMultiplicador,
+                    PorcentajeMargen = d.PorcentajeMargen,
+                    PrecioMinisterio = d.PrecioMinisterio,
+                    ModoIngreso = d.ModoIngreso,
+                    CantidadPorPaqueteMomento = d.CantidadPorPaqueteMomento,
+                    PrecioPaqueteMomento = d.PrecioPaqueteMomento,
+                    PrecioMinisterioPaqueteMomento = d.PrecioMinisterioPaqueteMomento,
+                    UsuarioCreacion = _usuarioNombre ?? "Sistema",
+                    FechaCreacion = DateTime.Now
+                };
+                ctx.ComprasDetalles.Add(detNuevo);
+                detallesNuevos.Add(detNuevo);
             }
             await ctx.SaveChangesAsync();
 
@@ -2485,15 +2948,97 @@ END
             var turnoActual = cajaActual?.TurnoActual ?? 1;
             var idCajaActual = cajaActual?.IdCaja;
             
-            foreach (var d in Detalles)
+            // Cargar info de control de lotes de productos comprados
+            var productosIdsCompra = detallesNuevos.Select(d => d.IdProducto).ToList();
+            var productosConLote = await ctx.Productos.AsNoTracking()
+                .Where(p => productosIdsCompra.Contains(p.IdProducto))
+                .Select(p => new { p.IdProducto, p.ControlaLote, p.ControlaVencimiento })
+                .ToListAsync();
+            
+            foreach (var d in detallesNuevos)
             {
                 var depositoAUsar = d.IdDepositoItem ?? Compra.IdDeposito!.Value;
+                
+                // Verificar si el producto controla lotes
+                var prodInfo = productosConLote.FirstOrDefault(p => p.IdProducto == d.IdProducto);
+                
+                if (prodInfo != null && prodInfo.ControlaLote)
+                {
+                    // ========== LÓGICA DE LOTES: Crear o actualizar lote ==========
+                    ProductoLote? lote = null;
+                    
+                    // Si se especificó número de lote, buscar existente o crear
+                    if (!string.IsNullOrWhiteSpace(d.NumeroLote))
+                    {
+                        lote = await LoteService.BuscarLotePorNumeroAsync(d.IdProducto, depositoAUsar, d.NumeroLote);
+                        
+                        if (lote != null)
+                        {
+                            // Lote existente - incrementar stock
+                            await LoteService.IncrementarStockLoteAsync(
+                                lote.IdProductoLote,
+                                d.Cantidad,
+                                "Compra",
+                                Compra.IdCompra,
+                                d.IdCompraDetalle,
+                                $"Compra #{Compra.IdCompra}",
+                                _usuarioNombre ?? "Sistema"
+                            );
+                            Console.WriteLine($"[LOTES] Producto {d.IdProducto}: Incrementado {d.Cantidad} al lote existente {lote.NumeroLote}");
+                        }
+                        else
+                        {
+                            // Crear nuevo lote (firma: idProducto, idDeposito, numeroLote, fechaVencimiento, stockInicial, costoUnitario, idCompra, idCompraDetalle, usuario)
+                            lote = await LoteService.CrearLoteAsync(
+                                d.IdProducto,
+                                depositoAUsar,
+                                d.NumeroLote,
+                                d.FechaVencimientoItem,
+                                d.Cantidad,
+                                d.PrecioUnitario,
+                                Compra.IdCompra,
+                                d.IdCompraDetalle,
+                                _usuarioNombre ?? "Sistema"
+                            );
+                            Console.WriteLine($"[LOTES] Producto {d.IdProducto}: Creado nuevo lote {d.NumeroLote} con {d.Cantidad} unidades (vence: {d.FechaVencimientoItem:dd/MM/yyyy})");
+                        }
+                    }
+                    else
+                    {
+                        // Sin número de lote especificado - generar automático
+                        var numeroLoteAuto = $"C{Compra.IdCompra}-{DateTime.Now:yyyyMMdd}";
+                        lote = await LoteService.CrearLoteAsync(
+                            d.IdProducto,
+                            depositoAUsar,
+                            numeroLoteAuto,
+                            d.FechaVencimientoItem,
+                            d.Cantidad,
+                            d.PrecioUnitario,
+                            Compra.IdCompra,
+                            d.IdCompraDetalle,
+                            _usuarioNombre ?? "Sistema"
+                        );
+                        d.NumeroLote = numeroLoteAuto;
+                        Console.WriteLine($"[LOTES] Producto {d.IdProducto}: Creado lote automático {numeroLoteAuto} con {d.Cantidad} unidades");
+                    }
+                    
+                    // Vincular el detalle de compra con el lote creado/actualizado
+                    if (lote != null)
+                    {
+                        d.IdProductoLote = lote.IdProductoLote;
+                    }
+                }
+                
+                // Ajustar stock general (siempre, con o sin lote)
                 await Inventario.AjustarStockAsync(d.IdProducto, depositoAUsar, d.Cantidad, 1, $"Compra #{Compra.IdCompra}", _usuarioNombre ?? "Sistema",
                     Compra.IdSucursal, idCajaActual, fechaCajaActual, turnoActual);
             }
+            
+            // Guardar cambios en detalles (IdProductoLote, NumeroLote)
+            await ctx.SaveChangesAsync();
 
             // Actualizar costo del producto, factor, precio de venta y fecha de vencimiento si aplica
-            foreach (var d in Detalles)
+            foreach (var d in detallesNuevos)
             {
                 var prod = await ctx.Productos.FirstOrDefaultAsync(x => x.IdProducto == d.IdProducto);
                 if (prod == null) continue;
@@ -2514,29 +3059,69 @@ END
                     try { costoParaProducto = await ConvertirMonedaAsync(costoOrigen, idMonCompra, idMonProd); }
                     catch { costoParaProducto = costoOrigen; }
                 }
-                prod.CostoUnitarioGs = Math.Round(costoParaProducto, 4);
+                // ========== ACTUALIZAR PRECIOS SEGÚN MODO INGRESO (PAQUETE vs UNIDAD) ==========
+                var cantPorPaq = prod.CantidadPorPaquete ?? 1;
+                var esModoIngresoPaquete = d.ModoIngreso == "paquete" && cantPorPaq > 1;
                 
-                // Si se ingresó precio de venta directamente, usarlo y calcular factor
-                if (_preciosVentaPorProducto.TryGetValue(d.IdProducto, out var precioVentaGuardado) && precioVentaGuardado > 0)
+                if (esModoIngresoPaquete)
                 {
-                    prod.PrecioUnitarioGs = Math.Round(precioVentaGuardado, 0);
-                    // Calcular y guardar el factor basado en el precio de venta
-                    if (costoParaProducto > 0)
+                    // MODO PAQUETE: Actualizar precios de paquete
+                    // costoParaProducto viene como costo unitario (pq ya se dividió), multiplicamos para obtener costo total del paquete
+                    var costoPaqueteTotal = Math.Round(costoParaProducto * cantPorPaq, 4);
+                    prod.CostoPaqueteGs = costoPaqueteTotal;
+                    
+                    // Si se ingresó precio de venta (para paquete), calcular factor paquete
+                    if (_preciosVentaPorProducto.TryGetValue(d.IdProducto, out var precioVentaPaq) && precioVentaPaq > 0)
                     {
-                        prod.FactorMultiplicador = Math.Round(precioVentaGuardado / costoParaProducto, 4);
+                        // El precio de venta ingresado en modo paquete es el precio total del paquete
+                        var precioPaqueteTotal = Math.Round(precioVentaPaq * cantPorPaq, 0);
+                        prod.PrecioPaqueteGs = precioPaqueteTotal;
+                        if (costoPaqueteTotal > 0)
+                        {
+                            prod.FactorPaquete = Math.Round(precioPaqueteTotal / costoPaqueteTotal, 4);
+                            prod.MarkupPaquetePct = Math.Round((prod.FactorPaquete.Value - 1) * 100, 2);
+                        }
+                    }
+                    else if (_factoresPorProducto.TryGetValue(d.IdProducto, out var factorPaq) && factorPaq > 0)
+                    {
+                        prod.FactorPaquete = factorPaq;
+                        prod.MarkupPaquetePct = Math.Round((factorPaq - 1) * 100, 2);
+                        prod.PrecioPaqueteGs = Math.Round(costoPaqueteTotal * factorPaq, 0);
+                    }
+                    
+                    // Actualizar Precio Ministerio Paquete si se especificó
+                    if (_preciosMinisterioPorProducto.TryGetValue(d.IdProducto, out var precioMinPaq) && precioMinPaq > 0)
+                    {
+                        prod.PrecioMinisterioPaquete = Math.Round(precioMinPaq * cantPorPaq, 0);
                     }
                 }
-                // Si se especificó factor multiplicador, actualizar Factor y PrecioUnitarioGs
-                else if (_factoresPorProducto.TryGetValue(d.IdProducto, out var factorGuardado) && factorGuardado > 0)
+                else
                 {
-                    prod.FactorMultiplicador = factorGuardado;
-                    prod.PrecioUnitarioGs = Math.Round(costoParaProducto * factorGuardado, 0);
-                }
-                
-                // Actualizar Precio Ministerio si se especificó en el detalle
-                if (_preciosMinisterioPorProducto.TryGetValue(d.IdProducto, out var precioMinGuardado) && precioMinGuardado > 0)
-                {
-                    prod.PrecioMinisterio = precioMinGuardado;
+                    // MODO UNIDAD: Actualizar precios unitarios (comportamiento original)
+                    prod.CostoUnitarioGs = Math.Round(costoParaProducto, 4);
+                    
+                    // Si se ingresó precio de venta directamente, usarlo y calcular factor
+                    if (_preciosVentaPorProducto.TryGetValue(d.IdProducto, out var precioVentaGuardado) && precioVentaGuardado > 0)
+                    {
+                        prod.PrecioUnitarioGs = Math.Round(precioVentaGuardado, 0);
+                        // Calcular y guardar el factor basado en el precio de venta
+                        if (costoParaProducto > 0)
+                        {
+                            prod.FactorMultiplicador = Math.Round(precioVentaGuardado / costoParaProducto, 4);
+                        }
+                    }
+                    // Si se especificó factor multiplicador, actualizar Factor y PrecioUnitarioGs
+                    else if (_factoresPorProducto.TryGetValue(d.IdProducto, out var factorGuardado) && factorGuardado > 0)
+                    {
+                        prod.FactorMultiplicador = factorGuardado;
+                        prod.PrecioUnitarioGs = Math.Round(costoParaProducto * factorGuardado, 0);
+                    }
+                    
+                    // Actualizar Precio Ministerio si se especificó en el detalle
+                    if (_preciosMinisterioPorProducto.TryGetValue(d.IdProducto, out var precioMinGuardado) && precioMinGuardado > 0)
+                    {
+                        prod.PrecioMinisterio = precioMinGuardado;
+                    }
                 }
                 
                 prod.FechaModificacion = DateTime.Now;
@@ -2595,7 +3180,7 @@ END
 
             // Sin incremento automático de numeración de Caja en Compras
 
-            await trx.CommitAsync();
+            // Transacción completada exitosamente (cada SaveChangesAsync ya es atómico)
 
             // Registrar en auditoría con contexto completo
             var sucAudit = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == Compra.IdSucursal);
@@ -2667,7 +3252,15 @@ END
                 Grabado10 = d.Grabado10,
                 Grabado5 = d.Grabado5,
                 PrecioVentaRef = d.PrecioVentaRef,
-                PrecioMinisterio = d.PrecioMinisterio
+                PrecioMinisterio = d.PrecioMinisterio,
+                ModoIngresoPersistido = d.ModoIngresoPersistido, // Preservar modo paquete/unidad para impresión
+                // Preservar datos de paquete del momento de la compra
+                CantidadPorPaqueteMomento = d.CantidadPorPaqueteMomento,
+                PrecioPaqueteMomento = d.PrecioPaqueteMomento,
+                PrecioMinisterioPaqueteMomento = d.PrecioMinisterioPaqueteMomento,
+                // Preservar datos de lote (FEFO)
+                NumeroLote = d.NumeroLote,
+                IdProductoLote = d.IdProductoLote
             }).ToList();
 
             Ok = $"Compra #{Compra.IdCompra} guardada";
@@ -2719,12 +3312,28 @@ END
         }
         catch (Exception ex)
         {
-            await trx.RollbackAsync();
-            Error = (ex.InnerException?.Message ?? ex.Message);
+            // No hay transacción externa que hacer rollback - cada operación ya es atómica
+            
+            // Obtener mensaje de error detallado
+            var mensajeDetallado = ex.Message;
+            if (ex.InnerException != null)
+            {
+                mensajeDetallado = ex.InnerException.Message;
+                if (ex.InnerException.InnerException != null)
+                {
+                    mensajeDetallado += " | " + ex.InnerException.InnerException.Message;
+                }
+            }
+            
+            Error = mensajeDetallado;
+            
+            // Log a consola para debugging
+            Console.WriteLine($"[COMPRAS ERROR] {DateTime.Now:HH:mm:ss} - {ex.GetType().Name}: {mensajeDetallado}");
+            Console.WriteLine($"[COMPRAS ERROR] StackTrace: {ex.StackTrace}");
             
             // Registrar error para tracking IA
             _ = TrackingService.RegistrarErrorAsync(
-                descripcion: $"Error al guardar compra: {Error}",
+                descripcion: $"Error al guardar compra: {mensajeDetallado}",
                 mensajeError: ex.Message,
                 stackTrace: ex.StackTrace,
                 componente: "Compras");
@@ -2847,37 +3456,73 @@ END
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
 
-            // Encabezados de tabla (incluir P.Ministerio si modo farmacia activo)
+            // Encabezados de tabla (incluir P.Ministerio y Lote si modo farmacia activo)
             var mostrarPMinImpresion = _configSistema?.FarmaciaModoActivo == true && _configSistema?.FarmaciaMostrarPrecioMinisterioEnCompras == true;
+            var mostrarLoteImpresion = _configSistema?.FarmaciaModoActivo == true;
             sb.AppendLine("  <table class=\"table table-sm table-factura\">");
             if (mostrarPMinImpresion)
             {
-                sb.AppendLine("    <thead><tr><th>Descripción</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">P.Venta</th><th class=\"text-end\">P.Ministerio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
+                if (mostrarLoteImpresion)
+                    sb.AppendLine("    <thead><tr><th>Descripción</th><th>Lote</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">P.Venta</th><th class=\"text-end\">P.Ministerio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
+                else
+                    sb.AppendLine("    <thead><tr><th>Descripción</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">P.Venta</th><th class=\"text-end\">P.Ministerio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
             }
             else
             {
-                sb.AppendLine("    <thead><tr><th>Descripción</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
+                if (mostrarLoteImpresion)
+                    sb.AppendLine("    <thead><tr><th>Descripción</th><th>Lote</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
+                else
+                    sb.AppendLine("    <thead><tr><th>Descripción</th><th class=\"text-end\">Cant.</th><th class=\"text-end\">Precio</th><th class=\"text-end\">Exenta</th><th class=\"text-end\">Grab. 5%</th><th class=\"text-end\">Grab. 10%</th><th class=\"text-end\">Subtotal</th></tr></thead>");
             }
             sb.AppendLine("    <tbody>");
             foreach (var d in dets)
             {
                 var prod = Productos.FirstOrDefault(p => p.IdProducto == d.IdProducto);
                 var desc = prod?.Descripcion ?? $"Producto #{d.IdProducto}";
-                // Información de paquetes
-                var cantPaq = prod?.CantidadPorPaquete ?? 1;
-                var esPaq = (prod?.UnidadMedidaCodigo == "006" || prod?.UnidadMedidaCodigo == "005") && cantPaq > 1;
-                var cantStr = esPaq 
-                    ? $"{d.Cantidad:N0} ({Math.Floor(d.Cantidad / cantPaq):N0} paq.)" 
-                    : d.Cantidad.ToString("N2");
+                // Información de paquetes - usar valor guardado del momento de la compra
+                var cantPaq = d.CantidadPorPaqueteMomento ?? prod?.CantidadPorPaquete ?? 1;
+                
+                // Multiplicador para precios según modo de ingreso (paquete o unidad)
+                var fueCompraPorPaquete = d.ModoIngreso == "paquete" && cantPaq > 1;
+                var multPrecio = fueCompraPorPaquete ? cantPaq : 1;
+                
+                // Descripción: agregar indicador de paquete si fue compra por paquete
+                var descMostrar = fueCompraPorPaquete 
+                    ? $"{desc} (Paq x{(int)cantPaq})" 
+                    : desc;
+                
+                // Cantidad: si fue por paquete mostrar paquetes, si no unidades
+                var cantidadPaquetes = fueCompraPorPaquete ? (d.Cantidad / cantPaq) : 0;
+                var cantStr = fueCompraPorPaquete 
+                    ? $"{cantidadPaquetes:N0} paq ({d.Cantidad:N0} u)" 
+                    : d.Cantidad.ToString("N0");
+                
+                // Precio de compra mostrado según modo de ingreso
+                var precioCompraMostrar = d.PrecioUnitario * multPrecio;
+                
+                // Calcular precios de venta y ministerio según modo de ingreso
+                var precioVentaMostrar = d.PrecioVentaRef * multPrecio;
+                var precioMinMostrar = d.PrecioMinisterio.HasValue 
+                    ? d.PrecioMinisterio.Value * multPrecio 
+                    : (prod?.PrecioMinisterio.HasValue == true ? prod.PrecioMinisterio.Value * multPrecio : (decimal?)null);
+                
+                // Lote (FEFO)
+                var loteStr = !string.IsNullOrWhiteSpace(d.NumeroLote) ? d.NumeroLote : "-";
                 
                 if (mostrarPMinImpresion)
                 {
-                    var pMinStr = d.PrecioMinisterio.HasValue ? d.PrecioMinisterio.Value.ToString(formato) : (prod?.PrecioMinisterio.HasValue == true ? prod.PrecioMinisterio.Value.ToString(formato) : "-");
-                    sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{cantStr}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.PrecioVentaRef.ToString(formato)}</td><td class=\"text-end\">{pMinStr}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                    var pMinStr = precioMinMostrar.HasValue ? precioMinMostrar.Value.ToString(formato) : "-";
+                    if (mostrarLoteImpresion)
+                        sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(descMostrar)}</td><td>{System.Net.WebUtility.HtmlEncode(loteStr)}</td><td class=\"text-end\">{cantStr}</td><td class=\"text-end\">{precioCompraMostrar.ToString(formato)}</td><td class=\"text-end\">{precioVentaMostrar.ToString(formato)}</td><td class=\"text-end\">{pMinStr}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                    else
+                        sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(descMostrar)}</td><td class=\"text-end\">{cantStr}</td><td class=\"text-end\">{precioCompraMostrar.ToString(formato)}</td><td class=\"text-end\">{precioVentaMostrar.ToString(formato)}</td><td class=\"text-end\">{pMinStr}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
                 }
                 else
                 {
-                    sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td class=\"text-end\">{cantStr}</td><td class=\"text-end\">{d.PrecioUnitario.ToString(formato)}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                    if (mostrarLoteImpresion)
+                        sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(descMostrar)}</td><td>{System.Net.WebUtility.HtmlEncode(loteStr)}</td><td class=\"text-end\">{cantStr}</td><td class=\"text-end\">{precioCompraMostrar.ToString(formato)}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
+                    else
+                        sb.AppendLine($"      <tr><td>{System.Net.WebUtility.HtmlEncode(descMostrar)}</td><td class=\"text-end\">{cantStr}</td><td class=\"text-end\">{precioCompraMostrar.ToString(formato)}</td><td class=\"text-end\">{d.Exenta.ToString(formato)}</td><td class=\"text-end\">{d.Grabado5.ToString(formato)}</td><td class=\"text-end\">{d.Grabado10.ToString(formato)}</td><td class=\"text-end\">{d.Importe.ToString(formato)}</td></tr>");
                 }
             }
             sb.AppendLine("    </tbody>");
@@ -3563,10 +4208,10 @@ END
         ProductoImagenUrl = p.Foto;
         
         // ========== REINICIAR MODO PAQUETE/UNIDAD ==========
-        // Si el producto se vende por paquete/caja, inicializar el modo
-        var esPaqueteOCaja = p.UnidadMedidaCodigo == "006" || p.UnidadMedidaCodigo == "005";
+        // Si el producto se vende por paquete, inicializar el modo
+        var esPaquete = p.UnidadMedidaCodigo == "006";
         var cantPorPaq = p.CantidadPorPaquete ?? 1;
-        if (esPaqueteOCaja && cantPorPaq > 1)
+        if (esPaquete && cantPorPaq > 1)
         {
             ModoIngresoCompra = "paquete";
             _cantidadIngresadaCompra = 1;
@@ -3581,7 +4226,21 @@ END
         
         // IMPORTANTE: CostoUnitarioGs y PrecioUnitarioGs SIEMPRE están en Guaraníes por definición del campo
         // No importa qué moneda tenga asignada el producto en IdMonedaPrecio
-        var precioBaseEnGs = p.CostoUnitarioGs ?? p.PrecioUnitarioGs;
+        
+        // ========== SELECCIONAR PRECIO SEGÚN MODO PAQUETE/UNIDAD ==========
+        // Si está en modo paquete Y el producto tiene CostoPaqueteGs, usar ese precio para el paquete completo
+        // El precio por paquete se divide entre la cantidad de unidades para obtener el costo unitario real
+        decimal precioBaseEnGs;
+        if (ModoIngresoCompra == "paquete" && p.CostoPaqueteGs.HasValue && p.CostoPaqueteGs > 0 && cantPorPaq > 1)
+        {
+            // CostoPaqueteGs es el precio total del paquete, lo dividimos entre unidades para tener costo unitario
+            precioBaseEnGs = p.CostoPaqueteGs.Value / cantPorPaq;
+        }
+        else
+        {
+            // Modo unidad o producto sin precio de paquete: usar costo unitario normal
+            precioBaseEnGs = p.CostoUnitarioGs ?? p.PrecioUnitarioGs;
+        }
         
         var idMonedaCompra = Compra.IdMoneda;
         decimal precio = precioBaseEnGs;
@@ -3687,13 +4346,14 @@ END
         NuevoDetalle.Importe = totalLinea;
 
         // Precargar Precio Ministerio del producto si existe y el modo farmacia está activo
+        // p.PrecioMinisterio es el precio UNITARIO, asignar directamente al campo interno
         if (MostrarPrecioMinisterioEnCompras && p.PrecioMinisterio.HasValue)
         {
-            PrecioMinisterioInput = p.PrecioMinisterio.Value;
+            _precioMinisterioUnitario = p.PrecioMinisterio.Value;
         }
         else
         {
-            PrecioMinisterioInput = null;
+            _precioMinisterioUnitario = null;
         }
 
         // Asignar depósito predeterminado del producto por ID (no por nombre)
@@ -3708,15 +4368,16 @@ END
         }
 
         // Cargar precio de venta actual del producto y calcular factor/markup
+        // PrecioVentaRef es el precio de venta UNITARIO, asignar directamente al campo interno
         if (NuevoDetalle.PrecioVentaRef > 0 && NuevoDetalle.PrecioUnitario > 0)
         {
-            PrecioVentaCalculado = Math.Round(NuevoDetalle.PrecioVentaRef, 0);
+            _precioVentaCalculadoUnitario = Math.Round(NuevoDetalle.PrecioVentaRef, 0);
             FactorMultiplicador = Math.Round(NuevoDetalle.PrecioVentaRef / NuevoDetalle.PrecioUnitario, 4);
             PorcentajeMargen = Math.Round((FactorMultiplicador.Value - 1) * 100, 2);
         }
         else
         {
-            PrecioVentaCalculado = null;
+            _precioVentaCalculadoUnitario = null;
             FactorMultiplicador = null;
             PorcentajeMargen = null;
         }
@@ -4439,6 +5100,13 @@ END
         _imagenProductoPendiente = null;
         _previewImagenProducto = null;
         
+        // Limpiar variables de precios
+        _factorPrecioPaqueteNP = null;
+        _porcentajePrecioPaqueteNP = null;
+        _factorPrecioNP = null;
+        _porcentajePrecioNP = null;
+        _actualizandoPrecioPaqueteNP = false;
+        
         // Inicializar producto con valores por defecto
         _nuevoProducto = new SistemIA.Models.Producto
         {
@@ -4446,7 +5114,8 @@ END
             Activo = true,
             UnidadMedidaCodigo = "77", // Unidad
             UndMedida = "UNIDAD",
-            IdDepositoPredeterminado = 1 // Depósito predeterminado oculto
+            IdDepositoPredeterminado = 1, // Depósito predeterminado oculto
+            PrecioUnitarioGs = 0
         };
         
         // Cargar catálogos si no están cargados
@@ -4591,9 +5260,8 @@ END
                 }
             }
 
-            // Valores por defecto adicionales
-            _nuevoProducto.CostoUnitarioGs = 0;
-            _nuevoProducto.PrecioUnitarioGs = 0;
+            // Valores por defecto adicionales (solo si no se especificaron)
+            // Los precios ya vienen desde el formulario, no sobrescribir
             _nuevoProducto.Stock = 0;
             _nuevoProducto.StockMinimo = 0;
 
@@ -4637,6 +5305,17 @@ END
         }
     }
     
+    // ============ Método para cambio de control de lote ============
+    private void OnControlaLoteChanged()
+    {
+        // Cuando se activa el control de lote, activar también control de vencimiento
+        // ya que generalmente van juntos para productos farmacéuticos
+        if (_nuevoProducto.ControlaLote)
+        {
+            _nuevoProducto.ControlarVencimiento = true;
+        }
+    }
+    
     // ============ Método para cambio de unidad de medida ============
     private void OnUnidadMedidaChanged()
     {
@@ -4651,17 +5330,330 @@ END
             _ => "UNIDAD"
         };
         
-        // Si NO es paquete/caja, limpiar campos de paquete
-        if (_nuevoProducto.UnidadMedidaCodigo != "006" && _nuevoProducto.UnidadMedidaCodigo != "005")
+        bool esPaquete = _nuevoProducto.UnidadMedidaCodigo == "006";
+        
+        if (esPaquete)
         {
+            // CAMBIÓ A PAQUETE - Inicializar campos de paquete
+            if (_nuevoProducto.CantidadPorPaquete == null || _nuevoProducto.CantidadPorPaquete < 1)
+            {
+                _nuevoProducto.CantidadPorPaquete = 10;
+            }
+            
+            // Limpiar precios anteriores para empezar de cero
+            _nuevoProducto.CostoPaqueteGs = null;
+            _nuevoProducto.PrecioPaqueteGs = null;
+            _nuevoProducto.PrecioMinisterioPaquete = null;
+            _nuevoProducto.FactorPaquete = null;
+            _nuevoProducto.MarkupPaquetePct = null;
+            _factorPrecioPaqueteNP = null;
+            _porcentajePrecioPaqueteNP = null;
+            
+            // Limpiar precios unitarios (se calcularán desde paquete)
+            _nuevoProducto.CostoUnitarioGs = null;
+            _nuevoProducto.PrecioUnitarioGs = 0;
+            _nuevoProducto.PrecioMinisterio = null;
+            _nuevoProducto.FactorMultiplicador = null;
+            _factorPrecioNP = null;
+            _porcentajePrecioNP = null;
+        }
+        else
+        {
+            // CAMBIÓ A UNIDAD NORMAL - Limpiar campos de paquete
             _nuevoProducto.CantidadPorPaquete = null;
             _nuevoProducto.PermiteVentaPorUnidad = false;
+            _nuevoProducto.CostoPaqueteGs = null;
+            _nuevoProducto.PrecioPaqueteGs = null;
+            _nuevoProducto.PrecioMinisterioPaquete = null;
+            _nuevoProducto.FactorPaquete = null;
+            _nuevoProducto.MarkupPaquetePct = null;
+            _factorPrecioPaqueteNP = null;
+            _porcentajePrecioPaqueteNP = null;
+            
+            // Limpiar precios unitarios para empezar de cero
+            _nuevoProducto.CostoUnitarioGs = null;
+            _nuevoProducto.PrecioUnitarioGs = 0;
+            _nuevoProducto.PrecioMinisterio = null;
+            _nuevoProducto.FactorMultiplicador = null;
+            _factorPrecioNP = null;
+            _porcentajePrecioNP = null;
         }
-        else if (_nuevoProducto.CantidadPorPaquete == null)
+        
+        // Forzar actualización de la UI
+        StateHasChanged();
+    }
+    
+    // ============ Métodos para precios de paquete en nuevo producto ============
+    
+    private void OnCostoPaqueteNPChanged(ChangeEventArgs e)
+    {
+        if (_actualizandoPrecioPaqueteNP) return;
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var costo))
         {
-            // Valor inicial sugerido para paquete/caja
-            _nuevoProducto.CantidadPorPaquete = 10;
+            _nuevoProducto.CostoPaqueteGs = costo;
+            // Si hay factor, recalcular precio paquete
+            if (_factorPrecioPaqueteNP.HasValue && _factorPrecioPaqueteNP.Value > 0 && costo > 0)
+            {
+                _actualizandoPrecioPaqueteNP = true;
+                _nuevoProducto.PrecioPaqueteGs = Math.Round(costo * _factorPrecioPaqueteNP.Value, 0);
+                _actualizandoPrecioPaqueteNP = false;
+            }
+            // Si hay porcentaje, recalcular precio paquete
+            else if (_porcentajePrecioPaqueteNP.HasValue && costo > 0)
+            {
+                _actualizandoPrecioPaqueteNP = true;
+                _nuevoProducto.PrecioPaqueteGs = Math.Round(costo * (1 + _porcentajePrecioPaqueteNP.Value / 100), 0);
+                _actualizandoPrecioPaqueteNP = false;
+            }
+            // Calcular costo unitario desde costo paquete
+            RecalcularPreciosUnitariosNPDesdesPaquete();
         }
+        else
+        {
+            _nuevoProducto.CostoPaqueteGs = null;
+        }
+    }
+
+    private void OnFactorPaqueteNPChanged(ChangeEventArgs e)
+    {
+        if (_actualizandoPrecioPaqueteNP) return;
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var factor) && factor > 0)
+        {
+            _factorPrecioPaqueteNP = factor;
+            _nuevoProducto.FactorPaquete = factor;
+            _actualizandoPrecioPaqueteNP = true;
+            // Calcular porcentaje equivalente: (factor - 1) * 100
+            _porcentajePrecioPaqueteNP = Math.Round((factor - 1) * 100, 2);
+            _nuevoProducto.MarkupPaquetePct = _porcentajePrecioPaqueteNP;
+            // Calcular precio si hay costo
+            if (_nuevoProducto.CostoPaqueteGs.HasValue && _nuevoProducto.CostoPaqueteGs.Value > 0)
+            {
+                _nuevoProducto.PrecioPaqueteGs = Math.Round(_nuevoProducto.CostoPaqueteGs.Value * factor, 0);
+            }
+            _actualizandoPrecioPaqueteNP = false;
+            
+            // Sincronizar factor y porcentaje a precios unitarios
+            _factorPrecioNP = factor;
+            _nuevoProducto.FactorMultiplicador = factor;
+            _porcentajePrecioNP = _porcentajePrecioPaqueteNP;
+            
+            // Recalcular precios unitarios
+            RecalcularPreciosUnitariosNPDesdesPaquete();
+        }
+        else
+        {
+            _factorPrecioPaqueteNP = null;
+            _nuevoProducto.FactorPaquete = null;
+        }
+    }
+
+    private void OnPorcentajePaqueteNPChanged(ChangeEventArgs e)
+    {
+        if (_actualizandoPrecioPaqueteNP) return;
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var porcentaje))
+        {
+            _porcentajePrecioPaqueteNP = porcentaje;
+            _nuevoProducto.MarkupPaquetePct = porcentaje;
+            _actualizandoPrecioPaqueteNP = true;
+            // Calcular factor equivalente: 1 + porcentaje/100
+            _factorPrecioPaqueteNP = Math.Round(1 + porcentaje / 100, 4);
+            _nuevoProducto.FactorPaquete = _factorPrecioPaqueteNP;
+            // Calcular precio si hay costo
+            if (_nuevoProducto.CostoPaqueteGs.HasValue && _nuevoProducto.CostoPaqueteGs.Value > 0)
+            {
+                _nuevoProducto.PrecioPaqueteGs = Math.Round(_nuevoProducto.CostoPaqueteGs.Value * (1 + porcentaje / 100), 0);
+            }
+            _actualizandoPrecioPaqueteNP = false;
+            
+            // Sincronizar factor y porcentaje a precios unitarios
+            _factorPrecioNP = _factorPrecioPaqueteNP;
+            _nuevoProducto.FactorMultiplicador = _factorPrecioPaqueteNP;
+            _porcentajePrecioNP = porcentaje;
+            
+            // Recalcular precios unitarios
+            RecalcularPreciosUnitariosNPDesdesPaquete();
+        }
+        else
+        {
+            _porcentajePrecioPaqueteNP = null;
+            _nuevoProducto.MarkupPaquetePct = null;
+        }
+    }
+
+    private void OnPrecioPaqueteNPChanged(ChangeEventArgs e)
+    {
+        if (_actualizandoPrecioPaqueteNP) return;
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precio))
+        {
+            _nuevoProducto.PrecioPaqueteGs = precio;
+            // Si hay costo paquete, recalcular factor y porcentaje
+            if (_nuevoProducto.CostoPaqueteGs.HasValue && _nuevoProducto.CostoPaqueteGs.Value > 0)
+            {
+                _actualizandoPrecioPaqueteNP = true;
+                var costo = _nuevoProducto.CostoPaqueteGs.Value;
+                _factorPrecioPaqueteNP = Math.Round(precio / costo, 4);
+                _nuevoProducto.FactorPaquete = _factorPrecioPaqueteNP;
+                _porcentajePrecioPaqueteNP = Math.Round((precio / costo - 1) * 100, 2);
+                _nuevoProducto.MarkupPaquetePct = _porcentajePrecioPaqueteNP;
+                
+                // Sincronizar a unitarios
+                _factorPrecioNP = _factorPrecioPaqueteNP;
+                _nuevoProducto.FactorMultiplicador = _factorPrecioPaqueteNP;
+                _porcentajePrecioNP = _porcentajePrecioPaqueteNP;
+                
+                _actualizandoPrecioPaqueteNP = false;
+            }
+            // Recalcular precio unitario
+            RecalcularPreciosUnitariosNPDesdesPaquete();
+        }
+    }
+
+    private void OnPrecioMinisterioPaqueteNPChanged(ChangeEventArgs e)
+    {
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (string.IsNullOrWhiteSpace(valorStr))
+        {
+            _nuevoProducto.PrecioMinisterioPaquete = null;
+        }
+        else if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precio))
+        {
+            _nuevoProducto.PrecioMinisterioPaquete = precio;
+            // Calcular precio ministerio unitario
+            RecalcularPreciosUnitariosNPDesdesPaquete();
+        }
+    }
+
+    // ============ Métodos para precios unitarios en nuevo producto ============
+    
+    private void OnCostoNPChanged(ChangeEventArgs e)
+    {
+        // Para productos paquete/caja el costo se calcula automáticamente, pero permitimos edición manual
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var costo))
+        {
+            _nuevoProducto.CostoUnitarioGs = costo;
+            // Recalcular precio si hay factor
+            if (_factorPrecioNP.HasValue && _factorPrecioNP.Value > 0 && costo > 0)
+            {
+                _nuevoProducto.PrecioUnitarioGs = Math.Round(costo * _factorPrecioNP.Value, 0);
+            }
+            else if (_porcentajePrecioNP.HasValue && costo > 0)
+            {
+                _nuevoProducto.PrecioUnitarioGs = Math.Round(costo * (1 + _porcentajePrecioNP.Value / 100), 0);
+            }
+        }
+        else
+        {
+            _nuevoProducto.CostoUnitarioGs = null;
+        }
+    }
+
+    private void OnFactorNPChanged(ChangeEventArgs e)
+    {
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var factor) && factor > 0)
+        {
+            _factorPrecioNP = factor;
+            _nuevoProducto.FactorMultiplicador = factor;
+            // Calcular porcentaje equivalente
+            _porcentajePrecioNP = Math.Round((factor - 1) * 100, 2);
+            // Calcular precio si hay costo
+            if (_nuevoProducto.CostoUnitarioGs.HasValue && _nuevoProducto.CostoUnitarioGs.Value > 0)
+            {
+                _nuevoProducto.PrecioUnitarioGs = Math.Round(_nuevoProducto.CostoUnitarioGs.Value * factor, 0);
+            }
+        }
+        else
+        {
+            _factorPrecioNP = null;
+            _nuevoProducto.FactorMultiplicador = null;
+        }
+    }
+
+    private void OnPorcentajeNPChanged(ChangeEventArgs e)
+    {
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var porcentaje))
+        {
+            _porcentajePrecioNP = porcentaje;
+            // Calcular factor equivalente
+            _factorPrecioNP = Math.Round(1 + porcentaje / 100, 4);
+            _nuevoProducto.FactorMultiplicador = _factorPrecioNP;
+            // Calcular precio si hay costo
+            if (_nuevoProducto.CostoUnitarioGs.HasValue && _nuevoProducto.CostoUnitarioGs.Value > 0)
+            {
+                _nuevoProducto.PrecioUnitarioGs = Math.Round(_nuevoProducto.CostoUnitarioGs.Value * (1 + porcentaje / 100), 0);
+            }
+        }
+        else
+        {
+            _porcentajePrecioNP = null;
+        }
+    }
+
+    private void OnPrecioNPChanged(ChangeEventArgs e)
+    {
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precio))
+        {
+            _nuevoProducto.PrecioUnitarioGs = precio;
+            // Si NO es paquete y hay costo, recalcular factor y porcentaje
+            if (_nuevoProducto.UnidadMedidaCodigo != "006" && _nuevoProducto.UnidadMedidaCodigo != "005")
+            {
+                if (_nuevoProducto.CostoUnitarioGs.HasValue && _nuevoProducto.CostoUnitarioGs.Value > 0)
+                {
+                    var costo = _nuevoProducto.CostoUnitarioGs.Value;
+                    _factorPrecioNP = Math.Round(precio / costo, 4);
+                    _nuevoProducto.FactorMultiplicador = _factorPrecioNP;
+                    _porcentajePrecioNP = Math.Round((precio / costo - 1) * 100, 2);
+                }
+            }
+        }
+    }
+
+    private void OnPrecioMinisterioNPChanged(ChangeEventArgs e)
+    {
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (string.IsNullOrWhiteSpace(valorStr))
+        {
+            _nuevoProducto.PrecioMinisterio = null;
+        }
+        else if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precio))
+        {
+            _nuevoProducto.PrecioMinisterio = precio;
+        }
+    }
+
+    /// <summary>
+    /// Recalcula los precios unitarios dividiendo los precios de paquete entre CantidadPorPaquete.
+    /// Solo aplica si el producto es tipo Paquete (código 006) o Caja (código 005).
+    /// </summary>
+    private void RecalcularPreciosUnitariosNPDesdesPaquete()
+    {
+        // Solo aplicar si es Paquete o Caja y hay cantidad definida
+        if ((_nuevoProducto.UnidadMedidaCodigo != "006" && _nuevoProducto.UnidadMedidaCodigo != "005") || 
+            !_nuevoProducto.CantidadPorPaquete.HasValue || _nuevoProducto.CantidadPorPaquete.Value <= 0)
+        {
+            return;
+        }
+        
+        var cantidadPorPaquete = _nuevoProducto.CantidadPorPaquete.Value;
+        
+        // Calcular Costo Unitario = Costo Paquete / Cantidad (CON DECIMALES)
+        if (_nuevoProducto.CostoPaqueteGs.HasValue && _nuevoProducto.CostoPaqueteGs.Value > 0)
+        {
+            _nuevoProducto.CostoUnitarioGs = Math.Round(_nuevoProducto.CostoPaqueteGs.Value / cantidadPorPaquete, 2);
+        }
+        
+        // NO recalcular Precio Unitario automáticamente - el usuario puede editarlo manualmente
+        // Solo sugerir el valor en el form-text
+        
+        // NO recalcular Precio Ministerio automáticamente - el usuario puede editarlo manualmente
+        // Solo sugerir el valor en el form-text
     }
     
     // ============ Métodos para modal de marca rápida ============

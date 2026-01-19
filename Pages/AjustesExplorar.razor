@@ -117,6 +117,8 @@
     head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
     head.AppendLine(".factura-header .empresa .small{color:#555;}");
     head.AppendLine(".table-ajuste th,.table-ajuste td{padding:.4rem;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
+    head.AppendLine(".right{text-align:right}");
+    head.AppendLine(".center{text-align:center}");
     head.AppendLine(".footer{position:fixed;bottom:8mm;left:0;right:0;text-align:center;font-size:10px;color:#666;}");
     head.AppendLine("</style>");
 
@@ -133,7 +135,14 @@
       logoDataUri = $"data:image/png;base64,{b64}";
     }
 
-    var rows = string.Join("", dets.Select(l => $"<tr><td>{Escape(l.Producto?.CodigoInterno)}</td><td>{Escape(l.Producto?.Descripcion)}</td><td>{Escape(l.Deposito?.Nombre)}</td><td class='right'>{l.StockSistema:N2}</td><td class='right'>{l.StockAjuste:N2}</td><td class='right'>{l.Diferencia:N2}</td><td class='right'>{(l.Producto?.PrecioUnitarioGs ?? 0):N0}</td><td class='right'>{l.Monto:N0}</td></tr>"));
+    var rows = string.Join("", dets.Select(l => {
+      var esPaq = (l.Producto?.UnidadMedidaCodigo == "006" || l.Producto?.UnidadMedidaCodigo == "005") && (l.Producto?.CantidadPorPaquete ?? 1) > 1;
+      var cantPaq = (int)(l.Producto?.CantidadPorPaquete ?? 1);
+      var paqSist = esPaq ? Math.Floor(l.StockSistema / cantPaq) : 0m;
+      var sueltSist = esPaq ? l.StockSistema % cantPaq : 0m;
+      var paqTxt = esPaq ? $"{paqSist:N0}{(sueltSist > 0 ? $" +{sueltSist:N0}" : "")}" : "-";
+      return $"<tr><td>{Escape(l.Producto?.CodigoInterno)}</td><td>{Escape(l.Producto?.Descripcion)}</td><td class='center'>{paqTxt}</td><td>{Escape(l.Deposito?.Nombre)}</td><td class='right'>{l.StockSistema:N2}</td><td class='right'>{l.StockAjuste:N2}</td><td class='right'>{l.Diferencia:N2}</td><td class='right'>{(l.Producto?.PrecioUnitarioGs ?? 0):N0}</td><td class='right'>{l.Monto:N0}</td></tr>";
+    }));
     var comentarioHtml = string.IsNullOrWhiteSpace(cab.Comentario) ? string.Empty : $"<div class='muted'>Comentario: {Escape(cab.Comentario!)}" + "</div>";
     var sb = new System.Text.StringBuilder();
     sb.AppendLine("<div class=\"container-fluid\">");
@@ -156,9 +165,9 @@
     sb.AppendLine("  </div>");
     if (!string.IsNullOrEmpty(comentarioHtml)) sb.AppendLine($"  {comentarioHtml}");
     sb.AppendLine("  <table class=\"table table-sm table-ajuste\">");
-    sb.AppendLine("    <thead><tr><th>Código</th><th>Descripción</th><th>Depósito</th><th class='right'>Stock sistema</th><th class='right'>Stock ajuste</th><th class='right'>Diferencia</th><th class='right'>Precio</th><th class='right'>Monto</th></tr></thead>");
+    sb.AppendLine("    <thead><tr><th>Código</th><th>Descripción</th><th class='center'>Paq.</th><th>Depósito</th><th class='right'>Stock sistema</th><th class='right'>Stock ajuste</th><th class='right'>Diferencia</th><th class='right'>Precio</th><th class='right'>Monto</th></tr></thead>");
     sb.AppendLine($"    <tbody>{rows}</tbody>");
-    sb.AppendLine($"    <tfoot><tr><th colspan='7' class='right'>Total</th><th class='right'>{cab.TotalMonto:N0}</th></tr></tfoot>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='8' class='right'>Total</th><th class='right'>{cab.TotalMonto:N0}</th></tr></tfoot>");
     sb.AppendLine("  </table>");
     sb.AppendLine("  <div class=\"footer\">** Ajuste generado por el sistema **</div>");
     sb.AppendLine("</div>");

@@ -146,6 +146,7 @@
           <tr>
             <th style="width:50px;">#</th>
             <th>Producto</th>
+            <th class="text-center" style="width:60px;">Paq.</th>
             <th>Depósito</th>
             <th class="text-end">Stock sistema</th>
             <th class="text-end">Stock ajuste</th>
@@ -159,18 +160,31 @@
         <tbody>
           @if (!lineas.Any())
           {
-            <tr><td colspan="10" class="text-center text-muted py-3">Sin líneas</td></tr>
+            <tr><td colspan="11" class="text-center text-muted py-3">Sin líneas</td></tr>
           }
           else
           {
             var idx = 0;
             foreach (var l in lineas)
             {
+              var esPaq = (l.UnidadMedidaCodigo == "006" || l.UnidadMedidaCodigo == "005") && l.CantidadPorPaquete > 1;
+              var paqSist = esPaq ? Math.Floor(l.StockSistema / l.CantidadPorPaquete) : 0m;
+              var sueltSist = esPaq ? l.StockSistema % l.CantidadPorPaquete : 0m;
               <tr>
                 <td>@(++idx)</td>
                 <td>
                   <div class="fw-semibold">@l.Descripcion</div>
                   <div class="small text-muted">Cod: @l.CodigoInterno</div>
+                </td>
+                <td class="text-center small">
+                  @if (esPaq)
+                  {
+                    <span title="@paqSist paq. +@sueltSist u (de @l.CantidadPorPaquete u/paq)">@paqSist.ToString("N0")@(sueltSist > 0 ? $" +{sueltSist:N0}" : "")</span>
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
                 </td>
                 <td>@l.DepositoNombre</td>
                 <td class="text-end">@l.StockSistema.ToString("N2")</td>
@@ -191,7 +205,7 @@
         </tbody>
         <tfoot>
           <tr>
-            <th colspan="8" class="text-end">Total</th>
+            <th colspan="9" class="text-end">Total</th>
             <th class="text-end">@lineas.Sum(x=>x.Monto).ToString("N0")</th>
             <th></th>
           </tr>
@@ -404,7 +418,9 @@
         StockAjuste = stockAjuste,
         CostoUnitarioGs = costo,
         PrecioVentaGs = p.PrecioUnitarioGs,
-        PermiteDecimal = p.PermiteDecimal
+        PermiteDecimal = p.PermiteDecimal,
+        CantidadPorPaquete = (int)(p.CantidadPorPaquete ?? 1),
+        UnidadMedidaCodigo = p.UnidadMedidaCodigo
       };
       Recalcular(l);
       lineas.Add(l);
@@ -831,5 +847,7 @@
     public decimal PrecioVentaGs { get; set; }
     public decimal Monto { get; set; }
     public bool PermiteDecimal { get; set; }
+    public int CantidadPorPaquete { get; set; } = 1;
+    public string? UnidadMedidaCodigo { get; set; }
   }
 }

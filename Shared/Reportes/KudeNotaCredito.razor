@@ -254,8 +254,8 @@ else
                         <th style="width:10%">Código</th>
                         <th>Descripción</th>
                         <th style="width:9%">Unidad Medida</th>
-                        <th style="width:6%">Cajas</th>
-                        <th style="width:8%">Cantidad</th>
+                        <th style="width:6%">Paq.</th>
+                        <th style="width:8%">Unid.</th>
                         <th style="width:10%">Precio Unitario</th>
                         <th style="width:9%">Descuento</th>
                         <th style="width:9%">Exentas</th>
@@ -267,12 +267,13 @@ else
                     @foreach (var d in detalles)
                     {
                         var codigo = d.CodigoProducto ?? d.Producto?.CodigoInterno ?? d.Producto?.CodigoBarras ?? d.IdProducto.ToString();
+                        var cantidadFormateada = d.Cantidad == Math.Floor(d.Cantidad) ? d.Cantidad.ToString("N0") : d.Cantidad.ToString("N2");
                         <tr>
                             <td>@codigo</td>
                             <td>@(d.NombreProducto ?? d.Producto?.Descripcion)</td>
                             <td class="t-center">@(d.Producto?.UndMedida ?? "UNI")</td>
-                            <td class="t-center">1,00</td>
-                            <td class="t-right">@d.Cantidad.ToString("N2")</td>
+                            <td class="t-center">-</td>
+                            <td class="t-right">@cantidadFormateada</td>
                             <td class="t-right">@d.PrecioUnitario.ToString("N0")</td>
                             <td class="t-right">@d.MontoDescuento.ToString("N0")</td>
                             <td class="t-right">@d.Exenta.ToString("N0")</td>

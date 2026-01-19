@@ -503,6 +503,15 @@
                             <i class="bi bi-search me-2"></i>
                             @if (!IsCollapsed){<span class="link-text">Explorar Ajustes</span>}
                         </NavLink>
+                        <hr class="my-1 mx-2 border-secondary opacity-25" />
+                        <NavLink class="nav-link" href="/inventario/lotes" title="@(IsCollapsed ? "Gestión de Lotes" : "")" @onclick="OnAnyNavigate">
+                            <i class="bi bi-box-seam me-2"></i>
+                            @if (!IsCollapsed){<span class="link-text">Gestión de Lotes</span>}
+                        </NavLink>
+                        <NavLink class="nav-link" href="/inventario/alertas-vencimiento" title="@(IsCollapsed ? "Alertas Vencimiento" : "")" @onclick="OnAnyNavigate">
+                            <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+                            @if (!IsCollapsed){<span class="link-text">Alertas Vencimiento</span>}
+                        </NavLink>
                 </div>
             </div>
         </div>

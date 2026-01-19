@@ -152,6 +152,7 @@
               <th style="width:40px">#</th>
               <th style="width:100px">Código</th>
               <th>Descripción</th>
+              <th class="text-center" style="width:80px" title="Paquetes calculados">Paq.</th>
               <th style="width:120px">Categoría</th>
               <th style="width:120px">Marca</th>
               <th class="text-end" style="width:80px">Cantidad</th>
@@ -167,7 +168,7 @@
             @if (!filas.Any())
             {
               <tr>
-                <td colspan="12" class="text-center text-muted py-4">
+                <td colspan="13" class="text-center text-muted py-4">
                   <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                   Sin resultados. Aplique filtros y presione Buscar.
                 </td>
@@ -181,10 +182,15 @@
                 var margenClass = r.MargenPorcentaje >= 30 ? "text-success" : (r.MargenPorcentaje >= 15 ? "text-warning" : "text-danger");
                 var utilidadPct = r.VentaTotal > 0 ? (r.Utilidad / r.VentaTotal) * 100 : 0;
                 var utilidadPctClass = utilidadPct >= 30 ? "text-primary" : "text-danger";
+                var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+                var paqVal = esPaq ? Math.Floor(r.Cantidad / r.CantidadPorPaquete) : 0m;
+                var sueltVal = esPaq ? r.Cantidad % r.CantidadPorPaquete : 0m;
+                var paqTxt = esPaq ? $"{paqVal:N0}{(sueltVal > 0 ? $" +{sueltVal:N0}" : "")}" : "-";
                 <tr>
                   <td class="text-muted">@(++n)</td>
                   <td><span class="badge bg-secondary">@r.CodigoInterno</span></td>
                   <td><div class="fw-semibold">@r.Descripcion</div></td>
+                  <td class="text-center" title="@(esPaq ? $"{paqVal:N0} paq. × {r.CantidadPorPaquete} = {paqVal * r.CantidadPorPaquete:N0} + {sueltVal:N0} sueltas" : "No aplica")">@paqTxt</td>
                   <td>@(string.IsNullOrEmpty(r.Clasificacion) ? "—" : r.Clasificacion)</td>
                   <td>@(string.IsNullOrEmpty(r.Marca) ? "—" : r.Marca)</td>
                   <td class="text-end">@r.Cantidad.ToString("N2")</td>
@@ -207,7 +213,7 @@
             var utilidadPromedioClass = utilidadPromedio >= 30 ? "text-primary" : "text-danger";
             <tfoot class="table-light">
               <tr class="fw-bold">
-                <th colspan="5" class="text-end">TOTALES</th>
+                <th colspan="6" class="text-end">TOTALES</th>
                 <th class="text-end">@totalUnidades.ToString("N2")</th>
                 <th></th>
                 <th></th>
@@ -311,7 +317,8 @@
               Marca = m != null ? m.NombreMarca : null,
               Clasificacion = c != null ? c.Nombre : null,
               p.CostoUnitarioGs, p.PrecioUnitarioGs,
-              p.Stock, p.Activo, p.IdSucursal, p.IdMarca, p.IdClasificacion, p.TipoItem
+              p.Stock, p.Activo, p.IdSucursal, p.IdMarca, p.IdClasificacion, p.TipoItem,
+              p.CantidadPorPaquete, p.UnidadMedidaCodigo
             };
 
     if (sucId.HasValue)
@@ -348,6 +355,8 @@
         Descripcion = x.Descripcion ?? "",
         Marca = x.Marca,
         Clasificacion = x.Clasificacion,
+        CantidadPorPaquete = (int)(x.CantidadPorPaquete ?? 1),
+        UnidadMedidaCodigo = x.UnidadMedidaCodigo,
         Cantidad = stock,
         CostoUnitario = costo,
         PrecioUnitario = precio,
@@ -388,6 +397,7 @@
     head.AppendLine(".factura-header .empresa .small{color:#555;}");
     head.AppendLine(".tabla th,.tabla td{padding:.2rem .3rem;border-bottom:1px solid #e5e7eb;vertical-align:top;font-size:8px;}");
     head.AppendLine(".right{text-align:right}");
+    head.AppendLine(".center{text-align:center}");
     head.AppendLine(".muted{color:#666}");
     head.AppendLine(".resumen{display:flex;gap:20px;margin-bottom:15px;padding:10px;background:#f8f9fa;border-radius:8px;}");
     head.AppendLine(".resumen-item{flex:1;text-align:center;padding:8px;background:white;border-radius:6px;border:1px solid #dee2e6;}");
@@ -444,16 +454,20 @@
 
     // Tabla
     sb.AppendLine("  <table class=\"table table-sm tabla\">");
-    sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th>Categoría</th><th>Marca</th><th class='right'>Cantidad</th><th class='right'>Costo Unit.</th><th class='right'>Precio Unit.</th><th class='right'>Costo Total</th><th class='right'>Venta Total</th><th class='right'>Utilidad</th><th class='right'>Margen %</th></tr></thead>");
+    sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th class='center'>Paq.</th><th>Categoría</th><th>Marca</th><th class='right'>Cantidad</th><th class='right'>Costo Unit.</th><th class='right'>Precio Unit.</th><th class='right'>Costo Total</th><th class='right'>Venta Total</th><th class='right'>Utilidad</th><th class='right'>Margen %</th></tr></thead>");
     sb.AppendLine("    <tbody>");
     int n = 0;
     foreach (var r in filas)
     {
       var utilClass = r.Utilidad >= 0 ? "text-success" : "text-danger";
-      sb.AppendLine($"      <tr><td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td><td class='right'>{r.Cantidad:N2}</td><td class='right'>{r.CostoUnitario:N0}</td><td class='right'>{r.PrecioUnitario:N0}</td><td class='right'>{r.CostoTotal:N0}</td><td class='right'>{r.VentaTotal:N0}</td><td class='right {utilClass}'>{r.Utilidad:N0}</td><td class='right'>{r.MargenPorcentaje:N1}%</td></tr>");
+      var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+      var paqVal = esPaq ? Math.Floor(r.Cantidad / r.CantidadPorPaquete) : 0m;
+      var sueltVal = esPaq ? r.Cantidad % r.CantidadPorPaquete : 0m;
+      var paqTxt = esPaq ? $"{paqVal:N0}{(sueltVal > 0 ? $" +{sueltVal:N0}" : "")}" : "-";
+      sb.AppendLine($"      <tr><td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td><td class='center'>{paqTxt}</td><td>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td><td class='right'>{r.Cantidad:N2}</td><td class='right'>{r.CostoUnitario:N0}</td><td class='right'>{r.PrecioUnitario:N0}</td><td class='right'>{r.CostoTotal:N0}</td><td class='right'>{r.VentaTotal:N0}</td><td class='right {utilClass}'>{r.Utilidad:N0}</td><td class='right'>{r.MargenPorcentaje:N1}%</td></tr>");
     }
     sb.AppendLine("    </tbody>");
-    sb.AppendLine($"    <tfoot><tr class='fw-bold'><th colspan='5' class='right'>TOTALES</th><th class='right'>{totalUnidades:N2}</th><th></th><th></th><th class='right'>{totalCostoValorizado:N0}</th><th class='right'>{totalVentaValorizado:N0}</th><th class='right text-success'>{utilidadBruta:N0}</th><th class='right'>{margenPromedio:N2}%</th></tr></tfoot>");
+    sb.AppendLine($"    <tfoot><tr class='fw-bold'><th colspan='6' class='right'>TOTALES</th><th class='right'>{totalUnidades:N2}</th><th></th><th></th><th class='right'>{totalCostoValorizado:N0}</th><th class='right'>{totalVentaValorizado:N0}</th><th class='right text-success'>{utilidadBruta:N0}</th><th class='right'>{margenPromedio:N2}%</th></tr></tfoot>");
     sb.AppendLine("  </table>");
     sb.AppendLine("</div>");
 
@@ -472,16 +486,21 @@
     sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
     sb.AppendLine($"Valor Costo Total={totalCostoValorizado:N0};Valor Venta Total={totalVentaValorizado:N0};Utilidad Bruta={utilidadBruta:N0};Margen Promedio={margenPromedio:N2}%");
     sb.AppendLine();
-    sb.AppendLine(string.Join(sep, new[] { "Nro", "Código", "Descripción", "Categoría", "Marca", "Cantidad", "Costo Unit.", "Precio Unit.", "Costo Total", "Venta Total", "Utilidad", "Margen %" }));
+    sb.AppendLine(string.Join(sep, new[] { "Nro", "Código", "Descripción", "Paq.", "Categoría", "Marca", "Cantidad", "Costo Unit.", "Precio Unit.", "Costo Total", "Venta Total", "Utilidad", "Margen %" }));
 
     int n = 0;
     foreach (var r in filas)
     {
+      var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+      var paqVal = esPaq ? Math.Floor(r.Cantidad / r.CantidadPorPaquete) : 0m;
+      var sueltVal = esPaq ? r.Cantidad % r.CantidadPorPaquete : 0m;
+      var paqTxt = esPaq ? $"{paqVal:N0}{(sueltVal > 0 ? $" +{sueltVal:N0}" : "")}" : "-";
       string[] cols = new[]
       {
         (++n).ToString(),
         r.CodigoInterno,
         r.Descripcion,
+        paqTxt,
         r.Clasificacion ?? "",
         r.Marca ?? "",
         r.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -532,7 +551,7 @@
     ws.Cell(row, 1).Value = "Total Unidades"; ws.Cell(row, 2).Value = totalUnidades; ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00"; row += 2;
 
     // Cabeceras de tabla
-    var headers = new[] { "#", "Código", "Descripción", "Categoría", "Marca", "Cantidad", "Costo Unit.", "Precio Unit.", "Costo Total", "Venta Total", "Utilidad", "Margen %" };
+    var headers = new[] { "#", "Código", "Descripción", "Paq.", "Categoría", "Marca", "Cantidad", "Costo Unit.", "Precio Unit.", "Costo Total", "Venta Total", "Utilidad", "Margen %" };
     for (int c = 0; c < headers.Length; c++) ws.Cell(row, c + 1).Value = headers[c];
     ws.Range(row, 1, row, headers.Length).Style.Font.Bold = true;
     ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.LightGray;
@@ -542,32 +561,37 @@
     int n = 0;
     foreach (var r in filas)
     {
+      var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+      var paqVal = esPaq ? Math.Floor(r.Cantidad / r.CantidadPorPaquete) : 0m;
+      var sueltVal = esPaq ? r.Cantidad % r.CantidadPorPaquete : 0m;
+      var paqTxt = esPaq ? $"{paqVal:N0}{(sueltVal > 0 ? $" +{sueltVal:N0}" : "")}" : "-";
       ws.Cell(row, 1).Value = ++n;
       ws.Cell(row, 2).Value = r.CodigoInterno;
       ws.Cell(row, 3).Value = r.Descripcion;
-      ws.Cell(row, 4).Value = r.Clasificacion ?? "";
-      ws.Cell(row, 5).Value = r.Marca ?? "";
-      ws.Cell(row, 6).Value = r.Cantidad; ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row, 7).Value = r.CostoUnitario; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row, 8).Value = r.PrecioUnitario; ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row, 9).Value = r.CostoTotal; ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row, 10).Value = r.VentaTotal; ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row, 11).Value = r.Utilidad; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row, 4).Value = paqTxt;
+      ws.Cell(row, 5).Value = r.Clasificacion ?? "";
+      ws.Cell(row, 6).Value = r.Marca ?? "";
+      ws.Cell(row, 7).Value = r.Cantidad; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row, 8).Value = r.CostoUnitario; ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row, 9).Value = r.PrecioUnitario; ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row, 10).Value = r.CostoTotal; ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row, 11).Value = r.VentaTotal; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row, 12).Value = r.Utilidad; ws.Cell(row, 12).Style.NumberFormat.Format = "#,##0";
       if (r.Utilidad >= 0)
-        ws.Cell(row, 11).Style.Font.FontColor = XLColor.Green;
+        ws.Cell(row, 12).Style.Font.FontColor = XLColor.Green;
       else
-        ws.Cell(row, 11).Style.Font.FontColor = XLColor.Red;
-      ws.Cell(row, 12).Value = r.MargenPorcentaje / 100; ws.Cell(row, 12).Style.NumberFormat.Format = "0.0%";
+        ws.Cell(row, 12).Style.Font.FontColor = XLColor.Red;
+      ws.Cell(row, 13).Value = r.MargenPorcentaje / 100; ws.Cell(row, 13).Style.NumberFormat.Format = "0.0%";
       row++;
     }
 
     // Fila de totales
-    ws.Cell(row, 5).Value = "TOTALES"; ws.Cell(row, 5).Style.Font.Bold = true;
-    ws.Cell(row, 6).Value = totalUnidades; ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 6).Style.Font.Bold = true;
-    ws.Cell(row, 9).Value = totalCostoValorizado; ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 9).Style.Font.Bold = true;
-    ws.Cell(row, 10).Value = totalVentaValorizado; ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 10).Style.Font.Bold = true;
-    ws.Cell(row, 11).Value = utilidadBruta; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 11).Style.Font.Bold = true; ws.Cell(row, 11).Style.Font.FontColor = XLColor.Green;
-    ws.Cell(row, 12).Value = margenPromedio / 100; ws.Cell(row, 12).Style.NumberFormat.Format = "0.00%"; ws.Cell(row, 12).Style.Font.Bold = true;
+    ws.Cell(row, 6).Value = "TOTALES"; ws.Cell(row, 6).Style.Font.Bold = true;
+    ws.Cell(row, 7).Value = totalUnidades; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 7).Style.Font.Bold = true;
+    ws.Cell(row, 10).Value = totalCostoValorizado; ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 10).Style.Font.Bold = true;
+    ws.Cell(row, 11).Value = totalVentaValorizado; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 11).Style.Font.Bold = true;
+    ws.Cell(row, 12).Value = utilidadBruta; ws.Cell(row, 12).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 12).Style.Font.Bold = true; ws.Cell(row, 12).Style.Font.FontColor = XLColor.Green;
+    ws.Cell(row, 13).Value = margenPromedio / 100; ws.Cell(row, 13).Style.NumberFormat.Format = "0.00%"; ws.Cell(row, 13).Style.Font.Bold = true;
 
     ws.Columns().AdjustToContents();
     using var ms = new System.IO.MemoryStream();
@@ -600,20 +624,24 @@
     
     sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:10px;'>");
     sb.AppendLine("<thead><tr style='background-color:#f0f0f0; font-weight:bold;'>");
-    sb.AppendLine("<th>#</th><th>Código</th><th>Descripción</th><th>Categoría</th><th>Marca</th><th style='text-align:right'>Cantidad</th><th style='text-align:right'>Costo Unit.</th><th style='text-align:right'>Precio Unit.</th><th style='text-align:right'>Costo Total</th><th style='text-align:right'>Venta Total</th><th style='text-align:right'>Utilidad</th><th style='text-align:right'>Margen %</th>");
+    sb.AppendLine("<th>#</th><th>Código</th><th>Descripción</th><th style='text-align:center'>Paq.</th><th>Categoría</th><th>Marca</th><th style='text-align:right'>Cantidad</th><th style='text-align:right'>Costo Unit.</th><th style='text-align:right'>Precio Unit.</th><th style='text-align:right'>Costo Total</th><th style='text-align:right'>Venta Total</th><th style='text-align:right'>Utilidad</th><th style='text-align:right'>Margen %</th>");
     sb.AppendLine("</tr></thead>");
     sb.AppendLine("<tbody>");
     int n = 0;
     foreach (var r in filas)
     {
       var utilColor = r.Utilidad >= 0 ? "color:#198754" : "color:#dc3545";
+      var esPaq = (r.UnidadMedidaCodigo == "006" || r.UnidadMedidaCodigo == "005") && r.CantidadPorPaquete > 1;
+      var paqVal = esPaq ? Math.Floor(r.Cantidad / r.CantidadPorPaquete) : 0m;
+      var sueltVal = esPaq ? r.Cantidad % r.CantidadPorPaquete : 0m;
+      var paqTxt = esPaq ? $"{paqVal:N0}{(sueltVal > 0 ? $" +{sueltVal:N0}" : "")}" : "-";
       sb.AppendLine("<tr>");
-      sb.AppendLine($"<td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td><td style='text-align:right'>{r.Cantidad:N2}</td><td style='text-align:right'>{r.CostoUnitario:N0}</td><td style='text-align:right'>{r.PrecioUnitario:N0}</td><td style='text-align:right'>{r.CostoTotal:N0}</td><td style='text-align:right'>{r.VentaTotal:N0}</td><td style='text-align:right; {utilColor}'>{r.Utilidad:N0}</td><td style='text-align:right'>{r.MargenPorcentaje:N1}%</td>");
+      sb.AppendLine($"<td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(r.CodigoInterno)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Descripcion)}</td><td style='text-align:center'>{paqTxt}</td><td>{System.Net.WebUtility.HtmlEncode(r.Clasificacion ?? "-")}</td><td>{System.Net.WebUtility.HtmlEncode(r.Marca ?? "-")}</td><td style='text-align:right'>{r.Cantidad:N2}</td><td style='text-align:right'>{r.CostoUnitario:N0}</td><td style='text-align:right'>{r.PrecioUnitario:N0}</td><td style='text-align:right'>{r.CostoTotal:N0}</td><td style='text-align:right'>{r.VentaTotal:N0}</td><td style='text-align:right; {utilColor}'>{r.Utilidad:N0}</td><td style='text-align:right'>{r.MargenPorcentaje:N1}%</td>");
       sb.AppendLine("</tr>");
     }
     sb.AppendLine("</tbody>");
     sb.AppendLine("<tfoot><tr style='background-color:#f0f0f0; font-weight:bold;'>");
-    sb.AppendLine($"<td colspan='5' style='text-align:right'>TOTALES</td><td style='text-align:right'>{totalUnidades:N2}</td><td></td><td></td><td style='text-align:right'>{totalCostoValorizado:N0}</td><td style='text-align:right'>{totalVentaValorizado:N0}</td><td style='text-align:right; color:#198754'>{utilidadBruta:N0}</td><td style='text-align:right'>{margenPromedio:N2}%</td>");
+    sb.AppendLine($"<td colspan='6' style='text-align:right'>TOTALES</td><td style='text-align:right'>{totalUnidades:N2}</td><td></td><td></td><td style='text-align:right'>{totalCostoValorizado:N0}</td><td style='text-align:right'>{totalVentaValorizado:N0}</td><td style='text-align:right; color:#198754'>{utilidadBruta:N0}</td><td style='text-align:right'>{margenPromedio:N2}%</td>");
     sb.AppendLine("</tr></tfoot>");
     sb.AppendLine("</table>");
     return Task.FromResult(sb.ToString());
@@ -627,6 +655,8 @@
     public string Descripcion { get; set; } = string.Empty;
     public string? Marca { get; set; }
     public string? Clasificacion { get; set; }
+    public int CantidadPorPaquete { get; set; } = 1;
+    public string? UnidadMedidaCodigo { get; set; }
     public decimal Cantidad { get; set; }
     public decimal CostoUnitario { get; set; }
     public decimal PrecioUnitario { get; set; }

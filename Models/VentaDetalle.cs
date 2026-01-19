@@ -43,16 +43,46 @@ namespace SistemIA.Models
         /// <summary>Porcentaje de descuento aplicado (calculado como (PrecioMinisterio - PrecioUnitario) / PrecioMinisterio * 100)</summary>
         [Column(TypeName = "decimal(18,4)")] public decimal? PorcentajeDescuento { get; set; }
         
+        // ========== CAMPOS PERSISTENTES - MODO DE INGRESO PAQUETE/UNIDAD ==========
+        
+        /// <summary>Modo de ingreso al momento de la venta: "paquete" o "unidad" (persistido para visualización posterior)</summary>
+        [MaxLength(20)] public string? ModoIngresoPersistido { get; set; }
+        
+        /// <summary>Cantidad por paquete al momento de la venta (para mostrar correctamente cuántas cajas se vendieron)</summary>
+        [Column(TypeName = "decimal(18,4)")] public decimal? CantidadPorPaqueteMomento { get; set; }
+        
+        /// <summary>Precio por paquete al momento de la venta (para mostrar en reportes/impresiones)</summary>
+        [Column(TypeName = "decimal(18,4)")] public decimal? PrecioPaqueteMomento { get; set; }
+        
+        /// <summary>Precio Ministerio por paquete al momento de la venta (para farmacias)</summary>
+        [Column(TypeName = "decimal(18,4)")] public decimal? PrecioMinisterioPaqueteMomento { get; set; }
+        
+        // ========== CONTROL DE LOTES (FARMACIA - FEFO) ==========
+        
+        /// <summary>ID del lote del cual se descontó el stock (para trazabilidad FEFO)</summary>
+        public int? IdProductoLote { get; set; }
+        
+        /// <summary>Número de lote al momento de la venta (persistido para impresión/trazabilidad)</summary>
+        [MaxLength(50)]
+        public string? NumeroLoteMomento { get; set; }
+        
+        /// <summary>Fecha de vencimiento del lote al momento de la venta</summary>
+        public DateTime? FechaVencimientoLoteMomento { get; set; }
+        
+        // Navegación al lote
+        [ForeignKey(nameof(IdProductoLote))]
+        public virtual ProductoLote? ProductoLote { get; set; }
+        
         // ========== CAMPOS AUXILIARES (NO MAPEADOS) ==========
         
-        // Para productos vendidos por paquete/caja
+        // Para productos vendidos por paquete/caja (cargado desde Producto al editar)
         [NotMapped]
         public decimal? CantidadPorPaquete { get; set; }
         
         [NotMapped]
         public bool PermiteVentaPorUnidad { get; set; } = true;
         
-        // Modo de ingreso: "paquete" o "unidad"
+        // Modo de ingreso actual: "paquete" o "unidad" (para UI en tiempo real)
         [NotMapped]
         public string ModoIngreso { get; set; } = "unidad";
         

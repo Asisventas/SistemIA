@@ -1,0 +1,232 @@
+@page "/inventario/movimientos-lote/{IdLote:int}"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+
+<PageProtection Modulo="/inventario/lotes" Permiso="VIEW">
+
+<div class="container-fluid px-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="mb-1">
+                <i class="bi bi-clock-history text-primary me-2"></i>
+                Movimientos del Lote
+            </h3>
+            @if (_lote != null)
+            {
+                <small class="text-muted">
+                    <span class="badge bg-secondary me-2">@_lote.NumeroLote</span>
+                    @_lote.Producto?.Descripcion
+                </small>
+            }
+        </div>
+        <button class="btn btn-outline-secondary" @onclick="Volver">
+            <i class="bi bi-arrow-left me-1"></i>Volver
+        </button>
+    </div>
+
+    @if (_lote == null)
+    {
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Lote no encontrado
+        </div>
+    }
+    else
+    {
+        <!-- Info del Lote -->
+        <div class="card mb-3 shadow-sm">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2 text-center border-end">
+                        <div class="text-muted small">Stock Actual</div>
+                        <div class="fs-3 fw-bold @(_lote.Stock > 0 ? "text-success" : "text-danger")">
+                            @_lote.Stock.ToString("N0")
+                        </div>
+                    </div>
+                    <div class="col-md-2 text-center border-end">
+                        <div class="text-muted small">Stock Inicial</div>
+                        <div class="fs-5 fw-semibold">@_lote.StockInicial.ToString("N0")</div>
+                    </div>
+                    <div class="col-md-2 text-center border-end">
+                        <div class="text-muted small">Depósito</div>
+                        <div class="fs-6">@_lote.Deposito?.Nombre</div>
+                    </div>
+                    <div class="col-md-2 text-center border-end">
+                        <div class="text-muted small">Fecha Ingreso</div>
+                        <div class="fs-6">@_lote.FechaIngreso.ToString("dd/MM/yyyy")</div>
+                    </div>
+                    <div class="col-md-2 text-center border-end">
+                        <div class="text-muted small">Vencimiento</div>
+                        <div class="fs-6 @ObtenerClaseVencimiento()">
+                            @(_lote.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "-")
+                        </div>
+                    </div>
+                    <div class="col-md-2 text-center">
+                        <div class="text-muted small">Estado</div>
+                        <span class="badge @ObtenerBadgeEstado()">@_lote.Estado</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Movimientos -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-2">
+                <h6 class="mb-0">
+                    <i class="bi bi-list-ul me-2"></i>
+                    Historial de Movimientos
+                    <span class="badge bg-secondary ms-2">@_movimientos.Count</span>
+                </h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 12%">Fecha</th>
+                            <th style="width: 10%">Tipo</th>
+                            <th>Referencia</th>
+                            <th style="width: 10%" class="text-end">Cantidad</th>
+                            <th style="width: 12%" class="text-end">Stock Después</th>
+                            <th style="width: 20%">Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!_movimientos.Any())
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">
+                                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                    No hay movimientos registrados para este lote
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var mov in _movimientos)
+                            {
+                                <tr>
+                                    <td>
+                                        <div>@mov.FechaMovimiento.ToString("dd/MM/yyyy")</div>
+                                        <small class="text-muted">@mov.FechaMovimiento.ToString("HH:mm")</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge @ObtenerBadgeTipoMovimiento(mov.TipoMovimiento)">
+                                            @mov.TipoMovimiento
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(mov.ReferenciaDocumento))
+                                        {
+                                            <span>
+                                                <i class="bi bi-file-text me-1"></i>@mov.ReferenciaDocumento
+                                            </span>
+                                        }
+                                        else if (!string.IsNullOrEmpty(mov.TipoDocumento) && mov.IdDocumento.HasValue)
+                                        {
+                                            <span>
+                                                <i class="bi bi-file-text me-1"></i>@mov.TipoDocumento #@mov.IdDocumento
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <span class="fw-bold @(mov.Cantidad >= 0 ? "text-success" : "text-danger")">
+                                            @(mov.Cantidad >= 0 ? "+" : "")@mov.Cantidad.ToString("N2")
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <span class="fw-semibold">@mov.StockPosterior.ToString("N2")</span>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">@mov.Motivo</small>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+</PageProtection>
+
+@code {
+    [Parameter]
+    public int IdLote { get; set; }
+
+    private ProductoLote? _lote;
+    private List<MovimientoLote> _movimientos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosAsync();
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+
+        _lote = await ctx.ProductosLotes
+            .Include(l => l.Producto)
+            .Include(l => l.Deposito)
+            .FirstOrDefaultAsync(l => l.IdProductoLote == IdLote);
+
+        if (_lote != null)
+        {
+            _movimientos = await ctx.MovimientosLotes
+                .Where(m => m.IdProductoLote == IdLote)
+                .OrderByDescending(m => m.FechaMovimiento)
+                .ToListAsync();
+        }
+    }
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/inventario/lotes");
+    }
+
+    private string ObtenerClaseVencimiento()
+    {
+        if (!_lote?.FechaVencimiento.HasValue ?? true) return "";
+        
+        var dias = (_lote.FechaVencimiento!.Value - DateTime.Today).Days;
+        if (dias < 0) return "text-danger fw-bold";
+        if (dias <= 30) return "text-warning fw-bold";
+        return "text-success";
+    }
+
+    private string ObtenerBadgeEstado()
+    {
+        return _lote?.Estado switch
+        {
+            "Activo" => "bg-success",
+            "Agotado" => "bg-secondary",
+            "Vencido" => "bg-danger",
+            "Bloqueado" => "bg-warning text-dark",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string ObtenerBadgeTipoMovimiento(string tipo)
+    {
+        return tipo.ToLower() switch
+        {
+            "ingreso" or "compra" => "bg-success",
+            "egreso" or "venta" => "bg-danger",
+            "ajuste+" or "ajuste_positivo" => "bg-info",
+            "ajuste-" or "ajuste_negativo" => "bg-warning text-dark",
+            "transferencia_entrada" => "bg-primary",
+            "transferencia_salida" => "bg-secondary",
+            "inicial" => "bg-dark",
+            _ => "bg-secondary"
+        };
+    }
+}

@@ -101,5 +101,29 @@ namespace SistemIA.Models
         // Lote (si aplica)
         [MaxLength(50)]
         public string? Lote { get; set; }
+        
+        // ========== CAMPOS PERSISTENTES - MODO DE INGRESO PAQUETE/UNIDAD ==========
+        
+        /// <summary>Modo de ingreso al momento de la NC: "paquete" o "unidad"</summary>
+        [MaxLength(20)] 
+        public string? ModoIngresoPersistido { get; set; }
+        
+        /// <summary>Cantidad por paquete al momento de la NC</summary>
+        [Column(TypeName = "decimal(18,4)")]
+        public decimal? CantidadPorPaqueteMomento { get; set; }
+        
+        // ========== CAMPOS NO MAPEADOS PARA UI ==========
+        
+        /// <summary>Cantidad por paquete (cargado desde Producto)</summary>
+        [NotMapped]
+        public decimal? CantidadPorPaquete { get; set; }
+        
+        /// <summary>Modo de ingreso actual: "paquete" o "unidad"</summary>
+        [NotMapped]
+        public string ModoIngreso { get; set; } = "unidad";
+        
+        /// <summary>Cantidad ingresada en el modo seleccionado</summary>
+        [NotMapped]
+        public decimal CantidadIngresada { get; set; } = 1;
     }
 }

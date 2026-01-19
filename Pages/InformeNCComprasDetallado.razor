@@ -100,6 +100,7 @@
             <th>Proveedor</th>
             <th>Producto</th>
             <th class="text-end">Cant.</th>
+            <th class="text-center">Paq.</th>
             <th class="text-end">Precio</th>
             <th>Mon</th>
             <th class="text-end">Cambio</th>
@@ -114,7 +115,7 @@
         <tbody>
           @if (!filas.Any())
           {
-            <tr><td colspan="15" class="text-muted text-center py-3">Sin resultados</td></tr>
+            <tr><td colspan="16" class="text-muted text-center py-3">Sin resultados</td></tr>
           }
           else
           {
@@ -133,6 +134,7 @@
                   <div class="small text-muted">Cod: @r.Codigo</div>
                 </td>
                 <td class="text-end">@r.Cantidad.ToString("N2")</td>
+                <td class="text-center">@if(r.CantidadPorPaquete > 1){<span class="badge bg-info text-dark" title="Unidades por paquete">x@(r.CantidadPorPaquete)</span>}</td>
                 <td class="text-end">@r.Precio.ToString(r.Formato)</td>
                 <td>@r.Moneda</td>
                 <td class="text-end">@((r.Cambio ?? 0).ToString("N2"))</td>
@@ -148,7 +150,7 @@
         </tbody>
         <tfoot>
           <tr>
-            <th colspan="10" class="text-end">Totales</th>
+            <th colspan="11" class="text-end">Totales</th>
             <th class="text-end">@filas.Sum(x=>x.ImporteGs).ToString("N0")</th>
             <th class="text-end">@filas.Sum(x=>x.ImporteUsd).ToString("N2")</th>
             <th></th>
@@ -223,6 +225,7 @@
               nc.Establecimiento, nc.PuntoExpedicion, nc.NumeroNota,
               Proveedor = prov != null ? prov.RazonSocial : (nc.NombreProveedor ?? ""),
               Ruc = prov != null ? (prov.RUC + "-" + prov.DV) : (nc.RucProveedor ?? ""),
+              p.CantidadPorPaquete, p.UnidadMedidaCodigo,
               IdMoneda = nc.IdMoneda,
               Moneda = (m != null ? m.CodigoISO : (nc.SimboloMoneda ?? "PYG")),
               CambioCab = (decimal?)nc.CambioDelDia,
@@ -306,6 +309,7 @@
         Producto = x.Descripcion ?? "",
         Codigo = x.CodigoInterno ?? "",
         Cantidad = x.Cantidad,
+        CantidadPorPaquete = ((x.UnidadMedidaCodigo == "006" || x.UnidadMedidaCodigo == "005") && x.CantidadPorPaquete > 1) ? (int)(x.CantidadPorPaquete ?? 1) : 0,
         Precio = x.PrecioUnitario,
         Moneda = codMon,
         Formato = formato,
@@ -376,14 +380,15 @@
     sb.AppendLine("  </div>");
 
     sb.AppendLine("  <table class=\"table table-sm tabla\">");
-    sb.AppendLine("    <thead><tr><th>ID</th><th>Fecha</th><th>Nº NC</th><th>Proveedor</th><th>Producto</th><th class='right'>Cant.</th><th class='right'>Precio</th><th>Mon</th><th class='right'>Cambio</th><th class='right'>Importe</th><th class='right'>Importe Gs</th><th class='right'>Importe $</th><th>Motivo</th><th>Usu</th><th>Caja</th></tr></thead>");
+    sb.AppendLine("    <thead><tr><th>ID</th><th>Fecha</th><th>Nº NC</th><th>Proveedor</th><th>Producto</th><th class='right'>Cant.</th><th>Paq.</th><th class='right'>Precio</th><th>Mon</th><th class='right'>Cambio</th><th class='right'>Importe</th><th class='right'>Importe Gs</th><th class='right'>Importe $</th><th>Motivo</th><th>Usu</th><th>Caja</th></tr></thead>");
     sb.AppendLine("    <tbody>");
     foreach (var r in filas)
     {
-      sb.AppendLine($"      <tr><td>{r.IdNotaCreditoCompra}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td class='right'>{r.Cantidad:N2}</td><td class='right'>{r.Precio.ToString(r.Formato)}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Importe.ToString(r.Formato)}</td><td class='right'>{r.ImporteGs:N0}</td><td class='right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Motivo)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td></tr>");
+      var paqStr = r.CantidadPorPaquete > 1 ? $"x{r.CantidadPorPaquete}" : "";
+      sb.AppendLine($"      <tr><td>{r.IdNotaCreditoCompra}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td class='right'>{r.Cantidad:N2}</td><td>{paqStr}</td><td class='right'>{r.Precio.ToString(r.Formato)}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Importe.ToString(r.Formato)}</td><td class='right'>{r.ImporteGs:N0}</td><td class='right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Motivo)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td></tr>");
     }
     sb.AppendLine("    </tbody>");
-    sb.AppendLine($"    <tfoot><tr><th colspan='10' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.ImporteGs):N0}</th><th class='right'>{filas.Sum(x=>x.ImporteUsd):N2}</th><th></th><th></th><th></th></tr></tfoot>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='11' class='right'>Totales</th><th class='right'>{filas.Sum(x=>x.ImporteGs):N0}</th><th class='right'>{filas.Sum(x=>x.ImporteUsd):N2}</th><th></th><th></th><th></th></tr></tfoot>");
     sb.AppendLine("  </table>");
     sb.AppendLine("</div>");
 
@@ -399,7 +404,7 @@
     var usuario = auth.User?.Identity?.Name ?? "";
     var suc = SucursalProvider.GetSucursalNombre() ?? "";
     sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
-    sb.AppendLine(string.Join(sep, new[]{"ID","Fecha","Nº NC","Proveedor","Producto","Cant.","Precio","Mon","Cambio","Importe","Importe Gs","Importe $","Motivo","Usuario","Caja"}));
+    sb.AppendLine(string.Join(sep, new[]{"ID","Fecha","Nº NC","Proveedor","Producto","Cant.","Paq.","Precio","Mon","Cambio","Importe","Importe Gs","Importe $","Motivo","Usuario","Caja"}));
     foreach (var r in filas)
     {
       string[] cols = new[]
@@ -410,6 +415,7 @@
         r.Proveedor,
         r.Producto,
         r.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        r.CantidadPorPaquete > 1 ? r.CantidadPorPaquete.ToString() : "",
         r.Precio.ToString(System.Globalization.CultureInfo.InvariantCulture),
         r.Moneda,
         (r.Cambio ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -444,7 +450,7 @@
     ws.Cell(row, 1).Value = "Usuario"; ws.Cell(row, 2).Value = usuario; row++;
     ws.Cell(row, 1).Value = "Sucursal"; ws.Cell(row, 2).Value = suc; row += 2;
 
-    var headers = new[]{"ID","Fecha","Nº NC","Proveedor","Producto","Cant.","Precio","Mon","Cambio","Importe","Importe Gs","Importe $","Motivo","Usuario","Caja"};
+    var headers = new[]{"ID","Fecha","Nº NC","Proveedor","Producto","Cant.","Paq.","Precio","Mon","Cambio","Importe","Importe Gs","Importe $","Motivo","Usuario","Caja"};
     for (int c=0;c<headers.Length;c++) ws.Cell(row, c+1).Value = headers[c];
     ws.Range(row,1,row,headers.Length).Style.Font.Bold = true; row++;
 
@@ -457,23 +463,24 @@
       ws.Cell(row,4).Value = r.Proveedor;
       ws.Cell(row,5).Value = r.Producto;
       ws.Cell(row,6).Value = r.Cantidad; ws.Cell(row,6).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,7).Value = r.Precio; ws.Cell(row,7).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
-      ws.Cell(row,8).Value = r.Moneda;
-      ws.Cell(row,9).Value = r.Cambio ?? 0m; ws.Cell(row,9).Style.NumberFormat.Format = "0.00";
-      ws.Cell(row,10).Value = r.Importe; ws.Cell(row,10).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
-      ws.Cell(row,11).Value = r.ImporteGs; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0";
-      ws.Cell(row,12).Value = r.ImporteUsd; ws.Cell(row,12).Style.NumberFormat.Format = "#,##0.00";
-      ws.Cell(row,13).Value = r.Motivo;
-      ws.Cell(row,14).Value = r.Usuario;
-      ws.Cell(row,15).Value = r.IdCaja;
+      ws.Cell(row,7).Value = r.CantidadPorPaquete > 1 ? $"x{r.CantidadPorPaquete}" : "";
+      ws.Cell(row,8).Value = r.Precio; ws.Cell(row,8).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
+      ws.Cell(row,9).Value = r.Moneda;
+      ws.Cell(row,10).Value = r.Cambio ?? 0m; ws.Cell(row,10).Style.NumberFormat.Format = "0.00";
+      ws.Cell(row,11).Value = r.Importe; ws.Cell(row,11).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
+      ws.Cell(row,12).Value = r.ImporteGs; ws.Cell(row,12).Style.NumberFormat.Format = "#,##0";
+      ws.Cell(row,13).Value = r.ImporteUsd; ws.Cell(row,13).Style.NumberFormat.Format = "#,##0.00";
+      ws.Cell(row,14).Value = r.Motivo;
+      ws.Cell(row,15).Value = r.Usuario;
+      ws.Cell(row,16).Value = r.IdCaja;
       totalGs += r.ImporteGs;
       totalUsd += r.ImporteUsd;
       row++;
     }
 
-    ws.Cell(row,10).Value = "Totales"; ws.Cell(row,10).Style.Font.Bold = true;
-    ws.Cell(row,11).Value = totalGs; ws.Cell(row,11).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,11).Style.Font.Bold = true;
-    ws.Cell(row,12).Value = totalUsd; ws.Cell(row,12).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,12).Style.Font.Bold = true;
+    ws.Cell(row,11).Value = "Totales"; ws.Cell(row,11).Style.Font.Bold = true;
+    ws.Cell(row,12).Value = totalGs; ws.Cell(row,12).Style.NumberFormat.Format = "#,##0"; ws.Cell(row,12).Style.Font.Bold = true;
+    ws.Cell(row,13).Value = totalUsd; ws.Cell(row,13).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row,13).Style.Font.Bold = true;
     ws.Columns().AdjustToContents();
     using var ms = new System.IO.MemoryStream();
     wb.SaveAs(ms);
@@ -502,14 +509,15 @@
     if (!filas.Any()) return Task.FromResult("<p>Sin resultados</p>");
     var sb = new System.Text.StringBuilder();
     sb.AppendLine("<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse;font-size:12px;'>");
-    sb.AppendLine("<thead><tr style='background:#f0f0f0;'><th>ID</th><th>Fecha</th><th>Nº NC</th><th>Proveedor</th><th>Producto</th><th>Cant.</th><th>Precio</th><th>Mon</th><th>Cambio</th><th>Importe</th><th>Importe Gs</th><th>Importe $</th><th>Motivo</th><th>Usuario</th><th>Caja</th></tr></thead>");
+    sb.AppendLine("<thead><tr style='background:#f0f0f0;'><th>ID</th><th>Fecha</th><th>Nº NC</th><th>Proveedor</th><th>Producto</th><th>Cant.</th><th>Paq.</th><th>Precio</th><th>Mon</th><th>Cambio</th><th>Importe</th><th>Importe Gs</th><th>Importe $</th><th>Motivo</th><th>Usuario</th><th>Caja</th></tr></thead>");
     sb.AppendLine("<tbody>");
     foreach (var r in filas)
     {
-      sb.AppendLine($"<tr><td>{r.IdNotaCreditoCompra}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td style='text-align:right'>{r.Cantidad:N2}</td><td style='text-align:right'>{r.Precio.ToString(r.Formato)}</td><td>{r.Moneda}</td><td style='text-align:right'>{(r.Cambio ?? 0):N2}</td><td style='text-align:right'>{r.Importe.ToString(r.Formato)}</td><td style='text-align:right'>{r.ImporteGs:N0}</td><td style='text-align:right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Motivo)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td></tr>");
+      var paqStr = r.CantidadPorPaquete > 1 ? $"x{r.CantidadPorPaquete}" : "";
+      sb.AppendLine($"<tr><td>{r.IdNotaCreditoCompra}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Proveedor)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Producto)}</td><td style='text-align:right'>{r.Cantidad:N2}</td><td style='text-align:center'>{paqStr}</td><td style='text-align:right'>{r.Precio.ToString(r.Formato)}</td><td>{r.Moneda}</td><td style='text-align:right'>{(r.Cambio ?? 0):N2}</td><td style='text-align:right'>{r.Importe.ToString(r.Formato)}</td><td style='text-align:right'>{r.ImporteGs:N0}</td><td style='text-align:right'>{r.ImporteUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Motivo)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td></tr>");
     }
     sb.AppendLine("</tbody>");
-    sb.AppendLine($"<tfoot><tr style='font-weight:bold;background:#f0f0f0;'><td colspan='10' style='text-align:right'>Totales</td><td style='text-align:right'>{filas.Sum(x => x.ImporteGs):N0}</td><td style='text-align:right'>{filas.Sum(x => x.ImporteUsd):N2}</td><td></td><td></td><td></td></tr></tfoot>");
+    sb.AppendLine($"<tfoot><tr style='font-weight:bold;background:#f0f0f0;'><td colspan='11' style='text-align:right'>Totales</td><td style='text-align:right'>{filas.Sum(x => x.ImporteGs):N0}</td><td style='text-align:right'>{filas.Sum(x => x.ImporteUsd):N2}</td><td></td><td></td><td></td></tr></tfoot>");
     sb.AppendLine("</table>");
     return Task.FromResult(sb.ToString());
   }
@@ -524,6 +532,7 @@
     public string Producto { get; set; } = string.Empty;
     public string Codigo { get; set; } = string.Empty;
     public decimal Cantidad { get; set; }
+    public int CantidadPorPaquete { get; set; }
     public decimal Precio { get; set; }
     public string Moneda { get; set; } = "PYG";
     public string Formato { get; set; } = "N0";

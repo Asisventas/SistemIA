@@ -8367,3 +8367,98 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260107134345_Agregar_CodigoObligacionAfectada_Sociedad'
+)
+BEGIN
+    ALTER TABLE [Sociedades] ADD [CodigoObligacionAfectada] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260107134345_Agregar_CodigoObligacionAfectada_Sociedad'
+)
+BEGIN
+    ALTER TABLE [Asistencias] ADD [IdCaja] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260107134345_Agregar_CodigoObligacionAfectada_Sociedad'
+)
+BEGIN
+    ALTER TABLE [Asistencias] ADD [Turno] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260107134345_Agregar_CodigoObligacionAfectada_Sociedad'
+)
+BEGIN
+    CREATE INDEX [IX_Asistencias_IdCaja] ON [Asistencias] ([IdCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260107134345_Agregar_CodigoObligacionAfectada_Sociedad'
+)
+BEGIN
+    ALTER TABLE [Asistencias] ADD CONSTRAINT [FK_Asistencias_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260107134345_Agregar_CodigoObligacionAfectada_Sociedad'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260107134345_Agregar_CodigoObligacionAfectada_Sociedad', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260114002913_Agregar_CantidadPorPaquete_Producto'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [CantidadPorPaquete] decimal(18,4) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260114002913_Agregar_CantidadPorPaquete_Producto'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [PermiteVentaPorUnidad] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260114002913_Agregar_CantidadPorPaquete_Producto'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260114002913_Agregar_CantidadPorPaquete_Producto', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
