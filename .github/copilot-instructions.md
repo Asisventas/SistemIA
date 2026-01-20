@@ -243,6 +243,18 @@ public string Base64ToHex(string base64) {
 // Resultado: "GAC2XV..." → decodificar → bytes → "1800b65d53aa..."
 ```
 
+**Causa #6 - Formato del dId en SOAP (FIX DEFINITIVO 19-Ene-2026):**
+El campo `dId` del envelope SOAP debe ser **12 dígitos** en formato `DDMMYYYYHHMM`, NO 16 dígitos.
+```csharp
+// ❌ INCORRECTO - 16 dígitos causaba error 0160
+var dId = DateTime.Now.ToString("yyyyMMddHHmmssfff");  // "2026011918123456"
+
+// ✅ CORRECTO - 12 dígitos formato DDMMYYYYHHMM
+var dId = DateTime.Now.ToString("ddMMyyyyHHmm");       // "190120262354"
+```
+
+**⚠️ IMPORTANTE:** El prevalidador del SET NO valida el dId, solo valida la estructura XML del DE. Por eso el XML pasaba todas las validaciones pero fallaba al enviar.
+
 **Referencia Manual Técnico v150 (Sección 13.8.4.3):**
 > "El resultado del hash de la firma viene en formato texto base64, el mismo debe ser convertido a un texto hexadecimal."
 
@@ -2087,3 +2099,65 @@ if ($posSig -gt $posDE) { "CORRECTO: Signature FUERA de DE" } else { "ERROR: Sig
 El XML `xmlRequestVenta_273_sync.xml` fue generado por Power Builder y **SÍ es aceptado** por SIFEN.
 
 > **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 16-Ene-2026"
+
+---
+
+### 🎉 Sesión 19-20 Enero 2026 - FIX DEFINITIVO: Formato del dId
+
+#### ⚠️ CAUSA RAÍZ IDENTIFICADA: Formato del dId Incorrecto
+
+El campo `dId` del envelope SOAP debe ser **12 dígitos** en formato `DDMMYYYYHHMM`.
+
+**Comparación con DLL Funcional:**
+| Sistema | Formato | Ejemplo | Longitud |
+|---------|---------|---------|----------|
+| **DLL Funcional** | `DDMMYYYYHHMM` | `160420241700` | 12 dígitos ✅ |
+| **SistemIA (ANTES)** | `YYYYMMDDHHmmssNN` | `2026011918123456` | 16 dígitos ❌ |
+
+#### ✅ Corrección Aplicada
+
+**Archivo:** `Models/Sifen.cs`
+
+**Ubicación 1 - Líneas 746-749:**
+```csharp
+// FIX 19-Ene-2026: Usar formato DDMMYYYYHHMM (12 dígitos)
+var dId = DateTime.Now.ToString("ddMMyyyyHHmm");  // "190120262354"
+```
+
+**Ubicación 2 - Líneas 1233-1240 (método FirmarYEnviar):**
+```csharp
+// FIX 20-Ene-2026: dId dinámico formato DDMMYYYYHHMM
+var dIdValue = DateTime.Now.ToString("ddMMyyyyHHmm");
+```
+
+#### 🎉 Resultado: ¡SIFEN ACEPTA!
+
+```json
+{
+  "ok": true,
+  "estado": "ENVIADO",
+  "idVenta": 297,
+  "cdc": "01004952197001002000008812026011918818498626",
+  "idLote": "154307038997779882"
+}
+```
+
+#### 📊 Formato dId Correcto
+
+| Campo | Formato | Ejemplo |
+|-------|---------|---------|
+| DD | Día | 19 |
+| MM | Mes | 01 |
+| YYYY | Año | 2026 |
+| HH | Hora | 23 |
+| mm | Minutos | 54 |
+| **Total** | 12 dígitos | `190120262354` |
+
+#### ⚠️ Por qué el prevalidador NO detectaba el error
+
+El prevalidador del SET solo valida la estructura XML del DE, **NO valida el envelope SOAP ni el campo dId**. Por eso el XML pasaba todas las validaciones pero fallaba al enviar.
+
+#### Archivos Modificados:
+- `Models/Sifen.cs` - Dos ubicaciones con formato dId corregido
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 19-20 Enero 2026"

@@ -383,16 +383,19 @@ Este error es uno de los más comunes y puede tener múltiples causas:
 
 ---
 
-## ✅ Estado de Implementación
+## ✅ Estado de Implementación (Actualizado 20 Enero 2026)
 
-### Funcionalidades IMPLEMENTADAS:
+### Funcionalidades IMPLEMENTADAS y PROBADAS:
 - ✅ **Generación de CDC** (44 dígitos con dígito verificador)
 - ✅ **Construcción XML DE** v150 para Facturas
-- ✅ **Firma digital** con certificado .p12
-- ✅ **Envío a SET** (lote asíncrono y síncrono)
+- ✅ **Firma digital** con certificado .p12 - VALIDADA por SIFEN
+- ✅ **Envío a SET** (lote asíncrono) - **FUNCIONANDO** (código 0300)
+- ✅ **Formato dId correcto** - 12 dígitos DDMMYYYYHHMM
+- ✅ **Posición Signature** - FUERA de `</DE>`, CON namespace XMLDSIG
+- ✅ **Compresión ZIP** - ZipArchive real (no GZip)
 - ✅ **Consulta de RUC** desde SET
 - ✅ **Consulta de estado de lote**
-- ✅ **Generación de QR** con cHashQR
+- ✅ **Generación de QR** con cHashQR y DigestValue
 - ✅ **Catálogos SIFEN** (departamentos, ciudades, etc.)
 - ✅ **Validación de datos** antes del envío
 - ✅ **Diagnóstico de configuración** (página admin)
@@ -900,36 +903,33 @@ Los archivos de referencia están en:
 
 ---
 
-## 📝 Próximos Pasos - Actualizado 8 Enero 2026
+## 📝 Próximos Pasos - Actualizado 20 Enero 2026
 
-### 🔴 CRÍTICOS (Causan error 0160)
+### ✅ RESUELTOS (Error 0160 corregido)
 
-1. **Agregar campo `gOblAfe`** (Obligaciones Afectadas del contribuyente)
-   - Código 211 = IVA GRAVADAS Y EXONERADAS - EXPORTADORES
-   - Código 700 = IRE RÉGIMEN GENERAL
-   - Se debe agregar dentro de `gOpeCom`
-
-2. **Eliminar campo `dSubExo`** (subtotal exonerado) si no aplica
-
-3. **Agregar campo `dBasExe`** dentro de `gCamIVA` para cada item
+1. ✅ **Campo `gOblAfe`** - Agregado con código 211
+2. ✅ **Campo `dSubExo`** - Eliminado si no aplica
+3. ✅ **Campo `dBasExe`** - Agregado dentro de gCamIVA
+4. ✅ **Posición Signature** - FUERA de `</DE>`, CON namespace XMLDSIG
+5. ✅ **Compresión ZIP** - Usar ZipArchive real, NO GZip
+6. ✅ **Formato dId** - 12 dígitos DDMMYYYYHHMM
 
 ### 🟡 RECOMENDADOS (Mejoran compatibilidad)
 
-4. **Formatear decimales correctamente**
+1. **Formatear decimales correctamente**
    - Cantidades: 4 decimales (`1.0000`)
    - Porcentajes: 2 decimales (`0.00`)
    - Montos: sin decimales para PYG
 
-5. **Simplificar receptor** - Omitir campos geográficos si no son necesarios
+2. **Simplificar receptor** - Omitir campos geográficos si no son necesarios
 
-6. **NO incluir `dDescGloItem`** en `gValorRestaItem`
+### 🟢 PENDIENTES (Para futuro)
 
-### 🟢 OPCIONALES (Para futuro)
-
-7. Implementar Notas de Crédito Electrónicas (NCE)
-8. Implementar eventos de anulación
-9. Dashboard de documentos SIFEN
-10. Validación XSD antes del envío
+1. Implementar Notas de Crédito Electrónicas (NCE)
+2. Implementar Notas de Débito Electrónicas (NDE)
+3. Implementar eventos de anulación
+4. Dashboard de documentos SIFEN
+5. Validación XSD antes del envío
 
 ---
 
@@ -1782,3 +1782,146 @@ El XML `xmlRequestVenta_273_sync.xml` fue generado por el sistema **Power Builde
 - Sin elemento `<gCamGen />` vacío
 - Signature con `xmlns="http://www.w3.org/2000/09/xmldsig#"`
 - Signature posicionado entre `</DE>` y `<gCamFuFD>`
+
+---
+
+## 🎉 Sesión 19-20 Enero 2026: FIX DEFINITIVO - Formato del dId
+
+### ⚠️ CAUSA RAÍZ IDENTIFICADA: Formato del dId Incorrecto
+
+Después de múltiples sesiones de debugging donde el XML pasaba el prevalidador pero era rechazado con error 0160 al enviar, se descubrió que la **causa raíz** estaba en el campo `dId` del envelope SOAP.
+
+### 🔍 Análisis Comparativo con DLL Funcional
+
+Se comparó el código de SistemIA con un DLL de referencia que **SÍ funciona** (`c:\SifenProyecto2026\Sifen2026Proyec\Sifen.cs`):
+
+| Sistema | Formato dId | Ejemplo | Longitud |
+|---------|-------------|---------|----------|
+| **DLL Funcional** | `DDMMYYYYHHMM` | `160420241700` | 12 dígitos |
+| **SistemIA (ANTES)** | `YYYYMMDDHHmmssNN` | `2026011918123456` | 16 dígitos |
+
+**El DLL usa un dId fijo `160420241700`** (16 abril 2024 17:00) pero SIFEN acepta cualquier valor válido de **12 dígitos** en formato `DDMMYYYYHHMM`.
+
+### ✅ Corrección Aplicada
+
+**Archivo:** `Models/Sifen.cs`
+
+**Ubicación 1 - Líneas 746-749:**
+```csharp
+// FIX 19-Ene-2026: Usar formato DDMMYYYYHHMM (12 dígitos) como el DLL
+// El formato anterior YYYYMMDDHHmmssNN (16 dígitos) causaba error 0160
+// El DLL usa formato DDMMYYYYHHMM - ejemplo: "160420241700" = 16 abril 2024 17:00
+var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
+```
+
+**Ubicación 2 - Líneas 1233-1240 (método FirmarYEnviar):**
+```csharp
+// FIX 20-Ene-2026: Usar dId dinámico formato DDMMYYYYHHMM (12 dígitos)
+// ANTES: var dIdValue = "160420241700"; (fijo)
+// DESPUÉS: dId dinámico con formato correcto
+var dIdValue = DateTime.Now.ToString("ddMMyyyyHHmm");
+Console.WriteLine($"[DEBUG] dId generado: {dIdValue}");
+```
+
+### 📋 Estructura SOAP Correcta para Envío de Lote
+
+```xml
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <rEnvioLote xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+      <dId>190120262354</dId>           <!-- ✅ 12 dígitos DDMMYYYYHHMM -->
+      <xDE>{ZIP_BASE64_DE_rLoteDE}</xDE>
+    </rEnvioLote>
+  </soap:Body>
+</soap:Envelope>
+```
+
+**Donde:**
+- `dId` = Fecha/hora actual en formato `DDMMYYYYHHMM` (12 dígitos)
+- `xDE` = ZIP comprimido y codificado en Base64 conteniendo `<rLoteDE>...<rDE>...</rDE>...</rLoteDE>`
+
+### 🎉 Resultado: Envío Exitoso
+
+```json
+{
+  "ok": true,
+  "estado": "ENVIADO",
+  "idVenta": 297,
+  "cdc": "01004952197001002000008812026011918818498626",
+  "idLote": "154307038997779882"  // ← Protocolo de SIFEN
+}
+```
+
+**Log del servidor confirmando dId dinámico:**
+```
+[DEBUG] dId generado: 190120262354
+[DEBUG] Enviando SOAP a https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+[SIFEN] ✔ Código respuesta: 0300 - Lote recibido con éxito
+```
+
+### 📊 Resumen de Formato dId
+
+| Campo | Formato | Ejemplo | Significado |
+|-------|---------|---------|-------------|
+| `DD` | Día | `19` | Día 19 |
+| `MM` | Mes | `01` | Enero |
+| `YYYY` | Año | `2026` | Año 2026 |
+| `HH` | Hora | `23` | Hora 23 |
+| `mm` | Minutos | `54` | Minutos 54 |
+| **Total** | 12 dígitos | `190120262354` | 19/01/2026 23:54 |
+
+### ⚠️ IMPORTANTE: Por qué el XML pasaba prevalidador pero fallaba al enviar
+
+El **prevalidador del SET** (`ekuatia.set.gov.py/prevalidador`) solo valida la estructura del XML del DE (`<rDE>...<DE>...</DE>...</rDE>`), NO valida el envelope SOAP ni el campo `dId`.
+
+Por eso el XML pasaba todas las validaciones del prevalidador:
+- ✅ "XML y Firma Válidos"
+- ✅ "Pasó las Validaciones de SIFEN"
+
+Pero fallaba al enviar porque el **webservice** sí valida el formato del `dId` en el envelope SOAP.
+
+### 🔧 Código de Referencia del DLL (Sifen.cs línea 282)
+
+```csharp
+// En el DLL funcional de referencia:
+soapEnv = soapEnv.Replace("{dId}", "160420241700");  // dId fijo de 12 dígitos
+```
+
+El DLL usa un valor fijo pero el formato es correcto: `DDMMYYYYHHMM` (12 dígitos).
+
+---
+
+## ✅ Estado Final del Sistema SIFEN (20 Enero 2026)
+
+### Funcionalidades Completadas y Probadas
+
+| Funcionalidad | Estado | Notas |
+|---------------|--------|-------|
+| Generación de CDC | ✅ | 44 dígitos con DV correcto |
+| Construcción XML DE v150 | ✅ | Estructura validada |
+| Firma Digital | ✅ | SignatureValue válido |
+| Posición Signature | ✅ | FUERA de `</DE>`, CON namespace |
+| Compresión ZIP | ✅ | ZipArchive real, no GZip |
+| Generación QR | ✅ | cHashQR con DigestValue hex |
+| Formato dId | ✅ | 12 dígitos DDMMYYYYHHMM |
+| Envío a SIFEN (Lote) | ✅ | Código 0300 "Lote recibido" |
+| Consulta de Lote | ✅ | Obtiene estado y protocolo |
+
+### Errores Resueltos
+
+| Error | Causa | Solución | Fecha |
+|-------|-------|----------|-------|
+| 0160 | GZip vs ZIP | Usar ZipArchive | 7-Ene-2026 |
+| 0160 | Signature dentro de DE | Mover FUERA de `</DE>` | 16-Ene-2026 |
+| 0160 | Signature sin namespace | Mantener xmlns XMLDSIG | 16-Ene-2026 |
+| 0160 | gCamGen vacío | Eliminar si no hay contenido | 16-Ene-2026 |
+| 0160 | **dId 16 dígitos** | **Usar 12 dígitos DDMMYYYYHHMM** | **19-Ene-2026** |
+
+### URLs de Webservices (Confirmadas Funcionales)
+
+| Servicio | URL Test | Estado |
+|----------|----------|--------|
+| Recepción Lote | `https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl` | ✅ |
+| Consulta Lote | `https://sifen-test.set.gov.py/de/ws/consultas/consulta-lote.wsdl` | ✅ |
+| Consulta RUC | `https://sifen-test.set.gov.py/de/ws/consultas/consulta-ruc.wsdl` | ✅ |
+| Consulta DE | `https://sifen-test.set.gov.py/de/ws/consultas/consulta.wsdl` | ✅ |

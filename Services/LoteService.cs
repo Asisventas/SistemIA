@@ -11,7 +11,19 @@ namespace SistemIA.Services
     public interface ILoteService
     {
         /// <summary>
-        /// Obtiene el lote más próximo a vencer con stock disponible (FEFO).
+        /// Obtiene el stock total disponible en todos los lotes activos de un producto.
+        /// Suma el stock de TODOS los lotes para validar si hay suficiente para vender.
+        /// </summary>
+        Task<decimal> ObtenerStockTotalFEFOAsync(int idProducto, int idDeposito);
+        
+        /// <summary>
+        /// Obtiene todos los lotes activos ordenados por FEFO para distribuir una venta.
+        /// Devuelve lista de lotes desde el más próximo a vencer hasta el más lejano.
+        /// </summary>
+        Task<List<ProductoLote>> ObtenerLotesFEFOParaVentaAsync(int idProducto, int idDeposito);
+        
+        /// <summary>
+        /// Obtiene el primer lote FEFO con stock disponible (para preview/información).
         /// </summary>
         Task<ProductoLote?> ObtenerLoteFEFOAsync(int idProducto, int idDeposito, decimal cantidadRequerida);
         
@@ -46,6 +58,11 @@ namespace SistemIA.Services
         Task<List<ProductoLoteAlertaDto>> ObtenerAlertasVencimientoAsync(int? idDeposito = null, int? diasAnticipacion = null);
         
         /// <summary>
+        /// Obtiene lotes SIN fecha de vencimiento que tienen stock (bloqueados para venta).
+        /// </summary>
+        Task<List<LoteSinFechaDto>> ObtenerLotesSinFechaVencimientoAsync(int? idDeposito = null);
+        
+        /// <summary>
         /// Actualiza el estado de lotes vencidos o agotados.
         /// </summary>
         Task<int> ActualizarEstadosLotesAsync();
@@ -71,36 +88,70 @@ namespace SistemIA.Services
         }
 
         /// <summary>
-        /// Obtiene el lote con vencimiento más próximo que tenga stock suficiente (FEFO).
-        /// Prioriza: 1. Lotes con fecha de vencimiento (del más próximo al más lejano)
-        ///           2. Lotes sin fecha de vencimiento (por antigüedad de ingreso)
+        /// Obtiene el stock total disponible en lotes activos NO VENCIDOS y CON fecha de vencimiento.
+        /// IMPORTANTE: Solo incluye lotes que tienen FechaVencimiento definida y no está vencida.
+        /// Lotes sin fecha de vencimiento NO se incluyen (el usuario debe cargar la fecha primero).
         /// </summary>
-        public async Task<ProductoLote?> ObtenerLoteFEFOAsync(int idProducto, int idDeposito, decimal cantidadRequerida)
+        public async Task<decimal> ObtenerStockTotalFEFOAsync(int idProducto, int idDeposito)
         {
             await using var ctx = await _contextFactory.CreateDbContextAsync();
+            var hoy = DateTime.Today;
             
-            // Primero intentar con lotes que tienen fecha de vencimiento (ordenados por vencimiento ascendente)
-            var loteConVencimiento = await ctx.ProductosLotes
-                .Where(l => l.IdProducto == idProducto 
-                         && l.IdDeposito == idDeposito 
-                         && l.Estado == "Activo"
-                         && l.Stock >= cantidadRequerida
-                         && l.FechaVencimiento.HasValue)
-                .OrderBy(l => l.FechaVencimiento)  // El más próximo a vencer primero
-                .ThenBy(l => l.FechaIngreso)       // Si mismo vencimiento, el más antiguo
-                .FirstOrDefaultAsync();
-            
-            if (loteConVencimiento != null)
-                return loteConVencimiento;
-            
-            // Si no hay con vencimiento, buscar lotes sin fecha de vencimiento (por antigüedad)
+            // FIX 2026-01-19: Solo incluir lotes que TIENEN fecha de vencimiento y NO están vencidos
+            // Lotes sin fecha de vencimiento se excluyen porque el usuario debe cargarla primero
             return await ctx.ProductosLotes
                 .Where(l => l.IdProducto == idProducto 
                          && l.IdDeposito == idDeposito 
                          && l.Estado == "Activo"
-                         && l.Stock >= cantidadRequerida
-                         && !l.FechaVencimiento.HasValue)
-                .OrderBy(l => l.FechaIngreso)  // El más antiguo primero (FIFO)
+                         && l.Stock > 0
+                         && l.FechaVencimiento.HasValue          // DEBE tener fecha de vencimiento
+                         && l.FechaVencimiento.Value >= hoy)     // Y no estar vencido
+                .SumAsync(l => l.Stock);
+        }
+
+        /// <summary>
+        /// Obtiene lotes activos CON fecha de vencimiento válida ordenados por FEFO para ventas.
+        /// IMPORTANTE: NO incluye lotes sin fecha de vencimiento (deben ser cargados primero).
+        /// </summary>
+        public async Task<List<ProductoLote>> ObtenerLotesFEFOParaVentaAsync(int idProducto, int idDeposito)
+        {
+            await using var ctx = await _contextFactory.CreateDbContextAsync();
+            var hoy = DateTime.Today;
+            
+            // FIX 2026-01-19: Solo devolver lotes que TIENEN fecha de vencimiento válida
+            // Lotes sin fecha NO se pueden vender hasta que el usuario la cargue
+            return await ctx.ProductosLotes
+                .Where(l => l.IdProducto == idProducto 
+                         && l.IdDeposito == idDeposito 
+                         && l.Estado == "Activo"
+                         && l.Stock > 0
+                         && l.FechaVencimiento.HasValue          // DEBE tener fecha
+                         && l.FechaVencimiento.Value >= hoy)     // Y no estar vencido
+                .OrderBy(l => l.FechaVencimiento)  // El más próximo a vencer primero (FEFO)
+                .ThenBy(l => l.FechaIngreso)       // Si mismo vencimiento, el más antiguo
+                .ToListAsync();
+        }
+
+        /// <summary>
+        /// Obtiene el primer lote FEFO CON fecha de vencimiento válida (para preview/información).
+        /// IMPORTANTE: NO devuelve lotes sin fecha de vencimiento.
+        /// </summary>
+        public async Task<ProductoLote?> ObtenerLoteFEFOAsync(int idProducto, int idDeposito, decimal cantidadRequerida)
+        {
+            await using var ctx = await _contextFactory.CreateDbContextAsync();
+            var hoy = DateTime.Today;
+            
+            // FIX 2026-01-19: Solo devolver lotes con fecha de vencimiento válida
+            // Lotes sin fecha NO se pueden vender hasta que se cargue la fecha
+            return await ctx.ProductosLotes
+                .Where(l => l.IdProducto == idProducto 
+                         && l.IdDeposito == idDeposito 
+                         && l.Estado == "Activo"
+                         && l.Stock > 0
+                         && l.FechaVencimiento.HasValue          // DEBE tener fecha
+                         && l.FechaVencimiento.Value >= hoy)     // Y no estar vencido
+                .OrderBy(l => l.FechaVencimiento)  // El más próximo a vencer primero (FEFO)
+                .ThenBy(l => l.FechaIngreso)       // Si mismo vencimiento, el más antiguo
                 .FirstOrDefaultAsync();
         }
 
@@ -487,6 +538,44 @@ namespace SistemIA.Services
             await ctx.SaveChangesAsync();
             return true;
         }
+        
+        /// <summary>
+        /// Obtiene lotes SIN fecha de vencimiento que tienen stock (bloqueados para venta).
+        /// Estos lotes requieren que se ingrese la fecha de vencimiento para poder venderse.
+        /// </summary>
+        public async Task<List<LoteSinFechaDto>> ObtenerLotesSinFechaVencimientoAsync(int? idDeposito = null)
+        {
+            await using var ctx = await _contextFactory.CreateDbContextAsync();
+            
+            var query = from lote in ctx.ProductosLotes
+                        join producto in ctx.Productos on lote.IdProducto equals producto.IdProducto
+                        join deposito in ctx.Depositos on lote.IdDeposito equals deposito.IdDeposito
+                        where lote.Stock > 0 
+                           && lote.Estado == "Activo"
+                           && !lote.FechaVencimiento.HasValue  // SIN fecha de vencimiento
+                        select new LoteSinFechaDto
+                        {
+                            IdProductoLote = lote.IdProductoLote,
+                            IdProducto = producto.IdProducto,
+                            IdDeposito = deposito.IdDeposito,
+                            CodigoProducto = producto.CodigoInterno,
+                            DescripcionProducto = producto.Descripcion ?? "",
+                            NumeroLote = lote.NumeroLote,
+                            FechaIngreso = lote.FechaIngreso,
+                            Stock = lote.Stock,
+                            CostoUnitario = lote.CostoUnitario ?? 0m,
+                            NombreDeposito = deposito.Nombre ?? "",
+                            ControlaVencimiento = producto.ControlarVencimiento,
+                            DiasAlertaVencimiento = producto.DiasAlertaVencimiento
+                        };
+            
+            if (idDeposito.HasValue)
+                query = query.Where(x => x.IdDeposito == idDeposito.Value);
+            
+            return await query.OrderBy(l => l.DescripcionProducto)
+                              .ThenBy(l => l.NumeroLote)
+                              .ToListAsync();
+        }
     }
 
     // ========== DTOs ==========
@@ -510,6 +599,26 @@ namespace SistemIA.Services
         public string NombreDeposito { get; set; } = "";
         public string Estado { get; set; } = "";  // Vencido, Vence Hoy, Crítico, Urgente, Alerta
         public bool PermiteVentaVencido { get; set; }
+    }
+
+    /// <summary>
+    /// DTO para lotes SIN fecha de vencimiento (bloqueados para venta).
+    /// </summary>
+    public class LoteSinFechaDto
+    {
+        public int IdProductoLote { get; set; }
+        public int IdProducto { get; set; }
+        public int IdDeposito { get; set; }
+        public string? CodigoProducto { get; set; }
+        public string DescripcionProducto { get; set; } = "";
+        public string NumeroLote { get; set; } = "";
+        public DateTime FechaIngreso { get; set; }
+        public decimal Stock { get; set; }
+        public decimal CostoUnitario { get; set; }
+        public decimal ValorStock => Stock * CostoUnitario;
+        public string NombreDeposito { get; set; } = "";
+        public bool ControlaVencimiento { get; set; }
+        public int DiasAlertaVencimiento { get; set; }
     }
 
     /// <summary>

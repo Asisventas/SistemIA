@@ -743,15 +743,10 @@ namespace SistemIA.Models
                 }
                 catch { /* mejor esfuerzo */ }
 
-                // Generar dId de 16 dígitos (yyyyMMddHHmmssNN)
-                string GenerateDId16()
-                {
-                    var baseTs = DateTime.Now.ToString("yyyyMMddHHmmss");
-                    // Sufijo pseudoaleatorio 2 dígitos para evitar colisiones en envíos rápidos
-                    var rnd = (Environment.TickCount % 100);
-                    return baseTs + rnd.ToString("00");
-                }
-                var dId = GenerateDId16();
+                // FIX 19-Ene-2026: Usar formato DDMMYYYYHHMM (12 dígitos) como el DLL
+                // El formato anterior YYYYMMDDHHmmssNN (16 dígitos) causaba error 0160
+                // El DLL usa formato DDMMYYYYHHMM - ejemplo: "160420241700" = 16 abril 2024 17:00
+                var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
                 // Ajuste: usar estructura de lote "vista" (no base64/zip) tal como en el ejemplo requerido
                 // Construiremos el sobre SOAP con <rEnvioLote><dId/><xDE><rLoteDE><rDE .../></rLoteDE></xDE></rEnvioLote>
 
@@ -1051,96 +1046,55 @@ namespace SistemIA.Models
                 foreach (XmlNode qrNode in doc.GetElementsByTagName("dCarQR"))
                 {
                     if (qrNode == null) continue;
-                        // Reemplazar placeholder de DigestValue por el valor real
+                        // ========================================================================
+                        // FIX CRÍTICO 31-Ene-2026: Procesar QR según DLL funcional de Power Builder
+                        // ========================================================================
+                        // Referencia: Sifen2026Proyec/Sifen.cs líneas 477-486
+                        //
+                        // PROCESO EXACTO del DLL que FUNCIONA:
+                        //   1. Reemplazar placeholder DigestValue con hex real
+                        //   2. qrHash = SHA256(toda_la_URL_completa)
+                        //   3. Quitar últimos 32 chars (el CSC pegado al IdCSC)
+                        //   4. Agregar &cHashQR={hash}
+                        //
+                        // IMPORTANTE: El hash se calcula sobre TODA la URL incluyendo
+                        // el CSC pegado (NO sobre params+CSC como estábamos haciendo)
+                        // ========================================================================
+                        
+                        // Paso 1: Reemplazar placeholder de DigestValue por el valor real
                         var qrText = qrNode.InnerText.Replace(
                             "665569394474586a4f4a396970724970754f344c434a75706a457a73645766664846656d573270344c69593d",
                             digestValue);
 
-                        // Si no inicia con http, prefijar urlQR (base provista por config)
+                        // Paso 2: Prefijar urlQR si el texto no inicia con http
                         if (!qrText.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                         {
                             qrText = $"{urlQR}{qrText.TrimStart('?')}";
                         }
-
-                        // Extraer CSC del parámetro temporal __CSC__ (agregado por DEXmlBuilder)
-                        string cscValue = "ABCD0000000000000000000000000000"; // Default TEST
-                        // Buscar __CSC__ con & simple (como genera DEXmlBuilder ahora)
-                        var cscMatch = System.Text.RegularExpressions.Regex.Match(qrText, @"__CSC__=([^&]+)");
-                        if (cscMatch.Success)
-                        {
-                            cscValue = cscMatch.Groups[1].Value;
-                            // Remover el parámetro temporal __CSC__ del QR final (con & simple)
-                            qrText = System.Text.RegularExpressions.Regex.Replace(qrText, @"&__CSC__=[^&]+", "");
-                        }
-
-                        // ========================================================================
-                        // FIX CRÍTICO 26-Ene-2026: Cálculo de cHashQR según librería Roshka Java
-                        // Referencia: ManualSifen/codigoabierto/.../DocumentoElectronico.java
-                        // Método: generateQRLink() líneas 380-417
-                        //
-                        // DESCUBRIMIENTO CRÍTICO: El hash se calcula SOLO con los parámetros,
-                        // SIN incluir la URL base (https://...qr?)
-                        //
-                        // Java Roshka:
-                        //   String urlParamsString = buildUrlParams(params); // Solo params
-                        //   String cHashQR = sha256Hex(urlParamsString + csc);
-                        //
-                        // Verificado contra XML aprobado (protocolo 48493331):
-                        //   Hash calculado con params+CSC = fa02c1ed... ✅ COINCIDE
-                        //   Hash calculado con URL+CSC    = 2c87cc21... ❌ NO COINCIDE
-                        // ========================================================================
                         
-                        // Paso 1: Obtener URL completa hasta &cHashQR= (sin incluirlo)
-                        string urlCompleta = qrText;
-                        if (urlCompleta.Contains("&cHashQR="))
-                        {
-                            urlCompleta = urlCompleta.Substring(0, urlCompleta.IndexOf("&cHashQR="));
-                        }
-                        else if (urlCompleta.Contains("cHashQR="))
-                        {
-                            urlCompleta = urlCompleta.Substring(0, urlCompleta.IndexOf("cHashQR="));
-                            if (urlCompleta.EndsWith("&")) 
-                                urlCompleta = urlCompleta.TrimEnd('&');
-                        }
+                        // Paso 3: Calcular SHA256 de TODA la URL (incluyendo CSC pegado)
+                        var qrHash = SHA256ToString(qrText);
                         
-                        // Paso 2: CRÍTICO - Extraer SOLO los parámetros (sin URL base)
-                        // El hash se calcula sobre "nVersion=150&Id=..." NO sobre "https://...?nVersion=..."
-                        string soloParametros = urlCompleta;
-                        int indexInterrogacion = urlCompleta.IndexOf('?');
-                        if (indexInterrogacion >= 0)
-                        {
-                            soloParametros = urlCompleta.Substring(indexInterrogacion + 1);
-                        }
+                        // Paso 4: Quitar últimos 32 caracteres (el CSC pegado al IdCSC)
+                        // El formato de entrada es: ...&IdCSC=1ABCD0000000000000000000000000000
+                        // Queremos: ...&IdCSC=1&cHashQR={hash}
+                        string qrSinCsc = qrText.Substring(0, qrText.Length - 32);
                         
-                        // Paso 3: Concatenar CSC directamente al final (sin &)
-                        // El CSC va PEGADO a los parámetros para calcular el hash
-                        string datosParaHash = soloParametros + cscValue;
-                        
-                        // Paso 4: SHA256 de la concatenación
-                        var qrHash = SHA256ToString(datosParaHash);
-                        
-                        // La URL final para el QR mantiene la estructura completa
-                        string urlSinHash = urlCompleta;
-                        
-                        // Reconstruir QR con el hash calculado
-                        qrText = urlSinHash + "&cHashQR=" + qrHash;
+                        // Paso 5: Agregar &cHashQR={hash}
+                        string qrFinal = qrSinCsc + "&cHashQR=" + qrHash;
                         
                         // DEBUG: Mostrar cálculo del QR
-                        Console.WriteLine($"[QR DEBUG] URL completa: {urlCompleta.Substring(0, Math.Min(80, urlCompleta.Length))}...");
-                        Console.WriteLine($"[QR DEBUG] Solo parámetros: {soloParametros.Substring(0, Math.Min(80, soloParametros.Length))}...");
-                        Console.WriteLine($"[QR DEBUG] CSC usado: {cscValue}");
-                        Console.WriteLine($"[QR DEBUG] Hash calculado (params+CSC): {qrHash}");
+                        Console.WriteLine($"[QR DEBUG] URL con CSC (para hash): {qrText.Substring(0, Math.Min(80, qrText.Length))}...");
+                        Console.WriteLine($"[QR DEBUG] CSC (últimos 32 chars): {qrText.Substring(qrText.Length - 32)}");
+                        Console.WriteLine($"[QR DEBUG] Hash SHA256(URL completa): {qrHash}");
+                        Console.WriteLine($"[QR DEBUG] QR final: {qrFinal.Substring(0, Math.Min(80, qrFinal.Length))}...");
                         
-                        // ========================================================================
-                        // FIX 14-Ene-2026 (CORREGIDO 14-Ene-2026 noche):
-                        // El XML APROBADO por PowerBuilder usa &amp; (escape SIMPLE, NO doble)
-                        // CDC aprobado: 01004952197001002000006112026011410720743237
                         // ========================================================================
                         // XmlWriter automáticamente escapa & → &amp; al serializar
                         // Por lo tanto, el InnerText debe tener & literal (sin escapar)
                         // Resultado en XML: &amp; (correcto)
                         // ========================================================================
-                        qrNode.InnerText = qrText;
+                        qrNode.InnerText = qrFinal;
                 }
 
                 // ========================================================================
@@ -1176,7 +1130,7 @@ namespace SistemIA.Models
                     {
                         Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
                         Indent = false,
-                        OmitXmlDeclaration = false  // 14-Ene-2026 NOCHE: CON declaración XML (igual que PowerBuilder)
+                        OmitXmlDeclaration = true  // FIX 20-Ene-2026: El DLL funcional NO incluye declaración XML dentro de rLoteDE
                     }))
                     {
                         doc.WriteTo(writer);
@@ -1188,18 +1142,24 @@ namespace SistemIA.Models
                 }
                 
                 // ========================================================================
-                // FIX CRÍTICO 16-Ene-2026: Quitar namespace XMLDSIG de <Signature>
+                // FIX 19-Ene-2026: Signature DEBE TENER namespace XMLDSIG
                 // ========================================================================
-                // PROBLEMA: .NET SignedXml.GetXml() genera <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
-                // SIFEN backend (Java JAXB) RECHAZA este namespace externo dentro del DE
-                // SOLUCIÓN: Quitar el xmlns de Signature para que herede el namespace SIFEN del padre
-                // Referencia: XML aprobado en producción NO tiene este namespace en Signature
+                // El DLL funcional (sifen_xml_firmado.txt) muestra que Signature SÍ tiene:
+                //   <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+                // NO QUITAR el namespace - es REQUERIDO por el estándar XML-DSig
                 // ========================================================================
-                const string nsXmlDsig = " xmlns=\"http://www.w3.org/2000/09/xmldsig#\"";
-                if (xmlContent.Contains(nsXmlDsig))
+                if (xmlContent.Contains("<Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\""))
                 {
-                    xmlContent = xmlContent.Replace(nsXmlDsig, "");
-                    Console.WriteLine("[FIRMA] ✅ Quitado namespace XMLDSIG de <Signature>");
+                    Console.WriteLine("[FIRMA] ✅ Signature ya tiene namespace XMLDSIG (correcto)");
+                }
+                else if (xmlContent.Contains("<Signature>"))
+                {
+                    // FIX CRÍTICO 20-Ene-2026: AGREGAR el namespace XMLDSIG si no lo tiene
+                    // Esto ocurre porque XmlDocument al serializar pierde el namespace cuando
+                    // el documento tiene un namespace por defecto diferente
+                    Console.WriteLine("[FIRMA] ⚠️ Signature SIN namespace - agregando xmlns XMLDSIG...");
+                    xmlContent = xmlContent.Replace("<Signature>", "<Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\">");
+                    Console.WriteLine("[FIRMA] ✅ Namespace XMLDSIG agregado a Signature");
                 }
                 
                 // ========================================================================
@@ -1245,13 +1205,42 @@ namespace SistemIA.Models
                 var xmlConWrapper = $"<rLoteDE>{xmlContent}</rLoteDE>";
                 var zippedXml = StringToZip(xmlConWrapper);
                 
-                // Generar dId único
-                var dIdValue = string.IsNullOrWhiteSpace(dId) 
-                    ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") 
-                    : dId!;
+                // ========================================================================
+                // DEBUG 19-Ene-2026: Guardar ZIP para comparación con DLL de Power
+                // ========================================================================
+                try
+                {
+                    var debugPath = @"c:\asis\SistemIA\Debug\";
+                    Directory.CreateDirectory(debugPath);
+                    
+                    // 1. Guardar ZIP Base64 (igual que el DLL)
+                    File.WriteAllText(Path.Combine(debugPath, "sistemIA_zip_base64.txt"), zippedXml);
+                    
+                    // 2. Guardar ZIP como archivo binario
+                    var zipBytes = Convert.FromBase64String(zippedXml);
+                    File.WriteAllBytes(Path.Combine(debugPath, "sistemIA_enviado.zip"), zipBytes);
+                    
+                    // 3. Guardar el XML que va dentro del ZIP (el contenido SIN comprimir)
+                    File.WriteAllText(Path.Combine(debugPath, "sistemIA_xml_interno.txt"), xmlConWrapper);
+                    
+                    Console.WriteLine($"[DEBUG] Archivos de comparación guardados en {debugPath}");
+                }
+                catch (Exception exDebug)
+                {
+                    Console.WriteLine($"[DEBUG] Error guardando archivos de comparación: {exDebug.Message}");
+                }
+                // ========================================================================
+                
+                // FIX 20-Ene-2026: Usar dId dinámico formato DDMMYYYYHHMM (12 dígitos)
+                // El DLL siempre usa "160420241700" como dId (fijo), pero SIFEN acepta cualquier
+                // valor de 12 dígitos en este formato. Usamos la fecha/hora actual.
+                // Ejemplo: "200120260001" = 20 enero 2026 00:01
+                var dIdValue = DateTime.Now.ToString("ddMMyyyyHHmm");
+                Console.WriteLine($"[DEBUG] dId generado: {dIdValue}");
                 
                 // Envelope SOAP exacto del DLL de Power
                 var finalXml = $"<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"><soap:Body><rEnvioLote xmlns=\"http://ekuatia.set.gov.py/sifen/xsd\"><dId>{dIdValue}</dId><xDE>{zippedXml}</xDE></rEnvioLote></soap:Body></soap:Envelope>";
+
 
                 var result = await Enviar(url, finalXml, p12FilePath, certificatePassword);
                 
@@ -1853,22 +1842,24 @@ namespace SistemIA.Models
             }
             
             // ========================================================================
-            // FIX 16-Ene-2026: QUITAR NAMESPACE XMLDSIG DE <Signature>
+            // FIX 20-Ene-2026: MANTENER NAMESPACE XMLDSIG EN <Signature>
             // ========================================================================
-            // SIFEN Paraguay NO acepta el namespace estándar XMLDSIG en <Signature>.
-            // El backend SIFEN (parser Java JAXB) requiere que <Signature> herede
-            // el namespace del documento padre (http://ekuatia.set.gov.py/sifen/xsd).
-            //
-            // El método QuitarNamespaceRecursivo() no funciona completamente porque
-            // XmlDocument mantiene el namespace original al serializar.
-            // SOLUCIÓN: Reemplazar el namespace directamente en el string XML.
+            // IMPORTANTE: El XML del DLL que FUNCIONA tiene:
+            //   <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+            // 
+            // Nuestro XML estaba fallando porque QUITÁBAMOS este namespace.
+            // El namespace XMLDSIG es OBLIGATORIO según el estándar XML-DSig.
             // ========================================================================
-            const string nsXmlDsig = " xmlns=\"http://www.w3.org/2000/09/xmldsig#\"";
-            if (xmlFirmado.Contains(nsXmlDsig))
+            if (xmlFirmado.Contains("<Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\""))
             {
-                Console.WriteLine("[FIRMA FIX NS STRING] Quitando namespace XMLDSIG del string XML");
-                xmlFirmado = xmlFirmado.Replace(nsXmlDsig, "");
-                Console.WriteLine($"[FIRMA FIX NS STRING] Namespace XMLDSIG encontrado y eliminado: {!xmlFirmado.Contains(nsXmlDsig)}");
+                Console.WriteLine("[FIRMA] ✅ Signature ya TIENE namespace XMLDSIG (correcto para SIFEN)");
+            }
+            else if (xmlFirmado.Contains("<Signature>"))
+            {
+                // FIX CRÍTICO 20-Ene-2026: AGREGAR el namespace XMLDSIG si no lo tiene
+                Console.WriteLine("[FIRMA] ⚠️ Signature SIN namespace - agregando xmlns XMLDSIG...");
+                xmlFirmado = xmlFirmado.Replace("<Signature>", "<Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\">");
+                Console.WriteLine("[FIRMA] ✅ Namespace XMLDSIG agregado a Signature");
             }
             
             // El XML válido de SIFEN (producción) usa &amp; simple en dCarQR, NO doble escape
@@ -1958,21 +1949,24 @@ namespace SistemIA.Models
                 // ❌ <soap:Header/> vacío (algunos parsers lo rechazan)
                 // ========================================================================
                 
-                // Validaciones pre-envío (diagnóstico ChatGPT)
+                // Validaciones pre-envío (diagnóstico)
                 if (xmlContent.Contains("<?xml"))
                     throw new Exception("SIFEN: XML declaration detectada dentro del rDE - esto causa error 0160");
                 
                 if (!xmlContent.Contains("<Signature"))
                     throw new Exception("SIFEN: Firma NO presente en el XML");
-                    
-                if (!xmlContent.Contains("<gCamGen"))
-                    throw new Exception("SIFEN: gCamGen faltante en el XML");
                 
-                // Verificar que Signature está DENTRO de DE (no después)
-                var posSig = xmlContent.IndexOf("<Signature");
-                var posEndDE = xmlContent.IndexOf("</DE>");
-                if (posSig > posEndDE)
-                    throw new Exception("SIFEN: Signature está FUERA de DE - debe estar dentro");
+                // FIX 19-Ene-2026: ELIMINADA validación de gCamGen
+                // El XML de referencia APROBADO por SIFEN (xmlRequestVenta_273_sync.xml) NO tiene <gCamGen>
+                // Solo se incluye gCamGen cuando hay condiciones de pago a crédito
+                
+                // FIX 19-Ene-2026: ELIMINADA validación de posición de Signature
+                // Según XML de referencia APROBADO (xmlRequestVenta_273_sync.xml), Signature está FUERA de DE:
+                // <rDE>
+                //   <DE>...</DE>           <!-- DE cierra AQUÍ -->
+                //   <Signature>...</Signature>  <!-- Signature FUERA de DE, como hermano -->
+                //   <gCamFuFD>...</gCamFuFD>
+                // </rDE>
                 
                 // Formato SOAP corregido según ChatGPT (15-Ene-2026)
                 var soap = $@"<soap:Envelope xmlns:soap=""http://www.w3.org/2003/05/soap-envelope"">

@@ -523,40 +523,36 @@ namespace SistemIA.Services
             if (!urlQrBase.Contains("?")) urlQrBase += "?";
             // SIFEN requiere dFeEmiDE en formato HEX (no URI-escaped)
             string fechaHex = BitConverter.ToString(Encoding.UTF8.GetBytes(venta.Fecha.ToString("yyyy-MM-ddTHH:mm:ss"))).Replace("-", "").ToLowerInvariant();
-            // CSC para cálculo del hash (se incluye como __CSC__ para que Sifen.cs lo extraiga)
+            // ========================================================================
+            // FIX CRÍTICO 31-Ene-2026: Formato QR según DLL funcional de Power Builder
+            // ========================================================================
+            // Referencia: Sifen2026Proyec/txtlog/sifen_xml_input.txt y sifen_qr.txt
+            //
+            // ENTRADA del DLL (en el XML):
+            //   &IdCSC=1ABCD0000000000000000000000000000
+            //   (IdCSC pegado con CSC de 32 caracteres al final)
+            //
+            // PROCESO del DLL:
+            //   1. Reemplazar placeholder DigestValue con hex real
+            //   2. qrHash = SHA256(toda_la_URL_completa)
+            //   3. Quitar últimos 32 chars (el CSC pegado)
+            //   4. Agregar &cHashQR={hash}
+            //
+            // SALIDA del DLL (QR final):
+            //   ...&IdCSC=1&cHashQR=7867368ad88ffd187d619fcd2d89813c2a78a06f9e21150c6e2aacacc39fb5b4
+            //
+            // IMPORTANTE: 
+            // - NO incluir &cHashQR=PLACEHOLDER en la entrada
+            // - NO usar __CSC__ separado
+            // - El CSC va PEGADO al IdCSC, no como parámetro separado
+            // ========================================================================
             string cscValue = sociedad.Csc ?? "ABCD0000000000000000000000000000";
-            // FIX 27-Ene-2026: IdCSC debe ser sin ceros iniciales (ej: "1" NO "0001")
-            // Verificado con QR funcional de Power Builder: usa IdCSC=1
             string idCscValue = (sociedad.IdCsc ?? "1").TrimStart('0');
             if (string.IsNullOrEmpty(idCscValue)) idCscValue = "1";
-            // ========================================================================
-            // CRÍTICO: El QR en XML aprobado por SIFEN tiene &amp;amp; entre parámetros
-            // Esto significa que el texto del QR debe ser &amp;Id=... (URL-encoded ampersand)
-            // XElement escapa & a &amp; automáticamente
-            // Pero necesitamos que el TEXTO sea literalmente &amp; (no &)
-            // Entonces el TEXTO fuente debe ser &amp; y XElement lo escapará a &amp;amp;
-            // Para lograr esto, usamos el string con &amp; y XElement detecta que ya es entidad
-            // SOLUCIÓN: Usar XML CDATA o SetValue con texto que contenga &amp; literales
-            // Alternativa: usar &#38;amp; que es & seguido de amp;
-            // O más simple: usar Uri.EscapeDataString para cada & individual
-            // ========================================================================
-            // El QR debe tener & URL-encoded como &amp; en el texto
-            // Usamos la secuencia Unicode \x26 para & que XElement escapará correctamente
-            // NO - eso no funciona. XElement siempre escapa & a &amp;
-            // Si queremos &amp;amp; en XML, el texto debe ser &amp; y XElement no lo re-escapa
-            // porque lo trata como entidad válida.
-            // SOLUCION FINAL: NO usar XElement para el valor del QR, usar XmlDocument
-            // O: construir el string y luego reemplazar manualmente en el XML final
-            // SOLUCIÓN 22-Ene-2026: Usar &amp; literal en el qrText
-            // Cuando XElement serializa, &amp; se convierte en &amp;amp; en XML
-            // que es exactamente lo que tiene el XML aprobado por SIFEN
-            // ========================================================================
-            // SOLUCIÓN FINAL 14-Ene-2026: Usar & simple en el texto del QR
-            // XElement escapa & a &amp; en el XML
-            // Luego Sifen.cs convierte &amp; → &amp;amp; SOLO en dCarQR
-            // Resultado final en XML: &amp;amp; (correcto - igual que XML de Power Builder)
-            // ========================================================================
-            string qrText = $"{urlQrBase}nVersion=150&Id={idCdc}&dFeEmiDE={fechaHex}&{qrIdParamName}={qrIdParamValue}&dTotGralOpe={totOpe.ToString("0", CultureInfo.InvariantCulture)}&dTotIVA={totIVA.ToString("0", CultureInfo.InvariantCulture)}&cItems={detalles.Count}&{digestPlaceholder}&IdCSC={idCscValue}&cHashQR=PLACEHOLDER&__CSC__={cscValue}";
+            
+            // QR SIN url base (Sifen.cs agregará urlQR al inicio)
+            // Formato: nVersion=...&IdCSC={id}{csc} (32 chars CSC pegados al final)
+            string qrText = $"nVersion=150&Id={idCdc}&dFeEmiDE={fechaHex}&{qrIdParamName}={qrIdParamValue}&dTotGralOpe={totOpe.ToString("0", CultureInfo.InvariantCulture)}&dTotIVA={totIVA.ToString("0", CultureInfo.InvariantCulture)}&cItems={detalles.Count}&{digestPlaceholder}&IdCSC={idCscValue}{cscValue}";
             var dCarQR = new XElement(NsSifen + "dCarQR", qrText);
 
             // gCamCond ya agregado dentro de gDtipDE (definición arriba)
