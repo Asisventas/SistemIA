@@ -178,6 +178,7 @@ python .ai-docs/SIFEN/extraer_manual.py
 | `Services/DEXmlBuilder.cs` | Generación XML del Documento Electrónico |
 | `Services/CdcGenerator.cs` | Generación del CDC (44 caracteres) |
 | `Services/ClienteSifenService.cs` | Configuración por cliente SIFEN |
+| `Services/EventoSifenService.cs` | **Cancelación de facturas (eventos SIFEN)** |
 
 ### Campos SIFEN en Modelos
 ```csharp
@@ -187,6 +188,7 @@ python .ai-docs/SIFEN/extraer_manual.py
 [MaxLength(30)] public string? EstadoSifen { get; set; }
 public string? MensajeSifen { get; set; }
 public long? IdLote { get; set; }                        // ID del lote enviado
+public string? UrlQrSifen { get; set; }                  // URL completa del QR con cHashQR (dCarQR del XML firmado)
 ```
 
 ### ⚠️ Conexión SSL/TLS - IMPORTANTE (Enero 2026)
@@ -258,7 +260,66 @@ var dId = DateTime.Now.ToString("ddMMyyyyHHmm");       // "190120262354"
 **Referencia Manual Técnico v150 (Sección 13.8.4.3):**
 > "El resultado del hash de la firma viene en formato texto base64, el mismo debe ser convertido a un texto hexadecimal."
 
-### 📚 Librería Java de Referencia
+### �️ Cancelación de Facturas SIFEN (20-Ene-2026)
+
+El sistema permite **cancelar facturas electrónicas** ya aprobadas mediante eventos SIFEN.
+
+**Restricciones:**
+- Solo facturas aprobadas hace **menos de 48 horas**
+- Estado requerido: `EstadoSifen = "ACEPTADO"`
+- Debe tener CDC válido
+
+**Servicio:** `Services/EventoSifenService.cs`
+
+**Endpoints:**
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/ventas/sifen-aprobadas` | Lista ventas que pueden cancelarse |
+| GET | `/ventas/{id}/puede-cancelar-sifen` | Verifica si puede cancelarse |
+| POST | `/ventas/{id}/cancelar-sifen?motivo={texto}` | Ejecuta la cancelación |
+
+**Códigos de Respuesta:**
+| Código | Descripción |
+|--------|-------------|
+| **0600** | ✅ Evento registrado correctamente |
+| **4002** | ❌ CDC no existente en SIFEN |
+| **4003** | ❌ Documento ya cancelado |
+| **4004** | ❌ Plazo vencido (>48 horas) |
+
+**⚠️ DIFERENCIAS CRÍTICAS - XML de Evento vs XML de Factura:**
+
+| Aspecto | Factura (DE) | Evento de Cancelación |
+|---------|--------------|----------------------|
+| **dId y Id** | CDC de 44 dígitos | ID numérico simple (ej: "18522") |
+| **Ubicación CDC** | En `<DE Id="{CDC}">` | Solo en `<rGeVeCan><Id>{CDC}</Id>` |
+| **Posición Signature** | FUERA de `</DE>` | DENTRO de `<rGesEve>`, después de `</rEve>` |
+| **Elemento `dTiGDE`** | N/A | ❌ NO usar |
+
+**Estructura XML Evento Cancelación:**
+```xml
+<rEnviEventoDe xmlns="...">
+  <dId>{eventoId}</dId>  <!-- ID numérico, NO el CDC -->
+  <dEvReg>
+    <gGroupGesEve>
+      <rGesEve>
+        <rEve Id="{eventoId}">
+          <dFecFirma>...</dFecFirma>
+          <dVerFor>150</dVerFor>
+          <gGroupTiEvt>
+            <rGeVeCan>
+              <Id>{CDC}</Id>  <!-- AQUÍ va el CDC de 44 dígitos -->
+              <mOtEve>{motivo}</mOtEve>
+            </rGeVeCan>
+          </gGroupTiEvt>
+        </rEve>
+        <Signature>...</Signature>  <!-- DENTRO de rGesEve -->
+      </rGesEve>
+    </gGroupGesEve>
+  </dEvReg>
+</rEnviEventoDe>
+```
+
+### �📚 Librería Java de Referencia
 Se usó como referencia la librería oficial de Roshka: `github.com/roshkadev/rshk-jsifenlib`
 - Archivo clave: `ReqRecLoteDe.java` - Estructura del SOAP para envío
 - Archivo clave: `SifenUtil.java` - Compresión ZIP del XML
@@ -2161,3 +2222,48 @@ El prevalidador del SET solo valida la estructura XML del DE, **NO valida el env
 - `Models/Sifen.cs` - Dos ubicaciones con formato dId corregido
 
 > **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 19-20 Enero 2026"
+
+---
+
+### 🎉 Sesión 20 Enero 2026 - Campo UrlQrSifen y QR en Factura
+
+#### ⚠️ PROBLEMA: QR en factura no usaba el hash oficial
+
+El KudeFactura.razor generaba el QR con una URL genérica (`https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC=...`) en lugar de usar la URL completa del XML firmado (`dCarQR`) que incluye el `cHashQR` oficial.
+
+#### ✅ Solución Implementada
+
+**1. Nuevo campo en Venta** (`Models/Venta.cs`):
+```csharp
+public string? UrlQrSifen { get; set; } // URL completa del QR con hash (dCarQR del XML firmado)
+```
+
+**2. Extracción de dCarQR en endpoints SIFEN** (`Program.cs`):
+- Endpoint sync: Extrae `dCarQR` y guarda en `venta.UrlQrSifen`
+- Endpoint batch: Extrae `dCarQR` del JSON y guarda en `venta.UrlQrSifen`
+
+**3. KudeFactura usa UrlQrSifen** (`Shared/Reportes/KudeFactura.razor`):
+```csharp
+// PRIORIDAD 1: Usar la URL completa del QR firmado (dCarQR)
+if (!string.IsNullOrWhiteSpace(venta?.UrlQrSifen))
+{
+    return GenerarQrDesdeUrl(venta.UrlQrSifen);
+}
+// Fallback: URL genérica con CDC
+```
+
+#### 📊 Comportamiento del QR en Factura
+
+| Escenario | Fuente del QR | Tiene cHashQR |
+|-----------|---------------|---------------|
+| Venta enviada a SIFEN | `UrlQrSifen` (dCarQR) | ✅ Sí |
+| Venta con CDC pero sin UrlQrSifen | URL genérica + CDC | ❌ No |
+| Venta sin CDC (preview) | CDC preview | ❌ No |
+
+#### Archivos Modificados:
+- `Models/Venta.cs` - Agregado campo `UrlQrSifen`
+- `Program.cs` - Endpoints sync y batch extraen y guardan `dCarQR`
+- `Shared/Reportes/KudeFactura.razor` - Usa `UrlQrSifen` para generar QR
+- Migración: `Agregar_UrlQrSifen_En_Ventas`
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md`

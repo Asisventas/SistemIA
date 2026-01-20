@@ -89,6 +89,7 @@ builder.Services.AddScoped<IInformePdfService, InformePdfService>();
 builder.Services.AddScoped<IHistorialCambiosService, HistorialCambiosService>();
 builder.Services.AddScoped<ISaAuthenticationService, SaAuthenticationService>(); // Autenticación SA con memoria de 30 min
 builder.Services.AddScoped<ILoteService, LoteService>(); // Gestión de lotes FEFO para farmacia
+builder.Services.AddScoped<IEventoSifenService, EventoSifenService>(); // Eventos SIFEN (cancelación, inutilización)
 builder.Services.AddSingleton<ChatStateService>(); // Estado del chat (singleton por circuito)
 builder.Services.AddSingleton<RutasSistemaService>(); // Escaneo automático de rutas del sistema
 builder.Services.AddSingleton<ITrackingService, TrackingService>(); // Tracking de acciones del usuario
@@ -529,6 +530,23 @@ app.MapGet("/admin/verificar-catalogo-json", async (IDbContextFactory<AppDbConte
     }
 });
 
+// Endpoint para generar QR como imagen PNG (funciona offline)
+app.MapGet("/api/qr", (string url) =>
+{
+    try
+    {
+        using var qrGenerator = new QRCoder.QRCodeGenerator();
+        var qrCodeData = qrGenerator.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M);
+        using var qrCode = new QRCoder.PngByteQRCode(qrCodeData);
+        var qrBytes = qrCode.GetGraphic(5); // 5 pixels per module
+        return Results.File(qrBytes, "image/png");
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 // Endpoint para validar datos mínimos SIFEN de una venta (readiness del DE)
 app.MapGet("/admin/de/validar/{idVenta:int}", async (int idVenta, DEBuilderService svc) =>
 {
@@ -889,6 +907,20 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen", async (
                 if (!string.IsNullOrWhiteSpace(cdcVal) && !string.Equals(cdcVal, "Tag not found.", StringComparison.OrdinalIgnoreCase))
                     venta.CDC = cdcVal;
             }
+            
+            // Extraer URL del QR (dCarQR) del documento SOAP enviado
+            if (doc.RootElement.TryGetProperty("documento", out var docProp) && docProp.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var soapEnviado = docProp.GetString() ?? string.Empty;
+                var qrMatch = System.Text.RegularExpressions.Regex.Match(soapEnviado, @"<dCarQR>([^<]+)</dCarQR>");
+                if (qrMatch.Success)
+                {
+                    var urlQr = qrMatch.Groups[1].Value.Replace("&amp;", "&");
+                    if (!string.IsNullOrWhiteSpace(urlQr))
+                        venta.UrlQrSifen = urlQr;
+                }
+            }
+            
             string? idLoteLocal = null;
             if (doc.RootElement.TryGetProperty("idLote", out var idLoteProp) && idLoteProp.ValueKind == System.Text.Json.JsonValueKind.String)
             {
@@ -996,13 +1028,35 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen-sync", async (
         // 4) Enviar a SIFEN (recibe-de)
         var respSync = await sifen.Enviar(urlEnvioDe, soapSync, p12Path, p12Pass);
 
-        // 5) Extraer datos
+        // 5) Extraer datos de la respuesta SIFEN
         string codigo = sifen.GetTagValue(respSync, "ns2:dCodRes");
         if (string.IsNullOrWhiteSpace(codigo) || codigo == "Tag not found.") codigo = sifen.GetTagValue(respSync, "dCodRes");
         string mensaje = sifen.GetTagValue(respSync, "ns2:dMsgRes");
         if (string.IsNullOrWhiteSpace(mensaje) || mensaje == "Tag not found.") mensaje = sifen.GetTagValue(respSync, "dMsgRes");
-        string cdc = sifen.GetTagValue(respSync, "ns2:dCDC");
-        if (string.IsNullOrWhiteSpace(cdc) || cdc == "Tag not found.") cdc = sifen.GetTagValue(respSync, "dCDC");
+        
+        // FIX 20-Ene-2026: SIFEN retorna el CDC en <ns2:Id> dentro de rProtDe, NO en dCDC
+        // La estructura es: rRetEnviDe > rProtDe > Id (44 dígitos del CDC)
+        string cdc = sifen.GetTagValue(respSync, "ns2:Id");
+        if (string.IsNullOrWhiteSpace(cdc) || cdc == "Tag not found.") cdc = sifen.GetTagValue(respSync, "Id");
+        // Fallback: intentar extraer de dCDC por si alguna versión de SIFEN lo usa
+        if (string.IsNullOrWhiteSpace(cdc) || cdc == "Tag not found." || cdc.Length != 44)
+        {
+            cdc = sifen.GetTagValue(respSync, "ns2:dCDC");
+            if (string.IsNullOrWhiteSpace(cdc) || cdc == "Tag not found.") cdc = sifen.GetTagValue(respSync, "dCDC");
+        }
+        // Último fallback: extraer del XML enviado (atributo Id del DE)
+        if (string.IsNullOrWhiteSpace(cdc) || cdc == "Tag not found." || cdc.Length != 44)
+        {
+            var cdcMatch = System.Text.RegularExpressions.Regex.Match(soapSync, @"<DE\s+Id=""(\d{44})""");
+            if (cdcMatch.Success)
+                cdc = cdcMatch.Groups[1].Value;
+        }
+        
+        // Extraer URL del QR (dCarQR) del SOAP enviado para guardar en BD
+        string urlQrSifen = sifen.GetTagValue(soapSync, "dCarQR");
+        if (urlQrSifen == "Tag not found.") urlQrSifen = null;
+        // Decodificar &amp; a & para URL legible
+        urlQrSifen = urlQrSifen?.Replace("&amp;", "&");
 
         // 6) Persistir trazas y estado
         venta.FechaEnvioSifen = DateTime.Now;
@@ -1010,14 +1064,37 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen-sync", async (
         string esc(string s) => (s ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
         var jsonMsg = $"{{\"modo\":\"sync\",\"codigo\":\"{esc(codigo)}\",\"mensaje\":\"{esc(mensaje)}\",\"documento\":\"{esc(soapSync)}\",\"respuesta\":\"{esc(respSync)}\"}}";
         venta.MensajeSifen = jsonMsg;
-        if (!string.IsNullOrWhiteSpace(cdc) && cdc != "Tag not found.")
+        
+        // Determinar estado basado en código de respuesta
+        bool esExitoso = codigo == "0260" || (mensaje?.Contains("satisfactoria", StringComparison.OrdinalIgnoreCase) ?? false);
+        
+        if (esExitoso && !string.IsNullOrWhiteSpace(cdc) && cdc.Length == 44)
         {
             venta.CDC = cdc;
             venta.EstadoSifen = "ACEPTADO";
+            // Guardar URL del QR solo si fue aceptado
+            if (!string.IsNullOrWhiteSpace(urlQrSifen))
+                venta.UrlQrSifen = urlQrSifen;
         }
         else if ((codigo ?? string.Empty) == "0160" || (mensaje ?? string.Empty).IndexOf("mal formado", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             venta.EstadoSifen = "RECHAZADO";
+        }
+        else if (esExitoso)
+        {
+            // Código exitoso pero no pudimos extraer CDC - intentar del XML
+            var cdcFromXml = System.Text.RegularExpressions.Regex.Match(xmlString, @"<DE\s+Id=""(\d{44})""");
+            if (cdcFromXml.Success)
+            {
+                venta.CDC = cdcFromXml.Groups[1].Value;
+                venta.EstadoSifen = "ACEPTADO";
+                if (!string.IsNullOrWhiteSpace(urlQrSifen))
+                    venta.UrlQrSifen = urlQrSifen;
+            }
+            else
+            {
+                venta.EstadoSifen = "ENVIADO";
+            }
         }
         else
         {
@@ -1154,6 +1231,91 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen-powerbuilder", async (
         Console.WriteLine($"[SIFEN-PB] Error: {ex.Message}");
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
+});
+
+// ========================================================================
+// Endpoint para cancelar una venta en SIFEN (Evento Cancelación)
+// Solo para ventas ACEPTADAS/APROBADAS dentro de las 48 horas
+// ========================================================================
+app.MapPost("/ventas/{idVenta:int}/cancelar-sifen", async (
+    int idVenta,
+    string motivo,
+    IDbContextFactory<AppDbContext> dbFactory,
+    IEventoSifenService eventoService
+) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(motivo))
+            return Results.BadRequest(new { ok = false, error = "Debe proporcionar un motivo (parámetro 'motivo')" });
+
+        var result = await eventoService.EnviarCancelacionAsync(idVenta, motivo);
+        
+        if (result.Exito)
+        {
+            return Results.Ok(new { 
+                ok = true, 
+                mensaje = $"Venta {idVenta} cancelada exitosamente en SIFEN",
+                codigo = result.Codigo,
+                detalles = result.Mensaje
+            });
+        }
+        else
+        {
+            return Results.BadRequest(new { 
+                ok = false, 
+                error = result.Mensaje,
+                codigo = result.Codigo
+            });
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[CANCELAR-SIFEN] Error: {ex.Message}");
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint para verificar si se puede cancelar una venta en SIFEN
+app.MapGet("/ventas/{idVenta:int}/puede-cancelar-sifen", async (
+    int idVenta,
+    IEventoSifenService eventoService
+) =>
+{
+    try
+    {
+        var (puedeCancelar, mensaje) = await eventoService.VerificarPuedeCancelarAsync(idVenta);
+        return Results.Ok(new { ok = puedeCancelar, mensaje });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint para listar ventas aprobadas en SIFEN (para pruebas de cancelación)
+app.MapGet("/ventas/sifen-aprobadas", async (IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var ventas = await db.Ventas
+        .Where(v => v.CDC != null && (v.EstadoSifen == "ACEPTADO" || v.EstadoSifen == "APROBADO" || v.EstadoSifen == "ENVIADO"))
+        .OrderByDescending(v => v.FechaEnvioSifen)
+        .Take(20)
+        .Select(v => new {
+            v.IdVenta,
+            v.CDC,
+            v.EstadoSifen,
+            v.FechaEnvioSifen,
+            v.Total,
+            HorasDesdeEnvio = v.FechaEnvioSifen.HasValue 
+                ? (int)Math.Round((DateTime.Now - v.FechaEnvioSifen.Value).TotalHours) 
+                : (int?)null,
+            PuedeCancelar = v.FechaEnvioSifen.HasValue 
+                ? (DateTime.Now - v.FechaEnvioSifen.Value).TotalHours <= 48 
+                : false
+        })
+        .ToListAsync();
+    return Results.Ok(ventas);
 });
 
 // Endpoint para consultar el estado en SIFEN (por lote) y actualizar CDC/Estado

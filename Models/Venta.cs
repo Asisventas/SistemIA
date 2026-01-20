@@ -83,6 +83,7 @@ namespace SistemIA.Models
         public string? MensajeSifen { get; set; }
         public string? XmlCDE { get; set; }
     [MaxLength(50)] public string? IdLote { get; set; }
+    public string? UrlQrSifen { get; set; } // URL completa del QR con hash (dCarQR del XML firmado)
 
     // Referencias documentales
         [MaxLength(12)] public string? TipoDocumento { get; set; } // Factura, NotaCredito, etc.

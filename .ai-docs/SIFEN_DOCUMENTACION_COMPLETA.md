@@ -33,6 +33,7 @@ public DateTime? FechaEnvioSifen { get; set; }
 public string? MensajeSifen { get; set; }
 public string? XmlCDE { get; set; }                          // XML firmado guardado
 [MaxLength(50)] public string? IdLote { get; set; }          // ID del lote enviado
+public string? UrlQrSifen { get; set; }                      // URL completa del QR con cHashQR (dCarQR del XML firmado)
 ```
 
 ### 2. **Sucursal** (Emisor)
@@ -1905,7 +1906,10 @@ El DLL usa un valor fijo pero el formato es correcto: `DDMMYYYYHHMM` (12 dígito
 | Generación QR | ✅ | cHashQR con DigestValue hex |
 | Formato dId | ✅ | 12 dígitos DDMMYYYYHHMM |
 | Envío a SIFEN (Lote) | ✅ | Código 0300 "Lote recibido" |
+| Envío a SIFEN (Sync) | ✅ | Código 0260 "Autorización satisfactoria" |
 | Consulta de Lote | ✅ | Obtiene estado y protocolo |
+| UrlQrSifen en impresión | ✅ | KudeFactura usa dCarQR del XML firmado |
+| **Cancelación de Facturas** | ✅ | **Evento 0600 "Registrado correctamente"** |
 
 ### Errores Resueltos
 
@@ -1925,3 +1929,145 @@ El DLL usa un valor fijo pero el formato es correcto: `DDMMYYYYHHMM` (12 dígito
 | Consulta Lote | `https://sifen-test.set.gov.py/de/ws/consultas/consulta-lote.wsdl` | ✅ |
 | Consulta RUC | `https://sifen-test.set.gov.py/de/ws/consultas/consulta-ruc.wsdl` | ✅ |
 | Consulta DE | `https://sifen-test.set.gov.py/de/ws/consultas/consulta.wsdl` | ✅ |
+| **Eventos** | `https://sifen-test.set.gov.py/de/ws/eventos/evento.wsdl` | ✅ |
+
+---
+
+## 🗑️ Cancelación de Facturas SIFEN (Evento de Anulación) - 20 Enero 2026
+
+### ✅ Funcionalidad IMPLEMENTADA y PROBADA
+
+El sistema permite cancelar facturas electrónicas ya aprobadas por SIFEN mediante el envío de un **Evento de Cancelación**.
+
+### Restricciones de Cancelación
+
+| Regla | Descripción |
+|-------|-------------|
+| **Límite de tiempo** | Solo facturas aprobadas hace **menos de 48 horas** |
+| **Estado requerido** | La venta debe tener `EstadoSifen = "ACEPTADO"` |
+| **CDC válido** | Debe existir un CDC registrado en la venta |
+
+### Servicio Principal: `EventoSifenService.cs`
+
+**Ubicación:** `Services/EventoSifenService.cs`
+
+**Métodos principales:**
+```csharp
+// Verificar si una venta puede cancelarse
+Task<(bool puede, string mensaje)> PuedeCancelarAsync(int idVenta)
+
+// Ejecutar la cancelación en SIFEN
+Task<EventoSifenResult> EnviarCancelacionAsync(int idVenta, string motivo)
+```
+
+### Endpoints API
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/ventas/sifen-aprobadas` | Lista ventas aprobadas que pueden cancelarse |
+| GET | `/ventas/{id}/puede-cancelar-sifen` | Verifica si una venta específica puede cancelarse |
+| POST | `/ventas/{id}/cancelar-sifen?motivo={texto}` | Ejecuta la cancelación |
+
+### Ejemplo de Uso
+
+```powershell
+# 1. Listar ventas aprobadas
+curl.exe -s "http://localhost:5095/ventas/sifen-aprobadas"
+
+# 2. Verificar si se puede cancelar
+curl.exe -s "http://localhost:5095/ventas/305/puede-cancelar-sifen"
+
+# 3. Ejecutar cancelación
+curl.exe -X POST "http://localhost:5095/ventas/305/cancelar-sifen?motivo=FACTURA%20EMITIDA%20POR%20ERROR"
+```
+
+### Códigos de Respuesta SIFEN - Eventos
+
+| Código | Descripción |
+|--------|-------------|
+| **0600** | ✅ Evento registrado correctamente |
+| **4001** | ❌ CDC no encontrado en SIFEN |
+| **4002** | ❌ CDC no existente en el SIFEN (ambiente test) |
+| **4003** | ❌ Documento ya tiene evento de cancelación |
+| **4004** | ❌ Plazo de cancelación vencido (>48 horas) |
+
+### Estructura XML del Evento de Cancelación
+
+⚠️ **CRÍTICO:** La estructura del XML para eventos es DIFERENTE al XML de facturas.
+
+```xml
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Header/>
+  <soap:Body>
+    <rEnviEventoDe xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+      <dId>{eventoId}</dId>           <!-- ID numérico simple, NO el CDC -->
+      <dEvReg>
+        <gGroupGesEve xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepEvento_v150.xsd"
+                      xmlns="http://ekuatia.set.gov.py/sifen/xsd"
+                      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <rGesEve>
+            <rEve Id="{eventoId}">    <!-- Mismo ID numérico, NO el CDC -->
+              <dFecFirma>{fecha}</dFecFirma>
+              <dVerFor>150</dVerFor>
+              <gGroupTiEvt>
+                <rGeVeCan>            <!-- Tipo de evento: Cancelación -->
+                  <Id>{CDC}</Id>      <!-- AQUÍ va el CDC de 44 dígitos -->
+                  <mOtEve>{motivo}</mOtEve>
+                </rGeVeCan>
+              </gGroupTiEvt>
+            </rEve>
+            <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+              <!-- Firma DENTRO de rGesEve, DESPUÉS de </rEve> -->
+              ...
+            </Signature>
+          </rGesEve>
+        </gGroupGesEve>
+      </dEvReg>
+    </rEnviEventoDe>
+  </soap:Body>
+</soap:Envelope>
+```
+
+### Diferencias CRÍTICAS entre XML de Factura y XML de Evento
+
+| Aspecto | Factura (DE) | Evento de Cancelación |
+|---------|--------------|----------------------|
+| **dId y Id** | CDC de 44 dígitos | ID numérico simple (ej: "18522") |
+| **Ubicación del CDC** | En `<DE Id="{CDC}">` | Solo en `<rGeVeCan><Id>{CDC}</Id>` |
+| **Posición de Signature** | FUERA de `</DE>` | DENTRO de `<rGesEve>`, después de `</rEve>` |
+| **SOAP namespace** | SOAP 1.2 (`http://www.w3.org/2003/05/soap-envelope`) | SOAP 1.2 (igual) |
+| **Elemento `dTiGDE`** | N/A | ❌ NO usar - el tipo se determina por `<rGeVeCan>` |
+
+### Flujo de Firma para Eventos
+
+1. Construir XML interno del evento (`<gGroupGesEve>...<rEve>...</rEve></gGroupGesEve>`)
+2. Firmar el elemento `<rEve>` usando su atributo `Id`
+3. Insertar `<Signature>` DENTRO de `<rGesEve>`, DESPUÉS de `</rEve>`
+4. Envolver todo en el SOAP envelope
+
+### Actualización del Estado en BD
+
+Después de una cancelación exitosa:
+```csharp
+venta.EstadoSifen = "CANCELADO";
+venta.MensajeSifen = "Cancelado en SIFEN - Código 0600";
+await ctx.SaveChangesAsync();
+```
+
+### Referencia: Logs de PowerBuilder Funcional
+
+Los archivos de referencia que sirvieron para implementar correctamente la cancelación están en:
+- `.ai-docs/SifenProyecto2026/EventoAnulacion/sifen_log.txt` - Log general
+- `.ai-docs/SifenProyecto2026/EventoAnulacion/sifen_xml_firmado.txt` - XML firmado correcto
+- `.ai-docs/SifenProyecto2026/EventoAnulacion/sifen_respuesta.txt` - Respuesta exitosa de SIFEN
+
+### Resultado de Prueba Exitosa (20 Enero 2026)
+
+```json
+{
+  "ok": true,
+  "mensaje": "Venta 305 cancelada exitosamente en SIFEN",
+  "codigo": "0600",
+  "detalles": "Evento registrado correctamente"
+}
+```
