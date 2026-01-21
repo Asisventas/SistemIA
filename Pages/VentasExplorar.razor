@@ -250,7 +250,7 @@
                 <div class="btn-group btn-group-sm" role="group">
                   @if (!string.IsNullOrWhiteSpace(v.CDC))
                   {
-                    <button class="btn btn-outline-info" title="Ver QR" @onclick="() => MostrarQR(v.CDC)"><i class="bi bi-qr-code"></i></button>
+                    <button class="btn btn-outline-info" title="Ver QR" @onclick="() => MostrarQR(v.CDC, v.UrlQrSifen)"><i class="bi bi-qr-code"></i></button>
                   }
                   <button class="btn btn-outline-primary" title="Enviar SIFEN" disabled="@(v.Estado == "Anulado" || v.EstadoSifen == "ACEPTADO")" @onclick="() => EnviarSifen(v.IdVenta)"><i class="bi bi-send"></i></button>
                   <button class="btn btn-outline-success" title="Consultar SIFEN" disabled="@(string.IsNullOrWhiteSpace(v.IdLote))" @onclick="() => ConsultarSifen(v.IdVenta)"><i class="bi bi-cloud-check"></i></button>
@@ -263,7 +263,13 @@
                   }
                   <button class="btn btn-outline-danger" title="Anular" disabled="@(v.Estado == "Anulado")" @onclick="() => Anular(v.IdVenta)"><i class="bi bi-x-circle"></i></button>
                   <button class="btn btn-outline-warning" title="Recuperar" disabled="@(v.Estado != "Anulado")" @onclick="() => Recuperar(v.IdVenta)"><i class="bi bi-arrow-counterclockwise"></i></button>
-                  <button class="btn btn-danger" title="Eliminar" disabled="@(v.EstadoSifen == "ACEPTADO")" @onclick="() => Eliminar(v.IdVenta)"><i class="bi bi-trash3"></i></button>
+                  @{
+                    // SIFEN: Si tiene CDC, NO puede eliminarse (ya existe en SIFEN)
+                    var tieneCDC = !string.IsNullOrWhiteSpace(v.CDC);
+                    var deshabilitarEliminar = tieneCDC;
+                    var tooltipEliminar = tieneCDC ? "No se puede eliminar - Registrada en SIFEN (CDC: " + v.CDC?.Substring(0, 20) + "...)" : "Eliminar";
+                  }
+                  <button class="btn btn-danger" title="@tooltipEliminar" disabled="@deshabilitarEliminar" @onclick="() => Eliminar(v.IdVenta)"><i class="bi bi-trash3"></i></button>
                 </div>
               </div>
             </td>
@@ -614,6 +620,7 @@
   }
 
   [Inject] SistemIA.Services.IInventarioService Inventario { get; set; } = default!;
+  [Inject] SistemIA.Services.IEventoSifenService EventoSifen { get; set; } = default!;
 
   private string GetPreviewUrl(int idVenta)
   {
@@ -771,7 +778,7 @@
               v.Timbrado, v.Total,
               Moneda = m != null ? m.CodigoISO : (v.SimboloMoneda ?? "PYG"),
               Cambio = v.CambioDelDia,
-              v.Estado, v.EstadoSifen, v.CDC, v.IdLote
+              v.Estado, v.EstadoSifen, v.CDC, v.IdLote, v.UrlQrSifen
             };
     
     // Filtro por ID interno
@@ -825,6 +832,7 @@
         EstadoSifen = x.EstadoSifen ?? string.Empty,
         CDC = x.CDC ?? string.Empty,
         IdLote = x.IdLote ?? string.Empty,
+        UrlQrSifen = x.UrlQrSifen ?? string.Empty,
         TieneComposicion = setComposicion.Contains(x.IdVenta)
       };
     }).ToList();
@@ -849,9 +857,79 @@
   private async Task Anular(int id)
   {
     await using var ctx = await DbFactory.CreateDbContextAsync();
-    var venta = await ctx.Ventas.FirstOrDefaultAsync(v => v.IdVenta == id);
+    var venta = await ctx.Ventas
+      .Include(v => v.Caja)
+      .FirstOrDefaultAsync(v => v.IdVenta == id);
     if (venta == null) return;
     if (string.Equals(venta.Estado, "Anulado", StringComparison.OrdinalIgnoreCase)) return;
+    
+    // ========================================================================
+    // SIFEN: Si la venta fue aprobada y la caja es Factura Electrónica,
+    // enviar Evento de Cancelación a SIFEN antes de anular
+    // ========================================================================
+    var esFacturaElectronica = venta.Caja?.TipoFacturacion?.ToUpper()?.Contains("ELECTRONICA") == true;
+    var estadosSifenAprobados = new[] { "ACEPTADO", "APROBADO" };
+    var ventaAprobadaSifen = !string.IsNullOrWhiteSpace(venta.EstadoSifen) && 
+                             estadosSifenAprobados.Contains(venta.EstadoSifen.ToUpper());
+    
+    if (esFacturaElectronica && ventaAprobadaSifen)
+    {
+      // Verificar si puede cancelar (dentro de 48 horas)
+      var (puedeCancelar, mensajeVerif) = await EventoSifen.VerificarPuedeCancelarAsync(id);
+      if (!puedeCancelar)
+      {
+        await JS.InvokeVoidAsync("alert", $"❌ No se puede cancelar en SIFEN:\n\n{mensajeVerif}\n\nAlternativa: Emita una Nota de Crédito para anular esta factura.");
+        return;
+      }
+      
+      // Pedir motivo de cancelación
+      var motivo = await JS.InvokeAsync<string>("prompt", 
+        "Esta venta fue APROBADA por SIFEN.\n\n" +
+        "Ingrese el motivo de la cancelación (5-500 caracteres):\n\n" +
+        "(Se enviará un Evento de Cancelación a SIFEN)",
+        "Operación cancelada por el cliente");
+      
+      if (string.IsNullOrWhiteSpace(motivo))
+      {
+        await JS.InvokeVoidAsync("alert", "Operación cancelada. No se anuló la venta.");
+        return;
+      }
+      
+      if (motivo.Length < 5 || motivo.Length > 500)
+      {
+        await JS.InvokeVoidAsync("alert", "El motivo debe tener entre 5 y 500 caracteres.");
+        return;
+      }
+      
+      // Confirmación final
+      var okSifen = await JS.InvokeAsync<bool>("confirm", 
+        $"¿Enviar Evento de Cancelación a SIFEN?\n\n" +
+        $"Venta: #{id}\n" +
+        $"CDC: {venta.CDC}\n" +
+        $"Motivo: {motivo}\n\n" +
+        "Esta acción es IRREVERSIBLE en SIFEN.");
+      
+      if (!okSifen) return;
+      
+      // Enviar evento de cancelación
+      var resultadoSifen = await EventoSifen.EnviarCancelacionAsync(id, motivo);
+      
+      if (!resultadoSifen.Exito)
+      {
+        await JS.InvokeVoidAsync("alert", 
+          $"❌ Error al enviar cancelación a SIFEN:\n\n" +
+          $"Código: {resultadoSifen.Codigo}\n" +
+          $"Mensaje: {resultadoSifen.Mensaje}\n\n" +
+          "La venta NO fue anulada.");
+        return;
+      }
+      
+      // SIFEN aceptó la cancelación, continuar con anulación local
+      await JS.InvokeVoidAsync("alert", 
+        $"✅ Cancelación SIFEN exitosa\n\n" +
+        $"Código: {resultadoSifen.Codigo}\n\n" +
+        "Procediendo a anular la venta en el sistema...");
+    }
     
     // Verificar si tiene cobros de cuotas (ventas a crédito) - solo cobros CONFIRMADOS bloquean
     var cuentaPorCobrar = await ctx.CuentasPorCobrar
@@ -885,9 +963,12 @@
       return;
     }
     
-    // Confirmación simple
-    var ok = await JS.InvokeAsync<bool>("confirm", $"¿Anular la venta #{id}? Esto devolverá el stock.");
-    if (!ok) return;
+    // Confirmación simple (solo si NO es SIFEN aprobada - ya se confirmó arriba)
+    if (!ventaAprobadaSifen)
+    {
+      var ok = await JS.InvokeAsync<bool>("confirm", $"¿Anular la venta #{id}? Esto devolverá el stock.");
+      if (!ok) return;
+    }
 
     // Obtener detalles y validar depósitos predeterminados
     var detalles = await ctx.VentasDetalles.AsNoTracking().Where(d => d.IdVenta == id).ToListAsync();
@@ -1007,7 +1088,9 @@
   private async Task Eliminar(int id)
   {
     await using var ctx = await DbFactory.CreateDbContextAsync();
-    var venta = await ctx.Ventas.FirstOrDefaultAsync(v => v.IdVenta == id);
+    var venta = await ctx.Ventas
+      .Include(v => v.Caja)
+      .FirstOrDefaultAsync(v => v.IdVenta == id);
     if (venta == null) 
     {
       await JS.InvokeVoidAsync("alert", "Venta no encontrada.");
@@ -1021,10 +1104,19 @@
       return;
     }
 
-    // Verificar que no esté aprobada en SIFEN
-    if (!string.IsNullOrWhiteSpace(venta.EstadoSifen) && venta.EstadoSifen == "ACEPTADO")
+    // ========================================================================
+    // SIFEN: No permitir eliminar ventas que tengan CDC (ya existen en SIFEN)
+    // Una vez que una factura tiene CDC, NUNCA puede eliminarse físicamente
+    // Solo puede cancelarse mediante eventos SIFEN
+    // ========================================================================
+    if (!string.IsNullOrWhiteSpace(venta.CDC))
     {
-      await JS.InvokeVoidAsync("alert", "No se puede eliminar una venta que fue ACEPTADA en SIFEN.\nDebe anular el documento electrónico primero.");
+      await JS.InvokeVoidAsync("alert", $"❌ No se puede eliminar esta venta.\n\n" +
+        $"Esta factura está REGISTRADA en SIFEN y no puede eliminarse físicamente.\n\n" +
+        $"CDC: {venta.CDC}\n" +
+        $"Estado SIFEN: {venta.EstadoSifen ?? "N/A"}\n\n" +
+        $"Las facturas electrónicas deben permanecer en el sistema por requisitos legales.\n" +
+        $"Si necesita anularla, use el botón 'Anular' para enviar un evento de cancelación a SIFEN.");
       return;
     }
 
@@ -1414,13 +1506,16 @@
     }
   }
 
-  private async Task MostrarQR(string cdc)
+  private async Task MostrarQR(string? cdc, string? urlQrSifen)
   {
     try
     {
       if (string.IsNullOrWhiteSpace(cdc)) return;
       
-      var url = $"https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={cdc}";
+      // Prioridad: usar UrlQrSifen (contiene cHashQR correcto), sino URL genérica
+      var url = !string.IsNullOrWhiteSpace(urlQrSifen) 
+        ? urlQrSifen 
+        : $"https://ekuatia.set.gov.py/consultas/qr?nVersion=150&Id={cdc}";
       await JS.InvokeVoidAsync("mostrarModalQR", cdc, url);
     }
     catch (Exception ex)
@@ -1501,6 +1596,7 @@
   public string? EstadoSifen { get; set; } = string.Empty;
   public string? CDC { get; set; } = string.Empty;
   public string? IdLote { get; set; } = string.Empty;
+  public string? UrlQrSifen { get; set; } = string.Empty;
   public bool TieneComposicion { get; set; }
   }
 }
