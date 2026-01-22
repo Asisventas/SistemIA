@@ -1,4 +1,4 @@
-# Instrucciones para GitHub Copilot - SistemIA
+﻿# Instrucciones para GitHub Copilot - SistemIA
 
 ## 🔴 REGLA PRIMORDIAL - Ejecución del Servidor
 
@@ -319,10 +319,40 @@ El sistema permite **cancelar facturas electrónicas** ya aprobadas mediante eve
 </rEnviEventoDe>
 ```
 
-### �📚 Librería Java de Referencia
+### 📚 Librería Java de Referencia
 Se usó como referencia la librería oficial de Roshka: `github.com/roshkadev/rshk-jsifenlib`
 - Archivo clave: `ReqRecLoteDe.java` - Estructura del SOAP para envío
 - Archivo clave: `SifenUtil.java` - Compresión ZIP del XML
+
+### 🔴 Error 1303 "Tipo de Contribuyente Receptor Inválido" (21-Ene-2026)
+
+**Causa:** El campo `iTiContRec` (Tipo de Contribuyente Receptor) solo debe enviarse cuando el receptor ES contribuyente (`iNatRec=1`). Para no contribuyentes (consumidor final, `iNatRec=2`), este campo **NO debe incluirse** en el XML.
+
+**Solución en DEXmlBuilder.cs (Líneas 220-231):**
+```csharp
+// Solo agregar iTiContRec si ES contribuyente (iNatRec=1)
+bool esContribuyente = cliente.NaturalezaReceptor == 1;
+if (esContribuyente)
+{
+    gDatRec.Add(new XElement(NsSifen + "iTiContRec", cliente.TipoContribuyenteReceptor));
+}
+```
+
+### 🔴 Error 1313 "Descripción Tipo Documento Identidad Incorrecta" (21-Ene-2026)
+
+**Causa:** La descripción del tipo de documento (`dDTipIDRec`) no corresponde al código enviado (`iTipIDRec`). El código 5 debe mapearse a "Innominado", NO a "Cédula extranjera".
+
+**Catálogo iTipIDRec según SIFEN v150:**
+| Código | Descripción |
+|--------|-------------|
+| 1 | Cédula paraguaya |
+| 2 | Pasaporte |
+| 3 | Cédula extranjera |
+| 4 | Carnet de residencia |
+| **5** | **Innominado** |
+| 9 | Sin documento |
+
+**Migración para corregir clientes:** `Fix_TipoDocumento_Innominado_Clientes`
 
 ## 🗃️ Entity Framework Core - REGLAS CRÍTICAS
 
@@ -2267,3 +2297,64 @@ if (!string.IsNullOrWhiteSpace(venta?.UrlQrSifen))
 - Migración: `Agregar_UrlQrSifen_En_Ventas`
 
 > **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md`
+
+---
+
+### 🎉 Sesión 21 Enero 2026 - Fix Errores 1303 y 1313 Consumidor Final
+
+#### ⚠️ Errores Encontrados al Enviar Venta a SIFEN
+
+Al intentar enviar una venta a consumidor final (cliente "CONSUMIDOR FINAL"), SIFEN rechazaba con dos errores:
+
+1. **Error 1303**: "Tipo de contribuyente receptor inválido para la naturaleza"
+2. **Error 1313**: "Descripción del tipo de documento de identidad del receptor no corresponde"
+
+#### 🔍 Causa Raíz Identificada
+
+**Error 1303**: El código forzaba `iTiContRec = "1"` para TODOS los clientes, pero este campo solo debe enviarse cuando `iNatRec = 1` (contribuyente). Para consumidores finales (`iNatRec = 2`), NO debe incluirse.
+
+**Error 1313**: El código mapeaba el código 5 (`iTipIDRec`) a "Cédula extranjera" cuando según el catálogo SIFEN v150 debe ser "Innominado".
+
+#### ✅ Correcciones Aplicadas
+
+**1. DEXmlBuilder.cs - iTiContRec condicional (Líneas 220-231):**
+```csharp
+bool esContribuyente = cliente.NaturalezaReceptor == 1;
+if (esContribuyente)
+{
+    gDatRec.Add(new XElement(NsSifen + "iTiContRec", cliente.TipoContribuyenteReceptor));
+}
+// Si es NO contribuyente (consumidor final), NO se agrega iTiContRec
+```
+
+**2. DEXmlBuilder.cs - DescripcionTipoDocRec (Líneas 185-197):**
+```csharp
+5 => "Innominado",  // ✅ CORRECTO (antes decía "Cédula extranjera")
+```
+
+**3. ClienteSifenMejorado.cs - ObtenerDescripcionTipoDocumento (Líneas 257-273):**
+Actualizado con el catálogo completo de SIFEN v150.
+
+#### 📦 Migración de Datos
+
+Se creó migración para normalizar clientes CONSUMIDOR FINAL:
+- **Nombre**: `Fix_TipoDocumento_Innominado_Clientes`
+- **SQL**: Actualiza `TipoDocumentoIdentidadSifen=5` y `NaturalezaReceptor=2` para clientes "CONSUMIDOR FINAL"
+
+#### 🎉 Resultado: Venta 310 ACEPTADA por SIFEN
+
+```json
+{
+  "ok": true,
+  "estado": "ACEPTADO",
+  "cdc": "01004952197001002000031012026012119...",
+  "codigo": "0260",
+  "mensaje": "Autorización del DE satisfactoria"
+}
+```
+
+#### Archivos Modificados:
+- `Services/DEXmlBuilder.cs` - iTiContRec condicional + DescripcionTipoDocRec corregida
+- `Models/ClienteSifenMejorado.cs` - Catálogo actualizado
+- Migración: `Fix_TipoDocumento_Innominado_Clientes`
+

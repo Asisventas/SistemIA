@@ -1393,7 +1393,8 @@ app.MapGet("/ventas/{idVenta:int}/consultar-sifen", async (
             return Results.BadRequest(new { ok = false, error = "Falta configurar ruta/contraseña del certificado (.p12)." });
 
         // Construir manualmente la consulta (para poder devolverla al cliente y que pueda copiarla)
-    var dId = DateTime.Now.ToString("yyyyMMddHHmmss") + "01";
+    // FIX 21-Ene-2026: dId debe ser 12 dígitos en formato DDMMYYYYHHMM (igual que en envío)
+    var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
     idLoteLocal = idLoteLocal?.Trim();
 
     // Construir XML con XmlDocument para asegurar formato correcto y namespaces esperados por SIFEN
@@ -1505,6 +1506,141 @@ app.MapGet("/ventas/{idVenta:int}/consultar-sifen", async (
             consulta = sifen.FormatearXML(consultaXml),
             respuesta = sifen.FormatearXML(resp),
             detalles
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// ========== ENDPOINT: Consultar SIFEN por CDC (para ventas enviadas en modo SYNC) ==========
+app.MapGet("/ventas/{idVenta:int}/consultar-sifen-cdc", async (
+    int idVenta,
+    IDbContextFactory<AppDbContext> dbFactory,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var venta = await db.Ventas
+            .Include(v => v.Sucursal)
+            .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+        if (venta == null) return Results.NotFound(new { ok = false, error = $"Venta {idVenta} no encontrada" });
+
+        // Verificar que tenga CDC
+        if (string.IsNullOrWhiteSpace(venta.CDC) || venta.CDC.Length != 44)
+            return Results.BadRequest(new { ok = false, error = "La venta no tiene un CDC válido (44 dígitos). Use consulta por lote si tiene IdLote." });
+
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad; configure IdCSC/CSC y certificados." });
+
+        // Configuración de ambiente y certificados
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlConsultaDe = sociedad.DeUrlConsultaDocumento ?? SistemIA.Utils.SifenConfig.GetConsultaDeUrl(ambiente);
+        var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+        
+        if (string.IsNullOrWhiteSpace(p12Path) || string.IsNullOrWhiteSpace(p12Pass))
+            return Results.BadRequest(new { ok = false, error = "Falta configurar ruta/contraseña del certificado (.p12)." });
+
+        // Construir SOAP para consulta de DE por CDC
+        var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
+        var xmlDoc = new System.Xml.XmlDocument();
+        var decl = xmlDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
+        xmlDoc.AppendChild(decl);
+        
+        var soapNs = "http://www.w3.org/2003/05/soap-envelope";
+        var sifenNs = "http://ekuatia.set.gov.py/sifen/xsd";
+        
+        var envelope = xmlDoc.CreateElement("soap", "Envelope", soapNs);
+        xmlDoc.AppendChild(envelope);
+        
+        var header = xmlDoc.CreateElement("soap", "Header", soapNs);
+        envelope.AppendChild(header);
+        
+        var body = xmlDoc.CreateElement("soap", "Body", soapNs);
+        envelope.AppendChild(body);
+        
+        // FIX 21-Ene-2026: Usar rEnviConsDeRequest (con sufijo Request) según DLL funcional
+        // El DLL de referencia usa: rEnviConsDeRequest, NO rEnviConsDe
+        var req = xmlDoc.CreateElement("rEnviConsDeRequest", sifenNs);
+        body.AppendChild(req);
+        
+        var dIdNode = xmlDoc.CreateElement("dId", sifenNs);
+        dIdNode.InnerText = dId;
+        req.AppendChild(dIdNode);
+        
+        // dCDC: el CDC de 44 dígitos
+        var dCdcNode = xmlDoc.CreateElement("dCDC", sifenNs);
+        dCdcNode.InnerText = venta.CDC;
+        req.AppendChild(dCdcNode);
+        
+        var consultaXml = xmlDoc.OuterXml;
+        
+        // Enviar consulta a SIFEN
+        var resp = await sifen.Enviar(urlConsultaDe, consultaXml, p12Path, p12Pass);
+        
+        // Extraer datos de la respuesta
+        // Códigos esperados: 0422 = CDC encontrado, 0423 = CDC no encontrado
+        string codigo = sifen.GetTagValue(resp, "ns2:dCodRes");
+        if (string.IsNullOrWhiteSpace(codigo) || codigo == "Tag not found.") 
+            codigo = sifen.GetTagValue(resp, "dCodRes");
+        
+        string mensaje = sifen.GetTagValue(resp, "ns2:dMsgRes");
+        if (string.IsNullOrWhiteSpace(mensaje) || mensaje == "Tag not found.") 
+            mensaje = sifen.GetTagValue(resp, "dMsgRes");
+        
+        // Extraer estado del documento (dEstRes)
+        string estadoDoc = sifen.GetTagValue(resp, "ns2:dEstRes");
+        if (string.IsNullOrWhiteSpace(estadoDoc) || estadoDoc == "Tag not found.") 
+            estadoDoc = sifen.GetTagValue(resp, "dEstRes");
+        
+        // Actualizar estado según respuesta
+        if (codigo == "0422") // CDC encontrado
+        {
+            // Verificar si fue cancelado
+            if (estadoDoc?.ToUpper().Contains("CANCEL") == true)
+            {
+                venta.EstadoSifen = "CANCELADO";
+            }
+            else
+            {
+                venta.EstadoSifen = "ACEPTADO";
+            }
+        }
+        else if (codigo == "0423") // CDC no encontrado
+        {
+            venta.EstadoSifen = "NO_ENCONTRADO";
+        }
+        
+        // Guardar trazas de consulta
+        venta.MensajeSifen = (venta.MensajeSifen ?? string.Empty) + 
+            "\nCONSULTA_CDC=" + System.Text.Json.JsonSerializer.Serialize(new { 
+                cdc = venta.CDC, 
+                codigo, 
+                mensaje,
+                estadoDocumento = estadoDoc,
+                fecha = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+            });
+        
+        db.Ventas.Update(venta);
+        await db.SaveChangesAsync();
+        
+        return Results.Ok(new
+        {
+            ok = true,
+            idVenta,
+            cdc = venta.CDC,
+            codigo,
+            mensaje,
+            estadoDocumento = estadoDoc,
+            estadoSifen = venta.EstadoSifen,
+            consulta = sifen.FormatearXML(consultaXml),
+            respuesta = sifen.FormatearXML(resp),
+            detalles = new { ambiente, urlConsultaDe, dId }
         });
     }
     catch (Exception ex)
@@ -2961,6 +3097,278 @@ app.MapGet("/pagos-proveedores/comprobante-a4/{idPago:int}", async (
     catch (Exception ex)
     {
         return Results.Problem($"Error al generar comprobante: {ex.Message}");
+    }
+});
+
+// ============================================================================
+// NOTA DE CREDITO ELECTRONICA (NCE) - SIFEN
+// ============================================================================
+
+// Endpoint para enviar una Nota de Crédito a SIFEN en modo SINCRÓNICO
+app.MapPost("/notascredito/{idNotaCredito:int}/enviar-sifen", async (
+    int idNotaCredito,
+    IDbContextFactory<AppDbContext> dbFactory,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var nc = await db.NotasCreditoVentas
+            .Include(n => n.Sucursal)
+            .Include(n => n.Cliente)
+            .Include(n => n.Caja)
+            .Include(n => n.Moneda)
+            .Include(n => n.Detalles)!.ThenInclude(d => d.Producto)
+            .Include(n => n.VentaAsociada)
+            .FirstOrDefaultAsync(n => n.IdNotaCredito == idNotaCredito);
+        
+        if (nc == null) 
+            return Results.NotFound(new { ok = false, error = $"Nota de Crédito {idNotaCredito} no encontrada" });
+
+        if (nc.Estado != "Confirmada")
+            return Results.BadRequest(new { ok = false, error = "Solo se pueden enviar a SIFEN notas de crédito confirmadas" });
+
+        // Validar que tenga venta asociada con CDC
+        if (nc.VentaAsociada == null || string.IsNullOrWhiteSpace(nc.VentaAsociada.CDC))
+            return Results.BadRequest(new { ok = false, error = "La Nota de Crédito debe tener una factura asociada con CDC válido" });
+
+        // Cargar Sociedad desde el DbSet
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad; configure IdCSC/CSC y certificados." });
+
+        // Resolver ambiente, URL y certificados
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlEnvio = sociedad.DeUrlEnvioDocumento ?? SistemIA.Utils.SifenConfig.GetEnvioDeUrl(ambiente);
+        var urlQrBase = sociedad.DeUrlQr ?? (ambiente == "prod" 
+            ? "https://ekuatia.set.gov.py/consultas/qr?"
+            : "https://ekuatia.set.gov.py/consultas-test/qr?");
+
+        string p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        string p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+        
+        if (string.IsNullOrWhiteSpace(p12Path) || string.IsNullOrWhiteSpace(p12Pass))
+            return Results.BadRequest(new { ok = false, error = "Falta configurar ruta/contraseña del certificado (.p12) en Sociedad." });
+
+        if (!System.IO.File.Exists(p12Path))
+            return Results.BadRequest(new { ok = false, error = $"No existe el archivo .p12 en la ruta: {p12Path}" });
+
+        // Construir XML del NCE
+        var xmlString = await SistemIA.Services.NCEXmlBuilder.ConstruirXmlAsync(nc, db);
+        
+        // Firmar y construir SOAP sincrónico
+        var soapSync = sifen.FirmarSinEnviar(urlQrBase, xmlString, p12Path, p12Pass, "1", true);
+
+        // Enviar a SIFEN
+        var respSync = await sifen.Enviar(urlEnvio, soapSync, p12Path, p12Pass);
+
+        // Extraer datos de la respuesta
+        string codigo = sifen.GetTagValue(respSync, "ns2:dCodRes");
+        if (string.IsNullOrWhiteSpace(codigo) || codigo == "Tag not found.") codigo = sifen.GetTagValue(respSync, "dCodRes");
+        string mensaje = sifen.GetTagValue(respSync, "ns2:dMsgRes");
+        if (string.IsNullOrWhiteSpace(mensaje) || mensaje == "Tag not found.") mensaje = sifen.GetTagValue(respSync, "dMsgRes");
+        
+        string cdc = sifen.GetTagValue(respSync, "ns2:Id");
+        if (string.IsNullOrWhiteSpace(cdc) || cdc == "Tag not found.") cdc = sifen.GetTagValue(respSync, "Id");
+        if (string.IsNullOrWhiteSpace(cdc) || cdc == "Tag not found." || cdc.Length != 44)
+        {
+            var cdcMatch = System.Text.RegularExpressions.Regex.Match(soapSync, @"<DE\s+Id=""(\d{44})""");
+            if (cdcMatch.Success) cdc = cdcMatch.Groups[1].Value;
+        }
+        
+        // Extraer URL del QR
+        string urlQrSifen = sifen.GetTagValue(soapSync, "dCarQR");
+        if (urlQrSifen == "Tag not found.") urlQrSifen = null;
+        urlQrSifen = urlQrSifen?.Replace("&amp;", "&");
+
+        // Actualizar NC
+        nc.FechaEnvioSifen = DateTime.Now;
+        string esc(string s) => (s ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+        nc.MensajeSifen = $"{{\"modo\":\"sync\",\"codigo\":\"{esc(codigo)}\",\"mensaje\":\"{esc(mensaje)}\"}}";
+        
+        bool esExitoso = codigo == "0260" || (mensaje?.Contains("satisfactoria", StringComparison.OrdinalIgnoreCase) ?? false);
+        
+        if (esExitoso && !string.IsNullOrWhiteSpace(cdc) && cdc.Length == 44)
+        {
+            nc.CDC = cdc;
+            nc.EstadoSifen = "ACEPTADO";
+            if (!string.IsNullOrWhiteSpace(urlQrSifen))
+                nc.UrlQrSifen = urlQrSifen;
+        }
+        else if (codigo == "0160")
+        {
+            nc.EstadoSifen = "RECHAZADO";
+        }
+        else
+        {
+            nc.EstadoSifen = "ENVIADO";
+        }
+        
+        nc.XmlCDE = xmlString;
+        db.NotasCreditoVentas.Update(nc);
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new { 
+            ok = true, 
+            estado = nc.EstadoSifen, 
+            idNotaCredito, 
+            cdc = nc.CDC, 
+            codigo, 
+            mensaje 
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint para obtener el XML firmado de una NC (debug)
+app.MapGet("/notascredito/{idNotaCredito:int}/xml-firmado", async (
+    int idNotaCredito,
+    IDbContextFactory<AppDbContext> dbFactory,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var nc = await db.NotasCreditoVentas
+            .Include(n => n.Sucursal)
+            .Include(n => n.Cliente)
+            .Include(n => n.Caja)
+            .Include(n => n.Moneda)
+            .Include(n => n.Detalles)!.ThenInclude(d => d.Producto)
+            .Include(n => n.VentaAsociada)
+            .FirstOrDefaultAsync(n => n.IdNotaCredito == idNotaCredito);
+        
+        if (nc == null) 
+            return Results.NotFound(new { ok = false, error = $"Nota de Crédito {idNotaCredito} no encontrada" });
+
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
+
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlQrBase = sociedad.DeUrlQr ?? (ambiente == "prod" 
+            ? "https://ekuatia.set.gov.py/consultas/qr?"
+            : "https://ekuatia.set.gov.py/consultas-test/qr?");
+
+        string p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        string p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+
+        if (!System.IO.File.Exists(p12Path))
+            return Results.BadRequest(new { ok = false, error = $"No existe el archivo .p12 en la ruta: {p12Path}" });
+
+        var xmlString = await SistemIA.Services.NCEXmlBuilder.ConstruirXmlAsync(nc, db);
+        var xmlFirmado = sifen.FirmarSinEnviar(urlQrBase, xmlString, p12Path, p12Pass, "1", false);
+
+        return Results.Ok(new { 
+            ok = true, 
+            cdc = nc.CDC,
+            xmlSinFirmar = xmlString,
+            xmlFirmado = xmlFirmado
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint para consultar estado de NC en SIFEN por IdLote
+app.MapGet("/notascredito/{idNotaCredito:int}/consultar-sifen", async (
+    int idNotaCredito,
+    IDbContextFactory<AppDbContext> dbFactory,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var nc = await db.NotasCreditoVentas
+            .Include(n => n.Sucursal)
+            .FirstOrDefaultAsync(n => n.IdNotaCredito == idNotaCredito);
+        
+        if (nc == null) 
+            return Results.NotFound(new { ok = false, error = $"Nota de Crédito {idNotaCredito} no encontrada" });
+
+        if (string.IsNullOrWhiteSpace(nc.IdLote))
+            return Results.BadRequest(new { ok = false, error = "La NC no tiene IdLote registrado" });
+
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
+
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlConsulta = sociedad.DeUrlConsultaDocumentoLote ?? SistemIA.Utils.SifenConfig.GetConsultaLoteUrl(ambiente);
+
+        string p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        string p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+
+        // Construir XML de consulta (mismo formato que facturas)
+        var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
+        var idLoteLocal = nc.IdLote?.Trim();
+
+        var xmlDoc = new System.Xml.XmlDocument();
+        var decl = xmlDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
+        xmlDoc.AppendChild(decl);
+        var soapNs = "http://www.w3.org/2003/05/soap-envelope";
+        var sifenNs = "http://ekuatia.set.gov.py/sifen/xsd";
+        var envelope = xmlDoc.CreateElement("soap", "Envelope", soapNs);
+        xmlDoc.AppendChild(envelope);
+        var header = xmlDoc.CreateElement("soap", "Header", soapNs);
+        envelope.AppendChild(header);
+        var body = xmlDoc.CreateElement("soap", "Body", soapNs);
+        envelope.AppendChild(body);
+        var req = xmlDoc.CreateElement("rEnviConsLoteDe", sifenNs);
+        body.AppendChild(req);
+        var dIdNode = xmlDoc.CreateElement("dId", sifenNs);
+        dIdNode.InnerText = dId;
+        req.AppendChild(dIdNode);
+        var dProtNode = xmlDoc.CreateElement("dProtConsLote", sifenNs);
+        dProtNode.InnerText = idLoteLocal ?? string.Empty;
+        req.AppendChild(dProtNode);
+        var soapConsulta = xmlDoc.OuterXml;
+
+        var respuesta = await sifen.Enviar(urlConsulta, soapConsulta, p12Path, p12Pass);
+
+        string codigo = sifen.GetTagValue(respuesta, "ns2:dCodRes");
+        if (codigo == "Tag not found.") codigo = sifen.GetTagValue(respuesta, "dCodRes");
+        string mensaje = sifen.GetTagValue(respuesta, "ns2:dMsgRes");
+        if (mensaje == "Tag not found.") mensaje = sifen.GetTagValue(respuesta, "dMsgRes");
+        string estadoRes = sifen.GetTagValue(respuesta, "ns2:dEstRes");
+        if (estadoRes == "Tag not found.") estadoRes = sifen.GetTagValue(respuesta, "dEstRes");
+
+        // Actualizar estado si cambió
+        if (estadoRes?.ToLower() == "aprobado" || codigo == "0260")
+        {
+            nc.EstadoSifen = "ACEPTADO";
+            nc.MensajeSifen = $"Aprobado - Código: {codigo}";
+            db.NotasCreditoVentas.Update(nc);
+            await db.SaveChangesAsync();
+        }
+        else if (codigo == "0160" || estadoRes?.ToLower() == "rechazado")
+        {
+            nc.EstadoSifen = "RECHAZADO";
+            nc.MensajeSifen = $"Rechazado - {mensaje}";
+            db.NotasCreditoVentas.Update(nc);
+            await db.SaveChangesAsync();
+        }
+
+        return Results.Ok(new { 
+            ok = true, 
+            estadoSifen = nc.EstadoSifen,
+            codigo, 
+            mensaje,
+            estadoRes,
+            respuestaCompleta = respuesta
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 });
 

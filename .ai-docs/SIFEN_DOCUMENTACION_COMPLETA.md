@@ -319,9 +319,11 @@ urlQr = $"{urlQr}&cHashQR={hash}";
 - `Models/ClienteSifenMejorado.cs` - Modelo de cliente SIFEN
 
 ### Servicios
-- `Services/DEXmlBuilder.cs` - Constructor del XML
+- `Services/DEXmlBuilder.cs` - Constructor del XML para Facturas (iTiDE=1)
+- `Services/NCEXmlBuilder.cs` - Constructor del XML para Notas de Crédito (iTiDE=5)
 - `Services/DEBuilderService.cs` - Validador de datos
 - `Services/ClienteSifenService.cs` - Datos del receptor
+- `Services/EventoSifenService.cs` - Cancelación de documentos
 
 ### Utilidades
 - `Utils/CdcGenerator.cs` - Generador del CDC
@@ -335,15 +337,188 @@ urlQr = $"{urlQr}&cHashQR={hash}";
 
 ---
 
+## 🧾 Nota de Crédito Electrónica (NCE) - iTiDE=5
+
+### Implementación (21-Ene-2026)
+
+La NCE está completamente implementada en SistemIA con soporte SIFEN v150.
+
+### Campos en NotaCreditoVenta
+```csharp
+// Numeración SIFEN para NC
+[MaxLength(8)] public string? Timbrado { get; set; }
+[MaxLength(3)] public string? Establecimiento { get; set; }
+[MaxLength(3)] public string? PuntoExpedicion { get; set; }
+public int Numero { get; set; }
+
+// SIFEN
+[MaxLength(64)] public string? CDC { get; set; }
+[MaxLength(30)] public string? EstadoSifen { get; set; }
+public string? MensajeSifen { get; set; }
+[MaxLength(50)] public string? IdLote { get; set; }
+public string? UrlQrSifen { get; set; }
+```
+
+### Endpoints API NCE
+
+```http
+POST /notascredito/{idNotaCredito}/enviar-sifen
+```
+Envía una NC a SIFEN usando el modo de lote asíncrono.
+
+```http
+GET /notascredito/{idNotaCredito}/xml-firmado
+```
+Genera el XML firmado de la NC sin enviarlo (debug).
+
+```http
+GET /notascredito/{idNotaCredito}/consultar-sifen
+```
+Consulta el estado de una NC enviada usando el IdLote.
+
+### Códigos de Motivo NCE (iMotEmi)
+
+| Código | Descripción |
+|--------|-------------|
+| 1 | Ajuste de precio con devolución |
+| 2 | Devolución |
+| 3 | Descuento |
+| 4 | Bonificación |
+| 5 | Crédito incobrable |
+| 6 | Recupero de costo |
+| 7 | Recupero de gasto |
+| 8 | Ajuste de precio |
+
+### Estructura XML NCE
+
+La NCE incluye elementos específicos:
+
+```xml
+<rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+  <dVerFor>150</dVerFor>
+  <DE Id="cdc44">
+    <gOpeDE>...</gOpeDE>
+    <gTimb>
+      <iTiDE>5</iTiDE>           <!-- 5 = Nota de Crédito -->
+      <dDesTiDE>Nota de crédito electrónica</dDesTiDE>
+      ...
+    </gTimb>
+    <gDatGralOpe>...</gDatGralOpe>
+    <gDtipDE>
+      <gCamNCDE>                  <!-- Campos específicos NCE -->
+        <iMotEmi>2</iMotEmi>      <!-- Código de motivo -->
+        <dDesMotEmi>Devolución</dDesMotEmi>
+      </gCamNCDE>
+      <gCamItem>...</gCamItem>
+    </gDtipDE>
+    <gTotSub>...</gTotSub>
+    <gCamDEAsoc>                  <!-- Referencia a factura original -->
+      <iTipDocAso>1</iTipDocAso>
+      <dDesTipDocAso>Electrónico</dDesTipDocAso>
+      <dCdCDERef>{CDC_FACTURA}</dCdCDERef>
+    </gCamDEAsoc>
+  </DE>
+  <Signature>...</Signature>
+  <gCamFuFD>
+    <dCarQR>...</dCarQR>
+  </gCamFuFD>
+</rDE>
+```
+
+### Servicio NCEXmlBuilder
+
+**Ubicación:** `Services/NCEXmlBuilder.cs`
+
+```csharp
+// Generar XML de NCE
+string xml = await NCEXmlBuilder.ConstruirXmlAsync(notaCredito, dbContext);
+
+// El servicio:
+// - Genera CDC específico para NCE (iTiDE=05)
+// - Incluye gCamNCDE con motivo de emisión
+// - Referencia la factura original con gCamDEAsoc
+// - Genera QR compatible con SIFEN v150
+```
+
+### Flujo de Uso NCE SIFEN
+
+1. **Crear NC** desde NotasCredito.razor vinculando a una factura
+2. **Confirmar** la NC (cambiar estado a "Confirmada")
+3. **Enviar a SIFEN** desde NotasCreditoExplorar → botón "Enviar SIFEN"
+4. **Consultar estado** con botón "Consultar SIFEN"
+5. **Ver QR** cuando esté ACEPTADO (link en la columna Estado)
+
+---
+
 ## ⚠️ Códigos de Error Comunes
 
 | Código | Descripción | Solución | Ejemplo |
 |--------|-------------|----------|--------|
 | 0160 | XML Mal Formado | Revisar estructura del XML, fechas, campos requeridos | Fechas en el futuro, campos vacíos |
+| 0260 | ✅ Autorización satisfactoria | DE aprobado por SIFEN | Éxito |
 | 0300 | Certificado inválido | Verificar certificado .p12 | Certificado expirado o revocado |
 | 0400 | RUC no habilitado | Verificar habilitación en SET | RUC no registrado para FE |
 | 0500 | CDC duplicado | Ya existe ese documento | Envío repetido |
 | 0600 | Timbrado vencido | Solicitar nuevo timbrado | Fecha fuera de vigencia |
+| **1303** | Tipo de contribuyente receptor inválido | NO enviar `iTiContRec` para no contribuyentes (iNatRec=2) | Consumidor Final |
+| **1313** | Descripción tipo documento identidad receptor incorrecta | Usar catálogo correcto: código 5 = "Innominado" | SIFEN v150 |
+
+### Detalle del Error 1303 - Tipo de Contribuyente Receptor Inválido
+
+**Causa:** El campo `iTiContRec` (Tipo de Contribuyente Receptor) solo debe enviarse cuando el receptor ES contribuyente (`iNatRec=1`). Para no contribuyentes (consumidor final, `iNatRec=2`), este campo **NO debe incluirse** en el XML.
+
+**Solución en DEXmlBuilder.cs (Líneas 220-231):**
+```csharp
+// Solo agregar iTiContRec si ES contribuyente (iNatRec=1)
+bool esContribuyente = cliente.NaturalezaReceptor == 1;
+if (esContribuyente)
+{
+    gDatRec.Add(new XElement(NsSifen + "iTiContRec", cliente.TipoContribuyenteReceptor));
+}
+```
+
+**XML Correcto para Consumidor Final:**
+```xml
+<gDatRec>
+  <iNatRec>2</iNatRec>        <!-- NO contribuyente -->
+  <iTiOpe>2</iTiOpe>          <!-- B2C -->
+  <cPaisRec>PRY</cPaisRec>
+  <!-- NO incluir iTiContRec -->
+  <iTipIDRec>5</iTipIDRec>    <!-- Innominado -->
+  <dDTipIDRec>Innominado</dDTipIDRec>
+  ...
+</gDatRec>
+```
+
+### Detalle del Error 1313 - Descripción Tipo Documento Identidad Incorrecta
+
+**Causa:** La descripción del tipo de documento (`dDTipIDRec`) no corresponde al código enviado (`iTipIDRec`). El código 5 debe mapearse a "Innominado", NO a "Cédula extranjera".
+
+**Catálogo iTipIDRec según SIFEN v150:**
+| Código | Descripción Correcta | Descripción Incorrecta |
+|--------|---------------------|----------------------|
+| 1 | Cédula paraguaya | - |
+| 2 | Pasaporte | - |
+| 3 | Cédula extranjera | - |
+| 4 | Carnet de residencia | - |
+| **5** | **Innominado** | ❌ "Cédula extranjera" |
+| 9 | Sin documento | - |
+
+**Solución en DEXmlBuilder.cs (Función DescripcionTipoDocRec):**
+```csharp
+private string DescripcionTipoDocRec(int tipo) => tipo switch
+{
+    1 => "Cédula paraguaya",
+    2 => "Pasaporte",
+    3 => "Cédula extranjera",
+    4 => "Carnet de residencia",
+    5 => "Innominado",     // ✅ CORRECTO (era "Cédula extranjera")
+    9 => "Sin documento",
+    _ => "Otro"
+};
+```
+
+**Migración para corregir clientes existentes:** `Fix_TipoDocumento_Innominado_Clientes`
 
 ### Detalle del Error 0160 - XML Mal Formado
 
@@ -2071,3 +2246,63 @@ Los archivos de referencia que sirvieron para implementar correctamente la cance
   "detalles": "Evento registrado correctamente"
 }
 ```
+
+---
+
+## 🎉 Sesión 21 Enero 2026 - Fix Errores 1303 y 1313 Consumidor Final
+
+### ⚠️ Errores Encontrados
+
+Al intentar enviar una venta a consumidor final (cliente "CONSUMIDOR FINAL"), SIFEN rechazaba con dos errores:
+
+1. **Error 1303**: "Tipo de contribuyente receptor inválido para la naturaleza"
+2. **Error 1313**: "Descripción del tipo de documento de identidad del receptor no corresponde"
+
+### 🔍 Causa Raíz Identificada
+
+**Error 1303**: El código forzaba `iTiContRec = "1"` para TODOS los clientes, pero este campo solo debe enviarse cuando `iNatRec = 1` (contribuyente). Para consumidores finales (`iNatRec = 2`), NO debe incluirse.
+
+**Error 1313**: El código mapeaba el código 5 (`iTipIDRec`) a "Cédula extranjera" cuando según el catálogo SIFEN v150 debe ser "Innominado".
+
+### ✅ Correcciones Aplicadas
+
+**1. DEXmlBuilder.cs - iTiContRec condicional (Líneas 220-231):**
+```csharp
+bool esContribuyente = cliente.NaturalezaReceptor == 1;
+if (esContribuyente)
+{
+    gDatRec.Add(new XElement(NsSifen + "iTiContRec", cliente.TipoContribuyenteReceptor));
+}
+// Si es NO contribuyente (consumidor final), NO se agrega iTiContRec
+```
+
+**2. DEXmlBuilder.cs - DescripcionTipoDocRec (Líneas 185-197):**
+```csharp
+5 => "Innominado",  // ✅ CORRECTO (antes decía "Cédula extranjera")
+```
+
+**3. ClienteSifenMejorado.cs - ObtenerDescripcionTipoDocumento (Líneas 257-273):**
+Actualizado con el catálogo completo de SIFEN v150.
+
+### 📦 Migración de Datos
+
+Se creó migración para normalizar clientes CONSUMIDOR FINAL:
+- **Nombre**: `Fix_TipoDocumento_Innominado_Clientes`
+- **SQL**: Actualiza `TipoDocumentoIdentidadSifen=5` y `NaturalezaReceptor=2` para clientes "CONSUMIDOR FINAL"
+
+### 🎉 Resultado: Venta 310 ACEPTADA por SIFEN
+
+```json
+{
+  "ok": true,
+  "estado": "ACEPTADO",
+  "cdc": "01004952197001002000031012026012119...",
+  "codigo": "0260",
+  "mensaje": "Autorización del DE satisfactoria"
+}
+```
+
+### Archivos Modificados
+- `Services/DEXmlBuilder.cs` - iTiContRec condicional + DescripcionTipoDocRec corregida
+- `Models/ClienteSifenMejorado.cs` - Catálogo actualizado
+- Migración: `20260121221757_Fix_TipoDocumento_Innominado_Clientes.cs`

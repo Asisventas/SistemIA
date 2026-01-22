@@ -510,6 +510,13 @@ else
     {
         try
         {
+      // PRIORIDAD 1: Usar la URL completa del QR firmado (dCarQR) si está disponible
+      if (!string.IsNullOrWhiteSpace(venta?.UrlQrSifen))
+      {
+        Console.WriteLine($"QR: Usando UrlQrSifen oficial: {venta.UrlQrSifen[..Math.Min(80, venta.UrlQrSifen.Length)]}...");
+        return GenerarQrDesdeUrl(venta.UrlQrSifen);
+      }
+      
       var cdcParaQr = venta?.CDC;
       
       // Si no hay CDC, generar uno temporal para preview
@@ -525,10 +532,10 @@ else
       }
       else
       {
-        Console.WriteLine($"QR: Usando CDC oficial: {cdcParaQr}");
+        Console.WriteLine($"QR: Usando CDC oficial (sin UrlQrSifen): {cdcParaQr}");
       }
 
-      // Contenido QR según SET (URL de consulta + CDC)
+      // Contenido QR según SET (URL de consulta + CDC) - SOLO como fallback
       var url = $"https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={cdcParaQr}";
 
       using var generator = new QRCodeGenerator();
@@ -555,6 +562,38 @@ else
           return string.Empty; 
         }
     }
+
+  /// <summary>
+  /// Genera el QR a partir de una URL completa (UrlQrSifen con todos los parámetros)
+  /// </summary>
+  private string GenerarQrDesdeUrl(string url)
+  {
+    try
+    {
+      using var generator = new QRCodeGenerator();
+      using var data = generator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+
+      // Generar SVG manualmente para máxima nitidez
+      var svgDataUrl = GenerarSvgDesdeData(data, escala: 3, margen: 4);
+      if (!string.IsNullOrEmpty(svgDataUrl)) 
+      {
+        Console.WriteLine("QR SVG generado desde UrlQrSifen exitosamente");
+        return svgDataUrl;
+      }
+
+      // Fallback a PNG de alta resolución
+      var png = new PngByteQRCode(data);
+      var bytes = png.GetGraphic(12);
+      var base64 = Convert.ToBase64String(bytes);
+      Console.WriteLine("QR PNG generado desde UrlQrSifen como fallback");
+      return $"data:image/png;base64,{base64}";
+    }
+    catch (Exception ex)
+    {
+      Console.WriteLine($"Error generando QR desde UrlQrSifen: {ex.Message}");
+      return string.Empty;
+    }
+  }
 
   private string GenerarCdcPreview()
   {

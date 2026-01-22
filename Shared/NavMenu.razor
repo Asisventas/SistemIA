@@ -254,8 +254,8 @@
                 <div class="submenu-items">
                     <!-- Informes de Ventas -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-graph-up-arrow me-1"></i>
-                        <span class="small fw-bold text-muted">INFORMES DE VENTAS</span>
+                        <i class="bi bi-graph-up-arrow me-1 text-success"></i>
+                        <span class="small fw-bold text-success">INFORMES DE VENTAS</span>
                     </div>
                     <NavLink class="nav-link" href="/informes/ventas-agrupado" title="@(IsCollapsed ? "Ventas Agrupado" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-layout-split me-2"></i>
@@ -270,8 +270,8 @@
                     
                     <!-- Informes de Notas de Crédito -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-receipt-cutoff me-1"></i>
-                        <span class="small fw-bold text-muted">NOTAS DE CRÉDITO</span>
+                        <i class="bi bi-receipt-cutoff me-1 text-warning"></i>
+                        <span class="small fw-bold text-warning">NOTAS DE CRÉDITO</span>
                     </div>
                     <NavLink class="nav-link" href="/informes/nc-agrupado" title="@(IsCollapsed ? "Informe NC Agrupado" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-layout-split me-2"></i>
@@ -286,8 +286,8 @@
                     
                     <!-- Informes de Compras -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-cart3 me-1"></i>
-                        <span class="small fw-bold text-muted">INFORMES DE COMPRAS</span>
+                        <i class="bi bi-cart3 me-1 text-primary"></i>
+                        <span class="small fw-bold text-primary">INFORMES DE COMPRAS</span>
                     </div>
                     <NavLink class="nav-link" href="/informes/compras-general" title="@(IsCollapsed ? "Compras Agrupado" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-layout-split me-2"></i>
@@ -302,8 +302,8 @@
                     
                     <!-- Informes de NC Compras -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-receipt-cutoff me-1"></i>
-                        <span class="small fw-bold text-muted">NC COMPRAS</span>
+                        <i class="bi bi-receipt-cutoff me-1 text-info"></i>
+                        <span class="small fw-bold text-info">NC COMPRAS</span>
                     </div>
                     <NavLink class="nav-link" href="/informes/nc-compras-agrupado" title="@(IsCollapsed ? "NC Compras Agrupado" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-layout-split me-2"></i>
@@ -318,8 +318,8 @@
                     
                     <!-- Informes Resumen de Caja -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-cash-stack me-1"></i>
-                        <span class="small fw-bold text-muted">RESUMEN DE CAJA</span>
+                        <i class="bi bi-cash-stack me-1" style="color: #20c997;"></i>
+                        <span class="small fw-bold" style="color: #20c997;">RESUMEN DE CAJA</span>
                     </div>
                     <NavLink class="nav-link" href="/informes/resumen-caja" title="@(IsCollapsed ? "Resumen de Caja" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-journal-check me-2"></i>
@@ -334,8 +334,8 @@
                     
                     <!-- Informes de Productos -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-box-seam me-1"></i>
-                        <span class="small fw-bold text-muted">INFORMES DE PRODUCTOS</span>
+                        <i class="bi bi-box-seam me-1" style="color: #fd7e14;"></i>
+                        <span class="small fw-bold" style="color: #fd7e14;">INFORMES DE PRODUCTOS</span>
                     </div>
                     <NavLink class="nav-link" href="/informes/productos-detallado" title="@(IsCollapsed ? "Productos Detallado" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-list-check me-2"></i>
@@ -353,13 +353,17 @@
                         <i class="bi bi-clipboard-check me-2"></i>
                         @if (!IsCollapsed){<span class="link-text">Ajustes de Stock</span>}
                     </NavLink>
+                    <NavLink class="nav-link" href="/inventario/salidas-stock" title="@(IsCollapsed ? "Salidas de Stock" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-box-arrow-right text-danger me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Salidas de Stock</span>}
+                    </NavLink>
                     
                     <hr class="my-1 mx-2 border-secondary opacity-25" />
                     
                     <!-- Informes de Clientes -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-person-lines-fill me-1"></i>
-                        <span class="small fw-bold text-muted">INFORMES DE CLIENTES</span>
+                        <i class="bi bi-person-lines-fill me-1" style="color: #6f42c1;"></i>
+                        <span class="small fw-bold" style="color: #6f42c1;">INFORMES DE CLIENTES</span>
                     </div>
                     <NavLink class="nav-link" href="/informes/clientes" title="@(IsCollapsed ? "Listado de Clientes" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-list-check me-2"></i>
@@ -382,8 +386,8 @@
                     
                     <!-- Informes de Proveedores -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-building me-1"></i>
-                        <span class="small fw-bold text-muted">INFORMES DE PROVEEDORES</span>
+                        <i class="bi bi-building me-1" style="color: #e83e8c;"></i>
+                        <span class="small fw-bold" style="color: #e83e8c;">INFORMES DE PROVEEDORES</span>
                     </div>
                     <NavLink class="nav-link" href="/informes/proveedores" title="@(IsCollapsed ? "Listado de Proveedores" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-list-check me-2"></i>
@@ -402,8 +406,8 @@
                     
                     <!-- Informes de Personal/Asistencia -->
                     <div class="submenu-section-header">
-                        <i class="bi bi-person-badge me-1"></i>
-                        <span class="small fw-bold text-muted">INFORMES DE PERSONAL</span>
+                        <i class="bi bi-person-badge me-1 text-secondary"></i>
+                        <span class="small fw-bold text-secondary">INFORMES DE PERSONAL</span>
                     </div>
                     <NavLink class="nav-link" href="/informes-asistencia" title="@(IsCollapsed ? "Informes de Asistencia" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-file-earmark-pdf me-2"></i>
@@ -494,6 +498,10 @@
                         <NavLink class="nav-link" href="/inventario/transferencias" title="@(IsCollapsed ? "Transferencias" : "")" @onclick="OnAnyNavigate">
                             <i class="bi bi-arrow-left-right me-2"></i>
                             @if (!IsCollapsed){<span class="link-text">Transferencias</span>}
+                        </NavLink>
+                        <NavLink class="nav-link" href="/inventario/salidas-stock" title="@(IsCollapsed ? "Salidas de Stock" : "")" @onclick="OnAnyNavigate">
+                            <i class="bi bi-box-arrow-right text-danger me-2"></i>
+                            @if (!IsCollapsed){<span class="link-text">Salidas de Stock</span>}
                         </NavLink>
                         <NavLink class="nav-link" href="/seleccionar-sucursal" title="@(IsCollapsed ? "Cambiar Sucursal" : "")">
                             <i class="bi bi-arrow-left-right me-2"></i>

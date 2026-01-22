@@ -1047,46 +1047,37 @@ namespace SistemIA.Models
                 {
                     if (qrNode == null) continue;
                         // ========================================================================
-                        // FIX CRÍTICO 31-Ene-2026: Procesar QR según DLL funcional de Power Builder
+                        // FIX CRÍTICO 20-Ene-2026: Procesar QR EXACTAMENTE como DLL Power Builder
                         // ========================================================================
-                        // Referencia: Sifen2026Proyec/Sifen.cs líneas 477-486
+                        // Referencia: Sifen2026Proyec/Sifen.cs líneas 477-480
                         //
-                        // PROCESO EXACTO del DLL que FUNCIONA:
-                        //   1. Reemplazar placeholder DigestValue con hex real
-                        //   2. qrHash = SHA256(toda_la_URL_completa)
-                        //   3. Quitar últimos 32 chars (el CSC pegado al IdCSC)
-                        //   4. Agregar &cHashQR={hash}
+                        // CÓDIGO EXACTO del DLL:
+                        //   qrNode.InnerText = qrNode.InnerText.Replace(placeholder, digestValue);
+                        //   qrValue = qrNode.InnerText;           // parámetros, SIN url
+                        //   qrHash = SHA256ToString(qrValue);      // hash de parámetros
+                        //   qrNode.InnerText = urlQR + qrValue.Substring(0, qrValue.Length - 32) + "&cHashQR=" + qrHash;
                         //
-                        // IMPORTANTE: El hash se calcula sobre TODA la URL incluyendo
-                        // el CSC pegado (NO sobre params+CSC como estábamos haciendo)
+                        // CRÍTICO: El hash se calcula sobre qrValue (parámetros + CSC),
+                        // NO sobre URL+parámetros
                         // ========================================================================
                         
                         // Paso 1: Reemplazar placeholder de DigestValue por el valor real
-                        var qrText = qrNode.InnerText.Replace(
+                        qrNode.InnerText = qrNode.InnerText.Replace(
                             "665569394474586a4f4a396970724970754f344c434a75706a457a73645766664846656d573270344c69593d",
                             digestValue);
-
-                        // Paso 2: Prefijar urlQR si el texto no inicia con http
-                        if (!qrText.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                        {
-                            qrText = $"{urlQR}{qrText.TrimStart('?')}";
-                        }
                         
-                        // Paso 3: Calcular SHA256 de TODA la URL (incluyendo CSC pegado)
-                        var qrHash = SHA256ToString(qrText);
+                        // Paso 2: qrValue = parámetros (SIN URL)
+                        var qrValue = qrNode.InnerText;
                         
-                        // Paso 4: Quitar últimos 32 caracteres (el CSC pegado al IdCSC)
-                        // El formato de entrada es: ...&IdCSC=1ABCD0000000000000000000000000000
-                        // Queremos: ...&IdCSC=1&cHashQR={hash}
-                        string qrSinCsc = qrText.Substring(0, qrText.Length - 32);
+                        // Paso 3: Calcular SHA256 de qrValue (parámetros con CSC pegado)
+                        var qrHash = SHA256ToString(qrValue);
                         
-                        // Paso 5: Agregar &cHashQR={hash}
-                        string qrFinal = qrSinCsc + "&cHashQR=" + qrHash;
+                        // Paso 4: QR final = urlQR + parámetros sin CSC + &cHashQR=hash
+                        var qrFinal = urlQR + qrValue.Substring(0, qrValue.Length - 32) + "&cHashQR=" + qrHash;
                         
-                        // DEBUG: Mostrar cálculo del QR
-                        Console.WriteLine($"[QR DEBUG] URL con CSC (para hash): {qrText.Substring(0, Math.Min(80, qrText.Length))}...");
-                        Console.WriteLine($"[QR DEBUG] CSC (últimos 32 chars): {qrText.Substring(qrText.Length - 32)}");
-                        Console.WriteLine($"[QR DEBUG] Hash SHA256(URL completa): {qrHash}");
+                        // DEBUG
+                        Console.WriteLine($"[QR DEBUG] qrValue (params): {qrValue.Substring(0, Math.Min(80, qrValue.Length))}...");
+                        Console.WriteLine($"[QR DEBUG] Hash SHA256: {qrHash}");
                         Console.WriteLine($"[QR DEBUG] QR final: {qrFinal.Substring(0, Math.Min(80, qrFinal.Length))}...");
                         
                         // ========================================================================
@@ -1367,7 +1358,8 @@ namespace SistemIA.Models
             body.AppendChild(req);
 
             var dIdNode = soapDoc.CreateElement("dId", sifenNs);
-            dIdNode.InnerText = string.IsNullOrWhiteSpace(dId) ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") : dId!;
+            // FIX 20-Ene-2026: dId debe ser 12 dígitos DDMMYYYYHHMM
+            dIdNode.InnerText = string.IsNullOrWhiteSpace(dId) ? DateTime.Now.ToString("ddMMyyyyHHmm") : dId!;
             req.AppendChild(dIdNode);
 
             var xde = soapDoc.CreateElement("xDE", sifenNs);
@@ -1398,8 +1390,9 @@ namespace SistemIA.Models
             // =====================================================================
             
             // 1. Generar dId si no se proporciona
+            // FIX 20-Ene-2026: dId debe ser 12 dígitos DDMMYYYYHHMM
             string dIdFinal = string.IsNullOrWhiteSpace(dId) 
-                ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") 
+                ? DateTime.Now.ToString("ddMMyyyyHHmm") 
                 : dId!;
             
             // 2. Comprimir el XML firmado con GZip y convertir a Base64
@@ -1477,10 +1470,10 @@ namespace SistemIA.Models
             var zipped = StringToZip(SerializeXmlToUtf8String(inner, indent: false, omitDeclaration: true));
 
             // ========================================================================
-            // FIX 31-Ene-2026: Formato SOAP exacto del DLL Power que FUNCIONA
+            // FIX 20-Ene-2026: dId debe ser 12 dígitos DDMMYYYYHHMM
             // ========================================================================
             var dIdValue = string.IsNullOrWhiteSpace(dId) 
-                ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") 
+                ? DateTime.Now.ToString("ddMMyyyyHHmm") 
                 : dId!;
             
             // ========================================================================
@@ -1536,7 +1529,8 @@ namespace SistemIA.Models
             var req = soapDoc.CreateElement("rEnvioLote", sifenNs);
             body.AppendChild(req);
             var dIdNode = soapDoc.CreateElement("dId", sifenNs);
-            dIdNode.InnerText = string.IsNullOrWhiteSpace(dId) ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") : dId!;
+            // FIX 20-Ene-2026: dId debe ser 12 dígitos DDMMYYYYHHMM
+            dIdNode.InnerText = string.IsNullOrWhiteSpace(dId) ? DateTime.Now.ToString("ddMMyyyyHHmm") : dId!;
             req.AppendChild(dIdNode);
             var xde = soapDoc.CreateElement("xDE", sifenNs);
             xde.InnerText = zipped;
@@ -1569,7 +1563,8 @@ namespace SistemIA.Models
             body.AppendChild(req);
 
             var dIdNode = soapDoc.CreateElement("dId", sifenNs);
-            dIdNode.InnerText = string.IsNullOrWhiteSpace(dId) ? DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00") : dId!;
+            // FIX 20-Ene-2026: dId debe ser 12 dígitos DDMMYYYYHHMM
+            dIdNode.InnerText = string.IsNullOrWhiteSpace(dId) ? DateTime.Now.ToString("ddMMyyyyHHmm") : dId!;
             req.AppendChild(dIdNode);
 
             var xde = soapDoc.CreateElement("xDE", sifenNs);
@@ -1754,56 +1749,40 @@ namespace SistemIA.Models
             foreach (XmlNode qrNode in doc.GetElementsByTagName("dCarQR"))
             {
                 if (qrNode == null) continue;
-                var qrText = qrNode.InnerText.Replace(
+                
+                // ========================================================================
+                // FIX CRÍTICO 20-Ene-2026: Cálculo de cHashQR IGUAL que el DLL funcional
+                // ========================================================================
+                // ENTRADA del XML (qrValue):
+                //   nVersion=150&Id=...&...&IdCSC=1ABCD0000000000000000000000000000
+                //   (CSC de 32 caracteres PEGADO al final de IdCSC)
+                //
+                // PROCESO del DLL (exactamente como en Sifen2026Proyec/Sifen.cs línea 479):
+                //   1. Reemplazar placeholder DigestValue con hex real
+                //   2. qrHash = SHA256(qrValue_completo)  // Hash de TODO, con CSC
+                //   3. qrFinal = urlQR + qrValue.Substring(0, qrValue.Length - 32) + "&cHashQR=" + qrHash
+                //      (quita los últimos 32 chars = CSC, y agrega el hash)
+                // ========================================================================
+                
+                // 1. Reemplazar placeholder DigestValue con el valor real
+                var qrValue = qrNode.InnerText.Replace(
                     "665569394474586a4f4a396970724970754f344c434a75706a457a73645766664846656d573270344c69593d",
                     digestValue);
-                if (!qrText.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                {
-                    qrText = $"{urlQR}{qrText.TrimStart('?')}";
-                }
                 
-                // Extraer CSC del parámetro temporal __CSC__ (agregado por DEXmlBuilder)
-                string cscValue = "ABCD0000000000000000000000000000"; // Default TEST
-                // Buscar __CSC__ con & simple (como genera DEXmlBuilder ahora)
-                var cscMatch = System.Text.RegularExpressions.Regex.Match(qrText, @"__CSC__=([^&]+)");
-                if (cscMatch.Success)
-                {
-                    cscValue = cscMatch.Groups[1].Value;
-                    // Remover el parámetro temporal __CSC__ del QR final (con & simple)
-                    qrText = System.Text.RegularExpressions.Regex.Replace(qrText, @"&__CSC__=[^&]+", "");
-                }
-
-                // ========================================================================
-                // FIX CRÍTICO 26-Ene-2026: Cálculo de cHashQR según librería Roshka Java
-                // El hash se calcula SOLO con los parámetros, SIN incluir la URL base
-                // Referencia: ManualSifen/codigoabierto/.../DocumentoElectronico.java
-                // ========================================================================
-                string urlCompleta = qrText;
-                // Buscar &cHashQR= con & simple (como viene de DEXmlBuilder)
-                if (urlCompleta.Contains("&cHashQR="))
-                {
-                    urlCompleta = urlCompleta.Substring(0, urlCompleta.IndexOf("&cHashQR="));
-                }
-                else if (urlCompleta.Contains("cHashQR="))
-                {
-                    urlCompleta = urlCompleta.Substring(0, urlCompleta.IndexOf("cHashQR="));
-                    if (urlCompleta.EndsWith("&"))
-                        urlCompleta = urlCompleta.TrimEnd('&');
-                }
+                Console.WriteLine($"[QR] qrValue original (primeros 100): {qrValue.Substring(0, Math.Min(100, qrValue.Length))}...");
+                Console.WriteLine($"[QR] qrValue length: {qrValue.Length}");
                 
-                // CRÍTICO: Extraer SOLO los parámetros (sin URL base)
-                string soloParametros = urlCompleta;
-                int indexInterrogacion = urlCompleta.IndexOf('?');
-                if (indexInterrogacion >= 0)
-                {
-                    soloParametros = urlCompleta.Substring(indexInterrogacion + 1);
-                }
+                // 2. Calcular hash de TODO qrValue (incluyendo CSC pegado de 32 chars)
+                var qrHash = SHA256ToString(qrValue);
                 
-                // Calcular hash sobre parámetros + CSC (sin URL base)
-                var qrHash = SHA256ToString(soloParametros + cscValue);
+                Console.WriteLine($"[QR] qrHash calculado: {qrHash}");
                 
-                // Construir URL final con el hash calculado
-                qrText = urlCompleta + "&cHashQR=" + qrHash;
+                // 3. Construir QR final: urlQR + qrValue sin últimos 32 chars + &cHashQR=hash
+                // El DLL hace: qrNode.InnerText = urlQR + qrValue.Substring(0, qrValue.Length - 32) + "&cHashQR=" + qrHash;
+                var qrSinCsc = qrValue.Substring(0, qrValue.Length - 32);
+                var qrText = urlQR + qrSinCsc + "&cHashQR=" + qrHash;
+                
+                Console.WriteLine($"[QR] qrText final (primeros 100): {qrText.Substring(0, Math.Min(100, qrText.Length))}...");
                 // ========================================================================
                 // FIX 14-Ene-2026 (CORREGIDO 14-Ene-2026 noche):
                 // El XML APROBADO por PowerBuilder usa &amp; (escape SIMPLE, NO doble)
@@ -1884,8 +1863,9 @@ namespace SistemIA.Models
                 // el XML como elemento SOAP hijo, no como texto Base64.
                 // ========================================================================
                 
-                // Generar dId de 16 dígitos (yyyyMMddHHmmssNN)
-                var dId = DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00");
+                // FIX 20-Ene-2026: dId debe ser 12 dígitos DDMMYYYYHHMM (igual que FirmarYEnviar)
+                // El formato anterior de 16 dígitos causaba error 0160
+                var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
                 
                 // El contenido de xDE es el XML del rDE directamente (SIN ZIP, SIN Base64)
                 // xmlFirmado ya contiene <rDE>...</rDE> con firma y QR
@@ -1991,8 +1971,8 @@ namespace SistemIA.Models
         /// <returns>Tupla con (soapGenerado, descripcionVariante)</returns>
         public (string soap, string descripcion) GenerarSoapVariante(string xmlFirmado, int variante)
         {
-            // Generar dId de 16 dígitos
-            var dId = DateTime.Now.ToString("yyyyMMddHHmmss") + (Environment.TickCount % 100).ToString("00");
+            // FIX 20-Ene-2026: dId debe ser 12 dígitos DDMMYYYYHHMM
+            var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
             
             // Preparar el contenido XML (remover declaración XML si existe)
             var xmlContent = xmlFirmado;

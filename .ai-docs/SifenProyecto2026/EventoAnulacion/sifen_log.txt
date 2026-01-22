@@ -1,0 +1,429 @@
+2026-01-20 18:36:17 - === INICIO FIRMA ===
+2026-01-20 18:36:17 - === VERSION DLL ===
+2026-01-20 18:36:17 - VERSION: Sifen_26 - CORREGIDA - Compatible Windows 10/11
+2026-01-20 18:36:17 - COMPILACION: 2026-01-14 - API RSA MODERNA (SIN CSP TIPO 24)
+2026-01-20 18:36:17 - Assembly Version: 1.0.0.0
+2026-01-20 18:36:17 - Assembly Location: C:\nextsys - GLP\Sifen.dll
+2026-01-20 18:36:17 - Assembly LastWriteTime: 2026-01-19 15:13:46
+2026-01-20 18:36:17 - === PARAMETROS DE ENTRADA ===
+2026-01-20 18:36:17 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-20 18:36:17 - urlQR: https://ekuatia.set.gov.py/consultas-test/qr?
+2026-01-20 18:36:17 - p12FilePath: C:\nextsys - GLP\sifen\WEN.pfx
+2026-01-20 18:36:17 - tipoFirmado: 1
+2026-01-20 18:36:17 - XML Input Length: 4397
+2026-01-20 18:36:17 - Sistema Hora Local: 2026-01-20 18:36:17
+2026-01-20 18:36:17 - Sistema Hora UTC: 2026-01-20 21:36:17
+2026-01-20 18:36:17 - XML Input guardado en: C:\nextsys - GLP\sifen_xml_input.txt
+2026-01-20 18:36:17 - Primeros 10 chars (códigos): 60,114,76,111,116,101,68,69,62,10
+2026-01-20 18:36:17 - XML Cleaned Length: 4397
+2026-01-20 18:36:17 - === CARGA DE CERTIFICADO ===
+2026-01-20 18:36:17 - Intentando cargar certificado con flags: MachineKeySet, Exportable
+2026-01-20 18:36:17 - Certificado cargado EXITOSAMENTE con flags: MachineKeySet, Exportable
+2026-01-20 18:36:17 - Certificado para FIRMA: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:36:17 - Certificado HasPrivateKey: True
+2026-01-20 18:36:17 - Node ID (CDC): 01004952197001002000008812026012010171372198
+2026-01-20 18:36:17 - Certificado cargado: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:36:17 - Certificado Serial: 00E9312C9B1DB909AC49B307D8A7A6AE8B
+2026-01-20 18:36:17 - Certificado Thumbprint: 477AAEC61F0A09E5EC6DCE86FE7A75DA0F91F9C2
+2026-01-20 18:36:17 - === METODO DE FIRMA ===
+2026-01-20 18:36:17 - USANDO: API RSA MODERNA - GetRSAPrivateKey()
+2026-01-20 18:36:17 - SIN: RSACryptoServiceProvider con CspParameters(24)
+2026-01-20 18:36:17 - Compatible con: Windows 10/11 modernos
+2026-01-20 18:36:17 - RSA Key obtenida via GetRSAPrivateKey()
+2026-01-20 18:36:17 - RSA KeySize: 2048
+2026-01-20 18:36:17 - RSA SignatureAlgorithm: RSA
+2026-01-20 18:36:17 - Firma computada correctamente
+2026-01-20 18:36:17 - SignatureValue (primeros 100 chars): CKF+lI6+58pW3pXzn2kH5l+iutSayu+cavEjUVGzcrabIhzxbkt0NWnKBy+uM6k24KNPc2P6iaLM663V79PYDedPfZuz6FjroUES
+2026-01-20 18:36:17 - SignatureValue Length: 344
+2026-01-20 18:36:17 - DigestValue (hex): 523068473750495335724b7972376442436763732f6b7a6e2f77577275305338434f31654c447032...
+2026-01-20 18:36:17 - === INICIO COMPRESION ===
+2026-01-20 18:36:17 - XML Original Length: 7542
+2026-01-20 18:36:17 - XML Original (primeros 500 chars): <rLoteDE><rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"><dVerFor>150</dVerFor><DE Id="01004952197001002000008812026012010171372198"><dDVId>8</dDVId><dFecFirma>2026-01-20T18:36:17</dFecFirma><dSisFact>1</dSisFact><gOpeDE><iTipEmi>1</iTipEmi><dDesTipEmi>Normal</dDesTipEmi><dCodSeg>017137219</dCodSeg></gOpeDE><gTimb><iTiDE>1</iTiDE><dDesTiDE>Factura electrónica</dDesTi
+2026-01-20 18:36:17 - Compressed Base64 Length: 5644
+2026-01-20 18:36:17 - === FIN COMPRESION ===
+2026-01-20 18:36:17 - XML Firmado guardado en: C:\nextsys - GLP\sifen_xml_firmado.txt
+2026-01-20 18:36:17 - === FIN FIRMA - Enviando... ===
+2026-01-20 18:36:17 - === INICIO ENVIO ===
+2026-01-20 18:36:17 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-20 18:36:17 - Documento Length: 5854
+2026-01-20 18:36:17 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><rEnvioLote xmlns="http://ekuatia.set.gov.py/sifen/xsd"><dId>160420241700</dId><xDE>UEsDBBQAAAAIAIiUNFyyOgNPCRAAAHwdAAAOAAAAY29tcHJlc3NlZC50eHSdWemSqtqSfhXjnIiO22HUZhBET1dVN7MooIwOfzoQEFEGC1DQd7gP0j/6Vz/CebFOJsszRd/bO3bpl7lyWrlyJWvheyanhc/xn+8Zxw+qOEryj5+ORXH5BUH889UpQudH7hc/gvT243JH8vDgJ0iVez+1sr9UefiUL8vyRzn6kWYBgqMohmwU2XCPfuy8hUleOInrg1Ye/pI3TDl1wXqa/EPuBnmo+65/4fj/vGEk+qOO4PPds/1MSLNP4LwjPfEO85C8j59QDEWJKYljUwqtMYQE/yYTDEfxMQqfGIpR2IgCgUlti7Ml73MCdhrw7gm+K4RZ7HzW8m8o9oajJjb5ZTT+BaNA6jn87hlhLjhu8YkBu8fvwfLSpDU0wwsfh/VgD8GXn3dYTcFGVHt9st49NvUMP/h8xgfDHesd6e0GZhjvG/NAtcZrdmsHUB3FNXMGfuS7Rfbr/ySh6/RuGkH1GoOJzz5JMNZx3j0+L4BfT6dG797qmvDVBVg4sDqiMcCl7meX1la/ZtSpk5LQrBNHvmHoG0Y2+Wp4MIE28IBzCjFzIphOowEzh7Beco2ivzT/G912tEkqm8ZtVs3M+Ry1Wa1hn9UaK2FVpIO/2X5SOAPPH8R+5jqen/36387gPsj97Ba6YZr/6zPvjYHQlOJLm8satAZrJNl0J9nwXSVN/Dru1VZ8R55UI98T4tXJnCRs1Z4SwXIf0QcAbgdwDNz1RGOgw5KysnjDXA5oeWDT8lIf0KLOizS3HLwNRJ22aY42BtsBv1mqv
+2026-01-20 18:36:17 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:36:17 - Certificado HasPrivateKey: True
+2026-01-20 18:36:17 - Enviando 5854 bytes...
+2026-01-20 18:36:18 - Response StatusCode: OK
+2026-01-20 18:36:18 - Response Length: 474
+2026-01-20 18:36:18 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rResEnviLoteDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:36:17-03:00</ns2:dFecProc><ns2:dCodRes>0300</ns2:dCodRes><ns2:dMsgRes>Lote recibido con &#233;xito</ns2:dMsgRes><ns2:dProtConsLote>154307038997791474</ns2:dProtConsLote><ns2:dTpoProces>2</ns2:dTpoProces></ns2:rResEnviLoteDe></env:Body></env:Envelope>
+2026-01-20 18:36:18 - === FIN ENVIO ===
+2026-01-20 18:36:18 - Respuesta guardada en: C:\nextsys - GLP\sifen_respuesta.txt
+2026-01-20 18:36:18 - CDC a retornar: 01004952197001002000008812026012010171372198
+2026-01-20 18:36:18 - QR a retornar: https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000008812026012010171372198&dFeEmiDE=323032362d30312d32305430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=523068473750495335724b7972376442436763732f6b7a6e2f77577275305338434f31654c4470325437343d&IdCSC=1&cHashQR=fb084ad8dce92961806e7bacf2f71c92f6822f37dfa26b22f62573ff83fa2a24
+2026-01-20 18:36:18 - Archivos CDC/QR guardados para PowerBuilder
+2026-01-20 18:36:18 - Retorno JSON Length: 540
+2026-01-20 18:36:18 - RETORNO COMPLETO: {"codigo":"0300","mensaje":"Lote recibido con éxito","qr":"https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000008812026012010171372198&dFeEmiDE=323032362d30312d32305430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=523068473750495335724b7972376442436763732f6b7a6e2f77577275305338434f31654c4470325437343d&IdCSC=1&cHashQR=fb084ad8dce92961806e7bacf2f71c92f6822f37dfa26b22f62573ff83fa2a24","idLote":"154307038997791474","documento":"01004952197001002000008812026012010171372198"}
+2026-01-20 18:36:18 - Retorno guardado en: C:\nextsys - GLP\sifen_retorno.txt
+2026-01-20 18:36:38 - === INICIO ENVIO ===
+2026-01-20 18:36:38 - URL: https://sifen-test.set.gov.py/de/ws/consultas/consulta.wsdl
+2026-01-20 18:36:38 - Documento Length: 268
+2026-01-20 18:36:38 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+<soap:Body>
+<rEnviConsDeRequest xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+<dId>1</dId>
+<dCDC>01004952197001002000008812026012010171372198</dCDC>
+</rEnviConsDeRequest>
+</soap:Body>
+</soap:Envelope>
+2026-01-20 18:36:38 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:36:38 - Certificado HasPrivateKey: True
+2026-01-20 18:36:38 - Enviando 268 bytes...
+2026-01-20 18:36:39 - Response StatusCode: OK
+2026-01-20 18:36:39 - Response Length: 413
+2026-01-20 18:36:39 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rEnviConsDeResponse xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:36:38-03:00</ns2:dFecProc><ns2:dCodRes>0420</ns2:dCodRes><ns2:dMsgRes>Documento No Existe en SIFEN o ha sido Rechazado</ns2:dMsgRes></ns2:rEnviConsDeResponse></env:Body></env:Envelope>
+2026-01-20 18:36:39 - === FIN ENVIO ===
+2026-01-20 18:36:39 - === INICIO FIRMA ===
+2026-01-20 18:36:39 - === VERSION DLL ===
+2026-01-20 18:36:39 - VERSION: Sifen_26 - CORREGIDA - Compatible Windows 10/11
+2026-01-20 18:36:39 - COMPILACION: 2026-01-14 - API RSA MODERNA (SIN CSP TIPO 24)
+2026-01-20 18:36:39 - Assembly Version: 1.0.0.0
+2026-01-20 18:36:39 - Assembly Location: C:\nextsys - GLP\Sifen.dll
+2026-01-20 18:36:39 - Assembly LastWriteTime: 2026-01-19 15:13:46
+2026-01-20 18:36:39 - === PARAMETROS DE ENTRADA ===
+2026-01-20 18:36:39 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-20 18:36:39 - urlQR: https://ekuatia.set.gov.py/consultas-test/qr?
+2026-01-20 18:36:39 - p12FilePath: C:\nextsys - GLP\sifen\WEN.pfx
+2026-01-20 18:36:39 - tipoFirmado: 1
+2026-01-20 18:36:39 - XML Input Length: 4397
+2026-01-20 18:36:39 - Sistema Hora Local: 2026-01-20 18:36:39
+2026-01-20 18:36:39 - Sistema Hora UTC: 2026-01-20 21:36:39
+2026-01-20 18:36:39 - XML Input guardado en: C:\nextsys - GLP\sifen_xml_input.txt
+2026-01-20 18:36:39 - Primeros 10 chars (códigos): 60,114,76,111,116,101,68,69,62,10
+2026-01-20 18:36:39 - XML Cleaned Length: 4397
+2026-01-20 18:36:39 - === CARGA DE CERTIFICADO ===
+2026-01-20 18:36:39 - Intentando cargar certificado con flags: MachineKeySet, Exportable
+2026-01-20 18:36:39 - Certificado cargado EXITOSAMENTE con flags: MachineKeySet, Exportable
+2026-01-20 18:36:39 - Certificado para FIRMA: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:36:39 - Certificado HasPrivateKey: True
+2026-01-20 18:36:39 - Node ID (CDC): 01004952197001002000008812026012010171372198
+2026-01-20 18:36:39 - Certificado cargado: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:36:39 - Certificado Serial: 00E9312C9B1DB909AC49B307D8A7A6AE8B
+2026-01-20 18:36:39 - Certificado Thumbprint: 477AAEC61F0A09E5EC6DCE86FE7A75DA0F91F9C2
+2026-01-20 18:36:39 - === METODO DE FIRMA ===
+2026-01-20 18:36:39 - USANDO: API RSA MODERNA - GetRSAPrivateKey()
+2026-01-20 18:36:39 - SIN: RSACryptoServiceProvider con CspParameters(24)
+2026-01-20 18:36:39 - Compatible con: Windows 10/11 modernos
+2026-01-20 18:36:39 - RSA Key obtenida via GetRSAPrivateKey()
+2026-01-20 18:36:39 - RSA KeySize: 2048
+2026-01-20 18:36:39 - RSA SignatureAlgorithm: RSA
+2026-01-20 18:36:39 - Firma computada correctamente
+2026-01-20 18:36:39 - SignatureValue (primeros 100 chars): 2RM/FWqI7hjIGxKThUQ2RACu7dJ9aMf0JHLsKbQFhTMMfV3UCjnZvbRoy/35o+3nMqyz3MBXSrzA79NcBSZPoZW8eg6TrAIqJYUd
+2026-01-20 18:36:39 - SignatureValue Length: 344
+2026-01-20 18:36:39 - DigestValue (hex): 794536304b496b376c6664546c4133713054464576704f726c6277484a4b5357362f4f4d526a412f...
+2026-01-20 18:36:39 - === INICIO COMPRESION ===
+2026-01-20 18:36:39 - XML Original Length: 7542
+2026-01-20 18:36:39 - XML Original (primeros 500 chars): <rLoteDE><rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"><dVerFor>150</dVerFor><DE Id="01004952197001002000008812026012010171372198"><dDVId>8</dDVId><dFecFirma>2026-01-20T18:36:39</dFecFirma><dSisFact>1</dSisFact><gOpeDE><iTipEmi>1</iTipEmi><dDesTipEmi>Normal</dDesTipEmi><dCodSeg>017137219</dCodSeg></gOpeDE><gTimb><iTiDE>1</iTiDE><dDesTiDE>Factura electrónica</dDesTi
+2026-01-20 18:36:39 - Compressed Base64 Length: 5648
+2026-01-20 18:36:39 - === FIN COMPRESION ===
+2026-01-20 18:36:39 - XML Firmado guardado en: C:\nextsys - GLP\sifen_xml_firmado.txt
+2026-01-20 18:36:39 - === FIN FIRMA - Enviando... ===
+2026-01-20 18:36:39 - === INICIO ENVIO ===
+2026-01-20 18:36:39 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-20 18:36:39 - Documento Length: 5858
+2026-01-20 18:36:39 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><rEnvioLote xmlns="http://ekuatia.set.gov.py/sifen/xsd"><dId>160420241700</dId><xDE>UEsDBBQAAAAIAJOUNFz3q4pMDBAAAHwdAAAOAAAAY29tcHJlc3NlZC50eHSdWdmS4kh3fhWiJ8LxO4hqLUgI2lVlp1YEWtDKcuPQhhAICSSBBO/wP4gvfOVHmBdzaqOYmZ7wjDu64Dsnz5YnT55MifdMSouA5T7fM5YbVKc4yT++7Yvi/ANBguPVKSLnex4U38P09v18R/JoFyRIlfvfWtkfVR495cuy/F6OvqdZiOAoiiFrWTK8fXBy3qIkL5zEC6BWHv3IG6aUetB6mvwld4M80gMvOLPcf94wEv1eR/D57ttBxqfZJ+S8Iz3xDuch+h/fUAxFiSmJY1MKrTEMCf6bTDAcxcco/MRQjMJGFBSY1LZYW/Q/J9BOA959PvD4KDs5n7X8G4q94aiJTX6Mxj9GUyj1HH73jSjnHa/4xCC7x++hem7SGpnRmTtF9WAPoa8g77CSQhtx7fXJeveZ1DeC8PMZHxzuWO9Ibzc0o5PbmIdUa7xmt3YgqqO4Zs4giAOvyH79nyTynN5NI6hcT9DEZ58kONZx3n0uLyC/nk6N3v3lNeGqM2ThkNURjQE29T67tLb6NaNOnZhEZp048g1D3zCyyVfDgxNoAw9ZpxAyJ4bTaTTgzGFYL7lG0R/N/0a3HW2SyqSnNqtm5nyO2qzWsM9qjeWoKtLBP+wgKZyBHwxOQeY5fpD9+t/O4D7Ig+wWeVGa/+sz742ByBRP5zaXNWgN1ki0QSfZ8D05TYI67uVGeEeeVCPfE8LVyZwkatWeEqHqxmAHgdcBHIPueqIx0GFRXlqcYaoDIA1sIKn6AAg6JwBWHbwNBB3YgAXGYDPg1
+2026-01-20 18:36:39 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:36:39 - Certificado HasPrivateKey: True
+2026-01-20 18:36:39 - Enviando 5858 bytes...
+2026-01-20 18:36:39 - Response StatusCode: OK
+2026-01-20 18:36:39 - Response Length: 474
+2026-01-20 18:36:39 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rResEnviLoteDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:36:38-03:00</ns2:dFecProc><ns2:dCodRes>0300</ns2:dCodRes><ns2:dMsgRes>Lote recibido con &#233;xito</ns2:dMsgRes><ns2:dProtConsLote>154307038997791476</ns2:dProtConsLote><ns2:dTpoProces>2</ns2:dTpoProces></ns2:rResEnviLoteDe></env:Body></env:Envelope>
+2026-01-20 18:36:39 - === FIN ENVIO ===
+2026-01-20 18:36:39 - Respuesta guardada en: C:\nextsys - GLP\sifen_respuesta.txt
+2026-01-20 18:36:39 - CDC a retornar: 01004952197001002000008812026012010171372198
+2026-01-20 18:36:39 - QR a retornar: https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000008812026012010171372198&dFeEmiDE=323032362d30312d32305430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=794536304b496b376c6664546c4133713054464576704f726c6277484a4b5357362f4f4d526a412f53504d3d&IdCSC=1&cHashQR=4844b4e46e0a7db753b3beefab3fb11d60e7377d015a57081a8cd584856e5734
+2026-01-20 18:36:39 - Archivos CDC/QR guardados para PowerBuilder
+2026-01-20 18:36:39 - Retorno JSON Length: 540
+2026-01-20 18:36:39 - RETORNO COMPLETO: {"codigo":"0300","mensaje":"Lote recibido con éxito","qr":"https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000008812026012010171372198&dFeEmiDE=323032362d30312d32305430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=794536304b496b376c6664546c4133713054464576704f726c6277484a4b5357362f4f4d526a412f53504d3d&IdCSC=1&cHashQR=4844b4e46e0a7db753b3beefab3fb11d60e7377d015a57081a8cd584856e5734","idLote":"154307038997791476","documento":"01004952197001002000008812026012010171372198"}
+2026-01-20 18:36:39 - Retorno guardado en: C:\nextsys - GLP\sifen_retorno.txt
+2026-01-20 18:36:44 - === INICIO ENVIO ===
+2026-01-20 18:36:44 - URL: https://sifen-test.set.gov.py/de/ws/consultas/consulta.wsdl
+2026-01-20 18:36:44 - Documento Length: 268
+2026-01-20 18:36:44 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+<soap:Body>
+<rEnviConsDeRequest xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+<dId>1</dId>
+<dCDC>01004952197001002000008812026012010171372198</dCDC>
+</rEnviConsDeRequest>
+</soap:Body>
+</soap:Envelope>
+2026-01-20 18:36:44 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:36:44 - Certificado HasPrivateKey: True
+2026-01-20 18:36:44 - Enviando 268 bytes...
+2026-01-20 18:36:44 - Response StatusCode: OK
+2026-01-20 18:36:44 - Response Length: 413
+2026-01-20 18:36:44 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rEnviConsDeResponse xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:36:43-03:00</ns2:dFecProc><ns2:dCodRes>0420</ns2:dCodRes><ns2:dMsgRes>Documento No Existe en SIFEN o ha sido Rechazado</ns2:dMsgRes></ns2:rEnviConsDeResponse></env:Body></env:Envelope>
+2026-01-20 18:36:44 - === FIN ENVIO ===
+2026-01-20 18:38:27 - === INICIO FIRMA ===
+2026-01-20 18:38:27 - === VERSION DLL ===
+2026-01-20 18:38:27 - VERSION: Sifen_26 - CORREGIDA - Compatible Windows 10/11
+2026-01-20 18:38:27 - COMPILACION: 2026-01-14 - API RSA MODERNA (SIN CSP TIPO 24)
+2026-01-20 18:38:27 - Assembly Version: 1.0.0.0
+2026-01-20 18:38:27 - Assembly Location: C:\nextsys - GLP\Sifen.dll
+2026-01-20 18:38:27 - Assembly LastWriteTime: 2026-01-19 15:13:46
+2026-01-20 18:38:27 - === PARAMETROS DE ENTRADA ===
+2026-01-20 18:38:27 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-20 18:38:27 - urlQR: https://ekuatia.set.gov.py/consultas-test/qr?
+2026-01-20 18:38:27 - p12FilePath: C:\nextsys - GLP\sifen\WEN.pfx
+2026-01-20 18:38:27 - tipoFirmado: 1
+2026-01-20 18:38:27 - XML Input Length: 4397
+2026-01-20 18:38:27 - Sistema Hora Local: 2026-01-20 18:38:27
+2026-01-20 18:38:27 - Sistema Hora UTC: 2026-01-20 21:38:27
+2026-01-20 18:38:27 - XML Input guardado en: C:\nextsys - GLP\sifen_xml_input.txt
+2026-01-20 18:38:27 - Primeros 10 chars (códigos): 60,114,76,111,116,101,68,69,62,10
+2026-01-20 18:38:27 - XML Cleaned Length: 4397
+2026-01-20 18:38:27 - === CARGA DE CERTIFICADO ===
+2026-01-20 18:38:27 - Intentando cargar certificado con flags: MachineKeySet, Exportable
+2026-01-20 18:38:27 - Certificado cargado EXITOSAMENTE con flags: MachineKeySet, Exportable
+2026-01-20 18:38:27 - Certificado para FIRMA: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:38:27 - Certificado HasPrivateKey: True
+2026-01-20 18:38:27 - Node ID (CDC): 01004952197001002000015412026012010889971412
+2026-01-20 18:38:27 - Certificado cargado: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:38:27 - Certificado Serial: 00E9312C9B1DB909AC49B307D8A7A6AE8B
+2026-01-20 18:38:27 - Certificado Thumbprint: 477AAEC61F0A09E5EC6DCE86FE7A75DA0F91F9C2
+2026-01-20 18:38:27 - === METODO DE FIRMA ===
+2026-01-20 18:38:27 - USANDO: API RSA MODERNA - GetRSAPrivateKey()
+2026-01-20 18:38:27 - SIN: RSACryptoServiceProvider con CspParameters(24)
+2026-01-20 18:38:27 - Compatible con: Windows 10/11 modernos
+2026-01-20 18:38:27 - RSA Key obtenida via GetRSAPrivateKey()
+2026-01-20 18:38:27 - RSA KeySize: 2048
+2026-01-20 18:38:27 - RSA SignatureAlgorithm: RSA
+2026-01-20 18:38:27 - Firma computada correctamente
+2026-01-20 18:38:27 - SignatureValue (primeros 100 chars): YCMHdFN43RLjWjj6x/6UtaZqAHdmQAjP3dQBVy5NdF+W8C6YjuSKokdQ0L9UjeYr92K9+aR/xLu1eMX5r0IYOBdEGk7SKd5TXfMc
+2026-01-20 18:38:27 - SignatureValue Length: 344
+2026-01-20 18:38:27 - DigestValue (hex): 4f3270726f583169457a5a30666c455242447a5132352f6e794c424c6e4248424165514132677851...
+2026-01-20 18:38:27 - === INICIO COMPRESION ===
+2026-01-20 18:38:27 - XML Original Length: 7542
+2026-01-20 18:38:27 - XML Original (primeros 500 chars): <rLoteDE><rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"><dVerFor>150</dVerFor><DE Id="01004952197001002000015412026012010889971412"><dDVId>2</dDVId><dFecFirma>2026-01-20T18:38:26</dFecFirma><dSisFact>1</dSisFact><gOpeDE><iTipEmi>1</iTipEmi><dDesTipEmi>Normal</dDesTipEmi><dCodSeg>088997141</dCodSeg></gOpeDE><gTimb><iTiDE>1</iTiDE><dDesTiDE>Factura electrónica</dDesTi
+2026-01-20 18:38:27 - Compressed Base64 Length: 5644
+2026-01-20 18:38:27 - === FIN COMPRESION ===
+2026-01-20 18:38:27 - XML Firmado guardado en: C:\nextsys - GLP\sifen_xml_firmado.txt
+2026-01-20 18:38:27 - === FIN FIRMA - Enviando... ===
+2026-01-20 18:38:27 - === INICIO ENVIO ===
+2026-01-20 18:38:27 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-20 18:38:27 - Documento Length: 5854
+2026-01-20 18:38:27 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><rEnvioLote xmlns="http://ekuatia.set.gov.py/sifen/xsd"><dId>160420241700</dId><xDE>UEsDBBQAAAAIAM2UNFw+lyzFCxAAAHwdAAAOAAAAY29tcHJlc3NlZC50eHSdWduyokiXfhWjOmLinzB2cRBEa/beM8lRlIMcFW8mEBBRBAUU9B3+B5mLuZpH6Beb5OS2u6tjuqei1G+tXKdcuXJlwn7PpLQIWO7zPWO5QXWKk/zj274ozj8QJDhe3SJyv+dB8T1Mb9/PdySPdkGCVLn/rZX9UeXRU74sy+/l6HuahQiOohiyliXD2wcn9y1K8sJNvABq5dGPvGFKqQetp8lfcjfIIz3wgjPL/ecNI9HvdQSf774dZHyafULOO9IT73Aeov/xDcVQlJiSODal0BrDkOAvSWA4io9R+I2hk8l0SmGQU9tibdH/xKGdBrz7fODxUXZyP2v5NxR7w1ETm/wYTX7gYyj1HH73jSjnXa/4xCC7x++hem7SGpnRmTtF9WAPoa8g77CSQhtx7fXJeveZ1DeC8PMZHxzuWO9Ibzc0o9O2MQ+p1njNbu1AVEdxzdxBEAdekf36P0nkub2bRlC5nqCJzz5JcKzjvPtcXkB+7bZG7/7ymnDVGbLq9HREY4BNvc8ura1+zahTJyaRWSeOfMPQN4xs8tXw4ATawEPWLYTMjeF0Gg04cxjWS65R9Efzv9FtR5ukMumpzaqZuZ+jNqs17LNaYzmqinTwDztICnfgB4NTkHmuH2S//rc7uA/yILtFXpTm//rMe2MgMsXTuc1lDVqDNRJt0Ek2fE9Ok6COe+kI78iTauR7Qri6mZtErdpTIlS3MdhB4HUAx6C7nmgMdFiUlxZnmOoASAMbSKo+AILOCYBVB28DQQc2YIExcAbcW
+2026-01-20 18:38:27 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:38:27 - Certificado HasPrivateKey: True
+2026-01-20 18:38:27 - Enviando 5854 bytes...
+2026-01-20 18:38:27 - Response StatusCode: OK
+2026-01-20 18:38:27 - Response Length: 474
+2026-01-20 18:38:27 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rResEnviLoteDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:38:26-03:00</ns2:dFecProc><ns2:dCodRes>0300</ns2:dCodRes><ns2:dMsgRes>Lote recibido con &#233;xito</ns2:dMsgRes><ns2:dProtConsLote>154307038997791500</ns2:dProtConsLote><ns2:dTpoProces>0</ns2:dTpoProces></ns2:rResEnviLoteDe></env:Body></env:Envelope>
+2026-01-20 18:38:27 - === FIN ENVIO ===
+2026-01-20 18:38:27 - Respuesta guardada en: C:\nextsys - GLP\sifen_respuesta.txt
+2026-01-20 18:38:27 - CDC a retornar: 01004952197001002000015412026012010889971412
+2026-01-20 18:38:27 - QR a retornar: https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000015412026012010889971412&dFeEmiDE=323032362d30312d32305430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=4f3270726f583169457a5a30666c455242447a5132352f6e794c424c6e42484241655141326778516571773d&IdCSC=1&cHashQR=cb928451f78477fce62beea5540dc0302879ff7ec3781d468d555473f3402588
+2026-01-20 18:38:27 - Archivos CDC/QR guardados para PowerBuilder
+2026-01-20 18:38:27 - Retorno JSON Length: 540
+2026-01-20 18:38:27 - RETORNO COMPLETO: {"codigo":"0300","mensaje":"Lote recibido con éxito","qr":"https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000015412026012010889971412&dFeEmiDE=323032362d30312d32305430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=4f3270726f583169457a5a30666c455242447a5132352f6e794c424c6e42484241655141326778516571773d&IdCSC=1&cHashQR=cb928451f78477fce62beea5540dc0302879ff7ec3781d468d555473f3402588","idLote":"154307038997791500","documento":"01004952197001002000015412026012010889971412"}
+2026-01-20 18:38:27 - Retorno guardado en: C:\nextsys - GLP\sifen_retorno.txt
+2026-01-20 18:38:41 - === INICIO ENVIO ===
+2026-01-20 18:38:41 - URL: https://sifen-test.set.gov.py/de/ws/consultas/consulta.wsdl
+2026-01-20 18:38:41 - Documento Length: 268
+2026-01-20 18:38:41 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+<soap:Body>
+<rEnviConsDeRequest xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+<dId>1</dId>
+<dCDC>01004952197001002000015412026012010889971412</dCDC>
+</rEnviConsDeRequest>
+</soap:Body>
+</soap:Envelope>
+2026-01-20 18:38:41 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:38:41 - Certificado HasPrivateKey: True
+2026-01-20 18:38:41 - Enviando 268 bytes...
+2026-01-20 18:38:42 - Response StatusCode: OK
+2026-01-20 18:38:42 - Response Length: 8851
+2026-01-20 18:38:42 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rEnviConsDeResponse xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:38:26-03:00</ns2:dFecProc><ns2:dCodRes>0422</ns2:dCodRes><ns2:dMsgRes>CDC encontrado</ns2:dMsgRes><ns2:xContenDE>&lt;?xml version="1.0" encoding="UTF-8"?>&lt;rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd">&lt;dVerFor>150&lt;/dVerFor>&lt;DE Id="01004952197001002000015412026012010889971412">&lt;dDVId>2&lt;/dDVId>&lt;dFecFirma>2026-01-20T18:38:26&lt;/dFecFirma>&lt;dSisFact>1&lt;/dSisFact>&lt;gOpeDE>&lt;iTipEmi>1&lt;/iTipEmi>&lt;dDesTipEmi>Normal&lt;/dDesTipEmi>&lt;dCodSeg>088997141&lt;/dCodSeg>&lt;/gOpeDE>&lt;gTimb>&lt;iTiDE>1&lt;/iTiDE>&lt;dDesTiDE>Factura electr&#243;nica&lt;/dDesTiDE>&lt;dNumTim>00495219&lt;/dNumTim>&lt;dEst>001&lt;
+2026-01-20 18:38:42 - === FIN ENVIO ===
+2026-01-20 18:38:51 - === INICIO ENVIO ===
+2026-01-20 18:38:51 - URL: https://sifen-test.set.gov.py/de/ws/consultas/consulta-lote.wsdl
+2026-01-20 18:38:51 - Documento Length: 254
+2026-01-20 18:38:51 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+<soap:Body>
+<rEnviConsLoteDe xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+<dId>1</dId>
+<dProtConsLote>154307038997791500</dProtConsLote>
+</rEnviConsLoteDe>
+</soap:Body>
+</soap:Envelope>
+2026-01-20 18:38:51 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:38:51 - Certificado HasPrivateKey: True
+2026-01-20 18:38:51 - Enviando 254 bytes...
+2026-01-20 18:38:51 - WebException: ProtocolError - Error en el servidor remoto: (400) Solicitud incorrecta.
+2026-01-20 18:38:51 - Response Length: 455
+2026-01-20 18:38:51 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rRetEnviDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:rProtDe><ns2:dFecProc>2026-01-20T18:38:50-03:00</ns2:dFecProc><ns2:dEstRes>Rechazado</ns2:dEstRes><ns2:gResProc><ns2:dCodRes>0160</ns2:dCodRes><ns2:dMsgRes>XML Mal Formado.</ns2:dMsgRes></ns2:gResProc></ns2:rProtDe></ns2:rRetEnviDe></env:Body></env:Envelope>
+2026-01-20 18:38:51 - === FIN ENVIO ===
+2026-01-20 18:39:39 - === INICIO ENVIO ===
+2026-01-20 18:39:39 - URL: https://sifen-test.set.gov.py/de/ws/consultas/consulta.wsdl
+2026-01-20 18:39:39 - Documento Length: 268
+2026-01-20 18:39:39 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+<soap:Body>
+<rEnviConsDeRequest xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+<dId>1</dId>
+<dCDC>01004952197001002000008812026012010171372198</dCDC>
+</rEnviConsDeRequest>
+</soap:Body>
+</soap:Envelope>
+2026-01-20 18:39:39 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:39:39 - Certificado HasPrivateKey: True
+2026-01-20 18:39:39 - Enviando 268 bytes...
+2026-01-20 18:39:40 - Response StatusCode: OK
+2026-01-20 18:39:40 - Response Length: 413
+2026-01-20 18:39:40 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rEnviConsDeResponse xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:39:38-03:00</ns2:dFecProc><ns2:dCodRes>0420</ns2:dCodRes><ns2:dMsgRes>Documento No Existe en SIFEN o ha sido Rechazado</ns2:dMsgRes></ns2:rEnviConsDeResponse></env:Body></env:Envelope>
+2026-01-20 18:39:40 - === FIN ENVIO ===
+2026-01-20 18:39:40 - === INICIO FIRMA ===
+2026-01-20 18:39:40 - === VERSION DLL ===
+2026-01-20 18:39:40 - VERSION: Sifen_26 - CORREGIDA - Compatible Windows 10/11
+2026-01-20 18:39:40 - COMPILACION: 2026-01-14 - API RSA MODERNA (SIN CSP TIPO 24)
+2026-01-20 18:39:40 - Assembly Version: 1.0.0.0
+2026-01-20 18:39:40 - Assembly Location: C:\nextsys - GLP\Sifen.dll
+2026-01-20 18:39:40 - Assembly LastWriteTime: 2026-01-19 15:13:46
+2026-01-20 18:39:40 - === PARAMETROS DE ENTRADA ===
+2026-01-20 18:39:40 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-20 18:39:40 - urlQR: https://ekuatia.set.gov.py/consultas-test/qr?
+2026-01-20 18:39:40 - p12FilePath: C:\nextsys - GLP\sifen\WEN.pfx
+2026-01-20 18:39:40 - tipoFirmado: 1
+2026-01-20 18:39:40 - XML Input Length: 4397
+2026-01-20 18:39:40 - Sistema Hora Local: 2026-01-20 18:39:40
+2026-01-20 18:39:40 - Sistema Hora UTC: 2026-01-20 21:39:40
+2026-01-20 18:39:40 - XML Input guardado en: C:\nextsys - GLP\sifen_xml_input.txt
+2026-01-20 18:39:40 - Primeros 10 chars (códigos): 60,114,76,111,116,101,68,69,62,10
+2026-01-20 18:39:40 - XML Cleaned Length: 4397
+2026-01-20 18:39:40 - === CARGA DE CERTIFICADO ===
+2026-01-20 18:39:40 - Intentando cargar certificado con flags: MachineKeySet, Exportable
+2026-01-20 18:39:40 - Certificado cargado EXITOSAMENTE con flags: MachineKeySet, Exportable
+2026-01-20 18:39:40 - Certificado para FIRMA: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:39:40 - Certificado HasPrivateKey: True
+2026-01-20 18:39:40 - Node ID (CDC): 01004952197001002000008812026012010171372198
+2026-01-20 18:39:40 - Certificado cargado: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:39:40 - Certificado Serial: 00E9312C9B1DB909AC49B307D8A7A6AE8B
+2026-01-20 18:39:40 - Certificado Thumbprint: 477AAEC61F0A09E5EC6DCE86FE7A75DA0F91F9C2
+2026-01-20 18:39:40 - === METODO DE FIRMA ===
+2026-01-20 18:39:40 - USANDO: API RSA MODERNA - GetRSAPrivateKey()
+2026-01-20 18:39:40 - SIN: RSACryptoServiceProvider con CspParameters(24)
+2026-01-20 18:39:40 - Compatible con: Windows 10/11 modernos
+2026-01-20 18:39:40 - RSA Key obtenida via GetRSAPrivateKey()
+2026-01-20 18:39:40 - RSA KeySize: 2048
+2026-01-20 18:39:40 - RSA SignatureAlgorithm: RSA
+2026-01-20 18:39:40 - Firma computada correctamente
+2026-01-20 18:39:40 - SignatureValue (primeros 100 chars): 0ETSza47aH7MN5YWsTlRe7Skd1EF1U9Z73Q87rD0GJ58pju93kdRGkQfE7nEDi/tT/LbhmQjMHSbVqRCMiDs8PUwX0jjgWI2Efdg
+2026-01-20 18:39:40 - SignatureValue Length: 344
+2026-01-20 18:39:40 - DigestValue (hex): 747656704b755445314f5579705037437671344d506772697975384c61785443686e74565671506c...
+2026-01-20 18:39:40 - === INICIO COMPRESION ===
+2026-01-20 18:39:40 - XML Original Length: 7542
+2026-01-20 18:39:40 - XML Original (primeros 500 chars): <rLoteDE><rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd"><dVerFor>150</dVerFor><DE Id="01004952197001002000008812026012010171372198"><dDVId>8</dDVId><dFecFirma>2026-01-20T18:39:40</dFecFirma><dSisFact>1</dSisFact><gOpeDE><iTipEmi>1</iTipEmi><dDesTipEmi>Normal</dDesTipEmi><dCodSeg>017137219</dCodSeg></gOpeDE><gTimb><iTiDE>1</iTiDE><dDesTiDE>Factura electrónica</dDesTi
+2026-01-20 18:39:40 - Compressed Base64 Length: 5648
+2026-01-20 18:39:40 - === FIN COMPRESION ===
+2026-01-20 18:39:40 - XML Firmado guardado en: C:\nextsys - GLP\sifen_xml_firmado.txt
+2026-01-20 18:39:40 - === FIN FIRMA - Enviando... ===
+2026-01-20 18:39:40 - === INICIO ENVIO ===
+2026-01-20 18:39:40 - URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+2026-01-20 18:39:40 - Documento Length: 5858
+2026-01-20 18:39:40 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><rEnvioLote xmlns="http://ekuatia.set.gov.py/sifen/xsd"><dId>160420241700</dId><xDE>UEsDBBQAAAAIAPSUNFzy5R/KDRAAAHwdAAAOAAAAY29tcHJlc3NlZC50eHSdWdmyqkiXfhXjVETH37FjHwZB9PTedjMkiDLI6HDTgYCIMiigoO/wP0hf9FU/Qr1YJ5PbqjoVXdUnztZvrVxTrly5MsGPTEoLnwPTj4wDgyqOkvzz26Eozj8QxD9dnSJ0vud+8T1Ib9/PdyQP936CVLn3rZX9UeXhU74sy+/l8HuaBQiOohiyliXDPfix8x4meeEkrg+18vBH3jCl1IXW0+QvuRvkoe67/pkD/3nDSPR7HcH0w7P9jE+zKeR8ID3xAechep/fUAxFiQmJYxMKrTEMCf4bjzEcxUco/MRQjMKGFBQY17Y4W/SmY2inAR8e77t8mMXOtJZ/R7F3HDWx8Y/h5AdRe3sOf3hGmPOOW0wxyO7xR6Cem7SGZngGcVgP9hD68vMOKym0EdVen6wPj009ww+mz/jgcMf6QHq7gRnGu8Y8pFrjNbu1A1EdxTVzBn7ku0X26/8koev0bhpB5RpDE9M+SXCs43x4IC8gv55OjT685TUB1RmycMjqiMYAl7rTLq2tfs2oUycmoVknjnzH0HeMbPLV8OAE2sADzimEzIngdBoNOHMY1kuuUfRH87/RbUebpLJp3GbVzJzpsM1qDfus1lgOqyId/MP2k8IZeP4g9jPX8fzs1/92BvdB7me30A3T/F+feW8MhKYYn9tc1qA1WCPRpjvJhu/KaeLXcS83wgfypBr5nhCuTuYkYav2lAjUXUTvIXA7gGPQXU80BjosyksLGKY6oKWBTUuqPqAFHQg0pw7eB4JO2zRHG4PNAKxVB
+2026-01-20 18:39:40 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:39:40 - Certificado HasPrivateKey: True
+2026-01-20 18:39:40 - Enviando 5858 bytes...
+2026-01-20 18:39:40 - Response StatusCode: OK
+2026-01-20 18:39:40 - Response Length: 474
+2026-01-20 18:39:40 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rResEnviLoteDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:39:39-03:00</ns2:dFecProc><ns2:dCodRes>0300</ns2:dCodRes><ns2:dMsgRes>Lote recibido con &#233;xito</ns2:dMsgRes><ns2:dProtConsLote>154307038997791512</ns2:dProtConsLote><ns2:dTpoProces>0</ns2:dTpoProces></ns2:rResEnviLoteDe></env:Body></env:Envelope>
+2026-01-20 18:39:40 - === FIN ENVIO ===
+2026-01-20 18:39:40 - Respuesta guardada en: C:\nextsys - GLP\sifen_respuesta.txt
+2026-01-20 18:39:40 - CDC a retornar: 01004952197001002000008812026012010171372198
+2026-01-20 18:39:40 - QR a retornar: https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000008812026012010171372198&dFeEmiDE=323032362d30312d32305430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=747656704b755445314f5579705037437671344d506772697975384c61785443686e74565671506c3875773d&IdCSC=1&cHashQR=3dbf76161ccfadb0fcb0c2dafbe210c546c494ac0fce6dfc06ba2ef79b37009c
+2026-01-20 18:39:40 - Archivos CDC/QR guardados para PowerBuilder
+2026-01-20 18:39:40 - Retorno JSON Length: 540
+2026-01-20 18:39:40 - RETORNO COMPLETO: {"codigo":"0300","mensaje":"Lote recibido con éxito","qr":"https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000008812026012010171372198&dFeEmiDE=323032362d30312d32305430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=747656704b755445314f5579705037437671344d506772697975384c61785443686e74565671506c3875773d&IdCSC=1&cHashQR=3dbf76161ccfadb0fcb0c2dafbe210c546c494ac0fce6dfc06ba2ef79b37009c","idLote":"154307038997791512","documento":"01004952197001002000008812026012010171372198"}
+2026-01-20 18:39:40 - Retorno guardado en: C:\nextsys - GLP\sifen_retorno.txt
+2026-01-20 18:39:55 - === INICIO ENVIO ===
+2026-01-20 18:39:55 - URL: https://sifen-test.set.gov.py/de/ws/consultas/consulta-lote.wsdl
+2026-01-20 18:39:55 - Documento Length: 254
+2026-01-20 18:39:55 - Documento (primeros 1000 chars): <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+<soap:Body>
+<rEnviConsLoteDe xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+<dId>1</dId>
+<dProtConsLote>154307038997791500</dProtConsLote>
+</rEnviConsLoteDe>
+</soap:Body>
+</soap:Envelope>
+2026-01-20 18:39:55 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:39:55 - Certificado HasPrivateKey: True
+2026-01-20 18:39:55 - Enviando 254 bytes...
+2026-01-20 18:39:56 - WebException: ProtocolError - Error en el servidor remoto: (400) Solicitud incorrecta.
+2026-01-20 18:39:56 - Response Length: 455
+2026-01-20 18:39:56 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rRetEnviDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:rProtDe><ns2:dFecProc>2026-01-20T18:39:55-03:00</ns2:dFecProc><ns2:dEstRes>Rechazado</ns2:dEstRes><ns2:gResProc><ns2:dCodRes>0160</ns2:dCodRes><ns2:dMsgRes>XML Mal Formado.</ns2:dMsgRes></ns2:gResProc></ns2:rProtDe></ns2:rRetEnviDe></env:Body></env:Envelope>
+2026-01-20 18:39:56 - === FIN ENVIO ===
+2026-01-20 18:39:57 - === INICIO FIRMA ===
+2026-01-20 18:39:57 - === VERSION DLL ===
+2026-01-20 18:39:57 - VERSION: Sifen_26 - CORREGIDA - Compatible Windows 10/11
+2026-01-20 18:39:57 - COMPILACION: 2026-01-14 - API RSA MODERNA (SIN CSP TIPO 24)
+2026-01-20 18:39:57 - Assembly Version: 1.0.0.0
+2026-01-20 18:39:57 - Assembly Location: C:\nextsys - GLP\Sifen.dll
+2026-01-20 18:39:57 - Assembly LastWriteTime: 2026-01-19 15:13:46
+2026-01-20 18:39:57 - === PARAMETROS DE ENTRADA ===
+2026-01-20 18:39:57 - URL: https://sifen-test.set.gov.py/de/ws/eventos/evento.wsdl
+2026-01-20 18:39:57 - urlQR: 
+2026-01-20 18:39:57 - p12FilePath: C:\nextsys - GLP\sifen\WEN.pfx
+2026-01-20 18:39:57 - tipoFirmado: 2
+2026-01-20 18:39:57 - XML Input Length: 837
+2026-01-20 18:39:57 - Sistema Hora Local: 2026-01-20 18:39:57
+2026-01-20 18:39:57 - Sistema Hora UTC: 2026-01-20 21:39:57
+2026-01-20 18:39:57 - XML Input guardado en: C:\nextsys - GLP\sifen_xml_input.txt
+2026-01-20 18:39:57 - Primeros 10 chars (códigos): 60,63,120,109,108,32,118,101,114,115
+2026-01-20 18:39:57 - XML Cleaned Length: 837
+2026-01-20 18:39:57 - === CARGA DE CERTIFICADO ===
+2026-01-20 18:39:57 - Intentando cargar certificado con flags: MachineKeySet, Exportable
+2026-01-20 18:39:57 - Certificado cargado EXITOSAMENTE con flags: MachineKeySet, Exportable
+2026-01-20 18:39:57 - Certificado para FIRMA: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:39:57 - Certificado HasPrivateKey: True
+2026-01-20 18:39:57 - Node ID (CDC): 12529
+2026-01-20 18:39:57 - Certificado cargado: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:39:57 - Certificado Serial: 00E9312C9B1DB909AC49B307D8A7A6AE8B
+2026-01-20 18:39:57 - Certificado Thumbprint: 477AAEC61F0A09E5EC6DCE86FE7A75DA0F91F9C2
+2026-01-20 18:39:57 - === METODO DE FIRMA ===
+2026-01-20 18:39:57 - USANDO: API RSA MODERNA - GetRSAPrivateKey()
+2026-01-20 18:39:57 - SIN: RSACryptoServiceProvider con CspParameters(24)
+2026-01-20 18:39:57 - Compatible con: Windows 10/11 modernos
+2026-01-20 18:39:57 - RSA Key obtenida via GetRSAPrivateKey()
+2026-01-20 18:39:57 - RSA KeySize: 2048
+2026-01-20 18:39:57 - RSA SignatureAlgorithm: RSA
+2026-01-20 18:39:57 - Firma computada correctamente
+2026-01-20 18:39:57 - SignatureValue (primeros 100 chars): pkAegV0yttxzZ7CjBCtxbrLRZLhHza0KmUCMsV/ZN8NpdfWTKBJ5DMuRHkmkTXjJPVgFjO1qdhdaLUPxUthVRpPvKmfZAhxyckjV
+2026-01-20 18:39:57 - SignatureValue Length: 344
+2026-01-20 18:39:57 - DigestValue (hex): 464b53663558723837356672644f6573762f5379596a5a7939666b5044584175516248445a4f5547...
+2026-01-20 18:39:57 - XML Firmado guardado en: C:\nextsys - GLP\sifen_xml_firmado.txt
+2026-01-20 18:39:57 - === FIN FIRMA - Enviando... ===
+2026-01-20 18:39:57 - === INICIO ENVIO ===
+2026-01-20 18:39:57 - URL: https://sifen-test.set.gov.py/de/ws/eventos/evento.wsdl
+2026-01-20 18:39:57 - Documento Length: 4460
+2026-01-20 18:39:57 - Documento (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?><soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Header /><soap:Body><rEnviEventoDe xmlns="http://ekuatia.set.gov.py/sifen/xsd"><dId>12529</dId><dEvReg><gGroupGesEve xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepEvento_v150.xsd" xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><rGesEve><rEve Id="12529"><dFecFirma>2026-01-20T18:39:57</dFecFirma><dVerFor>150</dVerFor><gGroupTiEvt><rGeVeCan><Id>01004952197001002000015412026012010889971412</Id><mOtEve>PRUEBA</mOtEve></rGeVeCan></gGroupTiEvt></rEve><Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" /><SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" /><Reference URI="#12529"><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" /><Transform Algorithm="http://www
+2026-01-20 18:39:57 - Certificado para ENVIO: SERIALNUMBER=CI495219, CN=WENCESLAO ROJAS ALFONSO, G=WENCESLAO, SN=ROJAS ALFONSO, OU=F1, O=CERTIFICADO CUALIFICADO TRIBUTARIO, C=PY
+2026-01-20 18:39:57 - Certificado HasPrivateKey: True
+2026-01-20 18:39:57 - Enviando 4460 bytes...
+2026-01-20 18:39:57 - Response StatusCode: OK
+2026-01-20 18:39:57 - Response Length: 547
+2026-01-20 18:39:57 - Response (primeros 1000 chars): <?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rRetEnviEventoDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-20T18:39:56-03:00</ns2:dFecProc><ns2:gResProcEVe><ns2:dEstRes>Aprobado</ns2:dEstRes><ns2:dProtAut>1068889</ns2:dProtAut><ns2:id>12529</ns2:id><ns2:gResProc><ns2:dCodRes>0600</ns2:dCodRes><ns2:dMsgRes>Evento registrado correctamente</ns2:dMsgRes></ns2:gResProc></ns2:gResProcEVe></ns2:rRetEnviEventoDe></env:Body></env:Envelope>
+2026-01-20 18:39:57 - === FIN ENVIO ===
+2026-01-20 18:39:57 - Respuesta guardada en: C:\nextsys - GLP\sifen_respuesta.txt
+2026-01-20 18:39:57 - CDC a retornar: 12529
+2026-01-20 18:39:57 - QR a retornar: 
+2026-01-20 18:39:57 - Archivos CDC/QR guardados para PowerBuilder
+2026-01-20 18:39:57 - Retorno JSON Length: 115
+2026-01-20 18:39:57 - RETORNO COMPLETO: {"codigo":"0600","mensaje":"Evento registrado correctamente","qr":"","idLote":"Tag not found.","documento":"12529"}
+2026-01-20 18:39:57 - Retorno guardado en: C:\nextsys - GLP\sifen_retorno.txt

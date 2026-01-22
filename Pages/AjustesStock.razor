@@ -533,9 +533,17 @@
 
   private async Task Guardar()
   {
+    // ========== PROTECCIÓN CONTRA DOBLE GUARDADO ==========
+    if (guardando)
+    {
+      Console.WriteLine("[AjustesStock] Clic duplicado en Guardar ignorado - operación en curso");
+      return;
+    }
+    
     try
     {
       errorMsg = okMsg = null; guardando = true; ajusteGeneradoId = null;
+      StateHasChanged();
       if (!lineas.Any()) { errorMsg = "Agregue al menos una línea"; return; }
       
       // Tomar la sucursal del primer depósito de las líneas

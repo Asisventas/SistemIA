@@ -39,23 +39,26 @@ namespace SistemIA.Services
             var paisReceptor = cliente.Pais?.Nombre ?? "Paraguay";
             gDatRec.Add(new XElement("dDesPaisRe", paisReceptor));
 
-            // iTiContRec - Tipo de contribuyente del receptor (cuando aplica)
-            gDatRec.Add(new XElement("iTiContRec", cliente.IdTipoContribuyente));
-
             if (naturaleza == 1) // Contribuyente
             {
+                // iTiContRec - Tipo de contribuyente del receptor (SOLO para contribuyentes)
+                // FIX 21-Ene-2026: Este campo NO debe enviarse para No Contribuyentes (iNatRec=2)
+                // Error 1303 "Tipo de contribuyente receptor inválido" ocurre si se envía para consumidor final
+                gDatRec.Add(new XElement("iTiContRec", cliente.IdTipoContribuyente));
+
                 // dRucRec - RUC del receptor
                 gDatRec.Add(new XElement("dRucRec", cliente.RUC));
 
                 // dDVRec - Dígito verificador
                 gDatRec.Add(new XElement("dDVRec", cliente.DV));
             }
-            else // No contribuyente
+            else // No contribuyente (Consumidor Final)
             {
                 // Para no contribuyentes, agregar tipo y número de documento (SIFEN)
                 if (cliente.TipoDocumentoIdentidadSifen.HasValue && !string.IsNullOrWhiteSpace(cliente.NumeroDocumentoIdentidad))
                 {
                     gDatRec.Add(new XElement("iTipIDRec", cliente.TipoDocumentoIdentidadSifen.Value));
+                    gDatRec.Add(new XElement("dDTipIDRec", ObtenerDescripcionTipoDocumento(cliente.TipoDocumentoIdentidadSifen.Value)));
                     gDatRec.Add(new XElement("dNumIDRec", cliente.NumeroDocumentoIdentidad));
                 }
                 else
@@ -254,6 +257,24 @@ CAMPOS OPCIONALES:
                 3 => "B2G - Empresa a Gobierno",
                 4 => "B2F - Empresa a Extranjero",
                 _ => "No definido"
+            };
+        }
+
+        /// <summary>
+        /// Obtiene la descripción del tipo de documento de identidad según código SIFEN
+        /// </summary>
+        private string ObtenerDescripcionTipoDocumento(int tipoDocumento)
+        {
+            return tipoDocumento switch
+            {
+                1 => "Cédula paraguaya",
+                2 => "Pasaporte",
+                3 => "Cédula extranjera",
+                4 => "Carnet de residencia",
+                5 => "Innominado",
+                6 => "Tarjeta diplomática",
+                9 => "Otro",
+                _ => "Sin nombre"
             };
         }
     }

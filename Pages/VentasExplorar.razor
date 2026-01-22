@@ -3,6 +3,8 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject SistemIA.Services.ICorreoService CorreoService
+@inject SistemIA.Services.PdfFacturaService PdfService
 @using ClosedXML.Excel
 @using Microsoft.EntityFrameworkCore
 @using SistemIA.Models
@@ -93,29 +95,29 @@
     </div>
   </div>
   <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0" style="min-width: 1200px;">
       <thead class="table-light">
         <tr>
-          <th style="width: 5%">
+          <th style="width: 4%">
             <i class="bi bi-hash me-1"></i>Nº Int.
           </th>
-          <th style="width: 9%">
+          <th style="width: 8%">
             <i class="bi bi-calendar3 me-1"></i>Fecha
           </th>
-          <th style="width: 16%">
+          <th style="width: 14%">
             <i class="bi bi-person me-1"></i>Cliente
           </th>
-          <th style="width: 13%">
+          <th style="width: 11%">
             <i class="bi bi-file-earmark-text me-1"></i>Documento
           </th>
-          <th class="text-center" style="width: 4%">Mon</th>
-          <th class="text-end" style="width: 6%">Cambio</th>
-          <th class="text-end" style="width: 8%">Total Gs</th>
-          <th class="text-end" style="width: 7%">Total $</th>
-          <th style="width: 12%">
+          <th class="text-center" style="width: 3%">Mon</th>
+          <th class="text-end" style="width: 5%">Cambio</th>
+          <th class="text-end" style="width: 7%">Total Gs</th>
+          <th class="text-end" style="width: 6%">Total $</th>
+          <th style="width: 10%">
             <i class="bi bi-check-circle me-1"></i>Estado
           </th>
-          <th class="text-end" style="width: 20%">
+          <th class="text-center" style="width: 32%">
             <i class="bi bi-gear me-1"></i>Acciones
           </th>
         </tr>
@@ -239,13 +241,12 @@
                 }
               </div>
             </td>
-            <td class="text-end">
-              <div class="d-flex flex-wrap gap-1 justify-content-end">
+            <td class="text-center">
+              <div class="d-flex flex-nowrap gap-1 justify-content-center">
                 <div class="btn-group btn-group-sm" role="group">
                   <a class="btn btn-outline-secondary" title="Ver venta" href="/ventas?id=@v.IdVenta"><i class="bi bi-eye"></i></a>
                   <a class="btn btn-outline-primary" title="Imprimir A4" href="/ventas/imprimir/@v.IdVenta" target="_blank"><i class="bi bi-printer"></i></a>
                   <button class="btn btn-outline-info" title="Vista Previa Ticket" @onclick="() => AbrirVistaPrevia(v.IdVenta)"><i class="bi bi-receipt"></i></button>
-                  <button class="btn btn-info" title="Imprimir Ticket" @onclick="() => ImprimirTicket(v.IdVenta)"><i class="bi bi-printer-fill"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group">
                   @if (!string.IsNullOrWhiteSpace(v.CDC))
@@ -253,8 +254,18 @@
                     <button class="btn btn-outline-info" title="Ver QR" @onclick="() => MostrarQR(v.CDC, v.UrlQrSifen)"><i class="bi bi-qr-code"></i></button>
                   }
                   <button class="btn btn-outline-primary" title="Enviar SIFEN" disabled="@(v.Estado == "Anulado" || v.EstadoSifen == "ACEPTADO")" @onclick="() => EnviarSifen(v.IdVenta)"><i class="bi bi-send"></i></button>
-                  <button class="btn btn-outline-success" title="Consultar SIFEN" disabled="@(string.IsNullOrWhiteSpace(v.IdLote))" @onclick="() => ConsultarSifen(v.IdVenta)"><i class="bi bi-cloud-check"></i></button>
+                  <button class="btn btn-outline-success" title="Consultar SIFEN" disabled="@(string.IsNullOrWhiteSpace(v.IdLote) && string.IsNullOrWhiteSpace(v.CDC))" @onclick="() => ConsultarSifen(v.IdVenta)"><i class="bi bi-cloud-check"></i></button>
                   <a class="btn btn-outline-dark" title="Ver XML" href="/ventas/@v.IdVenta/xml" target="_blank"><i class="bi bi-filetype-xml"></i></a>
+                  <button class="btn btn-outline-info" title="Reenviar factura por correo electrónico" disabled="@(v.Estado == "Anulado" || v.Estado == "Borrador" || _enviandoCorreoIdVenta == v.IdVenta)" @onclick="() => ReenviarCorreo(v.IdVenta)">
+                    @if (_enviandoCorreoIdVenta == v.IdVenta)
+                    {
+                      <span class="spinner-border spinner-border-sm" role="status"></span>
+                    }
+                    else
+                    {
+                      <i class="bi bi-envelope-at"></i>
+                    }
+                  </button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group">
                   @if (v.TieneComposicion)
@@ -556,6 +567,69 @@
   </div>
 </div>
 
+@* Modal de Resultado SIFEN *@
+<div class="modal fade" id="sifenResultModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header border-0 @(_sifenResultadoExito ? "bg-success" : "bg-danger") text-white">
+        <h5 class="modal-title d-flex align-items-center">
+          <i class="bi @(_sifenResultadoExito ? "bi-check-circle-fill" : "bi-x-circle-fill") me-2 fs-4"></i>
+          @(_sifenResultadoExito ? "¡Envío Exitoso!" : "Error en SIFEN")
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body py-4">
+        @if (_sifenResultadoExito)
+        {
+          <div class="text-center">
+            <div class="mb-3">
+              <i class="bi bi-shield-check text-success" style="font-size: 4rem;"></i>
+            </div>
+            <h6 class="text-success fw-bold">Documento Electrónico Aprobado</h6>
+            @if (!string.IsNullOrEmpty(_sifenCdc))
+            {
+              <div class="mt-3 p-3 rounded" style="background: var(--bg-surface); border: 1px solid var(--bar-border);">
+                <small class="text-muted d-block mb-1">CDC (Código de Control)</small>
+                <code class="small" style="word-break: break-all; color: var(--text-primary);">@_sifenCdc</code>
+              </div>
+            }
+            @if (!string.IsNullOrEmpty(_sifenCodigo))
+            {
+              <div class="mt-2">
+                <span class="badge bg-success fs-6">Código @_sifenCodigo</span>
+              </div>
+            }
+          </div>
+        }
+        else
+        {
+          <div class="text-center">
+            <div class="mb-3">
+              <i class="bi bi-exclamation-triangle text-danger" style="font-size: 4rem;"></i>
+            </div>
+            <h6 class="text-danger fw-bold">El documento no fue procesado</h6>
+            @if (!string.IsNullOrEmpty(_sifenCodigo))
+            {
+              <span class="badge bg-danger mb-2">Error @_sifenCodigo</span>
+            }
+          </div>
+        }
+        @if (!string.IsNullOrEmpty(_sifenMensaje))
+        {
+          <div class="mt-3 p-3 rounded" style="background: @(_sifenResultadoExito ? "rgba(25, 135, 84, 0.15)" : "rgba(220, 53, 69, 0.15)"); border: 1px solid @(_sifenResultadoExito ? "#198754" : "#dc3545");">
+            <small style="color: @(_sifenResultadoExito ? "#20c997" : "#f8d7da");">@_sifenMensaje</small>
+          </div>
+        }
+      </div>
+      <div class="modal-footer border-0 justify-content-center">
+        <button type="button" class="btn @(_sifenResultadoExito ? "btn-success" : "btn-danger") px-4" data-bs-dismiss="modal">
+          <i class="bi bi-check-lg me-1"></i>Aceptar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 @* Modal de Vista Previa Ticket *@
 @if (_mostrarVistaPrevia && _idVentaVistaPrevia > 0)
 {
@@ -586,6 +660,15 @@
   private int _restriccionIdVenta = 0;
   private bool _tieneComposicionCaja = false;
   private List<CobroCuotaInfo>? _cobrosAsociados = null;
+  
+  // Variables para modal de resultado SIFEN
+  private bool _sifenResultadoExito = false;
+  private string _sifenCdc = "";
+  private string _sifenCodigo = "";
+  private string _sifenMensaje = "";
+  
+  // Variables para reenvío de correo
+  private int? _enviandoCorreoIdVenta = null;
   
   private class CobroCuotaInfo
   {
@@ -621,6 +704,7 @@
 
   [Inject] SistemIA.Services.IInventarioService Inventario { get; set; } = default!;
   [Inject] SistemIA.Services.IEventoSifenService EventoSifen { get; set; } = default!;
+  [Inject] SistemIA.Services.ILoteService LoteService { get; set; } = default!;
 
   private string GetPreviewUrl(int idVenta)
   {
@@ -990,11 +1074,15 @@
       return;
     }
 
-    // Devolver stock (entrada = 1)
+    // Devolver stock (entrada = 1) y revertir lotes
     try
     {
       var auth = await AuthStateProvider.GetAuthenticationStateAsync();
       var usuario = auth.User?.Identity?.Name ?? "Sistema";
+      
+      // Revertir movimientos de lotes (para productos con control de lotes)
+      await LoteService.RevertirMovimientoAsync("Venta", id, usuario);
+      
       foreach (var d in detalles)
       {
         var prod = productos[d.IdProducto];
@@ -1031,7 +1119,12 @@
     }
     
     await ctx.SaveChangesAsync();
+    
+    // Mostrar mensaje de éxito
+    await JS.InvokeVoidAsync("alert", $"✅ Venta #{id} anulada correctamente.\n\nEl stock fue devuelto al inventario.");
+    
     await Buscar();
+    StateHasChanged();
   }
 
   private async Task Recuperar(int id)
@@ -1192,11 +1285,15 @@
         return;
       }
 
-      // Devolver stock (entrada = 1)
+      // Devolver stock (entrada = 1) y revertir lotes
       try
       {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var usuario = auth.User?.Identity?.Name ?? "Sistema";
+        
+        // Revertir movimientos de lotes (para productos con control de lotes)
+        await LoteService.RevertirMovimientoAsync("Venta", id, usuario);
+        
         foreach (var d in detalles)
         {
           var prod = productos[d.IdProducto];
@@ -1497,13 +1594,65 @@
       // El endpoint /enviar-sifen usaba formato LOTE con ZIP+Base64, causando error 0160
       var res = await http2.PostAsync($"ventas/{id}/enviar-sifen-sync", content: null);
       var body = await res.Content.ReadAsStringAsync();
-      await JS.InvokeVoidAsync("alert", res.IsSuccessStatusCode ? body : ($"Error al enviar: {body}"));
+      
+      // Parsear respuesta JSON para mostrar modal bonito
+      await MostrarResultadoSifen(body, res.IsSuccessStatusCode);
       await Buscar();
     }
     catch (Exception ex)
     {
-      await JS.InvokeVoidAsync("alert", $"No se pudo enviar a SIFEN: {ex.Message}");
+      _sifenResultadoExito = false;
+      _sifenCodigo = "";
+      _sifenCdc = "";
+      _sifenMensaje = $"No se pudo enviar a SIFEN: {ex.Message}";
+      await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('sifenResultModal')).show()");
+      StateHasChanged();
     }
+  }
+
+  /// <summary>
+  /// Muestra el resultado del envío SIFEN en un modal bonito
+  /// </summary>
+  private async Task MostrarResultadoSifen(string jsonBody, bool httpOk)
+  {
+    try
+    {
+      // Parsear el JSON de respuesta
+      var json = System.Text.Json.JsonDocument.Parse(jsonBody);
+      var root = json.RootElement;
+      
+      _sifenResultadoExito = root.TryGetProperty("ok", out var okProp) && okProp.GetBoolean();
+      
+      // Si el estado es RECHAZADO, no es éxito aunque ok=true
+      if (root.TryGetProperty("estado", out var estadoProp))
+      {
+        var estado = estadoProp.GetString() ?? "";
+        if (estado.Contains("RECHAZADO", StringComparison.OrdinalIgnoreCase))
+          _sifenResultadoExito = false;
+        else if (estado.Contains("ACEPTADO", StringComparison.OrdinalIgnoreCase))
+          _sifenResultadoExito = true;
+      }
+      
+      _sifenCdc = root.TryGetProperty("cdc", out var cdcProp) ? cdcProp.GetString() ?? "" : "";
+      _sifenCodigo = root.TryGetProperty("codigo", out var codigoProp) ? codigoProp.GetString() ?? "" : "";
+      _sifenMensaje = root.TryGetProperty("mensaje", out var msgProp) ? msgProp.GetString() ?? "" : "";
+      
+      // Si no hay mensaje específico, usar el body completo
+      if (string.IsNullOrEmpty(_sifenMensaje) && !httpOk)
+        _sifenMensaje = jsonBody;
+    }
+    catch
+    {
+      // Si no es JSON válido, mostrar el texto directo
+      _sifenResultadoExito = httpOk;
+      _sifenMensaje = jsonBody;
+      _sifenCdc = "";
+      _sifenCodigo = "";
+    }
+    
+    // Mostrar el modal
+    await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('sifenResultModal')).show()");
+    StateHasChanged();
   }
 
   private async Task MostrarQR(string? cdc, string? urlQrSifen)
@@ -1528,20 +1677,46 @@
   {
     try
     {
-      using var http = new System.Net.Http.HttpClient { BaseAddress = new Uri(Nav.BaseUri) };
-      // Exigir IdLote: sin IdLote no consultamos
+      // FIX 21-Ene-2026: Agregar handler SSL para llamadas internas HTTPS
+      var handler = new System.Net.Http.HttpClientHandler();
+      handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+      using var http = new System.Net.Http.HttpClient(handler) { BaseAddress = new Uri(Nav.BaseUri), Timeout = TimeSpan.FromSeconds(60) };
+      
       var ventaSel = ventas.FirstOrDefault(x => x.IdVenta == id);
-      if (ventaSel == null || string.IsNullOrWhiteSpace(ventaSel.IdLote))
+      if (ventaSel == null)
       {
-        await JS.InvokeVoidAsync("alert", "No se puede consultar: la venta aún no tiene idLote. Primero envíe a SIFEN y obtenga el protocolo de lote.");
+        await JS.InvokeVoidAsync("alert", "Venta no encontrada.");
         return;
       }
-      var url = $"ventas/{id}/consultar-sifen?idLote={System.Net.WebUtility.UrlEncode(ventaSel.IdLote)}";
-  var res = await http.GetAsync(url);
-      var body = await res.Content.ReadAsStringAsync();
-  if (res.IsSuccessStatusCode)
+      
+      string url;
+      string tipoConsulta;
+      
+      // Determinar qué tipo de consulta usar:
+      // 1. Si tiene IdLote → consultar por lote
+      // 2. Si tiene CDC pero no IdLote → consultar por CDC
+      if (!string.IsNullOrWhiteSpace(ventaSel.IdLote))
       {
-        // Intentar parsear JSON para mostrar bonito y ofrecer copiar consulta/respuesta
+        url = $"ventas/{id}/consultar-sifen?idLote={System.Net.WebUtility.UrlEncode(ventaSel.IdLote)}";
+        tipoConsulta = "LOTE";
+      }
+      else if (!string.IsNullOrWhiteSpace(ventaSel.CDC) && ventaSel.CDC.Length == 44)
+      {
+        url = $"ventas/{id}/consultar-sifen-cdc";
+        tipoConsulta = "CDC";
+      }
+      else
+      {
+        await JS.InvokeVoidAsync("alert", "No se puede consultar: la venta no tiene IdLote ni CDC válido. Primero envíe a SIFEN.");
+        return;
+      }
+      
+      var res = await http.GetAsync(url);
+      var body = await res.Content.ReadAsStringAsync();
+      
+      if (res.IsSuccessStatusCode)
+      {
+        // Intentar parsear JSON para mostrar bonito
         try
         {
           using var doc = System.Text.Json.JsonDocument.Parse(body);
@@ -1551,15 +1726,29 @@
           var cdc = root.TryGetProperty("cdc", out var cd) ? cd.GetString() : "";
           var consulta = root.TryGetProperty("consulta", out var con) ? con.GetString() : "";
           var respuesta = root.TryGetProperty("respuesta", out var r) ? r.GetString() : "";
-          string dId = ""; string idLoteUsado = "";
+          
+          // Extraer detalles según tipo de consulta
+          string dId = ""; 
+          string idLoteUsado = "";
+          string estadoDocumento = "";
+          
           if (root.TryGetProperty("detalles", out var det) && det.ValueKind == System.Text.Json.JsonValueKind.Object)
           {
             dId = det.TryGetProperty("dId", out var d) ? d.GetString() ?? "" : "";
             idLoteUsado = det.TryGetProperty("idLoteUsado", out var il) ? il.GetString() ?? "" : "";
           }
+          
+          // Para consulta por CDC, extraer estado del documento
+          if (tipoConsulta == "CDC" && root.TryGetProperty("estadoDocumento", out var ed))
+          {
+            estadoDocumento = ed.GetString() ?? "";
+          }
 
           // Mostrar modal con todo el contenido
-          await JS.InvokeVoidAsync("mostrarModalSifen", codigo ?? string.Empty, mensaje ?? string.Empty, consulta ?? string.Empty, respuesta ?? string.Empty, dId, idLoteUsado);
+          var infoExtra = tipoConsulta == "CDC" && !string.IsNullOrWhiteSpace(estadoDocumento) 
+            ? $"Estado Doc: {estadoDocumento}" 
+            : idLoteUsado;
+          await JS.InvokeVoidAsync("mostrarModalSifen", codigo ?? string.Empty, mensaje ?? string.Empty, consulta ?? string.Empty, respuesta ?? string.Empty, dId, infoExtra);
         }
         catch
         {
@@ -1568,14 +1757,108 @@
       }
       else
       {
-        // Si hay error, mostrar tal cual
-        await JS.InvokeVoidAsync("alert", $"Error al consultar: {body}");
+        // Si hay error, mostrar en modal rojo
+        await MostrarResultadoSifen(body, false);
       }
       await Buscar();
     }
     catch (Exception ex)
     {
-      await JS.InvokeVoidAsync("alert", $"No se pudo consultar SIFEN: {ex.Message}");
+      _sifenResultadoExito = false;
+      _sifenCodigo = "";
+      _sifenCdc = "";
+      _sifenMensaje = $"No se pudo consultar SIFEN: {ex.Message}";
+      await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('sifenResultModal')).show()");
+      StateHasChanged();
+    }
+  }
+
+  /// <summary>
+  /// Reenvía la factura por correo electrónico al cliente.
+  /// </summary>
+  private async Task ReenviarCorreo(int idVenta)
+  {
+    _enviandoCorreoIdVenta = idVenta;
+    StateHasChanged();
+    
+    try
+    {
+      await using var ctx = await DbFactory.CreateDbContextAsync();
+      
+      // Obtener la venta con datos del cliente
+      var venta = await ctx.Ventas.AsNoTracking()
+        .Include(v => v.Cliente)
+        .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+      
+      if (venta == null)
+      {
+        await JS.InvokeVoidAsync("alert", "No se encontró la venta especificada.");
+        return;
+      }
+      
+      var cliente = venta.Cliente;
+      
+      // Verificar que el cliente tenga email configurado
+      if (cliente == null || string.IsNullOrWhiteSpace(cliente.Email))
+      {
+        await JS.InvokeVoidAsync("alert", "El cliente no tiene un correo electrónico configurado.");
+        return;
+      }
+      
+      // Confirmar envío
+      var confirmar = await JS.InvokeAsync<bool>("confirm", 
+        $"¿Desea enviar la factura #{venta.NumeroFactura ?? idVenta.ToString()} al correo {cliente.Email}?");
+      if (!confirmar) return;
+      
+      // Verificar si el servicio de correo está configurado
+      var sucursalId = venta.IdSucursal;
+      if (!await CorreoService.EstaConfiguradoAsync(sucursalId))
+      {
+        await JS.InvokeVoidAsync("alert", "El servicio de correo no está configurado para esta sucursal.");
+        return;
+      }
+      
+      // Generar PDF de la factura
+      var pdfBytes = await PdfService.GenerarPdfFactura(idVenta);
+      if (pdfBytes == null || pdfBytes.Length == 0)
+      {
+        await JS.InvokeVoidAsync("alert", "No se pudo generar el PDF de la factura.");
+        return;
+      }
+      
+      var numeroFactura = venta.NumeroFactura ?? $"Venta-{idVenta}";
+      var nombreArchivo = $"Factura_{numeroFactura.Replace("-", "_").Replace(" ", "_")}.pdf";
+      
+      Console.WriteLine($"[VentasExplorar] Reenviando factura {numeroFactura} a {cliente.Email}...");
+      
+      // Enviar el correo
+      var resultado = await CorreoService.EnviarFacturaClienteAsync(
+        idVenta,
+        cliente.Email,
+        pdfBytes,
+        nombreArchivo
+      );
+      
+      if (resultado.Exito)
+      {
+        Console.WriteLine($"[VentasExplorar] ✅ Correo reenviado exitosamente a {cliente.Email}");
+        await JS.InvokeVoidAsync("alert", $"✅ Factura enviada exitosamente a {cliente.Email}");
+      }
+      else
+      {
+        Console.WriteLine($"[VentasExplorar] ❌ Error al reenviar correo: {resultado.Mensaje}");
+        await JS.InvokeVoidAsync("alert", $"Error al enviar la factura: {resultado.Mensaje}");
+      }
+    }
+    catch (Exception ex)
+    {
+      Console.WriteLine($"[VentasExplorar] Error al reenviar correo: {ex.Message}");
+      await JS.InvokeVoidAsync("alert", $"Error al enviar la factura: {ex.Message}");
+    }
+    finally
+    {
+      _enviandoCorreoIdVenta = null;
+      StateHasChanged();
     }
   }
 

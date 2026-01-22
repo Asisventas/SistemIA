@@ -215,9 +215,15 @@ public partial class Ventas
     // Mensajes UI
     protected string? MensajeAdvertencia { get; set; }
 
+    // ========== PROTECCIÓN CONTRA DOBLE GUARDADO ==========
+    private bool _guardando = false;
+
     // UI: Vista Previa del Ticket (después de guardar)
     private bool _mostrarVistaPrevia;
     private int _idVentaParaVistaPrevia;
+    
+    // SIFEN: Tipo de facturación de la caja (ELECTRONICA o AUTOIMPRESOR)
+    private string _tipoFacturacionCaja = "ELECTRONICA";
 
     // UI: Composición de Caja
     private bool _mostrarComposicionCaja;
@@ -660,6 +666,7 @@ public partial class Ventas
         var cajaConfig = await ctx.Cajas.AsNoTracking()
             .FirstOrDefaultAsync(c => c.CajaActual == 1);
         var tipoFacturacion = cajaConfig?.TipoFacturacion ?? "ELECTRONICA";
+        _tipoFacturacionCaja = tipoFacturacion; // Guardar para uso posterior (envío SIFEN automático)
         
         Clientes = await ctx.Clientes.AsNoTracking().OrderBy(c => c.RazonSocial).ToListAsync();
         ClientesFiltrados = new(Clientes);
@@ -672,10 +679,36 @@ public partial class Ventas
             .Where(pd => pd.IdDeposito == 1) // Solo depósito principal
             .ToDictionaryAsync(pd => pd.IdProducto, pd => pd.Stock);
         
+        // FIX 2026-01-19: Para productos con ControlaLote, el stock real es la SUMA de lotes válidos
+        // IMPORTANTE: Solo contar lotes que tienen FechaVencimiento definida y no está vencida
+        // Lotes sin fecha de vencimiento NO se pueden vender hasta que se cargue la fecha
+        var hoy = DateTime.Today;
+        
+        // Obtener stock de lotes agrupado por producto (solo depósito 1, solo con fecha de vencimiento válida)
+        var stocksLotes = await ctx.ProductosLotes
+            .Where(l => l.IdDeposito == 1 
+                     && l.Estado == "Activo" 
+                     && l.Stock > 0
+                     && l.FechaVencimiento.HasValue          // DEBE tener fecha de vencimiento
+                     && l.FechaVencimiento.Value >= hoy)     // Y no estar vencido
+            .GroupBy(l => l.IdProducto)
+            .Select(g => new { IdProducto = g.Key, TotalStock = g.Sum(l => l.Stock) })
+            .ToDictionaryAsync(x => x.IdProducto, x => x.TotalStock);
+        
         // Actualizar el Stock en cada producto con el valor del depósito principal
         foreach (var p in Productos)
         {
-            p.Stock = _stocksPorProducto.TryGetValue(p.IdProducto, out var stockPrincipal) ? stockPrincipal : 0;
+            if (p.ControlaLote)
+            {
+                // Producto con lotes: usar stock de lotes CON FECHA DE VENCIMIENTO válida
+                // Lotes sin fecha = stock 0 (bloquea venta hasta cargar fecha)
+                p.Stock = stocksLotes.TryGetValue(p.IdProducto, out var stockLotes) ? stockLotes : 0;
+            }
+            else
+            {
+                // Producto sin lotes: usar stock general de ProductosDepositos
+                p.Stock = _stocksPorProducto.TryGetValue(p.IdProducto, out var stockPrincipal) ? stockPrincipal : 0;
+            }
         }
         
         ProductosFiltrados = new(Productos);
@@ -2195,6 +2228,28 @@ public partial class Ventas
 
     public async Task GuardarAsync()
     {
+        // ========== PROTECCIÓN CONTRA DOBLE CLIC ==========
+        if (_guardando)
+        {
+            Console.WriteLine("[Ventas] ⚠️ Guardado en progreso, ignorando clic duplicado");
+            return;
+        }
+        _guardando = true;
+        await InvokeAsync(StateHasChanged);
+        
+        try
+        {
+            await GuardarInternoAsync();
+        }
+        finally
+        {
+            _guardando = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task GuardarInternoAsync()
+    {
         // Validaciones mínimas
         if (Cab.IdSucursal <= 0)
         {
@@ -2628,53 +2683,64 @@ public partial class Ventas
                         
                         if (prodInfo != null && prodInfo.ControlaLote)
                         {
-                            // ========== LÓGICA FEFO: Descontar del lote más próximo a vencer ==========
+                            // ========== LÓGICA FEFO: Descontar de múltiples lotes en orden de vencimiento ==========
                             var cantidadPendiente = d.Cantidad;
                             
-                            while (cantidadPendiente > 0)
+                            // Obtener todos los lotes ordenados por FEFO (una sola consulta)
+                            var lotesFEFO = await LoteService.ObtenerLotesFEFOParaVentaAsync(d.IdProducto, idDeposito);
+                            
+                            if (lotesFEFO.Count == 0)
                             {
-                                // Obtener el lote FEFO (primero en expirar con stock disponible)
-                                var loteFEFO = await LoteService.ObtenerLoteFEFOAsync(d.IdProducto, idDeposito, cantidadPendiente);
-                                
-                                if (loteFEFO == null)
+                                // No hay lotes con stock - usar stock general
+                                Console.WriteLine($"[FEFO] Producto {d.IdProducto}: Sin lotes disponibles para {cantidadPendiente} unidades. Usando stock general.");
+                                await Inventario.AjustarStockAsync(d.IdProducto, idDeposito, cantidadPendiente, 2, $"Venta #{Cab.IdVenta} (sin lote)", _usuarioActual,
+                                    Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
+                            }
+                            else
+                            {
+                                // Distribuir cantidad entre lotes en orden FEFO
+                                foreach (var lote in lotesFEFO)
                                 {
-                                    // No hay lotes con stock suficiente - usar stock general
-                                    Console.WriteLine($"[FEFO] Producto {d.IdProducto}: Sin lotes disponibles para {cantidadPendiente} unidades. Usando stock general.");
-                                    await Inventario.AjustarStockAsync(d.IdProducto, idDeposito, cantidadPendiente, 2, $"Venta #{Cab.IdVenta} (sin lote)", _usuarioActual,
-                                        Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
-                                    break;
-                                }
-                                
-                                // Calcular cuánto descontar de este lote (Stock es el campo correcto)
-                                var cantidadDescontar = Math.Min(cantidadPendiente, loteFEFO.Stock);
-                                
-                                // Descontar del lote - firma: (idProductoLote, cantidad, tipoDocumento, idDocumento, idDocumentoDetalle, referencia, usuario)
-                                var resultado = await LoteService.DescontarStockLoteAsync(
-                                    loteFEFO.IdProductoLote,
-                                    cantidadDescontar,
-                                    "Venta",
-                                    Cab.IdVenta,
-                                    d.IdVentaDetalle,
-                                    $"Venta #{Cab.IdVenta}",
-                                    _usuarioActual
-                                );
-                                
-                                if (resultado)
-                                {
-                                    // Guardar info del lote en el detalle para trazabilidad
-                                    // Solo guardamos el primer lote usado (el más cercano a vencer)
-                                    if (d.IdProductoLote == null)
+                                    if (cantidadPendiente <= 0) break;
+                                    
+                                    // Calcular cuánto descontar de este lote
+                                    var cantidadDescontar = Math.Min(cantidadPendiente, lote.Stock);
+                                    
+                                    // Descontar del lote
+                                    var resultado = await LoteService.DescontarStockLoteAsync(
+                                        lote.IdProductoLote,
+                                        cantidadDescontar,
+                                        "Venta",
+                                        Cab.IdVenta,
+                                        d.IdVentaDetalle,
+                                        $"Venta #{Cab.IdVenta}",
+                                        _usuarioActual
+                                    );
+                                    
+                                    if (resultado)
                                     {
-                                        d.IdProductoLote = loteFEFO.IdProductoLote;
-                                        d.NumeroLoteMomento = loteFEFO.NumeroLote;
-                                        d.FechaVencimientoLoteMomento = loteFEFO.FechaVencimiento;
-                                        ctx.VentasDetalles.Update(d);
+                                        // Guardar info del primer lote usado (el más cercano a vencer)
+                                        if (d.IdProductoLote == null)
+                                        {
+                                            d.IdProductoLote = lote.IdProductoLote;
+                                            d.NumeroLoteMomento = lote.NumeroLote;
+                                            d.FechaVencimientoLoteMomento = lote.FechaVencimiento;
+                                            ctx.VentasDetalles.Update(d);
+                                        }
+                                        
+                                        Console.WriteLine($"[FEFO] Producto {d.IdProducto}: Descontado {cantidadDescontar} del lote {lote.NumeroLote} (vence: {lote.FechaVencimiento:dd/MM/yyyy})");
                                     }
                                     
-                                    Console.WriteLine($"[FEFO] Producto {d.IdProducto}: Descontado {cantidadDescontar} del lote {loteFEFO.NumeroLote} (vence: {loteFEFO.FechaVencimiento:dd/MM/yyyy})");
+                                    cantidadPendiente -= cantidadDescontar;
                                 }
                                 
-                                cantidadPendiente -= cantidadDescontar;
+                                // Si quedó pendiente (stock insuficiente en lotes), usar stock general
+                                if (cantidadPendiente > 0)
+                                {
+                                    Console.WriteLine($"[FEFO] Producto {d.IdProducto}: Stock de lotes insuficiente, {cantidadPendiente} unidades desde stock general.");
+                                    await Inventario.AjustarStockAsync(d.IdProducto, idDeposito, cantidadPendiente, 2, $"Venta #{Cab.IdVenta} (sin lote)", _usuarioActual,
+                                        Cab.IdSucursal, Cab.IdCaja, Cab.Fecha.Date, Cab.Turno);
+                                }
                             }
                             
                             // También ajustar stock general (para mantener consistencia con MovimientosStock)
@@ -2716,7 +2782,12 @@ public partial class Ventas
                     var idClienteGuardado = Cab.IdCliente;
                     var idSucursalGuardada = Cab.IdSucursal;
                     
-                    // Enviar factura por correo al cliente si corresponde (en segundo plano)
+                    // PRIMERO: Enviar a SIFEN (SYNC) y ESPERAR la respuesta
+                    // Esto asegura que CDC y UrlQrSifen estén en la BD antes de imprimir
+                    await EnviarSifenAutomaticoAsync(idVentaGuardada);
+                    
+                    // DESPUÉS: Enviar factura por correo al cliente (en segundo plano)
+                    // El correo se envía después de SIFEN para que incluya los datos reales
                     _ = Task.Run(async () => await EnviarFacturaCorreoSiCorrespondeAsync(idVentaGuardada, idClienteGuardado, idSucursalGuardada));
                     
                     // Mostrar vista previa del ticket en lugar de abrir ventana nueva
@@ -2772,7 +2843,12 @@ public partial class Ventas
                     var idClienteGuardado = Cab.IdCliente;
                     var idSucursalGuardada = Cab.IdSucursal;
                     
-                    // Enviar factura por correo al cliente si corresponde (en segundo plano)
+                    // PRIMERO: Enviar a SIFEN (SYNC) y ESPERAR la respuesta
+                    // Esto asegura que CDC y UrlQrSifen estén en la BD antes de imprimir
+                    await EnviarSifenAutomaticoAsync(idVentaGuardada);
+                    
+                    // DESPUÉS: Enviar factura por correo al cliente (en segundo plano)
+                    // El correo se envía después de SIFEN para que incluya los datos reales
                     _ = Task.Run(async () => await EnviarFacturaCorreoSiCorrespondeAsync(idVentaGuardada, idClienteGuardado, idSucursalGuardada));
                     
                     if (debeImprimirAutomaticamente)
@@ -2869,6 +2945,72 @@ public partial class Ventas
             Console.WriteLine($"Error en GuardarAsync: {ex}");
             if (ex.InnerException != null)
                 Console.WriteLine($"Inner Exception: {ex.InnerException}");
+        }
+    }
+
+    /// <summary>
+    /// Envía automáticamente la venta a SIFEN si está en modo Factura Electrónica.
+    /// Usa el modo SYNC para obtener el CDC inmediatamente y poder imprimir con datos reales.
+    /// </summary>
+    private async Task EnviarSifenAutomaticoAsync(int idVenta)
+    {
+        // Solo enviar si el tipo de facturación es ELECTRONICA
+        if (string.IsNullOrWhiteSpace(_tipoFacturacionCaja)) return;
+        
+        var tipoUpper = _tipoFacturacionCaja.ToUpperInvariant();
+        var esFacturaElectronica = tipoUpper.Contains("ELECTR") || tipoUpper == "ELECTRONICA" || tipoUpper == "FE";
+        
+        if (!esFacturaElectronica)
+        {
+            Console.WriteLine($"[SIFEN Auto] Tipo de facturación '{_tipoFacturacionCaja}' - No es electrónica, no se envía a SIFEN automáticamente.");
+            return;
+        }
+        
+        try
+        {
+            Console.WriteLine($"[SIFEN Auto] Enviando venta {idVenta} a SIFEN modo SYNC...");
+            
+            // Llamar al endpoint de envío SIFEN SYNC usando HttpClient interno
+            // El modo SYNC retorna el CDC inmediatamente, a diferencia del modo LOTE
+            var handler = new System.Net.Http.HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+            using var http = new System.Net.Http.HttpClient(handler);
+            http.Timeout = TimeSpan.FromSeconds(120);
+            
+            // Usar la URL base del servidor actual - SYNC en lugar de LOTE
+            var baseUrl = "http://localhost:5095"; // URL por defecto
+            var url = $"{baseUrl}/ventas/{idVenta}/enviar-sifen-sync";
+            
+            var response = await http.PostAsync(url, null);
+            var responseBody = await response.Content.ReadAsStringAsync();
+            
+            if (response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"[SIFEN Auto] Venta {idVenta} enviada exitosamente (SYNC): {responseBody}");
+                
+                // Extraer datos del JSON de respuesta para logging
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(responseBody);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("cdc", out var cdcProp))
+                        Console.WriteLine($"[SIFEN Auto] CDC obtenido: {cdcProp.GetString()}");
+                    if (root.TryGetProperty("estado", out var estadoProp))
+                        Console.WriteLine($"[SIFEN Auto] Estado: {estadoProp.GetString()}");
+                }
+                catch { }
+            }
+            else
+            {
+                Console.WriteLine($"[SIFEN Auto] Error al enviar venta {idVenta} a SIFEN: {response.StatusCode} - {responseBody}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SIFEN Auto] Excepción al enviar venta {idVenta} a SIFEN: {ex.Message}");
+            // No propagar la excepción - el envío SIFEN automático no debe bloquear la venta
         }
     }
 
@@ -3528,6 +3670,13 @@ public partial class Ventas
         TipoPagoEsCredito = false;
         ProductoImagenUrl = null; // Limpiar imagen del producto
         
+        // Resetear campos de paquete/unidad
+        ModoIngresoVenta = "paquete";
+        _cantidadIngresadaVenta = 1;
+        _cantidadPorPaqueteActual = null;
+        _productoPermiteVentaPorUnidad = true;
+        _nombreUnidadVenta = "Unidad";
+        
         // Resetear campos de cliente
         ClienteSeleccionadoLabel = string.Empty;
         EmailCliente = null;
@@ -3564,9 +3713,31 @@ public partial class Ventas
             .Where(pd => pd.IdDeposito == 1)
             .ToDictionaryAsync(pd => pd.IdProducto, pd => pd.Stock);
         
+        // FIX 2026-01-19: Para productos con ControlaLote, solo contar lotes CON fecha de vencimiento válida
+        // Lotes sin fecha = no vendibles hasta cargar la fecha
+        var hoy = DateTime.Today;
+        var stocksLotes = await ctx.ProductosLotes
+            .Where(l => l.IdDeposito == 1 
+                     && l.Estado == "Activo" 
+                     && l.Stock > 0
+                     && l.FechaVencimiento.HasValue          // DEBE tener fecha de vencimiento
+                     && l.FechaVencimiento.Value >= hoy)     // Y no estar vencido
+            .GroupBy(l => l.IdProducto)
+            .Select(g => new { IdProducto = g.Key, TotalStock = g.Sum(l => l.Stock) })
+            .ToDictionaryAsync(x => x.IdProducto, x => x.TotalStock);
+        
         foreach (var p in Productos)
         {
-            p.Stock = _stocksPorProducto.TryGetValue(p.IdProducto, out var st) ? st : 0;
+            if (p.ControlaLote)
+            {
+                // Producto con lotes: solo stock de lotes CON fecha de vencimiento válida
+                p.Stock = stocksLotes.TryGetValue(p.IdProducto, out var stockLotes) ? stockLotes : 0;
+            }
+            else
+            {
+                // Producto sin lotes: usar stock general de ProductosDepositos
+                p.Stock = _stocksPorProducto.TryGetValue(p.IdProducto, out var st) ? st : 0;
+            }
         }
         
         ProductosFiltrados = new(Productos);

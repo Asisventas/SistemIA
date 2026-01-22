@@ -52,6 +52,8 @@ namespace SistemIA.Models
     public DbSet<AjusteStockDetalle> AjustesStockDetalles { get; set; }
     public DbSet<TransferenciaDeposito> TransferenciasDeposito { get; set; }
     public DbSet<TransferenciaDepositoDetalle> TransferenciasDepositoDetalle { get; set; }
+    public DbSet<SalidaStock> SalidasStock { get; set; }
+    public DbSet<SalidaStockDetalle> SalidasStockDetalle { get; set; }
     public DbSet<ClientePrecio> ClientesPrecios { get; set; }
     public DbSet<Venta> Ventas { get; set; }
     public DbSet<VentaDetalle> VentasDetalles { get; set; }

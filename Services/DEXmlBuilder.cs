@@ -184,13 +184,14 @@ namespace SistemIA.Services
             // Descripción oficial según XSD para dDTipIDRec
             static string DescripcionTipoDocRec(string iTipIDRec)
             {
+                // Catálogo SIFEN v150 - Tipos de documento de identidad receptor (iTipIDRec)
                 return iTipIDRec switch
                 {
                     "1" => "Cédula paraguaya",
                     "3" => "Pasaporte",
                     "4" => "Carnet de residencia",
-                    "5" => "Cédula extranjera",
-                    "9" => "Innominado",
+                    "5" => "Innominado",  // FIX: era "Cédula extranjera" que causaba error 1313
+                    "9" => "Sin documento",
                     _ => "Innominado"
                 };
             }
@@ -217,10 +218,16 @@ namespace SistemIA.Services
             gDatRec.Add(new XElement(NsSifen + "cPaisRec", gDatRecRaw.Element("cPaisRec")?.Value ?? "PRY"));
             gDatRec.Add(new XElement(NsSifen + "dDesPaisRe", gDatRecRaw.Element("dDesPaisRe")?.Value ?? "Paraguay"));
 
-            // iTiContRec es opcional
-            var iTiContRecVal = esConsumidorFinal ? "1" : gDatRecRaw.Element("iTiContRec")?.Value;
-            if (!string.IsNullOrWhiteSpace(iTiContRecVal))
-                gDatRec.Add(new XElement(NsSifen + "iTiContRec", iTiContRecVal));
+            // iTiContRec SOLO para contribuyentes (iNatRec=1)
+            // FIX 21-Ene-2026: Error 1303 "Tipo de contribuyente receptor inválido" ocurre
+            // si se envía iTiContRec cuando iNatRec=2 (No Contribuyente)
+            // Según SIFEN v150: iTiContRec es EXCLUSIVO de contribuyentes
+            if (esContribuyente)
+            {
+                var iTiContRecVal = gDatRecRaw.Element("iTiContRec")?.Value;
+                if (!string.IsNullOrWhiteSpace(iTiContRecVal))
+                    gDatRec.Add(new XElement(NsSifen + "iTiContRec", iTiContRecVal));
+            }
 
             if (esContribuyente)
             {
@@ -459,14 +466,17 @@ namespace SistemIA.Services
             // Totales mínimos - Para PYG usar valores enteros (scale = 0)
             decimal subExe = Math.Round(detalles.Sum(x => x.Exenta), 0);
             decimal subExo = 0; // Subtotal exonerado (no aplica en Paraguay normalmente)
-            decimal sub5 = Math.Round(detalles.Sum(x => x.Grabado5), 0);
-            decimal sub10 = Math.Round(detalles.Sum(x => x.Grabado10), 0);
+            // FIX 4-Feb-2026: dSub5 y dSub10 deben ser el importe CON IVA incluido, NO la base gravada
+            // Según XML aprobado SIFEN: dSub5 = suma de dTotOpeItem al 5% = Grabado5 + IVA5
+            // dBaseGrav5 = suma de dBasGravIVA al 5% = Grabado5 (base sin IVA)
             decimal iva5 = Math.Round(detalles.Sum(x => x.IVA5), 0);
             decimal iva10 = Math.Round(detalles.Sum(x => x.IVA10), 0);
+            decimal baseGrav5 = Math.Round(detalles.Sum(x => x.Grabado5), 0);  // Base gravada al 5% (sin IVA)
+            decimal baseGrav10 = Math.Round(detalles.Sum(x => x.Grabado10), 0); // Base gravada al 10% (sin IVA)
+            decimal sub5 = baseGrav5 + iva5;  // Subtotal al 5% = base + IVA (importe con IVA incluido)
+            decimal sub10 = baseGrav10 + iva10; // Subtotal al 10% = base + IVA (importe con IVA incluido)
             decimal totIVA = iva5 + iva10;
             decimal totOpe = Math.Round(venta.Total, 0); // Asumimos total incluye IVA
-            decimal baseGrav5 = sub5; // en ejemplo, base gravada 5 = subtotal 5 sin descuentos
-            decimal baseGrav10 = sub10;
             decimal tBaseGravIva = baseGrav5 + baseGrav10;
 
             // gTotSub según estructura de XML APROBADO por SIFEN (Respuesta_ConsultaDE_Exitosa.xml)

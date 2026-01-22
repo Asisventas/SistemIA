@@ -1,0 +1,88 @@
+
+================================================================================
+[2026-01-19 20:56:17.471] POWERBUILDER -> DLL (ENTRADA)
+================================================================================
+METODO: firmarYEnviar()
+URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+urlQR: https://ekuatia.set.gov.py/consultas-test/qr?
+p12FilePath: C:\nextsys - GLP\sifen\WEN.pfx
+certificatePassword: ***OCULTO***
+tipoFirmado: 1
+xmlString Length: 4397
+xmlString (primeros 500 chars): 
+<rLoteDE>
+	<rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd">
+		<dVerFor>150</dVerFor>
+		<DE Id="01004952197001002000010212026011910331281304">
+			<dDVId>4</dDVId>
+			<dFecFirma>2026-01-19T20:56:17</dFecFirma>
+			<dSisFact>1</dSisFact>
+			<gOpeDE>
+				<iTipEmi>1</iTipEmi>
+				<dDesTipEmi>Normal</dDesTipEmi>
+				<dCodSeg>033128130</dCodSeg>
+			</gOpeDE>
+			<gTimb>
+				<
+
+================================================================================
+[2026-01-19 20:56:18.096] DLL -> POWERBUILDER (SALIDA)
+================================================================================
+METODO: firmarYEnviar() - RETURN
+Retorno Length: 540
+Retorno Bytes (UTF-8): 540
+Retorno Type: String
+
+=== JSON COMPLETO QUE RECIBE POWERBUILDER ===
+{"codigo":"0300","mensaje":"Lote recibido con exito","qr":"https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000010212026011910331281304&dFeEmiDE=323032362d30312d31395430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=434e4639682f632f5630706c495132706b53714a596f32627778657a393171703335384630386b6a5933343d&IdCSC=1&cHashQR=c276d8075f0f8ebac4d93c3a662dc167063ea3d745bf7cd74f70307752b6762c","idLote":"154307038997778456","documento":"01004952197001002000010212026011910331281304"}
+
+=== VALORES PARSEADOS ===
+codigo: presente
+mensaje: presente
+qr: presente
+idLote: presente
+documento: presente
+
+================================================================================
+[2026-01-19 20:56:44.326] POWERBUILDER -> DLL (ENTRADA)
+================================================================================
+METODO: firmarYEnviar()
+URL: https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl
+urlQR: https://ekuatia.set.gov.py/consultas-test/qr?
+p12FilePath: C:\nextsys - GLP\sifen\WEN.pfx
+certificatePassword: ***OCULTO***
+tipoFirmado: 1
+xmlString Length: 4397
+xmlString (primeros 500 chars): 
+<rLoteDE>
+	<rDE xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepDE_v150.xsd">
+		<dVerFor>150</dVerFor>
+		<DE Id="01004952197001002000010212026011910692230900">
+			<dDVId>0</dDVId>
+			<dFecFirma>2026-01-19T20:56:44</dFecFirma>
+			<dSisFact>1</dSisFact>
+			<gOpeDE>
+				<iTipEmi>1</iTipEmi>
+				<dDesTipEmi>Normal</dDesTipEmi>
+				<dCodSeg>069223090</dCodSeg>
+			</gOpeDE>
+			<gTimb>
+				<
+
+================================================================================
+[2026-01-19 20:56:44.790] DLL -> POWERBUILDER (SALIDA)
+================================================================================
+METODO: firmarYEnviar() - RETURN
+Retorno Length: 590
+Retorno Bytes (UTF-8): 590
+Retorno Type: String
+
+=== JSON COMPLETO QUE RECIBE POWERBUILDER ===
+{"codigo":"0301","mensaje":"Lote no encolado para procesamiento {Se rechazaron todos los DE del lote}","qr":"https://ekuatia.set.gov.py/consultas-test/qr?nVersion=150&Id=01004952197001002000010212026011910692230900&dFeEmiDE=323032362d30312d31395430303a30303a3030&dNumIDRec=44444401&dTotGralOpe=1000&dTotIVA=0&cItems=1&DigestValue=4872667244395644654f4e494844473256523732435363545153756a4d30316c54524b45357834634a50773d&IdCSC=1&cHashQR=7867368ad88ffd187d619fcd2d89813c2a78a06f9e21150c6e2aacacc39fb5b4","idLote":"154307038997778464","documento":"01004952197001002000010212026011910692230900"}
+
+=== VALORES PARSEADOS ===
+codigo: presente
+mensaje: presente
+qr: presente
+idLote: presente
+documento: presente

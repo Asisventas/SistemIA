@@ -685,8 +685,19 @@
           </EditForm>
         </div>
         <div class="modal-footer bg-light py-2">
-          <button class="btn btn-outline-secondary" @onclick="Cerrar"><i class="bi bi-x-lg me-1"></i>Cancelar</button>
-          <button class="btn btn-primary" @onclick="SubmitForm"><i class="bi bi-check-lg me-1"></i>Guardar</button>
+          <button class="btn btn-outline-secondary" @onclick="Cerrar" disabled="@_guardando"><i class="bi bi-x-lg me-1"></i>Cancelar</button>
+          <button class="btn btn-primary" @onclick="SubmitForm" disabled="@_guardando">
+            @if (_guardando)
+            {
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              <span>Guardando...</span>
+            }
+            else
+            {
+              <i class="bi bi-check-lg me-1"></i>
+              <span>Guardar</span>
+            }
+          </button>
         </div>
       </div>
     </div>
@@ -1030,6 +1041,7 @@
   private string filtroDeposito = string.Empty;
   private bool soloActivos = true;
   private bool mostrarModal = false;
+  private bool _guardando = false;  // Protección contra doble guardado
   private Models.Producto editando = new Models.Producto();
   private List<Models.Deposito> depositos = new();
   private Dictionary<int, List<(string Deposito, decimal Stock)>> stocksPorProductoDeposito = new();
@@ -1690,19 +1702,31 @@ END");
 
   private async Task Guardar()
   {
+    // ========== PROTECCIÓN CONTRA DOBLE GUARDADO ==========
+    if (_guardando)
+    {
+      Console.WriteLine("[Productos] Clic duplicado en Guardar ignorado - operación en curso");
+      return;
+    }
+    
     if (string.IsNullOrWhiteSpace(editando.Descripcion) || string.IsNullOrWhiteSpace(editando.UnidadMedidaCodigo) || string.IsNullOrWhiteSpace(undMedidaValue) || editando.IdSucursal <= 0)
     {
       await JS.InvokeVoidAsync("alert", "Complete Descripción, Unidad SIFEN, UndMedida y Sucursal");
       return;
     }
     
-    // Validar cantidad por paquete cuando la unidad es Paquete o Caja
-    if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") 
-        && (!editando.CantidadPorPaquete.HasValue || editando.CantidadPorPaquete <= 0))
+    _guardando = true;
+    await InvokeAsync(StateHasChanged);
+    
+    try
     {
-      await JS.InvokeVoidAsync("alert", "Ingrese la cantidad de unidades por " + (editando.UnidadMedidaCodigo == "006" ? "paquete" : "caja"));
-      return;
-    }
+      // Validar cantidad por paquete cuando la unidad es Paquete o Caja
+      if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") 
+          && (!editando.CantidadPorPaquete.HasValue || editando.CantidadPorPaquete <= 0))
+      {
+        await JS.InvokeVoidAsync("alert", "Ingrese la cantidad de unidades por " + (editando.UnidadMedidaCodigo == "006" ? "paquete" : "caja"));
+        return;
+      }
     
     // Validar Precio Ministerio (solo si está activa la validación en configuración)
     if (ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio.Value)
@@ -1770,14 +1794,25 @@ END");
     if (editando.ControlaLote && !editando.LoteInicialCreado)
     {
       await CrearLoteInicialAutomatico(db);
+      // Recargar los lotes después de crearlos
+      await CargarLotesProducto();
     }
 
   // Limpiar estado de imagen temporal
   pendingImage = null;
   previewDataUrl = null;
-  await JS.InvokeVoidAsync("alert", "Producto guardado");
+  var mensaje = editando.ControlaLote && lotesProducto.Any() 
+    ? $"Producto guardado. Se crearon {lotesProducto.Count} lote(s) automáticamente."
+    : "Producto guardado";
+  await JS.InvokeVoidAsync("alert", mensaje);
     mostrarModal = false;
     await Cargar();
+    }
+    finally
+    {
+      _guardando = false;
+      await InvokeAsync(StateHasChanged);
+    }
   }
 
   private async Task CargarComponentesAsync(int idProducto)
@@ -2169,70 +2204,99 @@ END");
   /// <summary>
   /// Crea automáticamente lotes STOCK-INICIAL para el stock existente al activar control de lotes.
   /// Este método se llama desde Guardar() cuando se activa ControlaLote.
+  /// Considera tanto ProductosDepositos como el Stock directo del Producto.
   /// </summary>
   private async Task CrearLoteInicialAutomatico(AppDbContext db)
   {
-    // Obtener stock actual por depósito
+    var lotesCreados = 0;
+    
+    // 1. Obtener stock de ProductosDepositos (si hay registros específicos)
     var stocksPorDeposito = await db.ProductosDepositos
       .Where(pd => pd.IdProducto == editando.IdProducto && pd.Stock > 0)
       .ToListAsync();
 
-    if (!stocksPorDeposito.Any())
-    {
-      // No hay stock, solo marcar como creado
-      editando.LoteInicialCreado = true;
-      db.Productos.Update(editando);
-      await db.SaveChangesAsync();
-      return;
-    }
-
+    // 2. Crear lotes para cada depósito con stock en ProductosDepositos
     foreach (var pd in stocksPorDeposito)
     {
-      // Verificar que no exista ya un lote inicial para este depósito
-      var yaExiste = await db.ProductosLotes
-        .AnyAsync(l => l.IdProducto == editando.IdProducto 
-                    && l.IdDeposito == pd.IdDeposito 
-                    && l.NumeroLote == "STOCK-INICIAL");
-      
-      if (yaExiste) continue;
-
-      var loteInicial = new Models.ProductoLote
-      {
-        IdProducto = editando.IdProducto,
-        IdDeposito = pd.IdDeposito,
-        NumeroLote = "STOCK-INICIAL",
-        FechaVencimiento = null, // Sin vencimiento definido
-        Stock = pd.Stock,
-        StockInicial = pd.Stock,
-        Estado = "Activo",
-        EsLoteInicial = true,
-        FechaCreacion = DateTime.Now,
-        UsuarioCreacion = "Sistema",
-        Observacion = "Lote creado automáticamente al activar control de lotes"
-      };
-
-      db.ProductosLotes.Add(loteInicial);
-      await db.SaveChangesAsync();
-
-      // Registrar movimiento inicial
-      var movimiento = new Models.MovimientoLote
-      {
-        IdProductoLote = loteInicial.IdProductoLote,
-        TipoMovimiento = TipoMovimientoLote.Inicial,
-        Cantidad = pd.Stock,
-        StockAnterior = 0,
-        StockPosterior = pd.Stock,
-        Motivo = "Migración automática de stock existente al activar control de lotes",
-        FechaMovimiento = DateTime.Now,
-        Usuario = "Sistema"
-      };
-      db.MovimientosLotes.Add(movimiento);
+      if (await CrearLoteInicialParaDeposito(db, pd.IdDeposito, pd.Stock))
+        lotesCreados++;
     }
 
-    // Marcar que ya se creó el lote inicial
+    // 3. Si NO hay registros en ProductosDepositos pero el producto tiene stock directo,
+    //    crear lote en el depósito predeterminado
+    if (!stocksPorDeposito.Any() && editando.Stock > 0)
+    {
+      // Usar el depósito predeterminado del producto, o el primer depósito si no tiene
+      var idDeposito = editando.IdDepositoPredeterminado 
+                    ?? await db.Depositos.Where(d => d.Activo == true).Select(d => d.IdDeposito).FirstOrDefaultAsync();
+      
+      if (idDeposito > 0)
+      {
+        if (await CrearLoteInicialParaDeposito(db, idDeposito, editando.Stock))
+          lotesCreados++;
+      }
+    }
+
+    // 4. Marcar como creado aunque no haya stock (para no repetir el proceso)
     editando.LoteInicialCreado = true;
     db.Productos.Update(editando);
     await db.SaveChangesAsync();
+    
+    if (lotesCreados > 0)
+    {
+      Console.WriteLine($"[LOTES] Creados {lotesCreados} lote(s) STOCK-INICIAL para producto {editando.IdProducto}");
+    }
+  }
+
+  /// <summary>
+  /// Crea un lote STOCK-INICIAL para un depósito específico si no existe.
+  /// </summary>
+  private async Task<bool> CrearLoteInicialParaDeposito(AppDbContext db, int idDeposito, decimal stock)
+  {
+    if (stock <= 0) return false;
+    
+    // Verificar que no exista ya un lote inicial para este depósito
+    var yaExiste = await db.ProductosLotes
+      .AnyAsync(l => l.IdProducto == editando.IdProducto 
+                  && l.IdDeposito == idDeposito 
+                  && l.NumeroLote == "STOCK-INICIAL");
+    
+    if (yaExiste) return false;
+
+    var loteInicial = new Models.ProductoLote
+    {
+      IdProducto = editando.IdProducto,
+      IdDeposito = idDeposito,
+      NumeroLote = "STOCK-INICIAL",
+      FechaVencimiento = null, // Sin vencimiento definido
+      Stock = stock,
+      StockInicial = stock,
+      Estado = "Activo",
+      EsLoteInicial = true,
+      FechaCreacion = DateTime.Now,
+      UsuarioCreacion = "Sistema",
+      Observacion = "Lote creado automáticamente al activar control de lotes"
+    };
+
+    db.ProductosLotes.Add(loteInicial);
+    await db.SaveChangesAsync();
+
+    // Registrar movimiento inicial
+    var movimiento = new Models.MovimientoLote
+    {
+      IdProductoLote = loteInicial.IdProductoLote,
+      TipoMovimiento = TipoMovimientoLote.Inicial,
+      Cantidad = stock,
+      StockAnterior = 0,
+      StockPosterior = stock,
+      Motivo = "Migración automática de stock existente al activar control de lotes",
+      FechaMovimiento = DateTime.Now,
+      Usuario = "Sistema"
+    };
+    db.MovimientosLotes.Add(movimiento);
+    await db.SaveChangesAsync();
+    
+    return true;
   }
   
   private async Task OnControlaLoteChanged()

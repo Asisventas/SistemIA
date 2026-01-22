@@ -8,6 +8,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IInventarioService Inventario
+@inject ILoteService LoteService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject SistemIA.Services.ISucursalProvider SucursalProvider
 @inject Microsoft.AspNetCore.Components.NavigationManager NavMan
@@ -282,13 +283,17 @@ END";
       return;
     }
     
-    // 6. Retroceder el stock (restar las cantidades que se habían agregado)
+    // 6. Revertir movimientos de lote primero (si el producto controla lotes)
+    // y luego retroceder el stock general
     if (compra.IdDeposito.HasValue && compra.Detalles.Any())
     {
       try
       {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var usuarioNombre = authState.User?.Identity?.Name ?? "Sistema";
+        
+        // Revertir movimientos de lotes (para productos con control de lotes)
+        await LoteService.RevertirMovimientoAsync("Compra", id, usuarioNombre);
         
         foreach (var d in compra.Detalles)
         {

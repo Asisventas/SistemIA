@@ -71,7 +71,20 @@ public class PdfFacturaService
         byte[]? qrPng = null;
         if (esFacturaElectronica && !string.IsNullOrWhiteSpace(venta.CDC))
         {
-            var urlQr = $"https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={venta.CDC}";
+            // FIX 21-Ene-2026: Usar UrlQrSifen (contiene cHashQR correcto) si está disponible
+            // Si no, usar URL genérica como fallback
+            string urlQr;
+            if (!string.IsNullOrWhiteSpace(venta.UrlQrSifen))
+            {
+                urlQr = venta.UrlQrSifen;
+                Console.WriteLine($"[PDF KuDE] QR: Usando UrlQrSifen oficial");
+            }
+            else
+            {
+                urlQr = $"https://ekuatia.set.gov.py/consultas/qr?nVersion=150&Id={venta.CDC}";
+                Console.WriteLine($"[PDF KuDE] QR: Usando URL genérica (sin UrlQrSifen)");
+            }
+            
             using var qr = new QRCodeGenerator();
             var qrData = qr.CreateQrCode(urlQr, QRCodeGenerator.ECCLevel.M);
             using var qrCode = new PngByteQRCode(qrData);

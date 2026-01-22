@@ -894,6 +894,13 @@ else
 
   private async Task Guardar()
   {
+    // ========== PROTECCIÓN CONTRA DOBLE GUARDADO ==========
+    if (guardando)
+    {
+      Console.WriteLine("[TransferenciasDeposito] Clic duplicado en Guardar ignorado - operación en curso");
+      return;
+    }
+    
     errorMsg = okMsg = null;
     guardando = true;
     StateHasChanged();

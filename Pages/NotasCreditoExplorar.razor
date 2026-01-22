@@ -5,6 +5,7 @@
 @using SistemIA.Data
 @using SistemIA.Services
 @using Microsoft.EntityFrameworkCore
+@using System.Text.Json
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AppDbContext Db
 @inject NavigationManager Nav
@@ -12,6 +13,8 @@
 @inject IJSRuntime JS
 @inject IInventarioService Inventario
 @inject ICajaService CajaService
+@inject ILoteService LoteService
+@inject IHttpClientFactory HttpClientFactory
 
 <PageProtection Modulo="/notas-credito" Permiso="VIEW">
 <PageTitle>Explorar Notas de Crédito</PageTitle>
@@ -86,7 +89,8 @@
                                 <th style="width:100px;">Factura Ref.</th>
                                 <th style="width:110px;" class="text-end">Total</th>
                                 <th style="width:90px;" class="text-center">Estado</th>
-                                <th style="width:140px;" class="text-center">Acciones</th>
+                                <th style="width:100px;" class="text-center">SIFEN</th>
+                                <th style="width:180px;" class="text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -109,6 +113,24 @@
                                         <span class="badge @GetBadgeClass(nc.Estado)">@nc.Estado</span>
                                     </td>
                                     <td class="text-center">
+                                        @if (!string.IsNullOrEmpty(nc.EstadoSifen))
+                                        {
+                                            <span class="badge @GetSifenBadgeClass(nc.EstadoSifen)" title="@nc.MensajeSifen">
+                                                @nc.EstadoSifen
+                                            </span>
+                                            @if (nc.EstadoSifen == "ACEPTADO" && !string.IsNullOrEmpty(nc.UrlQrSifen))
+                                            {
+                                                <a href="@nc.UrlQrSifen" target="_blank" class="ms-1" title="Ver QR SIFEN">
+                                                    <i class="bi bi-qr-code text-success"></i>
+                                                </a>
+                                            }
+                                        }
+                                        else if (nc.Estado == "Confirmada")
+                                        {
+                                            <span class="badge bg-light text-dark">Pendiente</span>
+                                        }
+                                    </td>
+                                    <td class="text-center">
                                         <div class="btn-group btn-group-sm">
                                             <button class="btn btn-outline-primary" title="Editar" @onclick="() => Editar(nc.IdNotaCredito)" disabled="@(nc.Estado != "Borrador")">
                                                 <i class="bi bi-pencil"></i>
@@ -129,6 +151,26 @@
                                             {
                                                 <button class="btn btn-outline-danger" title="Anular" @onclick="() => Anular(nc)">
                                                     <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            }
+                                            @* Botones SIFEN *@
+                                            @if (nc.Estado == "Confirmada" && string.IsNullOrEmpty(nc.EstadoSifen))
+                                            {
+                                                <button class="btn btn-outline-warning" title="Enviar a SIFEN" @onclick="() => EnviarSifen(nc)" disabled="@_enviandoSifen">
+                                                    @if (_enviandoSifen && _ncEnviando == nc.IdNotaCredito)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm"></span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-cloud-upload"></i>
+                                                    }
+                                                </button>
+                                            }
+                                            @if (!string.IsNullOrEmpty(nc.IdLote) && nc.EstadoSifen != "ACEPTADO" && nc.EstadoSifen != "RECHAZADO")
+                                            {
+                                                <button class="btn btn-outline-info" title="Consultar SIFEN" @onclick="() => ConsultarSifen(nc)" disabled="@_consultandoSifen">
+                                                    <i class="bi bi-cloud-download"></i>
                                                 </button>
                                             }
                                         </div>
@@ -190,6 +232,11 @@
     // Modal ticket
     private bool _mostrarTicket;
     private NotaCreditoVenta? _ncSeleccionada;
+    
+    // SIFEN
+    private bool _enviandoSifen;
+    private bool _consultandoSifen;
+    private int? _ncEnviando;
 
     protected override async Task OnInitializedAsync()
     {
@@ -319,6 +366,9 @@
         ncDb.ModificadoPor = "Sistema";
         ncDb.FechaModificacion = DateTime.Now;
         
+        // Revertir movimientos de lotes (para productos con control de lotes)
+        await LoteService.RevertirMovimientoAsync("NotaCreditoVenta", nc.IdNotaCredito, "Sistema");
+        
         // Revertir stock si la NC afectaba stock
         if (ncDb.AfectaStock != 0 && ncDb.Detalles != null && ncDb.Detalles.Any())
         {
@@ -374,4 +424,122 @@
         "Anulada" => "bg-danger",
         _ => "bg-secondary"
     };
+
+    private string GetSifenBadgeClass(string estado) => estado switch
+    {
+        "ACEPTADO" => "bg-success",
+        "RECHAZADO" => "bg-danger",
+        "ENVIADO" => "bg-info",
+        "PENDIENTE" => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
+
+    private async Task EnviarSifen(NotaCreditoVenta nc)
+    {
+        if (_enviandoSifen) return;
+        
+        // Verificar que tenga factura asociada con CDC
+        if (nc.VentaAsociada == null || string.IsNullOrEmpty(nc.VentaAsociada.CDC))
+        {
+            await JS.InvokeVoidAsync("alert", "La factura asociada no tiene CDC. Primero debe enviar la factura a SIFEN.");
+            return;
+        }
+        
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Enviar NC #{nc.NumeroNota} a SIFEN?"))
+            return;
+        
+        _enviandoSifen = true;
+        _ncEnviando = nc.IdNotaCredito;
+        StateHasChanged();
+        
+        try
+        {
+            var handler = new HttpClientHandler();
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+            using var http = new HttpClient(handler);
+            http.Timeout = TimeSpan.FromSeconds(120);
+            
+            var baseUrl = Nav.BaseUri.TrimEnd('/');
+            var response = await http.PostAsync($"{baseUrl}/notascredito/{nc.IdNotaCredito}/enviar-sifen", null);
+            var json = await response.Content.ReadAsStringAsync();
+            
+            var result = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+            
+            if (result != null && result.TryGetValue("ok", out var okElement) && okElement.GetBoolean())
+            {
+                var estado = result.TryGetValue("estado", out var estadoEl) ? estadoEl.GetString() : "ENVIADO";
+                var cdc = result.TryGetValue("cdc", out var cdcEl) ? cdcEl.GetString() : "";
+                var mensaje = result.TryGetValue("mensaje", out var msgEl) ? msgEl.GetString() : "";
+                
+                await JS.InvokeVoidAsync("alert", $"✅ NC enviada exitosamente.\nEstado: {estado}\nCDC: {cdc}\n{mensaje}");
+            }
+            else
+            {
+                var error = result?.TryGetValue("error", out var errEl) == true ? errEl.GetString() : "Error desconocido";
+                var codigo = result?.TryGetValue("codigo", out var codEl) == true ? codEl.GetString() : "";
+                var mensaje = result?.TryGetValue("mensaje", out var msgEl) == true ? msgEl.GetString() : "";
+                
+                await JS.InvokeVoidAsync("alert", $"❌ Error al enviar NC:\n{error}\nCódigo: {codigo}\n{mensaje}");
+            }
+            
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ Error de conexión: {ex.Message}");
+        }
+        finally
+        {
+            _enviandoSifen = false;
+            _ncEnviando = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConsultarSifen(NotaCreditoVenta nc)
+    {
+        if (_consultandoSifen || string.IsNullOrEmpty(nc.IdLote)) return;
+        
+        _consultandoSifen = true;
+        StateHasChanged();
+        
+        try
+        {
+            var handler = new HttpClientHandler();
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+            using var http = new HttpClient(handler);
+            http.Timeout = TimeSpan.FromSeconds(60);
+            
+            var baseUrl = Nav.BaseUri.TrimEnd('/');
+            var response = await http.GetAsync($"{baseUrl}/notascredito/{nc.IdNotaCredito}/consultar-sifen");
+            var json = await response.Content.ReadAsStringAsync();
+            
+            var result = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+            
+            if (result != null && result.TryGetValue("ok", out var okElement) && okElement.GetBoolean())
+            {
+                var estado = result.TryGetValue("estadoSifen", out var estadoEl) ? estadoEl.GetString() : "";
+                var codigo = result.TryGetValue("codigo", out var codEl) ? codEl.GetString() : "";
+                var mensaje = result.TryGetValue("mensaje", out var msgEl) ? msgEl.GetString() : "";
+                
+                await JS.InvokeVoidAsync("alert", $"📋 Estado NC en SIFEN:\nEstado: {estado}\nCódigo: {codigo}\n{mensaje}");
+            }
+            else
+            {
+                var error = result?.TryGetValue("error", out var errEl) == true ? errEl.GetString() : "Error desconocido";
+                await JS.InvokeVoidAsync("alert", $"❌ Error al consultar: {error}");
+            }
+            
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ Error de conexión: {ex.Message}");
+        }
+        finally
+        {
+            _consultandoSifen = false;
+            StateHasChanged();
+        }
+    }
 }

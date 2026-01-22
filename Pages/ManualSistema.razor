@@ -552,16 +552,32 @@
     {
         <div class="card shadow-sm">
             <div class="card-header bg-info text-white">
-                <h4 class="mb-0"><i class="bi bi-capsule me-2"></i>Modo Farmacia</h4>
+                <h4 class="mb-0"><i class="bi bi-capsule me-2"></i>Modo Farmacia y Control de Lotes (FEFO)</h4>
             </div>
             <div class="card-body">
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle me-2"></i>
-                    El modo farmacia activa funcionalidades especiales para establecimientos farmacéuticos.
+                    El modo farmacia activa funcionalidades especiales para establecimientos farmacéuticos, incluyendo el control de <strong>lotes y vencimientos FEFO</strong>.
                 </div>
                 
-                <h5><i class="bi bi-check2-square me-2"></i>Funcionalidades</h5>
+                <h5><i class="bi bi-check2-square me-2"></i>Funcionalidades Principales</h5>
                 <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <div class="card h-100 border-success">
+                            <div class="card-body">
+                                <h6><i class="bi bi-box-seam text-success me-2"></i>Control de Lotes FEFO</h6>
+                                <p class="small"><strong>FEFO = First Expired, First Out</strong> (Primero en Vencer, Primero en Salir). El sistema selecciona automáticamente el lote más próximo a vencer.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-warning">
+                            <div class="card-body">
+                                <h6><i class="bi bi-exclamation-triangle text-warning me-2"></i>Alertas de Vencimiento</h6>
+                                <p class="small">Monitoreo automático con alertas para productos próximos a vencer (30, 60, 90 días) y vencidos.</p>
+                            </div>
+                        </div>
+                    </div>
                     <div class="col-md-6">
                         <div class="card h-100">
                             <div class="card-body">
@@ -578,19 +594,51 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h6><i class="bi bi-box-seam text-success me-2"></i>Lotes y Vencimientos</h6>
-                                <p class="small">Control de lotes de productos con fechas de vencimiento y alertas automáticas.</p>
+                </div>
+                
+                <hr />
+                
+                <h5><i class="bi bi-toggle-on me-2"></i>Cómo Activar Control de Lotes en un Producto</h5>
+                <ol>
+                    <li>Vaya a <strong>Productos → Administrar Productos</strong></li>
+                    <li>Edite el producto deseado</li>
+                    <li>Active la opción <strong>"Controla Lote"</strong> ✅</li>
+                    <li><strong>Guarde</strong> el producto</li>
+                </ol>
+                
+                <div class="alert alert-success mt-3">
+                    <i class="bi bi-magic me-2"></i>
+                    <strong>Lotes Automáticos:</strong> Al activar "Controla Lote" por primera vez, el sistema crea automáticamente un lote inicial <code>STOCK-INICIAL</code> con el stock existente del producto. No necesita crear lotes manualmente para productos existentes.
+                </div>
+                
+                <hr />
+                
+                <h5><i class="bi bi-diagram-3 me-2"></i>Flujo de Trabajo con Lotes</h5>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <i class="bi bi-bag-plus fs-3 text-primary"></i>
+                                <p class="small mb-0"><strong>1. Compra</strong></p>
+                                <p class="small mb-0 text-muted">Ingresar Lote y Vencimiento</p>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h6><i class="bi bi-printer text-warning me-2"></i>Ticket Farmacia</h6>
-                                <p class="small">Formato de ticket especial que incluye información de precio ministerio y datos de receta.</p>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <i class="bi bi-sort-up fs-3 text-success"></i>
+                                <p class="small mb-0"><strong>2. FEFO</strong></p>
+                                <p class="small mb-0 text-muted">Sistema ordena por vencimiento</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <i class="bi bi-cart-check fs-3 text-info"></i>
+                                <p class="small mb-0"><strong>3. Venta</strong></p>
+                                <p class="small mb-0 text-muted">Descuenta del lote más antiguo</p>
                             </div>
                         </div>
                     </div>
@@ -598,17 +646,20 @@
                 
                 <hr />
                 
-                <h5><i class="bi bi-toggle-on me-2"></i>Cómo Activar</h5>
-                <ol>
-                    <li>Vaya a <strong>Configuración → Config. General</strong></li>
-                    <li>Busque la sección <strong>"Modo Farmacia"</strong></li>
-                    <li>Active la opción <strong>"Habilitar Modo Farmacia"</strong></li>
-                    <li>Guarde los cambios</li>
-                </ol>
+                <h5><i class="bi bi-info-circle me-2"></i>Información en Reportes</h5>
+                <p class="small">Los informes detallados (Ventas, Compras, Productos) ahora incluyen columnas de <strong>Lote</strong> y <strong>Vencimiento</strong> para productos con control de lote habilitado.</p>
                 
-                <a href="/configuracion-sistema" class="btn btn-info mt-3">
-                    <i class="bi bi-gear me-1"></i>Ir a Configuración
-                </a>
+                <div class="mt-4">
+                    <a href="/inventario/lotes" class="btn btn-info me-2">
+                        <i class="bi bi-box-seam me-1"></i>Gestión de Lotes
+                    </a>
+                    <a href="/inventario/alertas-vencimiento" class="btn btn-warning me-2">
+                        <i class="bi bi-exclamation-triangle me-1"></i>Alertas Vencimiento
+                    </a>
+                    <a href="/productos" class="btn btn-outline-info">
+                        <i class="bi bi-box me-1"></i>Productos
+                    </a>
+                </div>
             </div>
         </div>
     };

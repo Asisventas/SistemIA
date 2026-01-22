@@ -13,6 +13,7 @@
 @inject ICajaProvider CajaProvider
 @inject ICajaService CajaService
 @inject IInventarioService Inventario
+@inject ILoteService LoteService
 @inject IJSRuntime JS
 @inject PermisosService PermisosService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -1205,9 +1206,17 @@
 
     private async Task Guardar()
     {
+        // ========== PROTECCIÓN CONTRA DOBLE GUARDADO ==========
+        if (_guardando)
+        {
+            Console.WriteLine("[NotasCredito] Clic duplicado en Guardar ignorado - operación en curso");
+            return;
+        }
+        
         if (!ValidarDatos()) return;
         
         _guardando = true;
+        await InvokeAsync(StateHasChanged);
         
         try
         {
@@ -1314,6 +1323,13 @@
 
     private async Task GuardarYConfirmar()
     {
+        // ========== PROTECCIÓN CONTRA DOBLE GUARDADO ==========
+        if (_guardando)
+        {
+            Console.WriteLine("[NotasCredito] Clic duplicado en GuardarYConfirmar ignorado - operación en curso");
+            return;
+        }
+        
         if (!ValidarDatos()) return;
         
         // Validar que no exceda el saldo disponible de la factura
@@ -1350,17 +1366,93 @@
         // Procesar stock si corresponde
         if (_afectaStock != 0)
         {
+            // Obtener información de lotes de los productos involucrados
+            var productosIds = _detalles.Where(d => d.IdProducto > 0).Select(d => d.IdProducto).ToList();
+            var productosConLote = await db.Productos.AsNoTracking()
+                .Where(p => productosIds.Contains(p.IdProducto))
+                .Select(p => new { p.IdProducto, p.ControlaLote, p.IdDepositoPredeterminado })
+                .ToListAsync();
+            
             foreach (var det in _detalles)
             {
                 if (det.IdProducto > 0)
                 {
-                    var producto = await db.Productos.FindAsync(det.IdProducto);
-                    var depositoId = producto?.IdDepositoPredeterminado ?? 1;
+                    var prodInfo = productosConLote.FirstOrDefault(p => p.IdProducto == det.IdProducto);
+                    var depositoId = prodInfo?.IdDepositoPredeterminado ?? 1;
                     
                     // Tipo: 1 = Entrada, 2 = Salida
                     var tipoMov = _afectaStock == 1 ? 1 : 2;
                     var motivo = $"NC #{_nc.NumeroNota} - {_nc.Motivo}";
                     
+                    // ========== MANEJO DE LOTES ==========
+                    if (prodInfo?.ControlaLote == true)
+                    {
+                        if (_afectaStock == 1)
+                        {
+                            // ENTRADA (devolución del cliente): Incrementar lote más reciente o crear nuevo
+                            var loteReciente = await db.ProductosLotes
+                                .Where(l => l.IdProducto == det.IdProducto && l.IdDeposito == depositoId && l.Stock > 0)
+                                .OrderByDescending(l => l.FechaCreacion)
+                                .FirstOrDefaultAsync();
+                            
+                            if (loteReciente != null)
+                            {
+                                await LoteService.IncrementarStockLoteAsync(
+                                    loteReciente.IdProductoLote,
+                                    det.Cantidad,
+                                    "NotaCreditoVenta",
+                                    _nc.IdNotaCredito,
+                                    det.IdNotaCreditoDetalle,
+                                    motivo,
+                                    _usuarioActual ?? "Sistema"
+                                );
+                                Console.WriteLine($"[NC VENTA LOTES] Producto {det.IdProducto}: Incrementado {det.Cantidad} al lote {loteReciente.NumeroLote}");
+                            }
+                            else
+                            {
+                                // Crear nuevo lote automático
+                                var numeroLoteAuto = $"NCV{_nc.IdNotaCredito}-{DateTime.Now:yyyyMMddHHmm}";
+                                await LoteService.CrearLoteAsync(
+                                    det.IdProducto,
+                                    depositoId,
+                                    numeroLoteAuto,
+                                    null, // Sin fecha de vencimiento
+                                    det.Cantidad,
+                                    det.PrecioUnitario,
+                                    null, // Sin IdCompra
+                                    null, // Sin IdCompraDetalle
+                                    _usuarioActual ?? "Sistema"
+                                );
+                                Console.WriteLine($"[NC VENTA LOTES] Producto {det.IdProducto}: Creado lote automático {numeroLoteAuto} con {det.Cantidad}");
+                            }
+                        }
+                        else
+                        {
+                            // SALIDA: Usar FEFO para descontar (poco común en NC Venta, pero por si acaso)
+                            var cantidadRestante = det.Cantidad;
+                            var lotesDisponibles = await LoteService.ObtenerLotesFEFOParaVentaAsync(det.IdProducto, depositoId);
+                            
+                            foreach (var lote in lotesDisponibles)
+                            {
+                                if (cantidadRestante <= 0) break;
+                                
+                                var cantADescontar = Math.Min(cantidadRestante, lote.Stock);
+                                await LoteService.DescontarStockLoteAsync(
+                                    lote.IdProductoLote,
+                                    cantADescontar,
+                                    "NotaCreditoVenta",
+                                    _nc.IdNotaCredito,
+                                    det.IdNotaCreditoDetalle,
+                                    motivo,
+                                    _usuarioActual ?? "Sistema"
+                                );
+                                cantidadRestante -= cantADescontar;
+                                Console.WriteLine($"[NC VENTA LOTES] Producto {det.IdProducto}: Descontado {cantADescontar} del lote {lote.NumeroLote}");
+                            }
+                        }
+                    }
+                    
+                    // Ajustar stock general (siempre, con o sin lote)
                     await Inventario.AjustarStockAsync(
                         det.IdProducto,
                         depositoId,

@@ -1,2 +1,0 @@
-Msg 18456, Level 14, State 1, Server SERVERSIS, Line 1
-Error de inicio de sesión del usuario 'SERVERSIS\Admin'.

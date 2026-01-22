@@ -1,0 +1,26 @@
+=== XML INPUT 2026-01-20 18:39:57 ===
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+	<soap:Header/>
+	<soap:Body>
+		<rEnviEventoDe xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+			<dId>12529</dId>
+			<dEvReg>
+				<gGroupGesEve xsi:schemaLocation="http://ekuatia.set.gov.py/sifen/xsd siRecepEvento_v150.xsd" xmlns="http://ekuatia.set.gov.py/sifen/xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+					<rGesEve>
+						<rEve Id="12529">
+							<dFecFirma>2026-01-20T18:39:57</dFecFirma>
+							<dVerFor>150</dVerFor>
+							<gGroupTiEvt>
+								<rGeVeCan>
+									<Id>01004952197001002000015412026012010889971412</Id>
+									<mOtEve>PRUEBA</mOtEve>
+								</rGeVeCan>
+							</gGroupTiEvt>
+						</rEve>
+					</rGesEve>
+				</gGroupGesEve>
+			</dEvReg>
+		</rEnviEventoDe>
+	</soap:Body>
+</soap:Envelope>

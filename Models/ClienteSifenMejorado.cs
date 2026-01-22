@@ -258,12 +258,15 @@ namespace SistemIA.Models
         {
             if (TipoDocumentoIdentidadSifen == null) return "No especificado";
             
+            // Catálogo SIFEN v150 - Tipos de documento de identidad receptor (iTipIDRec)
+            // FIX 21-Ene-2026: Actualizado según Manual Técnico SIFEN v150
             return TipoDocumentoIdentidadSifen switch
             {
-                1 => "Cédula de Identidad Paraguaya",
-                2 => "Pasaporte",
-                3 => "Cédula de Identidad Extranjera", 
-                4 => "Otro documento de identidad",
+                1 => "Cédula paraguaya",
+                3 => "Pasaporte",
+                4 => "Carnet de residencia",
+                5 => "Innominado",      // Consumidor Final
+                9 => "Sin documento",
                 _ => "Tipo de documento no válido"
             };
         }

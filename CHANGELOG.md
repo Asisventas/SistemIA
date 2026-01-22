@@ -1,5 +1,26 @@
 # 📋 Historial de Cambios - SistemIA
 
+## Versión 2026.01.21
+
+### 🧾 Nota de Crédito Electrónica (NCE) - SIFEN
+- **NUEVO**: Implementación completa de NCE para SIFEN Paraguay (iTiDE=5)
+- **NUEVO**: Servicio `NCEXmlBuilder.cs` para construcción del XML NCE v150
+- **NUEVO**: 3 endpoints API para NCE SIFEN:
+  - `POST /notascredito/{id}/enviar-sifen` - Envía NCE a SIFEN
+  - `GET /notascredito/{id}/xml-firmado` - Debug del XML generado
+  - `GET /notascredito/{id}/consultar-sifen` - Consulta estado del lote
+- **NUEVO**: UI en NotasCreditoExplorar con badges de estado SIFEN
+- **NUEVO**: Campo `UrlQrSifen` en NotaCreditoVenta para QR firmado
+- Soporte para motivos: Devolución, Descuento, Bonificación, Ajuste de precio, Crédito incobrable
+- Referencia automática a factura original vía `gCamDEAsoc`
+
+### 🔧 Correcciones Técnicas
+- Fix errores de compilación en NCEXmlBuilder (propiedades de modelos)
+- Fix carga de actividades económicas desde `SociedadesActividades`
+- Fix consulta de lote NCE (construcción SOAP correcta)
+
+---
+
 ## Versión 2026.01.06
 
 ### 👥 Módulo de Asistencia - Mejoras
@@ -114,4 +135,4 @@
 
 ---
 
-*Última actualización: 5 de enero de 2026*
+*Última actualización: 21 de enero de 2026*

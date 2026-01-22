@@ -814,7 +814,7 @@ WITH FORMAT, COMPRESSION;
 2️⃣ Selecciona el tipo de informe:
 
 📊 **Ventas Agrupado**: totales por día/vendedor/forma de pago
-📋 **Ventas Detallado**: cada venta con sus productos
+📋 **Ventas Detallado**: cada venta con sus productos, **lote y vencimiento**
 📈 **Ventas por Clasificación**: agrupado por categoría de producto
 💰 **Resumen de Caja**: movimientos de efectivo
 
@@ -822,8 +822,10 @@ WITH FORMAT, COMPRESSION;
 4️⃣ Aplica **filtros** (cliente, vendedor, etc.)
 5️⃣ Click en **Generar**
 
-💡 Puedes **exportar a Excel** o **imprimir** los informes.",
-                    PalabrasClave = "informe venta, reporte venta, estadistica venta, resumen venta, ver ventas",
+💡 Puedes **exportar a Excel** o **imprimir** los informes.
+
+📦 **Nuevo**: El informe detallado ahora muestra columnas de **Lote** y **Vencimiento** para productos con control de lote.",
+                    PalabrasClave = "informe venta, reporte venta, estadistica venta, resumen venta, ver ventas, lote venta",
                     RutaNavegacion = "/informes/ventas-agrupado", Icono = "bi-graph-up", Prioridad = 8,
                     FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
                 },
@@ -1058,6 +1060,14 @@ Depósito ""Principal""
 3️⃣ Activa la opción **""Controla Lote""** ✅
 4️⃣ **Guarda** el producto
 
+## 🎉 Lotes Automáticos (NUEVO)
+Al activar ""Controla Lote"" por primera vez en un producto **con stock existente**, el sistema crea automáticamente un lote llamado **""STOCK-INICIAL""** con:
+- Todo el stock actual del producto
+- Fecha de vencimiento: 1 año desde hoy
+- Depósito: el predeterminado del producto
+
+¡No necesitas crear lotes manualmente para productos existentes!
+
 ## ¿Cuándo activarlo?
 ✅ **Activar** para:
 - Medicamentos y productos farmacéuticos
@@ -1071,8 +1081,40 @@ Depósito ""Principal""
 - Productos de consumo duradero
 
 ⚠️ **Importante**: Una vez que un producto tiene movimientos con lote, no se recomienda desactivar el control.",
-                    PalabrasClave = "activar lote, habilitar lote, controla lote, producto lote, configurar lote",
+                    PalabrasClave = "activar lote, habilitar lote, controla lote, producto lote, configurar lote, lote automatico, stock inicial",
                     RutaNavegacion = "/productos", Icono = "bi-toggle-on", Prioridad = 8,
+                    FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
+                },
+                new()
+                {
+                    Categoria = "Inventario", Subcategoria = "Lotes", Titulo = "Lotes automáticos STOCK-INICIAL",
+                    Contenido = @"## ¿Qué es el lote STOCK-INICIAL?
+
+Cuando activas **""Controla Lote""** en un producto que ya tiene stock, el sistema crea automáticamente un lote llamado **STOCK-INICIAL**.
+
+## ¿Cómo funciona?
+1️⃣ Activas ""Controla Lote"" en el producto
+2️⃣ Al **guardar**, el sistema detecta si hay stock existente
+3️⃣ Crea el lote **STOCK-INICIAL** con:
+   - 📦 Todo el stock actual
+   - 📅 Vencimiento: 1 año desde hoy
+   - 🏢 Depósito predeterminado del producto
+4️⃣ Verás el mensaje: ""Se crearon X lote(s) automáticamente""
+
+## ¿Por qué es útil?
+- ✅ No pierdes el stock existente
+- ✅ Puedes empezar a usar lotes inmediatamente
+- ✅ Las próximas compras ya ingresan con su propio lote
+- ✅ El sistema FEFO funciona correctamente
+
+## Después del lote inicial:
+- Edita el lote para ajustar la fecha de vencimiento real
+- Las nuevas compras crean lotes separados
+- El sistema FEFO prioriza el que vence antes
+
+💡 **Tip**: Si el producto tiene stock en varios depósitos, se crea un lote STOCK-INICIAL para cada depósito.",
+                    PalabrasClave = "stock inicial, lote inicial, lote automatico, crear lote automatico, primer lote, migrar lote",
+                    RutaNavegacion = "/inventario/lotes", Icono = "bi-magic", Prioridad = 9,
                     FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
                 },
 

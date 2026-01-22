@@ -9,6 +9,8 @@
 @inject NavigationManager Nav
 @inject ISucursalProvider SucursalProvider
 @inject IJSRuntime JS
+@inject IInventarioService Inventario
+@inject ILoteService LoteService
 
 <PageProtection Modulo="/notas-credito-compra" Permiso="VIEW">
 <PageTitle>Explorar Notas de Crédito de Compras</PageTitle>
@@ -319,6 +321,7 @@
             
             var nc = await db.NotasCreditoCompras
                 .Include(n => n.Detalles)
+                    .ThenInclude(d => d.Producto)
                 .FirstOrDefaultAsync(n => n.IdNotaCreditoCompra == _ncAnular.IdNotaCreditoCompra);
             
             if (nc == null)
@@ -327,8 +330,32 @@
                 return;
             }
             
-            // TODO: Revertir movimientos de stock si corresponde
-            // if (nc.AfectaStock != 0) { ... }
+            // Revertir movimientos de lotes (para productos con control de lotes)
+            await LoteService.RevertirMovimientoAsync("NotaCreditoCompra", nc.IdNotaCreditoCompra, "Sistema");
+            
+            // Revertir movimientos de stock si la NC afectaba stock
+            if (nc.AfectaStock != 0 && nc.Detalles != null && nc.Detalles.Any())
+            {
+                foreach (var det in nc.Detalles)
+                {
+                    if (det.IdProducto > 0)
+                    {
+                        var depositoId = det.Producto?.IdDepositoPredeterminado ?? 1;
+                        
+                        // Revertir: Si NC restó (2=salida), ahora sumamos (1=entrada) y viceversa
+                        var tipoMov = nc.AfectaStock == 2 ? 1 : 2;
+                        var motivo = $"Anulación NC Compra #{nc.NumeroNota}";
+                        
+                        await Inventario.AjustarStockAsync(
+                            det.IdProducto,
+                            depositoId,
+                            det.Cantidad,
+                            tipoMov,
+                            motivo,
+                            "Sistema");
+                    }
+                }
+            }
             
             nc.Estado = "Anulada";
             nc.Observaciones = (nc.Observaciones ?? "") + $"\n[ANULADA]: {_motivoAnulacion}";

@@ -5290,6 +5290,115 @@ namespace SistemIA.Migrations
                     b.ToTable("RucDnit");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.SalidaStock", b =>
+                {
+                    b.Property<int>("IdSalidaStock")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdSalidaStock"));
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("FechaAnulacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaConfirmacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaSalida")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdDeposito")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MotivoAnulacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("MotivoSalida")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NumeroDocumento")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Observacion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("UsuarioAnulacion")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("UsuarioConfirmacion")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("UsuarioCreacion")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("IdSalidaStock");
+
+                    b.HasIndex("IdDeposito");
+
+                    b.ToTable("SalidasStock");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.SalidaStockDetalle", b =>
+                {
+                    b.Property<int>("IdSalidaStockDetalle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdSalidaStockDetalle"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("CostoUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime?>("FechaVencimientoLote")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdProducto")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdProductoLote")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSalidaStock")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NumeroLote")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Observacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("IdSalidaStockDetalle");
+
+                    b.HasIndex("IdProducto");
+
+                    b.HasIndex("IdProductoLote");
+
+                    b.HasIndex("IdSalidaStock");
+
+                    b.ToTable("SalidasStockDetalle");
+                });
+
             modelBuilder.Entity("SistemIA.Models.Sociedad", b =>
                 {
                     b.Property<int>("IdSociedad")
@@ -6241,6 +6350,9 @@ namespace SistemIA.Migrations
 
                     b.Property<int?>("Turno")
                         .HasColumnType("int");
+
+                    b.Property<string>("UrlQrSifen")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Vendedor")
                         .HasMaxLength(250)
@@ -7690,6 +7802,42 @@ namespace SistemIA.Migrations
                     b.Navigation("Rol");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.SalidaStock", b =>
+                {
+                    b.HasOne("SistemIA.Models.Deposito", "Deposito")
+                        .WithMany()
+                        .HasForeignKey("IdDeposito")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Deposito");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.SalidaStockDetalle", b =>
+                {
+                    b.HasOne("SistemIA.Models.Producto", "Producto")
+                        .WithMany()
+                        .HasForeignKey("IdProducto")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.ProductoLote", "ProductoLote")
+                        .WithMany()
+                        .HasForeignKey("IdProductoLote");
+
+                    b.HasOne("SistemIA.Models.SalidaStock", "SalidaStock")
+                        .WithMany("Detalles")
+                        .HasForeignKey("IdSalidaStock")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Producto");
+
+                    b.Navigation("ProductoLote");
+
+                    b.Navigation("SalidaStock");
+                });
+
             modelBuilder.Entity("SistemIA.Models.Sociedad", b =>
                 {
                     b.HasOne("SistemIA.Models.CiudadCatalogo", null)
@@ -8093,6 +8241,11 @@ namespace SistemIA.Migrations
                     b.Navigation("PermisosModulos");
 
                     b.Navigation("Usuarios");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.SalidaStock", b =>
+                {
+                    b.Navigation("Detalles");
                 });
 
             modelBuilder.Entity("SistemIA.Models.TipoOperacion", b =>

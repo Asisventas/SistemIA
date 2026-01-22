@@ -126,6 +126,11 @@ namespace SistemIA.Models
         
         [MaxLength(50)]
         public string? IdLote { get; set; }
+        
+        /// <summary>
+        /// URL completa del QR con cHashQR (dCarQR del XML firmado)
+        /// </summary>
+        public string? UrlQrSifen { get; set; }
 
         // Usuario
         public int? IdUsuario { get; set; }

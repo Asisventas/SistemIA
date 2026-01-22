@@ -125,6 +125,20 @@ namespace SistemIA.Data
                         RutaPagina = "/inventario/lotes"
                     });
                 }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/inventario/salidas-stock"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Salidas de Stock",
+                        Descripcion = "Registro de salidas de stock (vencimientos, mermas, muestras, etc.)",
+                        Icono = "bi-box-arrow-right",
+                        Orden = 8,
+                        IdModuloPadre = inventario.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/inventario/salidas-stock"
+                    });
+                }
             }
 
             // Agregar submódulos de Clientes si no existen

@@ -656,8 +656,17 @@
                     <div class="card shadow-sm">
                         <div class="card-body">
                             <div class="d-grid gap-2">
-                                <button class="btn btn-primary btn-lg" @onclick="GuardarPresupuesto">
-                                    <i class="fas fa-save me-2"></i>Guardar Presupuesto
+                                <button class="btn btn-primary btn-lg" @onclick="GuardarPresupuesto" disabled="@_guardandoPresupuesto">
+                                    @if (_guardandoPresupuesto)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                        <span>Guardando...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="fas fa-save me-2"></i>
+                                        <span>Guardar Presupuesto</span>
+                                    }
                                 </button>
                                 <button class="btn btn-outline-info" @onclick="VistaPrevia">
                                     <i class="fas fa-eye me-2"></i>Vista Previa PDF
@@ -942,6 +951,7 @@
     private Sucursal? sucursal;
     private bool editando = false;
     private bool mostrarVistaPrevia = false;
+    private bool _guardandoPresupuesto = false;
 
     // Items/Productos del presupuesto
     private List<PresupuestoSistemaDetalle> itemsPresupuesto = new();
@@ -1129,12 +1139,22 @@
 
     private async Task GuardarPresupuesto()
     {
+        // ========== PROTECCIÓN CONTRA DOBLE GUARDADO ==========
+        if (_guardandoPresupuesto)
+        {
+            Console.WriteLine("[PresupuestosSistema] Clic duplicado en Guardar ignorado - operación en curso");
+            return;
+        }
+        
         if (string.IsNullOrWhiteSpace(presupuestoActual.NombreCliente))
         {
             await JS.InvokeVoidAsync("alert", "El nombre del cliente es obligatorio.");
             return;
         }
 
+        _guardandoPresupuesto = true;
+        await InvokeAsync(StateHasChanged);
+        
         try
         {
             await using var ctx = await DbFactory.CreateDbContextAsync();
@@ -1178,6 +1198,11 @@
         catch (Exception ex)
         {
             await JS.InvokeVoidAsync("alert", "Error al guardar: " + ex.Message);
+        }
+        finally
+        {
+            _guardandoPresupuesto = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

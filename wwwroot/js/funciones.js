@@ -8,35 +8,28 @@ window.mostrarModalQR = function (cdc, url) {
     const qrContainer = document.getElementById('qrContainer');
     qrContainer.innerHTML = '';
     
-    // Usar la librería QRCode si está disponible
-    if (typeof QRCode !== 'undefined') {
-        // Crear contenedor para el QR
-        const qrDiv = document.createElement('div');
-        qrDiv.style.display = 'inline-block';
-        qrDiv.style.padding = '10px';
-        qrDiv.style.background = 'white';
-        qrDiv.style.border = '2px solid #dee2e6';
-        qrDiv.style.borderRadius = '8px';
-        qrContainer.appendChild(qrDiv);
-        
-        // Generar QR usando la librería
-        QRCode.toCanvas(qrDiv, url, {
-            width: 200,
-            margin: 2,
-            color: {
-                dark: '#000000',
-                light: '#ffffff'
-            },
-            errorCorrectionLevel: 'M'
-        }, function (error) {
-            if (error) {
-                console.error('Error generando QR:', error);
-                mostrarFallbackQR(qrContainer, url);
-            }
-        });
-    } else {
+    // Crear contenedor para el QR con fondo blanco
+    const qrWrapper = document.createElement('div');
+    qrWrapper.style.display = 'inline-block';
+    qrWrapper.style.padding = '15px';
+    qrWrapper.style.background = 'white';
+    qrWrapper.style.border = '2px solid #dee2e6';
+    qrWrapper.style.borderRadius = '8px';
+    qrContainer.appendChild(qrWrapper);
+    
+    // Usar endpoint LOCAL para generar QR (funciona sin internet)
+    const qrImg = document.createElement('img');
+    qrImg.style.width = '200px';
+    qrImg.style.height = '200px';
+    const encodedUrl = encodeURIComponent(url);
+    qrImg.src = `/api/qr?url=${encodedUrl}`;
+    qrImg.alt = 'Código QR';
+    qrImg.onerror = function() {
+        // Si falla, mostrar fallback
+        qrWrapper.remove();
         mostrarFallbackQR(qrContainer, url);
-    }
+    };
+    qrWrapper.appendChild(qrImg);
     
     // Mostrar modal usando Bootstrap
     const modal = new bootstrap.Modal(document.getElementById('qrModal'));

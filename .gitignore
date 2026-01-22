@@ -377,3 +377,32 @@ pub_fix_decimales_v2/
 
 # Modelo de reconocimiento facial grande
 face_recognition_models/shape_predictor_68_face_landmarks.dat
+# Archivos grandes de referencia SIFEN (DLLs)
+.ai-docs/SifenProyecto2026/Sifen2026Proyec/*.dll
+.ai-docs/SifenProyecto2026/*.dll
+
+# Carpeta publish_selfcontained (binarios compilados)
+publish_selfcontained/
+publish_selfcontained.rar
+
+# Archivos temporales de debug
+output.json
+de_firmado.json
+sifen_debug.json
+sifen_response.json
+
+# Archivos grandes de reconocimiento facial
+face_recognition_models/*.dat
+
+# Carpeta SIFEN Debug Power (binarios de referencia muy grandes)
+.ai-docs/SIFEN/Debug_power/
+
+# Instaladores y backups grandes
+Installer/*.bak
+Installer/*.dll
+
+# Datos RUC grandes
+DatosRUC/
+
+# Actualizador DLLs
+Actualizador/*.dll

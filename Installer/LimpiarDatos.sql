@@ -6,16 +6,21 @@
 -- DATOS QUE SE ELIMINAN:
 --   - Ventas, Compras, Presupuestos y sus detalles
 --   - Notas de crédito (ventas y compras) y sus detalles
---   - Productos (y stock, movimientos, etc.)
+--   - Productos (y stock, lotes, movimientos, etc.)
 --   - Clientes (excepto ID 1 = Consumidor Final)
 --   - Proveedores (excepto ID 1 = Proveedor General)
 --   - Timbrados, Pagos, Cobros, Cierres de caja
---   - Asistencias, Ajustes de stock, Auditoría
+--   - Cuentas por cobrar/pagar, Cuotas
+--   - Transferencias, Salidas de stock, Ajustes
+--   - Asistencias, Auditoría
+--   - Asistente IA (conversaciones, preguntas, etc.)
+--   - Historial de cambios del sistema
+--   - Tipos de cambio históricos
 --
 -- DATOS QUE SE CONSERVAN (Catálogos):
 --   - Sociedades (con certificados SIFEN)
 --   - Sucursales, Cajas, Depósitos
---   - Usuarios, Roles, Permisos
+--   - Usuarios, Roles, Permisos, Módulos
 --   - Monedas, Tipos de IVA, Tipos de Pago
 --   - Tipos de documento, contribuyentes
 --   - Marcas, Clasificaciones
@@ -25,10 +30,20 @@
 --   - **RucDnit** (catálogo de RUC de DNIT - 1.5M registros)
 --   - **ConfiguracionSistema** (modo farmacia, etc.)
 --   - **DescuentosCategorias** (descuentos automáticos)
+--   - **ConfiguracionesAsistenteIA** (config del asistente)
+--   - **ArticulosConocimiento** (base de conocimiento IA)
+--   - **CategoriasConocimiento** (categorías del asistente)
 --
 -- ============================================
 
 SET NOCOUNT ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET NUMERIC_ROUNDABORT OFF;
 
 PRINT '============================================'
 PRINT 'SISTEMÍA - Iniciando limpieza de datos...'
@@ -101,7 +116,35 @@ GO
 -- ============================================
 -- 5. LIMPIAR PAGOS Y COBROS
 -- ============================================
-PRINT '[5/15] Limpiando pagos y cobros...'
+PRINT '[5/15] Limpiando pagos, cobros y cuentas...'
+
+-- Cuotas de cuentas por cobrar
+IF OBJECT_ID('CuentasPorCobrarCuotas', 'U') IS NOT NULL
+    DELETE FROM CuentasPorCobrarCuotas;
+
+-- Cuentas por cobrar
+IF OBJECT_ID('CuentasPorCobrar', 'U') IS NOT NULL
+    DELETE FROM CuentasPorCobrar;
+
+-- Cobros de cuotas
+IF OBJECT_ID('CobrosCuotas', 'U') IS NOT NULL
+    DELETE FROM CobrosCuotas;
+
+-- Cuotas de ventas
+IF OBJECT_ID('VentasCuotas', 'U') IS NOT NULL
+    DELETE FROM VentasCuotas;
+
+-- Detalles de pagos de ventas
+IF OBJECT_ID('VentasPagosDetalles', 'U') IS NOT NULL
+    DELETE FROM VentasPagosDetalles;
+
+-- Pagos de ventas
+IF OBJECT_ID('VentasPagos', 'U') IS NOT NULL
+    DELETE FROM VentasPagos;
+
+-- Cuotas de cuentas por pagar
+IF OBJECT_ID('CuentasPorPagarCuotas', 'U') IS NOT NULL
+    DELETE FROM CuentasPorPagarCuotas;
 
 IF OBJECT_ID('PagosProveedoresDetalles', 'U') IS NOT NULL
     DELETE FROM PagosProveedoresDetalles;
@@ -123,37 +166,85 @@ IF OBJECT_ID('CuotasCobros', 'U') IS NOT NULL
 GO
 
 -- ============================================
--- 6. LIMPIAR CIERRES DE CAJA
+-- 6. LIMPIAR CIERRES DE CAJA Y ENTREGAS
 -- ============================================
-PRINT '[6/15] Limpiando cierres de caja...'
+PRINT '[6/15] Limpiando cierres de caja y entregas...'
+
+-- Detalles de composiciones de caja
+IF OBJECT_ID('ComposicionesCajaDetalles', 'U') IS NOT NULL
+    DELETE FROM ComposicionesCajaDetalles;
+
+-- Composiciones de caja
+IF OBJECT_ID('ComposicionesCaja', 'U') IS NOT NULL
+    DELETE FROM ComposicionesCaja;
 
 IF OBJECT_ID('ComposicionCajaCierres', 'U') IS NOT NULL
     DELETE FROM ComposicionCajaCierres;
+
+-- Entregas de caja
+IF OBJECT_ID('EntregasCaja', 'U') IS NOT NULL
+    DELETE FROM EntregasCaja;
 
 IF OBJECT_ID('CierresCaja', 'U') IS NOT NULL
     DELETE FROM CierresCaja;
 GO
 
 -- ============================================
--- 7. LIMPIAR PRODUCTOS Y STOCK
+-- 7. LIMPIAR PRODUCTOS, STOCK, LOTES Y TRANSFERENCIAS
 -- ============================================
-PRINT '[7/15] Limpiando productos y stock...'
+PRINT '[7/15] Limpiando productos, stock, lotes y transferencias...'
+
+-- Movimientos de lotes
+IF OBJECT_ID('MovimientosLotes', 'U') IS NOT NULL
+    DELETE FROM MovimientosLotes;
+
+-- Lotes de productos
+IF OBJECT_ID('ProductosLotes', 'U') IS NOT NULL
+    DELETE FROM ProductosLotes;
+
+-- Componentes de productos (productos compuestos)
+IF OBJECT_ID('ProductosComponentes', 'U') IS NOT NULL
+    DELETE FROM ProductosComponentes;
 
 -- Movimientos de inventario
 IF OBJECT_ID('MovimientosInventario', 'U') IS NOT NULL
     DELETE FROM MovimientosInventario;
 
+-- Detalles de transferencias de depósito
+IF OBJECT_ID('TransferenciasDepositoDetalle', 'U') IS NOT NULL
+    DELETE FROM TransferenciasDepositoDetalle;
+
+-- Transferencias de depósito
+IF OBJECT_ID('TransferenciasDeposito', 'U') IS NOT NULL
+    DELETE FROM TransferenciasDeposito;
+
+-- Detalles de salidas de stock
+IF OBJECT_ID('SalidasStockDetalle', 'U') IS NOT NULL
+    DELETE FROM SalidasStockDetalle;
+
+-- Salidas de stock
+IF OBJECT_ID('SalidasStock', 'U') IS NOT NULL
+    DELETE FROM SalidasStock;
+
+-- Detalles de remisiones internas
+IF OBJECT_ID('RemisionesInternasDetalles', 'U') IS NOT NULL
+    DELETE FROM RemisionesInternasDetalles;
+
+-- Remisiones internas
+IF OBJECT_ID('RemisionesInternas', 'U') IS NOT NULL
+    DELETE FROM RemisionesInternas;
+
 -- Ajustes de stock detalles
-IF OBJECT_ID('AjusteStockDetalles', 'U') IS NOT NULL
-    DELETE FROM AjusteStockDetalles;
+IF OBJECT_ID('AjustesStockDetalles', 'U') IS NOT NULL
+    DELETE FROM AjustesStockDetalles;
 
 -- Ajustes de stock
 IF OBJECT_ID('AjustesStock', 'U') IS NOT NULL
     DELETE FROM AjustesStock;
 
 -- Stock por depósito
-IF OBJECT_ID('ProductoDepositos', 'U') IS NOT NULL
-    DELETE FROM ProductoDepositos;
+IF OBJECT_ID('ProductosDepositos', 'U') IS NOT NULL
+    DELETE FROM ProductosDepositos;
 
 -- Detalles de listas de precios
 IF OBJECT_ID('ListasPreciosDetalles', 'U') IS NOT NULL
@@ -162,6 +253,10 @@ IF OBJECT_ID('ListasPreciosDetalles', 'U') IS NOT NULL
 -- Precios por cliente
 IF OBJECT_ID('ClientesPrecios', 'U') IS NOT NULL
     DELETE FROM ClientesPrecios;
+
+-- Recetas de ventas
+IF OBJECT_ID('RecetasVentas', 'U') IS NOT NULL
+    DELETE FROM RecetasVentas;
 
 -- Productos
 IF OBJECT_ID('Productos', 'U') IS NOT NULL
@@ -202,9 +297,6 @@ PRINT '[11/15] Limpiando asistencias...'
 
 IF OBJECT_ID('Asistencias', 'U') IS NOT NULL
     DELETE FROM Asistencias;
-
-IF OBJECT_ID('JustificacionesAsistencia', 'U') IS NOT NULL
-    DELETE FROM JustificacionesAsistencia;
 GO
 
 -- ============================================
@@ -214,6 +306,9 @@ PRINT '[12/15] Limpiando auditoría...'
 
 IF OBJECT_ID('RegistrosAuditoria', 'U') IS NOT NULL
     DELETE FROM RegistrosAuditoria;
+
+IF OBJECT_ID('AuditoriasAcciones', 'U') IS NOT NULL
+    DELETE FROM AuditoriasAcciones;
 GO
 
 -- ============================================
@@ -226,6 +321,66 @@ IF OBJECT_ID('DestinatariosInforme', 'U') IS NOT NULL
 
 IF OBJECT_ID('ConfiguracionesCorreo', 'U') IS NOT NULL
     DELETE FROM ConfiguracionesCorreo;
+GO
+
+-- ============================================
+-- 12C. LIMPIAR ASISTENTE IA (Conversaciones, no base de conocimiento)
+-- ============================================
+PRINT '[12C/15] Limpiando datos del asistente IA...'
+
+-- Acciones de usuario
+IF OBJECT_ID('AccionesUsuario', 'U') IS NOT NULL
+    DELETE FROM AccionesUsuario;
+
+-- Solicitudes de soporte de IA
+IF OBJECT_ID('SolicitudesSoporteIA', 'U') IS NOT NULL
+    DELETE FROM SolicitudesSoporteIA;
+
+-- Solicitudes de soporte del asistente (legacy)
+IF OBJECT_ID('SolicitudesSoporteAsistente', 'U') IS NOT NULL
+    DELETE FROM SolicitudesSoporteAsistente;
+
+-- Preguntas sin respuesta
+IF OBJECT_ID('PreguntasSinRespuesta', 'U') IS NOT NULL
+    DELETE FROM PreguntasSinRespuesta;
+
+-- Conversaciones del asistente
+IF OBJECT_ID('ConversacionesAsistente', 'U') IS NOT NULL
+    DELETE FROM ConversacionesAsistente;
+
+-- Registros de error de IA
+IF OBJECT_ID('RegistrosErrorIA', 'U') IS NOT NULL
+    DELETE FROM RegistrosErrorIA;
+GO
+
+-- ============================================
+-- 12D. LIMPIAR HISTORIAL DEL SISTEMA
+-- ============================================
+PRINT '[12D/15] Limpiando historial del sistema...'
+
+-- Conversaciones IA del historial (documentación de desarrollo)
+IF OBJECT_ID('ConversacionesIAHistorial', 'U') IS NOT NULL
+    DELETE FROM ConversacionesIAHistorial;
+
+-- Historial de cambios del sistema
+IF OBJECT_ID('HistorialCambiosSistema', 'U') IS NOT NULL
+    DELETE FROM HistorialCambiosSistema;
+
+-- Tipos de cambio históricos
+IF OBJECT_ID('TiposCambioHistorico', 'U') IS NOT NULL
+    DELETE FROM TiposCambioHistorico;
+GO
+
+-- ============================================
+-- 12E. LIMPIAR PRESUPUESTOS DEL SISTEMA (Cotizaciones comerciales)
+-- ============================================
+PRINT '[12E/15] Limpiando presupuestos del sistema...'
+
+IF OBJECT_ID('PresupuestosSistemaDetalles', 'U') IS NOT NULL
+    DELETE FROM PresupuestosSistemaDetalles;
+
+IF OBJECT_ID('PresupuestosSistema', 'U') IS NOT NULL
+    DELETE FROM PresupuestosSistema;
 GO
 
 -- ============================================
@@ -281,12 +436,40 @@ IF OBJECT_ID('Cobros', 'U') IS NOT NULL
 IF OBJECT_ID('CobrosDetalles', 'U') IS NOT NULL
     DBCC CHECKIDENT ('CobrosDetalles', RESEED, 0);
 
+IF OBJECT_ID('CobrosCuotas', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('CobrosCuotas', RESEED, 0);
+
 IF OBJECT_ID('PagosProveedores', 'U') IS NOT NULL
     DBCC CHECKIDENT ('PagosProveedores', RESEED, 0);
 
--- Cierres
+IF OBJECT_ID('VentasPagos', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('VentasPagos', RESEED, 0);
+
+IF OBJECT_ID('VentasCuotas', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('VentasCuotas', RESEED, 0);
+
+-- Cuentas por cobrar/pagar
+IF OBJECT_ID('CuentasPorCobrar', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('CuentasPorCobrar', RESEED, 0);
+
+IF OBJECT_ID('CuentasPorCobrarCuotas', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('CuentasPorCobrarCuotas', RESEED, 0);
+
+IF OBJECT_ID('CuentasPorPagar', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('CuentasPorPagar', RESEED, 0);
+
+IF OBJECT_ID('CuentasPorPagarCuotas', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('CuentasPorPagarCuotas', RESEED, 0);
+
+-- Cierres y entregas de caja
 IF OBJECT_ID('CierresCaja', 'U') IS NOT NULL
     DBCC CHECKIDENT ('CierresCaja', RESEED, 0);
+
+IF OBJECT_ID('EntregasCaja', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('EntregasCaja', RESEED, 0);
+
+IF OBJECT_ID('ComposicionesCaja', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('ComposicionesCaja', RESEED, 0);
 
 -- Productos
 IF OBJECT_ID('Productos', 'U') IS NOT NULL
@@ -297,6 +480,22 @@ IF OBJECT_ID('MovimientosInventario', 'U') IS NOT NULL
 
 IF OBJECT_ID('AjustesStock', 'U') IS NOT NULL
     DBCC CHECKIDENT ('AjustesStock', RESEED, 0);
+
+-- Lotes y transferencias
+IF OBJECT_ID('ProductosLotes', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('ProductosLotes', RESEED, 0);
+
+IF OBJECT_ID('MovimientosLotes', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('MovimientosLotes', RESEED, 0);
+
+IF OBJECT_ID('TransferenciasDeposito', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('TransferenciasDeposito', RESEED, 0);
+
+IF OBJECT_ID('SalidasStock', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('SalidasStock', RESEED, 0);
+
+IF OBJECT_ID('RemisionesInternas', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('RemisionesInternas', RESEED, 0);
 
 -- Timbrados
 IF OBJECT_ID('Timbrados', 'U') IS NOT NULL
@@ -310,12 +509,45 @@ IF OBJECT_ID('Asistencias', 'U') IS NOT NULL
 IF OBJECT_ID('RegistrosAuditoria', 'U') IS NOT NULL
     DBCC CHECKIDENT ('RegistrosAuditoria', RESEED, 0);
 
+IF OBJECT_ID('AuditoriasAcciones', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('AuditoriasAcciones', RESEED, 0);
+
 -- Configuración de Correo
 IF OBJECT_ID('DestinatariosInforme', 'U') IS NOT NULL
     DBCC CHECKIDENT ('DestinatariosInforme', RESEED, 0);
 
 IF OBJECT_ID('ConfiguracionesCorreo', 'U') IS NOT NULL
     DBCC CHECKIDENT ('ConfiguracionesCorreo', RESEED, 0);
+
+-- Asistente IA
+IF OBJECT_ID('ConversacionesAsistente', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('ConversacionesAsistente', RESEED, 0);
+
+IF OBJECT_ID('SolicitudesSoporteAsistente', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('SolicitudesSoporteAsistente', RESEED, 0);
+
+IF OBJECT_ID('SolicitudesSoporteIA', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('SolicitudesSoporteIA', RESEED, 0);
+
+IF OBJECT_ID('PreguntasSinRespuesta', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('PreguntasSinRespuesta', RESEED, 0);
+
+IF OBJECT_ID('AccionesUsuario', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('AccionesUsuario', RESEED, 0);
+
+IF OBJECT_ID('RegistrosErrorIA', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('RegistrosErrorIA', RESEED, 0);
+
+-- Historial del sistema
+IF OBJECT_ID('HistorialCambiosSistema', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('HistorialCambiosSistema', RESEED, 0);
+
+IF OBJECT_ID('ConversacionesIAHistorial', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('ConversacionesIAHistorial', RESEED, 0);
+
+-- Presupuestos del sistema
+IF OBJECT_ID('PresupuestosSistema', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('PresupuestosSistema', RESEED, 0);
 GO
 
 -- ============================================
@@ -327,23 +559,36 @@ PRINT '============================================'
 PRINT ''
 PRINT 'Datos ELIMINADOS:'
 PRINT '  - Ventas, Compras, Presupuestos y NC (ventas y compras)'
-PRINT '  - Productos, Stock, Movimientos'
+PRINT '  - Productos, Stock, Lotes, Movimientos'
+PRINT '  - Transferencias de deposito, Salidas de stock'
+PRINT '  - Remisiones internas, Ajustes de stock'
+PRINT '  - Cuentas por cobrar y pagar con cuotas'
+PRINT '  - Pagos de ventas, Cobros, Cuotas'
 PRINT '  - Clientes (excepto ID 1)'
 PRINT '  - Proveedores (excepto ID 1)'
-PRINT '  - Timbrados, Pagos, Cobros'
-PRINT '  - Cierres de caja, Asistencias'
-PRINT '  - Auditoría'
-PRINT '  - Configuración de Correo y Destinatarios'
+PRINT '  - Timbrados, Pagos proveedores'
+PRINT '  - Cierres de caja, Entregas de caja, Composiciones'
+PRINT '  - Asistencias'
+PRINT '  - Auditoria, Acciones auditadas'
+PRINT '  - Configuracion de Correo y Destinatarios'
+PRINT '  - Conversaciones del Asistente IA, Errores IA'
+PRINT '  - Historial de cambios del sistema'
+PRINT '  - Tipos de cambio historicos'
+PRINT '  - Presupuestos del sistema (cotizaciones comerciales)'
 PRINT ''
 PRINT 'Datos CONSERVADOS:'
-PRINT '  - Sociedades, Sucursales, Cajas, Depósitos'
-PRINT '  - Usuarios, Roles, Permisos'
+PRINT '  - Sociedades, Sucursales, Cajas, Depositos'
+PRINT '  - Usuarios, Roles, Permisos, Modulos'
 PRINT '  - Monedas, Tipos IVA, Tipos Pago'
-PRINT '  - Marcas, Clasificaciones'
-PRINT '  - Catálogos geográficos'
-PRINT '  - Actividades económicas'
-PRINT '  - RucDnit (catálogo DNIT)'
+PRINT '  - Marcas, Clasificaciones, Categorias'
+PRINT '  - Listas de precios (estructura)'
+PRINT '  - Catalogos geograficos'
+PRINT '  - Actividades economicas'
+PRINT '  - RucDnit (catalogo DNIT)'
 PRINT '  - ConfiguracionSistema, DescuentosCategorias'
+PRINT '  - ConfiguracionesAsistenteIA'
+PRINT '  - ArticulosConocimiento (base de conocimiento IA)'
+PRINT '  - CategoriasConocimiento'
 PRINT ''
 PRINT '============================================'
 GO
