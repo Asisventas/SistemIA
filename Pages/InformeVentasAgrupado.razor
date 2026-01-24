@@ -134,7 +134,33 @@
                 <td>
                   @if (r.Estado == "Confirmado")
                   {
-                    <span class="badge bg-success">@r.Estado</span>
+                    @if (r.EsElectronica)
+                    {
+                      @if (r.EstadoSifen == "ACEPTADO")
+                      {
+                        <span class="badge bg-success" title="SIFEN Aceptado"><i class="bi bi-shield-check me-1"></i>ACEPTADO</span>
+                      }
+                      else if (r.EstadoSifen == "ENVIADO")
+                      {
+                        <span class="badge bg-warning text-dark" title="SIFEN Enviado"><i class="bi bi-clock me-1"></i>ENVIADO</span>
+                      }
+                      else if (r.EstadoSifen == "RECHAZADO")
+                      {
+                        <span class="badge bg-danger" title="SIFEN Rechazado"><i class="bi bi-shield-x me-1"></i>RECHAZADO</span>
+                      }
+                      else if (r.EstadoSifen == "CANCELADO")
+                      {
+                        <span class="badge bg-secondary" title="SIFEN Cancelado"><i class="bi bi-x-circle me-1"></i>CANCELADO</span>
+                      }
+                      else
+                      {
+                        <span class="badge bg-light text-dark border" title="Pendiente SIFEN"><i class="bi bi-hourglass me-1"></i>PENDIENTE</span>
+                      }
+                    }
+                    else
+                    {
+                      <span class="badge bg-success">@r.Estado</span>
+                    }
                   }
                   else if (r.Estado == "Anulado")
                   {
@@ -233,6 +259,8 @@
             from m in monJoin.DefaultIfEmpty()
             join u in ctx.Usuarios.AsNoTracking() on v.IdUsuario equals u.Id_Usu into usuJoin
             from u in usuJoin.DefaultIfEmpty()
+            join caja in ctx.Cajas.AsNoTracking() on v.IdCaja equals caja.IdCaja into cajaJoin
+            from caja in cajaJoin.DefaultIfEmpty()
             select new {
               v.IdVenta, v.Fecha, v.IdCaja, v.Turno, v.IdSucursal,
               v.Establecimiento, v.PuntoExpedicion, v.NumeroFactura,
@@ -244,6 +272,8 @@
               v.Total,
               Condicion = v.FormaPago ?? v.CodigoCondicion ?? "",
               v.Estado,
+              v.EstadoSifen,
+              TipoFacturacion = caja != null ? caja.TipoFacturacion : null,
               Usuario = (u != null ? u.UsuarioNombre : (v.Vendedor ?? ""))
             };
 
@@ -319,6 +349,8 @@
         Ruc = x.Ruc ?? "",
         Condicion = x.Condicion ?? "",
         Estado = x.Estado ?? "",
+        EstadoSifen = x.EstadoSifen ?? "",
+        EsElectronica = (x.TipoFacturacion ?? "").ToUpper().Contains("ELECTR"),
         Moneda = codMon,
         Formato = formato,
         Cambio = cambioParaMostrar,
@@ -398,7 +430,10 @@
     foreach (var r in filas)
     {
       var rowClass = r.Estado == "Anulado" ? "anulado" : "";
-      sb.AppendLine($"      <tr class='{rowClass}'><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Cliente)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Ruc)}</td><td>{r.Condicion}</td><td>{r.Estado}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Total.ToString(r.Formato)}</td><td class='right'>{r.TotalGs:N0}</td><td class='right'>{r.TotalUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
+      var estadoMostrar = r.EsElectronica && r.Estado == "Confirmado" 
+        ? (string.IsNullOrEmpty(r.EstadoSifen) ? "PENDIENTE" : r.EstadoSifen)
+        : r.Estado;
+      sb.AppendLine($"      <tr class='{rowClass}'><td>{++n}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Cliente)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Ruc)}</td><td>{r.Condicion}</td><td>{estadoMostrar}</td><td>{r.Moneda}</td><td class='right'>{(r.Cambio ?? 0):N2}</td><td class='right'>{r.Total.ToString(r.Formato)}</td><td class='right'>{r.TotalGs:N0}</td><td class='right'>{r.TotalUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td></tr>");
     }
     sb.AppendLine("    </tbody>");
     var totalGs = filas.Where(f => f.Estado != "Anulado").Sum(x=>x.TotalGs);
@@ -423,6 +458,9 @@
     int n=0;
     foreach (var r in filas)
     {
+      var estadoMostrar = r.EsElectronica && r.Estado == "Confirmado" 
+        ? (string.IsNullOrEmpty(r.EstadoSifen) ? "PENDIENTE" : r.EstadoSifen)
+        : r.Estado;
       string[] cols = new[]
       {
         (++n).ToString(),
@@ -431,7 +469,7 @@
         r.Cliente,
         r.Ruc,
         r.Condicion,
-        r.Estado,
+        estadoMostrar,
         r.Moneda,
         (r.Cambio ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture),
         r.Total.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -472,13 +510,16 @@
     int n = 0; decimal totalGs = 0, totalUsd = 0;
     foreach (var r in filas)
     {
+      var estadoMostrar = r.EsElectronica && r.Estado == "Confirmado" 
+        ? (string.IsNullOrEmpty(r.EstadoSifen) ? "PENDIENTE" : r.EstadoSifen)
+        : r.Estado;
       ws.Cell(row,1).Value = ++n;
       ws.Cell(row,2).Value = r.Fecha; ws.Cell(row,2).Style.DateFormat.Format = "yyyy-MM-dd";
       ws.Cell(row,3).Value = r.Numero;
       ws.Cell(row,4).Value = r.Cliente;
       ws.Cell(row,5).Value = r.Ruc;
       ws.Cell(row,6).Value = r.Condicion;
-      ws.Cell(row,7).Value = r.Estado;
+      ws.Cell(row,7).Value = estadoMostrar;
       ws.Cell(row,8).Value = r.Moneda;
       ws.Cell(row,9).Value = r.Cambio ?? 0m; ws.Cell(row,9).Style.NumberFormat.Format = "0.00";
       ws.Cell(row,10).Value = r.Total; ws.Cell(row,10).Style.NumberFormat.Format = r.Formato == "N0" ? "#,##0" : "#,##0.00";
@@ -538,8 +579,11 @@
     foreach (var r in filas)
     {
       var rowStyle = r.Estado == "Anulado" ? "text-decoration:line-through; color:#dc3545;" : "";
+      var estadoMostrar = r.EsElectronica && r.Estado == "Confirmado" 
+        ? (string.IsNullOrEmpty(r.EstadoSifen) ? "PENDIENTE" : r.EstadoSifen)
+        : r.Estado;
       sb.AppendLine($"<tr style='{rowStyle}'>");
-      sb.AppendLine($"<td>{r.IdVenta}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Cliente)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Ruc)}</td><td>{r.Condicion}</td><td>{r.Estado}</td><td>{r.Moneda}</td><td style='text-align:right'>{(r.Cambio ?? 0):N2}</td><td style='text-align:right'>{r.Total.ToString(r.Formato)}</td><td style='text-align:right'>{r.TotalGs:N0}</td><td style='text-align:right'>{r.TotalUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td>");
+      sb.AppendLine($"<td>{r.IdVenta}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(r.Numero)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Cliente)}</td><td>{System.Net.WebUtility.HtmlEncode(r.Ruc)}</td><td>{r.Condicion}</td><td>{estadoMostrar}</td><td>{r.Moneda}</td><td style='text-align:right'>{(r.Cambio ?? 0):N2}</td><td style='text-align:right'>{r.Total.ToString(r.Formato)}</td><td style='text-align:right'>{r.TotalGs:N0}</td><td style='text-align:right'>{r.TotalUsd:N2}</td><td>{System.Net.WebUtility.HtmlEncode(r.Usuario)}</td><td>{(r.IdCaja?.ToString() ?? "-")}</td><td>{(r.Turno?.ToString() ?? "-")}</td>");
       sb.AppendLine("</tr>");
     }
     sb.AppendLine("</tbody>");
@@ -561,6 +605,8 @@
     public string Ruc { get; set; } = string.Empty;
     public string Condicion { get; set; } = string.Empty;
     public string Estado { get; set; } = string.Empty;
+    public string EstadoSifen { get; set; } = string.Empty;
+    public bool EsElectronica { get; set; }
     public string Moneda { get; set; } = "PYG";
     public string Formato { get; set; } = "N0";
     public decimal? Cambio { get; set; }

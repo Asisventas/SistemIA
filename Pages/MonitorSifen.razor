@@ -1,0 +1,1527 @@
+@page "/monitor-sifen"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Data
+@using SistemIA.Models
+@using SistemIA.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Cryptography
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject PermisosService PermisosService
+@inject AuthenticationStateProvider AuthStateProvider
+@implements IDisposable
+
+<PageTitle>Monitor Cola SIFEN</PageTitle>
+
+<PageProtection Modulo="/monitor-sifen" Permiso="VIEW">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">
+        <i class="bi bi-broadcast-pin text-primary me-2"></i>
+        Monitor Cola SIFEN
+    </h3>
+    <div class="d-flex align-items-center gap-3">
+        @* Indicador de conexión *@
+        <div class="d-flex align-items-center">
+            @if (_verificandoConexion)
+            {
+                <span class="spinner-border spinner-border-sm text-warning me-2" role="status"></span>
+                <span class="text-warning">Verificando...</span>
+            }
+            else if (_conexionActiva)
+            {
+                <i class="bi bi-wifi text-success fs-5 me-2"></i>
+                <span class="text-success fw-semibold">Conectado a SIFEN</span>
+            }
+            else
+            {
+                <i class="bi bi-wifi-off text-danger fs-5 me-2"></i>
+                <span class="text-danger fw-semibold">Sin conexión</span>
+            }
+        </div>
+        
+        @* Auto-refresh toggle *@
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="autoRefresh" @bind="_autoRefresh" @bind:after="ToggleAutoRefresh">
+            <label class="form-check-label small" for="autoRefresh">Auto-refresh (@_intervaloSegundos s)</label>
+        </div>
+        
+        <button class="btn btn-outline-primary btn-sm" @onclick="CargarDatosAsync" disabled="@_cargando">
+            <i class="bi bi-arrow-clockwise @(_cargando ? "spin" : "")"></i> Actualizar
+        </button>
+    </div>
+</div>
+
+@* Tarjetas de resumen *@
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-warning h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-hourglass-split text-warning fs-1"></i>
+                <h2 class="mb-0 mt-2 text-warning">@_ventasPendientes.Count</h2>
+                <small class="text-muted">Ventas Pendientes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-info h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-receipt text-info fs-1"></i>
+                <h2 class="mb-0 mt-2 text-info">@_ncPendientes.Count</h2>
+                <small class="text-muted">NC Pendientes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-check-circle text-success fs-1"></i>
+                <h2 class="mb-0 mt-2 text-success">@_enviadosHoy</h2>
+                <small class="text-muted">Enviados Hoy</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-danger h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-x-circle text-danger fs-1"></i>
+                <h2 class="mb-0 mt-2 text-danger">@_rechazadosHoy</h2>
+                <small class="text-muted">Rechazados Hoy</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* Info del servicio - AHORA ES SECCIÓN CONFIGURABLE *@
+<div class="card mb-4 shadow-sm border-primary">
+    <div class="card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-gear-fill me-2 text-primary"></i>
+            Configuración del Servicio SIFEN
+        </h5>
+        <div class="d-flex align-items-center gap-2">
+            @if (_guardandoConfig)
+            {
+                <span class="spinner-border spinner-border-sm text-primary"></span>
+            }
+            @if (_configCambios)
+            {
+                <span class="badge bg-warning text-dark">Sin guardar</span>
+            }
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Servicio de Cola</label>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="colaActiva" 
+                           @bind="_configColaActiva" @bind:after="MarcarCambios">
+                    <label class="form-check-label" for="colaActiva">
+                        @(_configColaActiva ? "Activo" : "Inactivo")
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Intervalo (minutos)</label>
+                <input type="number" class="form-control form-control-sm" min="1" max="60" 
+                       @bind="_configIntervaloMinutos" @bind:after="MarcarCambios">
+                <small class="text-muted">1-60 min</small>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Docs por Ciclo</label>
+                <input type="number" class="form-control form-control-sm" min="1" max="50" 
+                       @bind="_configMaxDocumentos" @bind:after="MarcarCambios">
+                <small class="text-muted">Máx. por ciclo</small>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Máx. Reintentos</label>
+                <input type="number" class="form-control form-control-sm" min="1" max="10" 
+                       @bind="_configMaxReintentos" @bind:after="MarcarCambios">
+                <small class="text-muted">Por documento</small>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button class="btn btn-primary btn-sm me-2" @onclick="GuardarConfiguracionAsync" 
+                        disabled="@(!_configCambios || _guardandoConfig)">
+                    <i class="bi bi-save me-1"></i> Guardar Cambios
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="CargarConfiguracionAsync"
+                        disabled="@_guardandoConfig">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i> Recargar
+                </button>
+            </div>
+        </div>
+        <div class="mt-2">
+            <small class="text-muted">
+                <i class="bi bi-info-circle me-1"></i>
+                El servicio verifica la conexión cada <strong>@_configIntervaloMinutos</strong> minuto(s) y envía hasta <strong>@_configMaxDocumentos</strong> documentos por ciclo.
+                @if (_ultimaActualizacion.HasValue)
+                {
+                    <span class="ms-2">| Última actualización: <strong>@_ultimaActualizacion.Value.ToString("HH:mm:ss")</strong></span>
+                }
+            </small>
+        </div>
+    </div>
+</div>
+
+@* ALERTAS - Documentos Rechazados por Error SIFEN (no conexión) *@
+@if (_documentosRechazados.Any())
+{
+    <div class="alert alert-danger shadow-sm mb-4">
+        <div class="d-flex justify-content-between align-items-start">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-exclamation-triangle-fill fs-3 me-3"></i>
+                <div>
+                    <h5 class="alert-heading mb-1">
+                        <i class="bi bi-bell-fill me-1"></i> ¡Atención! Documentos Rechazados por SIFEN
+                    </h5>
+                    <p class="mb-0">
+                        Hay <strong>@_documentosRechazados.Count</strong> documento(s) rechazado(s) por errores de validación SIFEN que requieren revisión manual.
+                    </p>
+                </div>
+            </div>
+            <button class="btn btn-outline-light btn-sm" @onclick="() => _mostrarRechazados = !_mostrarRechazados">
+                <i class="bi @(_mostrarRechazados ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                @(_mostrarRechazados ? "Ocultar" : "Ver Detalles")
+            </button>
+        </div>
+        
+        @if (_mostrarRechazados)
+        {
+            <hr class="my-3 border-light">
+            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-sm table-hover mb-0" style="background: var(--bg-surface, #fff); color: var(--text-primary, #212529);">
+                    <thead style="position: sticky; top: 0; background: var(--bg-surface, #f8f9fa); z-index: 1;">
+                        <tr>
+                            <th style="width:80px">Tipo</th>
+                            <th style="width:80px">ID</th>
+                            <th style="width:100px">Fecha</th>
+                            <th style="width:130px">Número</th>
+                            <th>Cliente</th>
+                            <th class="text-end" style="width:100px">Total</th>
+                            <th>Error SIFEN</th>
+                            <th style="width:110px" class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var doc in _documentosRechazados)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge @(doc.Tipo == "VENTA" ? "bg-primary" : "bg-info")">@doc.Tipo</span>
+                                </td>
+                                <td><strong class="text-primary">@doc.Id</strong></td>
+                                <td><small>@doc.Fecha.ToString("dd/MM/yyyy")</small></td>
+                                <td><code class="small" style="color: var(--text-primary, inherit);">@doc.Numero</code></td>
+                                <td><small title="@doc.Cliente">@(doc.Cliente.Length > 25 ? doc.Cliente[..25] + "..." : doc.Cliente)</small></td>
+                                <td class="text-end"><small class="fw-bold">@doc.Total.ToString("N0")</small></td>
+                                <td>
+                                    <small class="text-danger fw-semibold" title="@doc.MensajeError">@doc.MensajeError</small>
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="@doc.UrlEditar" class="btn btn-outline-light border" title="Revisar documento">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        @if (_puedeEliminar)
+                                        {
+                                            <button class="btn btn-outline-danger" 
+                                                    title="Eliminar documento rechazado" 
+                                                    @onclick="() => AbrirModalEliminarRechazado(doc)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-2">
+                <small class="text-light">
+                    <i class="bi bi-lightbulb me-1"></i>
+                    <strong>Tip:</strong> Revisa los datos del documento (cliente, productos, montos) y corrige los errores antes de reintentar el envío.
+                </small>
+            </div>
+        }
+    </div>
+}
+
+@* Tabla de Ventas Pendientes *@
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-cart-check me-2"></i>
+            Ventas Pendientes de Envío (@_ventasPendientes.Count)
+        </h5>
+        @if (_ventasPendientes.Any())
+        {
+            <button class="btn btn-warning btn-sm" @onclick="ReenviarTodasVentasAsync" disabled="@_enviandoTodo">
+                @if (_enviandoTodo)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-send-fill me-1"></i> Reenviar Todas
+            </button>
+        }
+    </div>
+    <div class="card-body p-0">
+        @if (!_ventasPendientes.Any())
+        {
+            <div class="text-center py-4 text-muted">
+                <i class="bi bi-check-circle fs-1 text-success"></i>
+                <p class="mt-2 mb-0">No hay ventas pendientes de envío</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:80px">ID</th>
+                            <th style="width:100px">Fecha</th>
+                            <th style="width:120px">Número</th>
+                            <th>Cliente</th>
+                            <th class="text-end" style="width:120px">Total</th>
+                            <th style="width:120px">Estado</th>
+                            <th style="width:250px">Mensaje</th>
+                            <th style="width:100px" class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in _ventasPendientes)
+                        {
+                            <tr>
+                                <td><strong>@v.IdVenta</strong></td>
+                                <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td>
+                                    <code>@v.Establecimiento-@v.PuntoExpedicion-@v.NumeroFactura</code>
+                                </td>
+                                <td>
+                                    <span title="@v.Cliente?.RazonSocial">
+                                        @(v.Cliente?.RazonSocial?.Length > 30 ? v.Cliente.RazonSocial[..30] + "..." : v.Cliente?.RazonSocial ?? "S/N")
+                                    </span>
+                                </td>
+                                <td class="text-end fw-bold">@v.Total.ToString("N0")</td>
+                                <td>
+                                    <span class="badge @GetBadgeClass(v.EstadoSifen)">
+                                        @(v.EstadoSifen ?? "SIN ENVIAR")
+                                    </span>
+                                </td>
+                                <td>
+                                    <small class="text-muted" title="@v.MensajeSifen">
+                                        @(v.MensajeSifen?.Length > 50 ? v.MensajeSifen[..50] + "..." : v.MensajeSifen ?? "-")
+                                    </small>
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-primary" 
+                                            @onclick="() => ReenviarVentaAsync(v.IdVenta)"
+                                            disabled="@_enviandoIds.Contains($"V{v.IdVenta}")"
+                                            title="Reenviar a SIFEN">
+                                        @if (_enviandoIds.Contains($"V{v.IdVenta}"))
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-send"></i>
+                                        }
+                                    </button>
+                                    <a href="/ventas/@v.IdVenta" class="btn btn-sm btn-outline-secondary" title="Ver venta">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* Tabla de NC Pendientes *@
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-info bg-opacity-25 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-receipt-cutoff me-2"></i>
+            Notas de Crédito Pendientes (@_ncPendientes.Count)
+        </h5>
+        @if (_ncPendientes.Any())
+        {
+            <button class="btn btn-info btn-sm" @onclick="ReenviarTodasNCAsync" disabled="@_enviandoTodo">
+                @if (_enviandoTodo)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-send-fill me-1"></i> Reenviar Todas
+            </button>
+        }
+    </div>
+    <div class="card-body p-0">
+        @if (!_ncPendientes.Any())
+        {
+            <div class="text-center py-4 text-muted">
+                <i class="bi bi-check-circle fs-1 text-success"></i>
+                <p class="mt-2 mb-0">No hay notas de crédito pendientes de envío</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:80px">ID</th>
+                            <th style="width:100px">Fecha</th>
+                            <th style="width:120px">Número</th>
+                            <th>Cliente</th>
+                            <th class="text-end" style="width:120px">Total</th>
+                            <th style="width:120px">Estado</th>
+                            <th style="width:250px">Mensaje</th>
+                            <th style="width:100px" class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var nc in _ncPendientes)
+                        {
+                            <tr>
+                                <td><strong>@nc.IdNotaCredito</strong></td>
+                                <td>@nc.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td>
+                                    <code>@nc.Establecimiento-@nc.PuntoExpedicion-@nc.NumeroNota.ToString("D7")</code>
+                                </td>
+                                <td>
+                                    <span title="@nc.Cliente?.RazonSocial">
+                                        @(nc.Cliente?.RazonSocial?.Length > 30 ? nc.Cliente.RazonSocial[..30] + "..." : nc.Cliente?.RazonSocial ?? "S/N")
+                                    </span>
+                                </td>
+                                <td class="text-end fw-bold">@nc.Total.ToString("N0")</td>
+                                <td>
+                                    <span class="badge @GetBadgeClass(nc.EstadoSifen)">
+                                        @(nc.EstadoSifen ?? "SIN ENVIAR")
+                                    </span>
+                                </td>
+                                <td>
+                                    <small class="text-muted" title="@nc.MensajeSifen">
+                                        @(nc.MensajeSifen?.Length > 50 ? nc.MensajeSifen[..50] + "..." : nc.MensajeSifen ?? "-")
+                                    </small>
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-primary" 
+                                            @onclick="() => ReenviarNCAsync(nc.IdNotaCredito)"
+                                            disabled="@_enviandoIds.Contains($"NC{nc.IdNotaCredito}")"
+                                            title="Reenviar a SIFEN">
+                                        @if (_enviandoIds.Contains($"NC{nc.IdNotaCredito}"))
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-send"></i>
+                                        }
+                                    </button>
+                                    <a href="/notas-credito/@nc.IdNotaCredito" class="btn btn-sm btn-outline-secondary" title="Ver NC">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* Log de actividad reciente *@
+<div class="card shadow-sm">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">
+            <i class="bi bi-journal-text me-2"></i>
+            Actividad Reciente (últimas 20 operaciones)
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        @if (!_actividadReciente.Any())
+        {
+            <div class="text-center py-4 text-muted">
+                <i class="bi bi-clock-history fs-1"></i>
+                <p class="mt-2 mb-0">No hay actividad SIFEN reciente</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th style="width:150px">Fecha/Hora</th>
+                            <th style="width:80px">Tipo</th>
+                            <th style="width:80px">ID</th>
+                            <th style="width:120px">Estado</th>
+                            <th>Mensaje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var act in _actividadReciente)
+                        {
+                            <tr>
+                                <td><small>@act.Fecha.ToString("dd/MM HH:mm:ss")</small></td>
+                                <td>
+                                    <span class="badge bg-secondary">@act.Tipo</span>
+                                </td>
+                                <td><strong>@act.IdDocumento</strong></td>
+                                <td>
+                                    <span class="badge @GetBadgeClass(act.Estado)">@act.Estado</span>
+                                </td>
+                                <td><small class="text-muted">@act.Mensaje</small></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* Modal de resultado *@
+@if (_mostrarModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header @(_resultadoExitoso ? "bg-success" : "bg-danger") text-white">
+                    <h5 class="modal-title">
+                        <i class="bi @(_resultadoExitoso ? "bi-check-circle" : "bi-x-circle") me-2"></i>
+                        @(_resultadoExitoso ? "Envío Exitoso" : "Error de Envío")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>@_mensajeModal</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _mostrarModal = false">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .spin {
+        animation: spin 1s linear infinite;
+    }
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    
+    /* Soporte para tema oscuro */
+    .card {
+        background: var(--bg-surface, #fff);
+        color: var(--text-primary, #212529);
+    }
+    
+    .card-header {
+        color: var(--text-primary, #212529);
+    }
+    
+    .card-body {
+        color: var(--text-primary, #212529);
+    }
+    
+    .table {
+        color: var(--text-primary, #212529);
+    }
+    
+    .table-light {
+        background: var(--bg-surface, #f8f9fa) !important;
+        color: var(--text-primary, #212529) !important;
+    }
+    
+    .table-light th {
+        color: var(--text-primary, #212529) !important;
+    }
+    
+    .text-muted {
+        color: var(--text-muted, #6c757d) !important;
+    }
+    
+    .form-control, .form-select {
+        background: var(--bg-surface, #fff);
+        color: var(--text-primary, #212529);
+        border-color: var(--bar-border, #dee2e6);
+    }
+    
+    .form-check-label {
+        color: var(--text-primary, #212529);
+    }
+    
+    code {
+        color: var(--text-primary, #d63384);
+    }
+    
+    /* Alert rechazados - mantener colores llamativos */
+    .alert-danger {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    }
+    
+    .alert-danger .table {
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    
+    /* Botones outline en tema oscuro */
+    .btn-outline-light {
+        color: var(--text-primary, #212529);
+        border-color: var(--bar-border, #dee2e6);
+    }
+    
+    .btn-outline-light:hover {
+        background: var(--bg-hover, #e9ecef);
+        color: var(--text-primary, #212529);
+    }
+</style>
+
+@* Modal de confirmación para eliminar documento rechazado *@
+@if (_mostrarModalEliminar)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        Eliminar Documento Rechazado
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalEliminar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Atención:</strong> Esta acción eliminará PERMANENTEMENTE el documento y todos sus registros asociados.
+                    </div>
+                    
+                    @if (_docAEliminar != null)
+                    {
+                        <div class="card mb-3">
+                            <div class="card-body p-3">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <small class="text-muted">Tipo:</small>
+                                        <div><strong>@_docAEliminar.Tipo</strong></div>
+                                    </div>
+                                    <div class="col-6">
+                                        <small class="text-muted">Número:</small>
+                                        <div><code>@_docAEliminar.Numero</code></div>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <small class="text-muted">Cliente:</small>
+                                        <div>@_docAEliminar.Cliente</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <small class="text-muted">Total:</small>
+                                        <div class="fw-bold">Gs. @_docAEliminar.Total.ToString("N0")</div>
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted">Error SIFEN:</small>
+                                    <div class="text-danger small">@_docAEliminar.MensajeError</div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="bi bi-lock me-1"></i>
+                            Ingrese su contraseña para confirmar:
+                        </label>
+                        <input type="password" class="form-control" @bind="_passwordEliminar" 
+                               placeholder="Contraseña del usuario actual"
+                               @onkeydown="OnPasswordKeyDown" />
+                        @if (!string.IsNullOrEmpty(_errorEliminar))
+                        {
+                            <div class="text-danger small mt-1">
+                                <i class="bi bi-x-circle me-1"></i>@_errorEliminar
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalEliminar">
+                        <i class="bi bi-x-lg me-1"></i>Cancelar
+                    </button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmarEliminarRechazado" disabled="@_eliminando">
+                        @if (_eliminando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-trash me-1"></i>Eliminar Permanentemente
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private List<Venta> _ventasPendientes = new();
+    private List<NotaCreditoVenta> _ncPendientes = new();
+    private List<ActividadSifen> _actividadReciente = new();
+    private List<DocumentoRechazado> _documentosRechazados = new();
+    
+    private int _enviadosHoy = 0;
+    private int _rechazadosHoy = 0;
+    
+    private bool _cargando = false;
+    private bool _conexionActiva = false;
+    private bool _verificandoConexion = false;
+    private bool _autoRefresh = true;
+    private int _intervaloSegundos = 30;
+    private DateTime? _ultimaActualizacion;
+    
+    private HashSet<string> _enviandoIds = new();
+    private bool _enviandoTodo = false;
+    
+    private bool _mostrarModal = false;
+    private bool _resultadoExitoso = false;
+    private string _mensajeModal = "";
+    
+    // Configuración SIFEN
+    private bool _configColaActiva = true;
+    private int _configIntervaloMinutos = 2;
+    private int _configMaxDocumentos = 10;
+    private int _configMaxReintentos = 3;
+    private bool _configCambios = false;
+    private bool _guardandoConfig = false;
+    private bool _mostrarRechazados = true;
+    
+    // Variables para eliminar documentos rechazados
+    private bool _puedeEliminar = false;
+    private bool _mostrarModalEliminar = false;
+    private DocumentoRechazado? _docAEliminar = null;
+    private string _passwordEliminar = "";
+    private string _errorEliminar = "";
+    private bool _eliminando = false;
+    private int? _usuarioIdActual = null;
+    
+    private System.Threading.Timer? _timer;
+    private bool _disposed = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener ID del usuario actual para verificar permisos
+        try
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = auth.User;
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var idStr = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(idStr, out var idUsu))
+                {
+                    _usuarioIdActual = idUsu;
+                    // Verificar permiso DELETE para ventas
+                    _puedeEliminar = await PermisosService.TienePermisoAsync(idUsu, "/ventas", "DELETE");
+                }
+            }
+        }
+        catch { /* Sin permisos si falla */ }
+        
+        await CargarConfiguracionAsync();
+        await CargarDatosAsync();
+        await VerificarConexionAsync();
+        
+        if (_autoRefresh)
+        {
+            IniciarAutoRefresh();
+        }
+    }
+    
+    private async Task CargarConfiguracionAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var config = await db.ConfiguracionSistema.FirstOrDefaultAsync();
+            
+            if (config != null)
+            {
+                _configColaActiva = config.SifenColaActiva;
+                _configIntervaloMinutos = config.SifenIntervaloMinutos;
+                _configMaxDocumentos = config.SifenMaxDocumentosPorCiclo;
+                _configMaxReintentos = config.SifenMaxReintentos;
+            }
+            
+            _configCambios = false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MonitorSifen] Error al cargar configuración: {ex.Message}");
+        }
+    }
+    
+    private async Task GuardarConfiguracionAsync()
+    {
+        if (_guardandoConfig) return;
+        _guardandoConfig = true;
+        StateHasChanged();
+        
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var config = await db.ConfiguracionSistema.FirstOrDefaultAsync();
+            
+            if (config == null)
+            {
+                config = new Models.ConfiguracionSistema();
+                db.ConfiguracionSistema.Add(config);
+            }
+            
+            config.SifenColaActiva = _configColaActiva;
+            config.SifenIntervaloMinutos = Math.Max(1, Math.Min(60, _configIntervaloMinutos));
+            config.SifenMaxDocumentosPorCiclo = Math.Max(1, Math.Min(50, _configMaxDocumentos));
+            config.SifenMaxReintentos = Math.Max(1, Math.Min(10, _configMaxReintentos));
+            
+            await db.SaveChangesAsync();
+            
+            _configCambios = false;
+            _resultadoExitoso = true;
+            _mensajeModal = "Configuración guardada exitosamente. Los cambios se aplicarán en el próximo ciclo del servicio.";
+            _mostrarModal = true;
+        }
+        catch (Exception ex)
+        {
+            _resultadoExitoso = false;
+            _mensajeModal = $"Error al guardar configuración: {ex.Message}";
+            _mostrarModal = true;
+        }
+        finally
+        {
+            _guardandoConfig = false;
+        }
+    }
+    
+    private void MarcarCambios()
+    {
+        _configCambios = true;
+    }
+
+    private void IniciarAutoRefresh()
+    {
+        _timer?.Dispose();
+        _timer = new System.Threading.Timer(async _ =>
+        {
+            if (!_disposed)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await CargarDatosAsync();
+                    await VerificarConexionAsync();
+                    StateHasChanged();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(_intervaloSegundos), TimeSpan.FromSeconds(_intervaloSegundos));
+    }
+
+    private void ToggleAutoRefresh()
+    {
+        if (_autoRefresh)
+        {
+            IniciarAutoRefresh();
+        }
+        else
+        {
+            _timer?.Dispose();
+            _timer = null;
+        }
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        if (_cargando) return;
+        _cargando = true;
+        
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var hoy = DateTime.Today;
+            
+            // Ventas pendientes (sin estado, PENDIENTE, o RECHAZADO por conexión)
+            // Nota: Estado puede ser "Confirmada" o "Confirmado" según la versión
+            _ventasPendientes = await db.Ventas
+                .Include(v => v.Cliente)
+                .Include(v => v.Caja)
+                .Where(v => (v.Estado == "Confirmada" || v.Estado == "Confirmado") &&
+                           (v.Caja != null && v.Caja.TipoFacturacion != null && v.Caja.TipoFacturacion.ToUpper().Contains("ELECTR")) &&
+                           (v.EstadoSifen == null || 
+                            v.EstadoSifen == "PENDIENTE" || 
+                            (v.EstadoSifen == "RECHAZADO" && v.MensajeSifen != null && 
+                             (v.MensajeSifen.Contains("conexión") || v.MensajeSifen.Contains("connection") || v.MensajeSifen.Contains("timeout")))))
+                .OrderByDescending(v => v.Fecha)
+                .Take(50)
+                .ToListAsync();
+
+            // NC pendientes
+            _ncPendientes = await db.NotasCreditoVentas
+                .Include(nc => nc.Cliente)
+                .Include(nc => nc.VentaAsociada)
+                .Where(nc => (nc.Estado == "Confirmada" || nc.Estado == "Confirmado") &&
+                            nc.VentaAsociada != null && !string.IsNullOrEmpty(nc.VentaAsociada.CDC) &&
+                            (nc.EstadoSifen == null || 
+                             nc.EstadoSifen == "PENDIENTE" || 
+                             (nc.EstadoSifen == "RECHAZADO" && nc.MensajeSifen != null && 
+                              (nc.MensajeSifen.Contains("conexión") || nc.MensajeSifen.Contains("connection") || nc.MensajeSifen.Contains("timeout")))))
+                .OrderByDescending(nc => nc.Fecha)
+                .Take(50)
+                .ToListAsync();
+
+            // ======== DOCUMENTOS RECHAZADOS POR ERRORES SIFEN (NO conexión) ========
+            // Estos son los que requieren atención manual
+            // Incluye RECHAZADO y también ENVIADO con mensaje de error (algunos quedan ENVIADO pero con código de error)
+            // Detecta cualquier código de error SIFEN en el JSON: "codigo":"XXXX" donde XXXX no es 0260/0300 (éxito)
+            var ventasRechazadas = await db.Ventas
+                .Include(v => v.Cliente)
+                .Where(v => v.MensajeSifen != null &&
+                           !v.MensajeSifen.ToLower().Contains("conexión") &&
+                           !v.MensajeSifen.ToLower().Contains("connection") &&
+                           !v.MensajeSifen.ToLower().Contains("timeout") &&
+                           !v.MensajeSifen.ToLower().Contains("network") &&
+                           (v.EstadoSifen == "RECHAZADO" || 
+                            (v.EstadoSifen == "ENVIADO" && v.CDC == null && v.MensajeSifen.Contains("\"codigo\":"))))
+                .OrderByDescending(v => v.IdVenta)
+                .Take(50)
+                .ToListAsync();
+                
+            var ncRechazadas = await db.NotasCreditoVentas
+                .Include(nc => nc.Cliente)
+                .Where(nc => nc.MensajeSifen != null &&
+                            !nc.MensajeSifen.ToLower().Contains("conexión") &&
+                            !nc.MensajeSifen.ToLower().Contains("connection") &&
+                            !nc.MensajeSifen.ToLower().Contains("timeout") &&
+                            !nc.MensajeSifen.ToLower().Contains("network") &&
+                            (nc.EstadoSifen == "RECHAZADO" || 
+                             (nc.EstadoSifen == "ENVIADO" && nc.CDC == null && nc.MensajeSifen.Contains("\"codigo\":"))))
+                .OrderByDescending(nc => nc.IdNotaCredito)
+                .Take(50)
+                .ToListAsync();
+                
+            _documentosRechazados = ventasRechazadas.Select(v => new DocumentoRechazado
+            {
+                Tipo = "VENTA",
+                Id = v.IdVenta,
+                Fecha = v.Fecha,
+                Numero = $"{v.Establecimiento}-{v.PuntoExpedicion}-{v.NumeroFactura}",
+                Cliente = v.Cliente?.RazonSocial ?? "S/N",
+                Total = v.Total,
+                MensajeError = ExtraerMensajeErrorCompleto(v.MensajeSifen ?? ""),
+                UrlEditar = $"/ventas?id={v.IdVenta}"  // FIX: Usar query param para ModoSoloVista
+            }).Concat(ncRechazadas.Select(nc => new DocumentoRechazado
+            {
+                Tipo = "NC",
+                Id = nc.IdNotaCredito,
+                Fecha = nc.Fecha,
+                Numero = $"{nc.Establecimiento}-{nc.PuntoExpedicion}-{nc.NumeroNota:D7}",
+                Cliente = nc.Cliente?.RazonSocial ?? "S/N",
+                Total = nc.Total,
+                MensajeError = ExtraerMensajeErrorCompleto(nc.MensajeSifen ?? ""),
+                UrlEditar = $"/notas-credito/{nc.IdNotaCredito}"
+            })).OrderByDescending(d => d.Id).Take(50).ToList();
+
+            // Estadísticas de hoy
+            _enviadosHoy = await db.Ventas
+                .Where(v => v.FechaEnvioSifen != null && v.FechaEnvioSifen.Value.Date == hoy && v.EstadoSifen == "ACEPTADO")
+                .CountAsync();
+            
+            _enviadosHoy += await db.NotasCreditoVentas
+                .Where(nc => nc.FechaEnvioSifen != null && nc.FechaEnvioSifen.Value.Date == hoy && nc.EstadoSifen == "ACEPTADO")
+                .CountAsync();
+
+            _rechazadosHoy = await db.Ventas
+                .Where(v => v.FechaEnvioSifen != null && v.FechaEnvioSifen.Value.Date == hoy && v.EstadoSifen == "RECHAZADO")
+                .CountAsync();
+            
+            _rechazadosHoy += await db.NotasCreditoVentas
+                .Where(nc => nc.FechaEnvioSifen != null && nc.FechaEnvioSifen.Value.Date == hoy && nc.EstadoSifen == "RECHAZADO")
+                .CountAsync();
+
+            // Actividad reciente (últimos envíos)
+            var ventasRecientes = await db.Ventas
+                .Where(v => v.FechaEnvioSifen != null && v.FechaEnvioSifen.Value.Date >= hoy.AddDays(-1))
+                .OrderByDescending(v => v.FechaEnvioSifen)
+                .Take(20)
+                .Select(v => new ActividadSifen
+                {
+                    Fecha = v.FechaEnvioSifen!.Value,
+                    Tipo = "VENTA",
+                    IdDocumento = v.IdVenta,
+                    Estado = v.EstadoSifen ?? "?",
+                    Mensaje = v.MensajeSifen ?? ""
+                })
+                .ToListAsync();
+
+            var ncRecientes = await db.NotasCreditoVentas
+                .Where(nc => nc.FechaEnvioSifen != null && nc.FechaEnvioSifen.Value.Date >= hoy.AddDays(-1))
+                .OrderByDescending(nc => nc.FechaEnvioSifen)
+                .Take(20)
+                .Select(nc => new ActividadSifen
+                {
+                    Fecha = nc.FechaEnvioSifen!.Value,
+                    Tipo = "NC",
+                    IdDocumento = nc.IdNotaCredito,
+                    Estado = nc.EstadoSifen ?? "?",
+                    Mensaje = nc.MensajeSifen ?? ""
+                })
+                .ToListAsync();
+
+            _actividadReciente = ventasRecientes
+                .Concat(ncRecientes)
+                .OrderByDescending(a => a.Fecha)
+                .Take(20)
+                .ToList();
+
+            _ultimaActualizacion = DateTime.Now;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MonitorSifen] Error al cargar datos: {ex.Message}");
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task VerificarConexionAsync()
+    {
+        _verificandoConexion = true;
+        StateHasChanged();
+        
+        try
+        {
+            // Intentar ping a SIFEN
+            using var ping = new System.Net.NetworkInformation.Ping();
+            var hosts = new[] { "sifen.set.gov.py", "sifen-test.set.gov.py", "google.com" };
+            
+            foreach (var host in hosts)
+            {
+                try
+                {
+                    var reply = await ping.SendPingAsync(host, 3000);
+                    if (reply.Status == System.Net.NetworkInformation.IPStatus.Success)
+                    {
+                        _conexionActiva = true;
+                        _verificandoConexion = false;
+                        return;
+                    }
+                }
+                catch { }
+            }
+            
+            // Fallback HTTP
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var response = await http.GetAsync("https://sifen-test.set.gov.py");
+            _conexionActiva = response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound;
+        }
+        catch
+        {
+            _conexionActiva = false;
+        }
+        finally
+        {
+            _verificandoConexion = false;
+        }
+    }
+
+    private async Task ReenviarVentaAsync(int idVenta)
+    {
+        var key = $"V{idVenta}";
+        if (_enviandoIds.Contains(key)) return;
+        
+        _enviandoIds.Add(key);
+        StateHasChanged();
+        
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+            var response = await http.PostAsync($"{Navigation.BaseUri}ventas/{idVenta}/enviar-sifen", null);
+            var json = await response.Content.ReadAsStringAsync();
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _resultadoExitoso = true;
+                _mensajeModal = $"Venta {idVenta} enviada exitosamente a SIFEN.";
+            }
+            else
+            {
+                _resultadoExitoso = false;
+                _mensajeModal = $"Error al enviar venta {idVenta}: {json}";
+            }
+            
+            _mostrarModal = true;
+            await CargarDatosAsync();
+        }
+        catch (Exception ex)
+        {
+            _resultadoExitoso = false;
+            _mensajeModal = $"Error: {ex.Message}";
+            _mostrarModal = true;
+        }
+        finally
+        {
+            _enviandoIds.Remove(key);
+        }
+    }
+
+    private async Task ReenviarNCAsync(int idNC)
+    {
+        var key = $"NC{idNC}";
+        if (_enviandoIds.Contains(key)) return;
+        
+        _enviandoIds.Add(key);
+        StateHasChanged();
+        
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+            var response = await http.PostAsync($"{Navigation.BaseUri}notascredito/{idNC}/enviar-sifen", null);
+            var json = await response.Content.ReadAsStringAsync();
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _resultadoExitoso = true;
+                _mensajeModal = $"Nota de Crédito {idNC} enviada exitosamente a SIFEN.";
+            }
+            else
+            {
+                _resultadoExitoso = false;
+                _mensajeModal = $"Error al enviar NC {idNC}: {json}";
+            }
+            
+            _mostrarModal = true;
+            await CargarDatosAsync();
+        }
+        catch (Exception ex)
+        {
+            _resultadoExitoso = false;
+            _mensajeModal = $"Error: {ex.Message}";
+            _mostrarModal = true;
+        }
+        finally
+        {
+            _enviandoIds.Remove(key);
+        }
+    }
+
+    private async Task ReenviarTodasVentasAsync()
+    {
+        if (_enviandoTodo) return;
+        _enviandoTodo = true;
+        StateHasChanged();
+        
+        int exitosos = 0, fallidos = 0;
+        
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+            
+            foreach (var v in _ventasPendientes.ToList())
+            {
+                try
+                {
+                    var response = await http.PostAsync($"{Navigation.BaseUri}ventas/{v.IdVenta}/enviar-sifen", null);
+                    if (response.IsSuccessStatusCode)
+                        exitosos++;
+                    else
+                        fallidos++;
+                    
+                    await Task.Delay(1000); // Pausa entre envíos
+                }
+                catch
+                {
+                    fallidos++;
+                }
+            }
+            
+            _resultadoExitoso = fallidos == 0;
+            _mensajeModal = $"Procesadas {exitosos + fallidos} ventas. Exitosas: {exitosos}, Fallidas: {fallidos}";
+            _mostrarModal = true;
+            
+            await CargarDatosAsync();
+        }
+        finally
+        {
+            _enviandoTodo = false;
+        }
+    }
+
+    private async Task ReenviarTodasNCAsync()
+    {
+        if (_enviandoTodo) return;
+        _enviandoTodo = true;
+        StateHasChanged();
+        
+        int exitosos = 0, fallidos = 0;
+        
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+            
+            foreach (var nc in _ncPendientes.ToList())
+            {
+                try
+                {
+                    var response = await http.PostAsync($"{Navigation.BaseUri}notascredito/{nc.IdNotaCredito}/enviar-sifen", null);
+                    if (response.IsSuccessStatusCode)
+                        exitosos++;
+                    else
+                        fallidos++;
+                    
+                    await Task.Delay(1000);
+                }
+                catch
+                {
+                    fallidos++;
+                }
+            }
+            
+            _resultadoExitoso = fallidos == 0;
+            _mensajeModal = $"Procesadas {exitosos + fallidos} NC. Exitosas: {exitosos}, Fallidas: {fallidos}";
+            _mostrarModal = true;
+            
+            await CargarDatosAsync();
+        }
+        finally
+        {
+            _enviandoTodo = false;
+        }
+    }
+
+    private string GetBadgeClass(string? estado) => estado?.ToUpper() switch
+    {
+        "ACEPTADO" => "bg-success",
+        "RECHAZADO" => "bg-danger",
+        "PENDIENTE" => "bg-warning text-dark",
+        "ENVIADO" => "bg-info",
+        "CANCELADO" => "bg-secondary",
+        _ => "bg-secondary"
+    };
+    
+    /// <summary>
+    /// Extrae el mensaje de error legible del JSON de respuesta SIFEN
+    /// </summary>
+    private string ExtraerMensajeError(string mensajeJson)
+    {
+        if (string.IsNullOrWhiteSpace(mensajeJson))
+            return "Error desconocido";
+            
+        try
+        {
+            // Intentar extraer "mensaje" del JSON
+            if (mensajeJson.Contains("\"mensaje\":"))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(mensajeJson, "\"mensaje\"\\s*:\\s*\"([^\"]+)\"");
+                if (match.Success)
+                    return match.Groups[1].Value;
+            }
+            
+            // Intentar extraer código y mensaje
+            if (mensajeJson.Contains("\"codigo\":"))
+            {
+                var codigoMatch = System.Text.RegularExpressions.Regex.Match(mensajeJson, "\"codigo\"\\s*:\\s*\"([^\"]+)\"");
+                if (codigoMatch.Success)
+                {
+                    var codigo = codigoMatch.Groups[1].Value;
+                    return $"Error SIFEN {codigo}: {ObtenerDescripcionErrorSifen(codigo)}";
+                }
+            }
+            
+            // Si es muy largo, truncar
+            if (mensajeJson.Length > 100)
+                return mensajeJson[..100] + "...";
+                
+            return mensajeJson;
+        }
+        catch
+        {
+            return mensajeJson.Length > 100 ? mensajeJson[..100] + "..." : mensajeJson;
+        }
+    }
+    
+    /// <summary>
+    /// Extrae el mensaje de error COMPLETO para mostrar en la tabla
+    /// Formato: "Código: XXXX - Mensaje"
+    /// </summary>
+    private string ExtraerMensajeErrorCompleto(string mensajeJson)
+    {
+        if (string.IsNullOrWhiteSpace(mensajeJson))
+            return "Error desconocido";
+            
+        try
+        {
+            string codigo = "";
+            string mensaje = "";
+            
+            // Extraer código
+            var codigoMatch = System.Text.RegularExpressions.Regex.Match(mensajeJson, "\"codigo\"\\s*:\\s*\"([^\"]+)\"");
+            if (codigoMatch.Success)
+                codigo = codigoMatch.Groups[1].Value;
+            
+            // Extraer mensaje
+            var mensajeMatch = System.Text.RegularExpressions.Regex.Match(mensajeJson, "\"mensaje\"\\s*:\\s*\"([^\"]+)\"");
+            if (mensajeMatch.Success)
+                mensaje = mensajeMatch.Groups[1].Value;
+            
+            if (!string.IsNullOrEmpty(codigo) && !string.IsNullOrEmpty(mensaje))
+                return $"{codigo}: {mensaje}";
+            else if (!string.IsNullOrEmpty(codigo))
+                return $"{codigo}: {ObtenerDescripcionErrorSifen(codigo)}";
+            else if (!string.IsNullOrEmpty(mensaje))
+                return mensaje;
+                
+            // Si no tiene formato JSON, devolver tal cual (truncado si muy largo)
+            return mensajeJson.Length > 50 ? mensajeJson[..50] + "..." : mensajeJson;
+        }
+        catch
+        {
+            return mensajeJson.Length > 50 ? mensajeJson[..50] + "..." : mensajeJson;
+        }
+    }
+    
+    /// <summary>
+    /// Obtiene descripción del código de error SIFEN
+    /// </summary>
+    private string ObtenerDescripcionErrorSifen(string codigo) => codigo switch
+    {
+        "0160" => "XML Mal Formado",
+        "0300" => "Error en firma digital",
+        "0400" => "RUC no habilitado",
+        "0500" => "CDC duplicado",
+        "0600" => "Timbrado vencido",
+        "1303" => "Tipo contribuyente receptor inválido",
+        "1313" => "Descripción tipo documento identidad incorrecta",
+        _ => "Ver detalles del documento"
+    };
+
+    #region Eliminar Documentos Rechazados
+    
+    private void AbrirModalEliminarRechazado(DocumentoRechazado doc)
+    {
+        _docAEliminar = doc;
+        _passwordEliminar = "";
+        _errorEliminar = "";
+        _mostrarModalEliminar = true;
+    }
+    
+    private void CerrarModalEliminar()
+    {
+        _mostrarModalEliminar = false;
+        _docAEliminar = null;
+        _passwordEliminar = "";
+        _errorEliminar = "";
+        _eliminando = false;
+    }
+    
+    private async Task OnPasswordKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ConfirmarEliminarRechazado();
+        }
+    }
+    
+    private async Task ConfirmarEliminarRechazado()
+    {
+        if (_docAEliminar == null || string.IsNullOrWhiteSpace(_passwordEliminar))
+        {
+            _errorEliminar = "Ingrese su contraseña";
+            return;
+        }
+        
+        _eliminando = true;
+        _errorEliminar = "";
+        StateHasChanged();
+        
+        try
+        {
+            // Verificar contraseña del usuario actual
+            if (!await ValidarPasswordUsuarioActualAsync(_passwordEliminar))
+            {
+                _errorEliminar = "Contraseña incorrecta";
+                _eliminando = false;
+                return;
+            }
+            
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            if (_docAEliminar.Tipo == "VENTA")
+            {
+                await EliminarVentaRechazadaAsync(ctx, _docAEliminar.Id);
+            }
+            else if (_docAEliminar.Tipo == "NC")
+            {
+                await EliminarNCRechazadaAsync(ctx, _docAEliminar.Id);
+            }
+            
+            // Cerrar modal y recargar datos
+            CerrarModalEliminar();
+            await CargarDatosAsync();
+            
+            await JS.InvokeVoidAsync("alert", $"✅ {_docAEliminar?.Tipo} #{_docAEliminar?.Id} eliminada exitosamente.");
+        }
+        catch (Exception ex)
+        {
+            _errorEliminar = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _eliminando = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task<bool> ValidarPasswordUsuarioActualAsync(string password)
+    {
+        try
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = auth.User;
+            if (user?.Identity == null || !user.Identity.IsAuthenticated) return false;
+            
+            var idStr = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(idStr) || !int.TryParse(idStr, out var idUsu)) return false;
+            
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var usuario = await ctx.Usuarios.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id_Usu == idUsu && u.Estado_Usu);
+            
+            if (usuario?.ContrasenaHash == null || usuario.ContrasenaHash.Length == 0) return false;
+            
+            using var sha = SHA256.Create();
+            var hashBytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
+            return hashBytes.SequenceEqual(usuario.ContrasenaHash);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    private async Task EliminarVentaRechazadaAsync(AppDbContext ctx, int idVenta)
+    {
+        var venta = await ctx.Ventas
+            .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+        
+        if (venta == null)
+            throw new Exception("Venta no encontrada");
+        
+        // Solo permitir eliminar si está RECHAZADO por SIFEN
+        if (venta.EstadoSifen != "RECHAZADO")
+            throw new Exception("Solo se pueden eliminar documentos con estado RECHAZADO");
+        
+        // Eliminar pagos de la venta (VentasPagos)
+        var pagos = await ctx.VentasPagos.Where(p => p.IdVenta == idVenta).ToListAsync();
+        if (pagos.Any())
+            ctx.VentasPagos.RemoveRange(pagos);
+        
+        // Si tiene cuenta por cobrar asociada, eliminar cuotas y la cuenta
+        var cuentaCobrar = await ctx.CuentasPorCobrar
+            .Include(c => c.Cuotas)
+            .FirstOrDefaultAsync(c => c.IdVenta == idVenta);
+        
+        if (cuentaCobrar != null)
+        {
+            // Verificar que no tenga cobros
+            var tieneCobros = await ctx.CobrosCuotas
+                .AnyAsync(cc => cc.IdCuentaPorCobrar == cuentaCobrar.IdCuentaPorCobrar && cc.Estado != "ANULADO");
+            
+            if (tieneCobros)
+                throw new Exception("La venta tiene cobros asociados que no están anulados. Anule los cobros primero.");
+            
+            // Eliminar cobros anulados
+            var cobrosAnulados = await ctx.CobrosCuotas
+                .Where(cc => cc.IdCuentaPorCobrar == cuentaCobrar.IdCuentaPorCobrar)
+                .ToListAsync();
+            if (cobrosAnulados.Any())
+                ctx.CobrosCuotas.RemoveRange(cobrosAnulados);
+            
+            // Eliminar cuotas
+            if (cuentaCobrar.Cuotas?.Any() == true)
+                ctx.CuentasPorCobrarCuotas.RemoveRange(cuentaCobrar.Cuotas);
+            
+            ctx.CuentasPorCobrar.Remove(cuentaCobrar);
+        }
+        
+        // Eliminar detalles de la venta (consultados por separado ya que Venta no tiene navegación directa)
+        var detalles = await ctx.VentasDetalles.Where(d => d.IdVenta == idVenta).ToListAsync();
+        if (detalles.Any())
+            ctx.VentasDetalles.RemoveRange(detalles);
+        
+        // Eliminar la venta
+        ctx.Ventas.Remove(venta);
+        
+        await ctx.SaveChangesAsync();
+    }
+    
+    private async Task EliminarNCRechazadaAsync(AppDbContext ctx, int idNc)
+    {
+        var nc = await ctx.NotasCreditoVentas
+            .Include(n => n.Detalles)
+            .FirstOrDefaultAsync(n => n.IdNotaCredito == idNc);
+        
+        if (nc == null)
+            throw new Exception("Nota de crédito no encontrada");
+        
+        // Solo permitir eliminar si está RECHAZADO por SIFEN
+        if (nc.EstadoSifen != "RECHAZADO")
+            throw new Exception("Solo se pueden eliminar documentos con estado RECHAZADO");
+        
+        // Eliminar detalles de la NC
+        if (nc.Detalles?.Any() == true)
+            ctx.NotasCreditoVentasDetalles.RemoveRange(nc.Detalles);
+        
+        // Eliminar la NC
+        ctx.NotasCreditoVentas.Remove(nc);
+        
+        await ctx.SaveChangesAsync();
+    }
+    
+    #endregion
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _timer?.Dispose();
+    }
+
+    private class ActividadSifen
+    {
+        public DateTime Fecha { get; set; }
+        public string Tipo { get; set; } = "";
+        public int IdDocumento { get; set; }
+        public string Estado { get; set; } = "";
+        public string Mensaje { get; set; } = "";
+    }
+    
+    private class DocumentoRechazado
+    {
+        public string Tipo { get; set; } = "";
+        public int Id { get; set; }
+        public DateTime Fecha { get; set; }
+        public string Numero { get; set; } = "";
+        public string Cliente { get; set; } = "";
+        public decimal Total { get; set; }
+        public string MensajeError { get; set; } = "";
+        public string UrlEditar { get; set; } = "";
+    }
+}

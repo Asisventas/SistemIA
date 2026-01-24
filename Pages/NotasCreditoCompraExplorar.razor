@@ -79,6 +79,7 @@
                     <table class="table table-hover table-sm align-middle">
                         <thead class="table-dark">
                             <tr>
+                                <th style="width:70px;">ID Compra</th>
                                 <th style="width:140px;">Número</th>
                                 <th style="width:100px;">Fecha</th>
                                 <th>Proveedor</th>
@@ -93,6 +94,7 @@
                             @foreach (var nc in _notasCredito)
                             {
                                 <tr>
+                                    <td class="text-muted small">@(nc.IdCompraAsociada?.ToString() ?? "-")</td>
                                     <td class="fw-bold">@nc.Establecimiento-@nc.PuntoExpedicion-@nc.NumeroNota</td>
                                     <td>@nc.Fecha.ToString("dd/MM/yyyy")</td>
                                     <td>@(nc.NombreProveedor ?? nc.Proveedor?.RazonSocial ?? "-")</td>
@@ -126,7 +128,7 @@
                         </tbody>
                         <tfoot class="table-light">
                             <tr>
-                                <td colspan="5" class="text-end fw-bold">Total:</td>
+                                <td colspan="6" class="text-end fw-bold">Total:</td>
                                 <td class="text-end fw-bold">@_notasCredito.Where(n => n.Estado == "Confirmada").Sum(n => n.Total).ToString("N0")</td>
                                 <td colspan="2"></td>
                             </tr>
@@ -265,8 +267,7 @@
         _totalPaginas = (int)Math.Ceiling((double)_totalRegistros / _registrosPorPagina);
         
         _notasCredito = await query
-            .OrderByDescending(n => n.Fecha)
-            .ThenByDescending(n => n.IdNotaCreditoCompra)
+            .OrderByDescending(n => n.IdNotaCreditoCompra)
             .Skip((_pagina - 1) * _registrosPorPagina)
             .Take(_registrosPorPagina)
             .ToListAsync();

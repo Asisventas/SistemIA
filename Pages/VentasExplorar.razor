@@ -57,7 +57,17 @@
         </select>
       </div>
       <div class="col-md-2">
-        <label class="form-label small text-muted">Acciones</label>
+        <label class="form-label small text-muted">Estado SIFEN</label>
+        <select class="form-select" @bind="filtroEstadoSifen">
+          <option value="">Todos</option>
+          <option value="PENDIENTE">Pendiente (Sin enviar)</option>
+          <option value="ENVIADO">Enviado</option>
+          <option value="ACEPTADO">Aceptado</option>
+          <option value="RECHAZADO">Rechazado</option>
+          <option value="CANCELADO">Cancelado</option>
+        </select>
+      </div>
+      <div class="col-auto d-flex align-items-end">
         <div class="d-flex gap-2">
           <button class="btn btn-primary" @onclick="Buscar" title="Buscar ventas">
             <i class="bi bi-search me-1"></i>Buscar
@@ -275,10 +285,14 @@
                   <button class="btn btn-outline-danger" title="Anular" disabled="@(v.Estado == "Anulado")" @onclick="() => Anular(v.IdVenta)"><i class="bi bi-x-circle"></i></button>
                   <button class="btn btn-outline-warning" title="Recuperar" disabled="@(v.Estado != "Anulado")" @onclick="() => Recuperar(v.IdVenta)"><i class="bi bi-arrow-counterclockwise"></i></button>
                   @{
-                    // SIFEN: Si tiene CDC, NO puede eliminarse (ya existe en SIFEN)
+                    // SIFEN: Si tiene CDC Y está ACEPTADA/ENVIADA, NO puede eliminarse
+                    // Las ventas RECHAZADAS por SIFEN SÍ pueden eliminarse
                     var tieneCDC = !string.IsNullOrWhiteSpace(v.CDC);
-                    var deshabilitarEliminar = tieneCDC;
-                    var tooltipEliminar = tieneCDC ? "No se puede eliminar - Registrada en SIFEN (CDC: " + v.CDC?.Substring(0, 20) + "...)" : "Eliminar";
+                    var esRechazada = v.EstadoSifen?.ToUpper() == "RECHAZADO" || v.EstadoSifen?.ToUpper() == "RECHAZADA";
+                    var deshabilitarEliminar = tieneCDC && !esRechazada;
+                    var tooltipEliminar = tieneCDC && !esRechazada 
+                      ? "No se puede eliminar - Registrada en SIFEN (CDC: " + v.CDC?.Substring(0, 20) + "...)" 
+                      : (esRechazada ? "Eliminar venta rechazada por SIFEN" : "Eliminar");
                   }
                   <button class="btn btn-danger" title="@tooltipEliminar" disabled="@deshabilitarEliminar" @onclick="() => Eliminar(v.IdVenta)"><i class="bi bi-trash3"></i></button>
                 </div>
@@ -442,14 +456,32 @@
                   </tr>
                 }
               </tbody>
-              <tfoot class="table-success">
+              <tfoot class="table-light">
                 <tr>
-                  <th colspan="3">Total</th>
+                  <th colspan="3">Total Pagado</th>
                   <th class="text-end">@_composicionDetalles.Sum(x => x.MontoGs).ToString("N0") Gs</th>
                   <th></th>
                 </tr>
               </tfoot>
             </table>
+          </div>
+          
+          @* Resumen: Total Venta, Total Pagado, Vuelto *@
+          <div class="mt-3 p-3 bg-light rounded">
+            <div class="row">
+              <div class="col-md-4">
+                <div class="text-muted small">Total de la Venta</div>
+                <div class="fs-5 fw-bold text-primary">@_composicionTotalVenta.ToString("N0") Gs</div>
+              </div>
+              <div class="col-md-4">
+                <div class="text-muted small">Total Pagado</div>
+                <div class="fs-5 fw-bold text-success">@_composicionDetalles.Sum(x => x.MontoGs).ToString("N0") Gs</div>
+              </div>
+              <div class="col-md-4">
+                <div class="text-muted small">Vuelto</div>
+                <div class="fs-5 fw-bold @(_composicionVuelto >= 0 ? "text-warning" : "text-danger")">@_composicionVuelto.ToString("N0") Gs</div>
+              </div>
+            </div>
           </div>
         }
         else
@@ -642,6 +674,7 @@
   private int? filtroIdVenta = null;
   private string filtroCliente = string.Empty;
   private string filtroEstado = string.Empty;
+  private string filtroEstadoSifen = string.Empty;
   private DateTime? filtroDesde;
   private DateTime? filtroHasta;
   private List<ItemVenta> ventas = new();
@@ -655,6 +688,8 @@
   // Variables para modal de composición de caja
   private int _composicionIdVenta = 0;
   private List<SistemIA.Models.ComposicionCajaDetalle>? _composicionDetalles = null;
+  private decimal _composicionTotalVenta = 0;
+  private decimal _composicionVuelto = 0;
   
   // Variables para modal de restricciones de anulación
   private int _restriccionIdVenta = 0;
@@ -876,6 +911,15 @@
       q = q.Where(x => x.Fecha <= filtroHasta.Value.Date.AddDays(1).AddTicks(-1));
     if (!string.IsNullOrWhiteSpace(filtroEstado))
       q = q.Where(x => x.Estado == filtroEstado);
+    
+    // Filtro por Estado SIFEN
+    if (!string.IsNullOrWhiteSpace(filtroEstadoSifen))
+    {
+      if (filtroEstadoSifen == "PENDIENTE")
+        q = q.Where(x => string.IsNullOrEmpty(x.EstadoSifen));
+      else
+        q = q.Where(x => x.EstadoSifen == filtroEstadoSifen);
+    }
 
     var data = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdVenta).Take(500).ToListAsync();
     
@@ -927,6 +971,7 @@
     filtroIdVenta = null;
     filtroCliente = string.Empty;
     filtroEstado = string.Empty;
+    filtroEstadoSifen = string.Empty;
     
     // Obtener fecha de caja para resetear filtros
     await using var ctx = await DbFactory.CreateDbContextAsync();
@@ -1198,11 +1243,13 @@
     }
 
     // ========================================================================
-    // SIFEN: No permitir eliminar ventas que tengan CDC (ya existen en SIFEN)
-    // Una vez que una factura tiene CDC, NUNCA puede eliminarse físicamente
-    // Solo puede cancelarse mediante eventos SIFEN
+    // SIFEN: No permitir eliminar ventas que tengan CDC Y estén ACEPTADAS/ENVIADAS
+    // Las ventas RECHAZADAS por SIFEN SÍ pueden eliminarse porque nunca fueron aceptadas
+    // Solo puede cancelarse mediante eventos SIFEN las que están ACEPTADAS
     // ========================================================================
-    if (!string.IsNullOrWhiteSpace(venta.CDC))
+    var esRechazadaSifen = venta.EstadoSifen?.ToUpper() == "RECHAZADO" || venta.EstadoSifen?.ToUpper() == "RECHAZADA";
+    
+    if (!string.IsNullOrWhiteSpace(venta.CDC) && !esRechazadaSifen)
     {
       await JS.InvokeVoidAsync("alert", $"❌ No se puede eliminar esta venta.\n\n" +
         $"Esta factura está REGISTRADA en SIFEN y no puede eliminarse físicamente.\n\n" +
@@ -1374,6 +1421,10 @@
       await using var ctx = await DbFactory.CreateDbContextAsync();
       _composicionIdVenta = idVenta;
       
+      // Obtener el total de la venta
+      var venta = await ctx.Ventas.AsNoTracking().FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+      _composicionTotalVenta = venta?.Total ?? 0;
+      
       var composicion = await ctx.ComposicionesCaja
         .Include(c => c.Detalles)!
           .ThenInclude(d => d.Moneda)
@@ -1381,6 +1432,10 @@
         .FirstOrDefaultAsync(c => c.IdVenta == idVenta);
       
       _composicionDetalles = composicion?.Detalles?.ToList() ?? new();
+      
+      // Calcular el vuelto (lo que pagó - total venta)
+      var totalPagado = _composicionDetalles.Sum(x => x.MontoGs);
+      _composicionVuelto = totalPagado - _composicionTotalVenta;
       
       await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('composicionModal')).show()");
     }

@@ -243,22 +243,10 @@ ELSE
 -- ============================================
 -- 14. UNIDADES DE MEDIDA
 -- ============================================
-IF NOT EXISTS (SELECT 1 FROM UnidadesMedida WHERE IdUnidadMedida = 1)
-BEGIN
-    SET IDENTITY_INSERT UnidadesMedida ON;
-    INSERT INTO UnidadesMedida (IdUnidadMedida, Nombre, Abreviatura, CodigoSifen, Activo) VALUES (1, 'Unidad', 'UNI', 77, 1);
-    INSERT INTO UnidadesMedida (IdUnidadMedida, Nombre, Abreviatura, CodigoSifen, Activo) VALUES (2, 'Kilogramo', 'KG', 83, 1);
-    INSERT INTO UnidadesMedida (IdUnidadMedida, Nombre, Abreviatura, CodigoSifen, Activo) VALUES (3, 'Gramo', 'GR', 85, 1);
-    INSERT INTO UnidadesMedida (IdUnidadMedida, Nombre, Abreviatura, CodigoSifen, Activo) VALUES (4, 'Litro', 'LT', 79, 1);
-    INSERT INTO UnidadesMedida (IdUnidadMedida, Nombre, Abreviatura, CodigoSifen, Activo) VALUES (5, 'Metro', 'MT', 86, 1);
-    INSERT INTO UnidadesMedida (IdUnidadMedida, Nombre, Abreviatura, CodigoSifen, Activo) VALUES (6, 'Caja', 'CJ', 77, 1);
-    INSERT INTO UnidadesMedida (IdUnidadMedida, Nombre, Abreviatura, CodigoSifen, Activo) VALUES (7, 'Paquete', 'PQ', 77, 1);
-    INSERT INTO UnidadesMedida (IdUnidadMedida, Nombre, Abreviatura, CodigoSifen, Activo) VALUES (8, 'Docena', 'DOC', 77, 1);
-    SET IDENTITY_INSERT UnidadesMedida OFF;
-    PRINT '✓ Unidades de Medida creadas'
-END
-ELSE
-    PRINT '- Unidades de Medida ya existen'
+-- NOTA: Las unidades de medida ahora son códigos SIFEN en la columna Productos.UnidadMedidaCodigo
+-- No existe una tabla UnidadesMedida separada. Los valores posibles son:
+-- 77 = Unidad, 006 = Paquete
+PRINT '- Unidades de Medida: Usando códigos SIFEN directamente (77=Unidad, 006=Paquete)'
 
 -- ============================================
 -- 15. LISTA DE PRECIOS DEFAULT

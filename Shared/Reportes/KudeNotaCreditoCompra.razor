@@ -155,7 +155,11 @@ else
         @if (compraAsociada != null || !string.IsNullOrEmpty(nc.NumeroFacturaAsociado))
         {
         <div class="doc-asociado">
-            <b>Factura de Compra Asociada:</b> 
+            <b>Factura de Compra Asociada:</b>
+            @if (nc.IdCompraAsociada.HasValue)
+            {
+                <span><b>ID:</b> @nc.IdCompraAsociada |</span>
+            }
             @(nc.EstablecimientoAsociado ?? compraAsociada?.Establecimiento)-@(nc.PuntoExpedicionAsociado ?? compraAsociada?.PuntoExpedicion)-@(nc.NumeroFacturaAsociado ?? compraAsociada?.NumeroFactura) |
             @if (!string.IsNullOrEmpty(nc.TimbradoAsociado ?? compraAsociada?.Timbrado))
             {

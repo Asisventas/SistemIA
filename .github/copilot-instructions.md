@@ -2358,3 +2358,22 @@ Se creó migración para normalizar clientes CONSUMIDOR FINAL:
 - `Models/ClienteSifenMejorado.cs` - Catálogo actualizado
 - Migración: `Fix_TipoDocumento_Innominado_Clientes`
 
+### 🧾 Sesión 22 Enero 2026 - NC SIFEN: Consulta por CDC, QR, y UI
+
+#### Errores Corregidos:
+
+1. **"La NC no tiene IdLote registrado"** - Endpoint ahora soporta consulta por CDC además de IdLote
+2. **Error 0160 en Consulta NC** - Corregido XML: usar `rEnviConsDeRequest` + `dCDC` (no `rEnviConsDe` + `dCDCCons`)
+3. **QR en KuDE no escaneaba** - Ahora usa `UrlQrSifen` con `cHashQR` completo del XML firmado
+4. **Estado no se refrescaba** - `StateHasChanged()` ahora se llama ANTES del modal
+
+#### Mejora UI:
+- **Eliminada impresión Ticket para NC** - Solo A4 (KuDE) disponible
+- Eliminados: `_mostrarTicket`, `_ncSeleccionada`, `ImprimirTicket()`, `CerrarTicket()`
+
+#### Archivos Modificados:
+- `Program.cs` - Endpoint consultar-sifen con soporte CDC
+- `Shared/Reportes/KudeNotaCredito.razor` - QR usa UrlQrSifen
+- `Pages/NotasCreditoExplorar.razor` - StateHasChanged antes de modales, sin ticket
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 22-Ene-2026"

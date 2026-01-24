@@ -34,6 +34,7 @@
         max-width: 280px;
         height: 100vh;
         overflow-x: hidden !important;
+        flex-shrink: 0;
     }
 
     .sidebar-overlay {
@@ -41,12 +42,14 @@
     }
 
     .main-content {
-        margin-left: 280px;
-        width: calc(100% - 280px);
+        /* No necesita margin-left porque sidebar es sticky en flex */
+        margin-left: 0;
+        width: 100%;
+        flex: 1;
     }
 
     .page.sidebar-open .main-content {
-        margin-left: 280px;
+        margin-left: 0;
     }
     
     .nav-toggle-button {
@@ -59,15 +62,17 @@
     .sidebar {
         width: 220px !important;
         max-width: 220px !important;
+        flex-shrink: 0;
     }
     
     .main-content {
-        margin-left: 220px !important;
-        width: calc(100% - 220px) !important;
+        margin-left: 0 !important;
+        width: 100% !important;
+        flex: 1;
     }
     
     .page.sidebar-open .main-content {
-        margin-left: 220px !important;
+        margin-left: 0 !important;
     }
 }
 

@@ -98,11 +98,11 @@
                                     <!-- Módulo padre -->
                                     <tr style="background-color: #2c3e50;">
                                         <td>
-                                            <strong>
+                                            <strong class="text-white">
                                                 <i class="@mc.Modulo.Icono"></i> @mc.Modulo.Nombre
                                             </strong>
                                             <br />
-                                            <small class="text-secondary">@mc.Modulo.Descripcion</small>
+                                            <small style="color: #85c1e9;">@mc.Modulo.Descripcion</small>
                                         </td>
                                         @foreach (var pa in mc.Permisos)
                                         {
@@ -121,9 +121,9 @@
                                     {
                                         <tr style="background-color: #1c2833;">
                                             <td class="ps-5">
-                                                <i class="@submc.Modulo.Icono"></i> @submc.Modulo.Nombre
+                                                <span class="text-light"><i class="@submc.Modulo.Icono"></i> @submc.Modulo.Nombre</span>
                                                 <br />
-                                                <small class="text-secondary">@submc.Modulo.Descripcion</small>
+                                                <small style="color: #7fb3d5;">@submc.Modulo.Descripcion</small>
                                             </td>
                                             @foreach (var pa in submc.Permisos)
                                             {

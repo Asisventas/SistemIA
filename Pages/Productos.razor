@@ -320,10 +320,6 @@
                         <label class="form-label small fw-semibold">Unidad de Medida *</label>
                         <select class="form-select form-select-sm" value="@editando.UnidadMedidaCodigo" @onchange="OnUnidadMedidaChanged">
                           <option value="77">77 - Unidad</option>
-                          <option value="005">005 - Caja</option>
-                          <option value="003">003 - Kilogramo</option>
-                          <option value="001">001 - Metro</option>
-                          <option value="002">002 - Litro</option>
                           <option value="006">006 - Paquete</option>
                         </select>
                       </div>
@@ -1656,11 +1652,11 @@ END");
       editando.CostoUnitarioGs = Math.Round(editando.CostoPaqueteGs.Value / cantidadPorPaquete, 2);
     }
     
-    // NO recalcular Precio Unitario automáticamente - el usuario puede editarlo manualmente
-    // Solo sugerir el valor en el form-text
-    
-    // NO recalcular Precio Ministerio automáticamente - el usuario puede editarlo manualmente
-    // Solo sugerir el valor en el form-text
+    // Recalcular Precio Ministerio Unitario = Precio Ministerio Paquete / Cantidad
+    if (editando.PrecioMinisterioPaquete.HasValue && editando.PrecioMinisterioPaquete.Value > 0)
+    {
+      editando.PrecioMinisterio = Math.Round(editando.PrecioMinisterioPaquete.Value / cantidadPorPaquete, 0);
+    }
   }
 
   private void CalcularFactorYPorcentajeDesdePrecios()

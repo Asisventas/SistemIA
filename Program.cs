@@ -90,6 +90,7 @@ builder.Services.AddScoped<IHistorialCambiosService, HistorialCambiosService>();
 builder.Services.AddScoped<ISaAuthenticationService, SaAuthenticationService>(); // Autenticación SA con memoria de 30 min
 builder.Services.AddScoped<ILoteService, LoteService>(); // Gestión de lotes FEFO para farmacia
 builder.Services.AddScoped<IEventoSifenService, EventoSifenService>(); // Eventos SIFEN (cancelación, inutilización)
+builder.Services.AddHostedService<SifenColaService>(); // Cola de reintentos SIFEN (background service)
 builder.Services.AddSingleton<ChatStateService>(); // Estado del chat (singleton por circuito)
 builder.Services.AddSingleton<RutasSistemaService>(); // Escaneo automático de rutas del sistema
 builder.Services.AddSingleton<ITrackingService, TrackingService>(); // Tracking de acciones del usuario
@@ -949,6 +950,38 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen", async (
     }
     catch (Exception ex)
     {
+        // Si es error de conexión, marcar como PENDIENTE para reintento automático
+        var esErrorConexion = ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
+                              ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+                              ex.Message.Contains("network", StringComparison.OrdinalIgnoreCase) ||
+                              ex.Message.Contains("unable to connect", StringComparison.OrdinalIgnoreCase) ||
+                              ex is System.Net.Http.HttpRequestException ||
+                              ex is System.Net.Sockets.SocketException ||
+                              ex is TaskCanceledException;
+        
+        if (esErrorConexion)
+        {
+            try
+            {
+                await using var dbErr = await dbFactory.CreateDbContextAsync();
+                var ventaErr = await dbErr.Ventas.FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+                if (ventaErr != null)
+                {
+                    ventaErr.EstadoSifen = "PENDIENTE";
+                    ventaErr.MensajeSifen = $"Error de conexión: {ex.Message}. Se reintentará automáticamente cuando haya internet.";
+                    await dbErr.SaveChangesAsync();
+                }
+            }
+            catch { /* best effort */ }
+            
+            return Results.BadRequest(new { 
+                ok = false, 
+                error = ex.Message,
+                pendiente = true,
+                mensaje = "La venta quedó pendiente y se enviará automáticamente cuando haya conexión a internet."
+            });
+        }
+        
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 });
@@ -1291,6 +1324,87 @@ app.MapGet("/ventas/{idVenta:int}/puede-cancelar-sifen", async (
     {
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
+});
+
+// Endpoint para ver documentos SIFEN pendientes de envío (cola automática)
+app.MapGet("/ventas/sifen-pendientes", async (IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    
+    // Ventas pendientes
+    var ventasPendientes = await db.Ventas
+        .Include(v => v.Caja)
+        .Include(v => v.Cliente)
+        .Where(v => v.Estado == "Confirmada" &&
+                    v.Caja != null &&
+                    v.Caja.TipoFacturacion != null &&
+                    v.Caja.TipoFacturacion.ToUpper().Contains("ELECTR") &&
+                    (
+                        string.IsNullOrEmpty(v.EstadoSifen) ||
+                        v.EstadoSifen == "PENDIENTE" ||
+                        (v.EstadoSifen == "RECHAZADO" && v.MensajeSifen != null &&
+                            (v.MensajeSifen.Contains("conexión") ||
+                             v.MensajeSifen.Contains("connection") ||
+                             v.MensajeSifen.Contains("timeout") ||
+                             v.MensajeSifen.Contains("network")))
+                    ))
+        .OrderBy(v => v.Fecha)
+        .Select(v => new {
+            TipoDocumento = "Venta",
+            Id = v.IdVenta,
+            Numero = $"{v.Establecimiento}-{v.PuntoExpedicion}-{v.NumeroFactura}",
+            Cliente = v.Cliente != null ? v.Cliente.RazonSocial : "Sin cliente",
+            v.Fecha,
+            v.Total,
+            v.EstadoSifen,
+            UltimoMensaje = v.MensajeSifen != null && v.MensajeSifen.Length > 100 
+                ? v.MensajeSifen.Substring(0, 100) + "..." 
+                : v.MensajeSifen
+        })
+        .ToListAsync();
+
+    // NC pendientes
+    var ncPendientes = await db.NotasCreditoVentas
+        .Include(nc => nc.Caja)
+        .Include(nc => nc.Cliente)
+        .Include(nc => nc.VentaAsociada)
+        .Where(nc => nc.Estado == "Confirmada" &&
+                     nc.Caja != null &&
+                     nc.Caja.TipoFacturacion != null &&
+                     nc.Caja.TipoFacturacion.ToUpper().Contains("ELECTR") &&
+                     nc.VentaAsociada != null &&
+                     !string.IsNullOrEmpty(nc.VentaAsociada.CDC) &&
+                     (
+                         string.IsNullOrEmpty(nc.EstadoSifen) ||
+                         nc.EstadoSifen == "PENDIENTE" ||
+                         (nc.EstadoSifen == "RECHAZADO" && nc.MensajeSifen != null &&
+                             (nc.MensajeSifen.Contains("conexión") ||
+                              nc.MensajeSifen.Contains("connection") ||
+                              nc.MensajeSifen.Contains("timeout") ||
+                              nc.MensajeSifen.Contains("network")))
+                     ))
+        .OrderBy(nc => nc.Fecha)
+        .Select(nc => new {
+            TipoDocumento = "Nota de Crédito",
+            Id = nc.IdNotaCredito,
+            Numero = $"{nc.Establecimiento}-{nc.PuntoExpedicion}-{nc.NumeroNota}",
+            Cliente = nc.Cliente != null ? nc.Cliente.RazonSocial : "Sin cliente",
+            nc.Fecha,
+            nc.Total,
+            nc.EstadoSifen,
+            UltimoMensaje = nc.MensajeSifen != null && nc.MensajeSifen.Length > 100
+                ? nc.MensajeSifen.Substring(0, 100) + "..."
+                : nc.MensajeSifen
+        })
+        .ToListAsync();
+
+    return Results.Ok(new { 
+        ventasPendientes = ventasPendientes.Count,
+        ncPendientes = ncPendientes.Count,
+        totalPendientes = ventasPendientes.Count + ncPendientes.Count,
+        mensaje = $"Cola automática: {ventasPendientes.Count} ventas y {ncPendientes.Count} NC pendientes de envío",
+        documentos = ventasPendientes.Cast<object>().Concat(ncPendientes.Cast<object>()).ToList()
+    });
 });
 
 // Endpoint para listar ventas aprobadas en SIFEN (para pruebas de cancelación)
@@ -3220,6 +3334,38 @@ app.MapPost("/notascredito/{idNotaCredito:int}/enviar-sifen", async (
     }
     catch (Exception ex)
     {
+        // Detectar si es error de conexión para marcar como PENDIENTE
+        var esErrorConexion = ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
+                              ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+                              ex.Message.Contains("network", StringComparison.OrdinalIgnoreCase) ||
+                              ex.Message.Contains("unable to connect", StringComparison.OrdinalIgnoreCase) ||
+                              ex.Message.Contains("no se puede establecer", StringComparison.OrdinalIgnoreCase) ||
+                              ex.InnerException?.Message?.Contains("connection", StringComparison.OrdinalIgnoreCase) == true;
+
+        if (esErrorConexion)
+        {
+            // Marcar como PENDIENTE para reintento automático
+            try
+            {
+                await using var dbErr = await dbFactory.CreateDbContextAsync();
+                var ncErr = await dbErr.NotasCreditoVentas.FirstOrDefaultAsync(n => n.IdNotaCredito == idNotaCredito);
+                if (ncErr != null)
+                {
+                    ncErr.EstadoSifen = "PENDIENTE";
+                    ncErr.MensajeSifen = $"Error de conexión: {ex.Message}. Se reintentará automáticamente cuando se restablezca la conexión.";
+                    await dbErr.SaveChangesAsync();
+                }
+            }
+            catch { /* Ignorar errores al marcar pendiente */ }
+
+            return Results.BadRequest(new { 
+                ok = false, 
+                error = ex.Message,
+                pendiente = true,
+                mensaje = "La NC fue marcada como PENDIENTE y se enviará automáticamente cuando se restablezca la conexión a internet."
+            });
+        }
+
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 });
@@ -3277,6 +3423,56 @@ app.MapGet("/notascredito/{idNotaCredito:int}/xml-firmado", async (
     }
 });
 
+// Endpoint para descargar el XML firmado de NC (archivo)
+app.MapGet("/notascredito/{idNotaCredito:int}/xml", async (
+    int idNotaCredito,
+    IDbContextFactory<AppDbContext> dbFactory,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var nc = await db.NotasCreditoVentas
+            .Include(n => n.Sucursal)
+            .Include(n => n.Cliente)
+            .Include(n => n.Caja)
+            .Include(n => n.Moneda)
+            .Include(n => n.Detalles)!.ThenInclude(d => d.Producto)
+            .Include(n => n.VentaAsociada)
+            .FirstOrDefaultAsync(n => n.IdNotaCredito == idNotaCredito);
+        
+        if (nc == null) 
+            return Results.NotFound(new { ok = false, error = $"Nota de Crédito {idNotaCredito} no encontrada" });
+
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
+
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlQrBase = sociedad.DeUrlQr ?? (ambiente == "prod" 
+            ? "https://ekuatia.set.gov.py/consultas/qr?"
+            : "https://ekuatia.set.gov.py/consultas-test/qr?");
+
+        string p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        string p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+
+        if (!System.IO.File.Exists(p12Path))
+            return Results.BadRequest(new { ok = false, error = $"No existe el archivo .p12 en la ruta: {p12Path}" });
+
+        var xmlString = await SistemIA.Services.NCEXmlBuilder.ConstruirXmlAsync(nc, db);
+        var xmlFirmado = sifen.FirmarSinEnviar(urlQrBase, xmlString, p12Path, p12Pass, "1", false);
+        
+        var bytes = System.Text.Encoding.UTF8.GetBytes(xmlFirmado);
+        var fileName = $"NotaCredito_{idNotaCredito}.xml";
+        return Results.File(bytes, "application/xml", fileName);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
 // Endpoint para consultar estado de NC en SIFEN por IdLote
 app.MapGet("/notascredito/{idNotaCredito:int}/consultar-sifen", async (
     int idNotaCredito,
@@ -3294,45 +3490,80 @@ app.MapGet("/notascredito/{idNotaCredito:int}/consultar-sifen", async (
         if (nc == null) 
             return Results.NotFound(new { ok = false, error = $"Nota de Crédito {idNotaCredito} no encontrada" });
 
-        if (string.IsNullOrWhiteSpace(nc.IdLote))
-            return Results.BadRequest(new { ok = false, error = "La NC no tiene IdLote registrado" });
+        // Permitir consulta por IdLote O por CDC
+        if (string.IsNullOrWhiteSpace(nc.IdLote) && string.IsNullOrWhiteSpace(nc.CDC))
+            return Results.BadRequest(new { ok = false, error = "La NC no tiene IdLote ni CDC registrado" });
 
         var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
         if (sociedad == null)
             return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
 
         var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
-        var urlConsulta = sociedad.DeUrlConsultaDocumentoLote ?? SistemIA.Utils.SifenConfig.GetConsultaLoteUrl(ambiente);
-
         string p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
         string p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
-
-        // Construir XML de consulta (mismo formato que facturas)
         var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
-        var idLoteLocal = nc.IdLote?.Trim();
 
-        var xmlDoc = new System.Xml.XmlDocument();
-        var decl = xmlDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
-        xmlDoc.AppendChild(decl);
-        var soapNs = "http://www.w3.org/2003/05/soap-envelope";
-        var sifenNs = "http://ekuatia.set.gov.py/sifen/xsd";
-        var envelope = xmlDoc.CreateElement("soap", "Envelope", soapNs);
-        xmlDoc.AppendChild(envelope);
-        var header = xmlDoc.CreateElement("soap", "Header", soapNs);
-        envelope.AppendChild(header);
-        var body = xmlDoc.CreateElement("soap", "Body", soapNs);
-        envelope.AppendChild(body);
-        var req = xmlDoc.CreateElement("rEnviConsLoteDe", sifenNs);
-        body.AppendChild(req);
-        var dIdNode = xmlDoc.CreateElement("dId", sifenNs);
-        dIdNode.InnerText = dId;
-        req.AppendChild(dIdNode);
-        var dProtNode = xmlDoc.CreateElement("dProtConsLote", sifenNs);
-        dProtNode.InnerText = idLoteLocal ?? string.Empty;
-        req.AppendChild(dProtNode);
-        var soapConsulta = xmlDoc.OuterXml;
+        string respuesta;
+        string soapNs = "http://www.w3.org/2003/05/soap-envelope";
+        string sifenNs = "http://ekuatia.set.gov.py/sifen/xsd";
 
-        var respuesta = await sifen.Enviar(urlConsulta, soapConsulta, p12Path, p12Pass);
+        // Determinar si consultar por IdLote o por CDC
+        if (!string.IsNullOrWhiteSpace(nc.IdLote))
+        {
+            // Consulta por LOTE
+            var urlConsulta = sociedad.DeUrlConsultaDocumentoLote ?? SistemIA.Utils.SifenConfig.GetConsultaLoteUrl(ambiente);
+            var idLoteLocal = nc.IdLote.Trim();
+
+            var xmlDoc = new System.Xml.XmlDocument();
+            var decl = xmlDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
+            xmlDoc.AppendChild(decl);
+            var envelope = xmlDoc.CreateElement("soap", "Envelope", soapNs);
+            xmlDoc.AppendChild(envelope);
+            var header = xmlDoc.CreateElement("soap", "Header", soapNs);
+            envelope.AppendChild(header);
+            var body = xmlDoc.CreateElement("soap", "Body", soapNs);
+            envelope.AppendChild(body);
+            var req = xmlDoc.CreateElement("rEnviConsLoteDe", sifenNs);
+            body.AppendChild(req);
+            var dIdNode = xmlDoc.CreateElement("dId", sifenNs);
+            dIdNode.InnerText = dId;
+            req.AppendChild(dIdNode);
+            var dProtNode = xmlDoc.CreateElement("dProtConsLote", sifenNs);
+            dProtNode.InnerText = idLoteLocal;
+            req.AppendChild(dProtNode);
+            var soapConsulta = xmlDoc.OuterXml;
+
+            respuesta = await sifen.Enviar(urlConsulta, soapConsulta, p12Path, p12Pass);
+        }
+        else
+        {
+            // Consulta por CDC
+            var urlConsultaDE = SistemIA.Utils.SifenConfig.GetConsultaDeUrl(ambiente);
+            var cdcLocal = nc.CDC!.Trim();
+
+            var xmlDoc = new System.Xml.XmlDocument();
+            var decl = xmlDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
+            xmlDoc.AppendChild(decl);
+            var envelope = xmlDoc.CreateElement("soap", "Envelope", soapNs);
+            xmlDoc.AppendChild(envelope);
+            var header = xmlDoc.CreateElement("soap", "Header", soapNs);
+            envelope.AppendChild(header);
+            var body = xmlDoc.CreateElement("soap", "Body", soapNs);
+            envelope.AppendChild(body);
+            // FIX 22-Ene-2026: Usar rEnviConsDeRequest (con sufijo Request) según DLL funcional
+            var req = xmlDoc.CreateElement("rEnviConsDeRequest", sifenNs);
+            body.AppendChild(req);
+            var dIdNode = xmlDoc.CreateElement("dId", sifenNs);
+            dIdNode.InnerText = dId;
+            req.AppendChild(dIdNode);
+            // FIX 22-Ene-2026: El campo es dCDC, NO dCDCCons
+            var dCDCNode = xmlDoc.CreateElement("dCDC", sifenNs);
+            dCDCNode.InnerText = cdcLocal;
+            req.AppendChild(dCDCNode);
+            var soapConsulta = xmlDoc.OuterXml;
+
+            respuesta = await sifen.Enviar(urlConsultaDE, soapConsulta, p12Path, p12Pass);
+        }
 
         string codigo = sifen.GetTagValue(respuesta, "ns2:dCodRes");
         if (codigo == "Tag not found.") codigo = sifen.GetTagValue(respuesta, "dCodRes");
@@ -3370,6 +3601,91 @@ app.MapGet("/notascredito/{idNotaCredito:int}/consultar-sifen", async (
     {
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
+});
+
+// ========== ENDPOINTS DE CANCELACIÓN NC SIFEN ==========
+
+// Endpoint para verificar si se puede cancelar una NC en SIFEN
+app.MapGet("/notascredito/{idNotaCredito:int}/puede-cancelar-sifen", async (
+    int idNotaCredito,
+    IEventoSifenService eventoService
+) =>
+{
+    try
+    {
+        var (puedeCancelar, mensaje) = await eventoService.VerificarPuedeCancelarNCAsync(idNotaCredito);
+        return Results.Ok(new { ok = puedeCancelar, mensaje });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint para cancelar una NC en SIFEN (evento de cancelación)
+app.MapPost("/notascredito/{idNotaCredito:int}/cancelar-sifen", async (
+    int idNotaCredito,
+    string motivo,
+    IDbContextFactory<AppDbContext> dbFactory,
+    IEventoSifenService eventoService
+) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(motivo))
+            return Results.BadRequest(new { ok = false, error = "Debe proporcionar un motivo (parámetro 'motivo')" });
+
+        var result = await eventoService.EnviarCancelacionNCAsync(idNotaCredito, motivo);
+        
+        if (result.Exito)
+        {
+            return Results.Ok(new { 
+                ok = true, 
+                mensaje = $"Nota de Crédito {idNotaCredito} cancelada exitosamente en SIFEN",
+                codigo = result.Codigo,
+                detalles = result.Mensaje
+            });
+        }
+        else
+        {
+            return Results.BadRequest(new { 
+                ok = false, 
+                error = result.Mensaje,
+                codigo = result.Codigo
+            });
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[CANCELAR-SIFEN NC] Error: {ex.Message}");
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint de debug para ver datos SIFEN de una NC
+app.MapGet("/debug/notascredito/{idNotaCredito:int}/sifen-data", async (
+    int idNotaCredito,
+    IDbContextFactory<AppDbContext> dbFactory
+) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var nc = await db.NotasCreditoVentas
+        .AsNoTracking()
+        .Select(n => new {
+            n.IdNotaCredito,
+            n.CDC,
+            n.EstadoSifen,
+            n.UrlQrSifen,
+            n.MensajeSifen,
+            n.IdLote,
+            n.FechaEnvioSifen
+        })
+        .FirstOrDefaultAsync(n => n.IdNotaCredito == idNotaCredito);
+
+    if (nc == null)
+        return Results.NotFound(new { ok = false, error = $"NC {idNotaCredito} no encontrada" });
+
+    return Results.Ok(new { ok = true, nc });
 });
 
 // ============================================

@@ -61,7 +61,33 @@ namespace SistemIA.Models
         [Column(TypeName = "decimal(5,2)")]
         public decimal? PorcentajeDescuentoMaximo { get; set; }
 
-        // ========== OTRAS CONFIGURACIONES FUTURAS ==========
+        // ========== CONFIGURACIÓN SIFEN ==========
+        
+        /// <summary>
+        /// Intervalo en minutos para verificar documentos pendientes SIFEN (default: 2)
+        /// </summary>
+        [Display(Name = "Intervalo Cola SIFEN (minutos)")]
+        public int SifenIntervaloMinutos { get; set; } = 2;
+
+        /// <summary>
+        /// Habilita/deshabilita el servicio de cola SIFEN
+        /// </summary>
+        [Display(Name = "Servicio Cola SIFEN Activo")]
+        public bool SifenColaActiva { get; set; } = true;
+
+        /// <summary>
+        /// Máximo de documentos a procesar por ciclo
+        /// </summary>
+        [Display(Name = "Máx. Documentos por Ciclo")]
+        public int SifenMaxDocumentosPorCiclo { get; set; } = 10;
+
+        /// <summary>
+        /// Máximo de reintentos por documento
+        /// </summary>
+        [Display(Name = "Máx. Reintentos por Documento")]
+        public int SifenMaxReintentos { get; set; } = 3;
+
+        // ========== OTRAS CONFIGURACIONES ==========
         
         /// <summary>
         /// Nombre de la empresa/negocio

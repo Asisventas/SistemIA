@@ -249,6 +249,7 @@ public partial class Ventas
     private string _nuevoCliTelefono = string.Empty;
     private string _nuevoCliEmail = string.Empty;
     private string _nuevoCliTipoDocumento = "RU"; // RUC por defecto
+    private bool _nuevoCliEsRucEncontrado; // true = encontrado en RucDnit/SIFEN, false = es Cédula
     private List<SistemIA.Models.TiposDocumentosIdentidad> _tiposDocumentosCliente = new();
     // SIFEN búsqueda de cliente
     private bool _buscandoClienteSifen;
@@ -1283,8 +1284,11 @@ public partial class Ventas
                 NumeroDocumento = rucSinGuion,
                 Saldo = 0,
                 Estado = true,
-                IdTipoContribuyente = 2, // 2 = Persona Jurídica (típico para RUC empresarial)
-                NaturalezaReceptor = 1, // 1 = Contribuyente
+                // Campos SIFEN - Es contribuyente porque tiene RUC válido
+                NaturalezaReceptor = 1, // 1 = Contribuyente (tiene RUC)
+                TipoDocumentoIdentidadSifen = null, // Contribuyentes NO usan tipo doc identidad, usan RUC
+                NumeroDocumentoIdentidad = null, // Contribuyentes NO usan número doc identidad, usan RUC
+                IdTipoContribuyente = 1, // 1 = Persona Física por defecto (también usado como TipoContribuyenteReceptor en XML SIFEN)
                 // TipoOperacion según RUC: >= 50M = B2B, < 50M = B2C
                 TipoOperacion = (long.TryParse(rucSinGuion, out var rucNum) && rucNum >= 50_000_000) ? "1" : "2",
                 PermiteCredito = false,
@@ -3414,10 +3418,14 @@ public partial class Ventas
         catch { tc = 1m; }
         var montoGs = Math.Round(monto * tc, 4);
         var medio = _detalleCajaMedio?.ToUpperInvariant() ?? "EFECTIVO";
-        if (_cajaEditIndex.HasValue && _cajaEditIndex.Value >= 0 && _cajaEditIndex.Value < _cajaDetalles.Count)
+        
+        // Determinar si estamos en modo edición ANTES de modificar _cajaEditIndex
+        bool esActualizacion = _cajaEditIndex.HasValue && _cajaEditIndex.Value >= 0 && _cajaEditIndex.Value < _cajaDetalles.Count;
+        
+        if (esActualizacion)
         {
             // Actualizar detalle existente
-            var d = _cajaDetalles[_cajaEditIndex.Value];
+            var d = _cajaDetalles[_cajaEditIndex!.Value];
             d.Medio = medio switch
             {
                 var s when s.Contains("TARJETA") => SistemIA.Models.Enums.MedioPago.Tarjeta,
@@ -3457,9 +3465,11 @@ public partial class Ventas
             };
             _cajaDetalles.Add(d);
         }
-    _cajaTotalGs = _cajaDetalles.Sum(x => x.MontoGs);
-    _cajaError = null;
-    _cajaInfo = _cajaEditIndex.HasValue ? "Detalle actualizado" : "Detalle agregado";
+        
+        _cajaTotalGs = _cajaDetalles.Sum(x => x.MontoGs);
+        _cajaError = null;
+        _cajaInfo = esActualizacion ? "Detalle actualizado" : "Detalle agregado";
+        
         if (!preload)
         {
             _detalleCajaMonto = 0;
@@ -4007,6 +4017,7 @@ public partial class Ventas
         _nuevoCliTelefono = string.Empty;
         _nuevoCliEmail = string.Empty;
         _nuevoCliTipoDocumento = "RU"; // RUC por defecto
+        _nuevoCliEsRucEncontrado = false; // Por defecto asumimos que NO es RUC hasta que se consulte
         _mensajeSifenCliente = null;
         _esSifenClienteError = false;
     }
@@ -4053,7 +4064,23 @@ public partial class Ventas
                 _nuevoCliDv = clienteLocal.DV;
                 _nuevoCliTelefono = clienteLocal.Telefono ?? string.Empty;
                 _nuevoCliEmail = clienteLocal.Email ?? string.Empty;
+                _nuevoCliEsRucEncontrado = true; // Cliente local = tiene RUC
+                _nuevoCliTipoDocumento = clienteLocal.TipoDocumento ?? "RU";
                 _mensajeSifenCliente = $"✓ Cliente encontrado en BD local: {clienteLocal.RazonSocial}";
+                _esSifenClienteError = false;
+                return;
+            }
+            
+            // Buscar en RucDnit (catálogo DNIT 1.5M registros)
+            var rucDnit = await ctx.RucDnit.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RUC == _nuevoCliRuc);
+            if (rucDnit != null)
+            {
+                _nuevoCliRazonSocial = rucDnit.RazonSocial ?? string.Empty;
+                _nuevoCliDv = rucDnit.DV;
+                _nuevoCliEsRucEncontrado = true; // Encontrado en DNIT = es RUC
+                _nuevoCliTipoDocumento = "RU";
+                _mensajeSifenCliente = $"✓ RUC encontrado (DNIT): {rucDnit.RazonSocial}";
                 _esSifenClienteError = false;
                 return;
             }
@@ -4061,7 +4088,7 @@ public partial class Ventas
             // Calcular DV
             _nuevoCliDv = Utils.RucHelper.CalcularDvRuc(_nuevoCliRuc);
 
-            // Si no está en BD local, consultar SIFEN
+            // Si no está en BD local ni RucDnit, consultar SIFEN
             var sociedad = await ctx.Sociedades.FirstOrDefaultAsync();
             if (sociedad == null || string.IsNullOrEmpty(sociedad.PathCertificadoP12))
             {
@@ -4111,14 +4138,19 @@ public partial class Ventas
                         _nuevoCliRazonSocial = dRazCons.Trim();
                     }
                     
+                    _nuevoCliEsRucEncontrado = true; // ✓ Es un RUC válido
+                    _nuevoCliTipoDocumento = "RU";
                     _mensajeSifenCliente = $"✓ SIFEN: {dRazCons?.Trim()} - {dDesEstCons}";
                     _esSifenClienteError = false;
                 }
             }
             else if (codRes == "0501")
             {
-                _mensajeSifenCliente = "RUC no encontrado en SIFEN. Puede ingresarlo manualmente.";
-                _esSifenClienteError = true;
+                // 0501 = RUC no encontrado - Es una Cédula de Identidad
+                _nuevoCliEsRucEncontrado = false;
+                _nuevoCliTipoDocumento = "CI";
+                _mensajeSifenCliente = "✓ Número identificado como Cédula de Identidad (no encontrado como RUC)";
+                _esSifenClienteError = false; // No es error, es información útil
             }
             else
             {
@@ -4196,37 +4228,48 @@ public partial class Ventas
                     siguienteCodigo = ultimoCodigo + 1;
                 }
 
+                // Determinar si es Contribuyente (RUC) o No Contribuyente (Cédula)
+                // _nuevoCliEsRucEncontrado = true si se encontró en RucDnit o SIFEN
+                int naturalezaReceptor = _nuevoCliEsRucEncontrado ? 1 : 2; // 1=Contribuyente, 2=No contribuyente
+                int? tipoDocIdentidad = _nuevoCliEsRucEncontrado ? null : (int?)1; // 1=CI Paraguaya si es no contribuyente
+                string? numeroDocIdentidad = _nuevoCliEsRucEncontrado ? null : _nuevoCliRuc.Trim();
+                string tipoOperacion = _nuevoCliEsRucEncontrado 
+                    ? ((long.TryParse(_nuevoCliRuc.Trim(), out var rucNum) && rucNum >= 50_000_000) ? "1" : "2") // B2B o B2C
+                    : "2"; // No contribuyente siempre es B2C
+
                 // Crear el nuevo cliente con campos mínimos y valores por defecto
                 var nuevoCliente = new Cliente
                 {
                     CodigoCliente = siguienteCodigo.ToString().PadLeft(6, '0'),
-                RazonSocial = _nuevoCliRazonSocial.Trim(),
-                RUC = _nuevoCliRuc.Trim(),
-                DV = _nuevoCliDv,
-                NumeroDocumento = _nuevoCliRuc.Trim(), // Requerido por BD
-                TipoDocumento = _nuevoCliTipoDocumento, // Tipo de documento seleccionado
-                Telefono = string.IsNullOrWhiteSpace(_nuevoCliTelefono) ? null : _nuevoCliTelefono.Trim(),
-                Email = string.IsNullOrWhiteSpace(_nuevoCliEmail) ? null : _nuevoCliEmail.Trim(),
-                Estado = true,
-                FechaAlta = DateTime.Now,
-                // Campos requeridos con valores por defecto
-                CodigoPais = "PRY", // Paraguay por defecto
-                NaturalezaReceptor = 1, // 1 = Contribuyente
-                IdTipoContribuyente = 1, // 1 = Persona Física o Empresa por defecto
-                // TipoOperacion según RUC: >= 50M = B2B (empresas/extranjeros), < 50M = B2C (clientes)
-                TipoOperacion = (long.TryParse(_nuevoCliRuc.Trim(), out var rucNum) && rucNum >= 50_000_000) ? "1" : "2",
-                Saldo = 0,
-                PermiteCredito = false,
-                PrecioDiferenciado = false,
-                EsExtranjero = false,
-                IdCiudad = 1 // Asunción por defecto
-            };
+                    RazonSocial = _nuevoCliRazonSocial.Trim(),
+                    RUC = _nuevoCliEsRucEncontrado ? _nuevoCliRuc.Trim() : null, // Solo guardar RUC si es contribuyente
+                    DV = _nuevoCliDv,
+                    NumeroDocumento = _nuevoCliRuc.Trim(), // Requerido por BD
+                    TipoDocumento = _nuevoCliTipoDocumento, // RU o CI según detección
+                    Telefono = string.IsNullOrWhiteSpace(_nuevoCliTelefono) ? null : _nuevoCliTelefono.Trim(),
+                    Email = string.IsNullOrWhiteSpace(_nuevoCliEmail) ? null : _nuevoCliEmail.Trim(),
+                    Estado = true,
+                    FechaAlta = DateTime.Now,
+                    // Campos SIFEN según si es contribuyente o no
+                    CodigoPais = "PRY", // Paraguay por defecto
+                    NaturalezaReceptor = naturalezaReceptor,
+                    TipoDocumentoIdentidadSifen = tipoDocIdentidad,
+                    NumeroDocumentoIdentidad = numeroDocIdentidad,
+                    IdTipoContribuyente = _nuevoCliEsRucEncontrado ? 1 : 1, // 1 = Persona Física por defecto (usado como TipoContribuyenteReceptor en XML SIFEN)
+                    TipoOperacion = tipoOperacion,
+                    Saldo = 0,
+                    PermiteCredito = false,
+                    PrecioDiferenciado = false,
+                    EsExtranjero = false,
+                    IdCiudad = 1 // Asunción por defecto
+                };
 
                 ctx.Clientes.Add(nuevoCliente);
                 await ctx.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-            _successCliente = $"Cliente '{_nuevoCliRazonSocial}' creado exitosamente.";
+            var tipoLabel = _nuevoCliEsRucEncontrado ? "RUC" : "CI";
+            _successCliente = $"Cliente '{_nuevoCliRazonSocial}' creado exitosamente ({tipoLabel}).";
             
             // Agregar a la lista local y seleccionar
             Clientes.Add(nuevoCliente);
@@ -4234,7 +4277,7 @@ public partial class Ventas
 
             // Seleccionar automáticamente el nuevo cliente
             Cab.IdCliente = nuevoCliente.IdCliente;
-            ClienteSeleccionadoLabel = $"{nuevoCliente.RazonSocial} (RUC {nuevoCliente.RUC}-{nuevoCliente.DV})";
+            ClienteSeleccionadoLabel = $"{nuevoCliente.RazonSocial} ({tipoLabel} {nuevoCliente.NumeroDocumento}-{nuevoCliente.DV})";
             EmailCliente = nuevoCliente.Email;
             BuscarCliente = string.Empty;
             MostrarSugClientes = false;

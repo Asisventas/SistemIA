@@ -185,12 +185,14 @@ namespace SistemIA.Services
             static string DescripcionTipoDocRec(string iTipIDRec)
             {
                 // Catálogo SIFEN v150 - Tipos de documento de identidad receptor (iTipIDRec)
+                // Según Manual Técnico SIFEN v150 sección D11
                 return iTipIDRec switch
                 {
                     "1" => "Cédula paraguaya",
+                    "2" => "Cédula extranjera",
                     "3" => "Pasaporte",
                     "4" => "Carnet de residencia",
-                    "5" => "Innominado",  // FIX: era "Cédula extranjera" que causaba error 1313
+                    "5" => "Innominado",
                     "9" => "Sin documento",
                     _ => "Innominado"
                 };
@@ -201,6 +203,14 @@ namespace SistemIA.Services
             var cliDv = venta.Cliente?.DV ?? 0;
             if (string.IsNullOrWhiteSpace(cliRucDigits) && tipMap == "2") tipMap = "9";
             string dNumIDRec = tipMap == "2" ? cliRucDigits : Digits(numIdRaw);
+            
+            // FIX 23-Ene-2026: Si el tipo de documento es distinto de Innominado (5) o Sin documento (9)
+            // pero NO hay número de documento, forzar a Innominado para evitar error SIFEN
+            if (tipMap != "5" && tipMap != "9" && string.IsNullOrWhiteSpace(dNumIDRec))
+            {
+                tipMap = "5"; // Innominado
+                dNumIDRec = "0";
+            }
 
             var iNatRec = gDatRecRaw.Element("iNatRec")?.Value ?? "2";
             bool esContribuyente = iNatRec == "1";
@@ -211,9 +221,9 @@ namespace SistemIA.Services
             // Consumidor Final: no contribuyente (iNatRec!=1) y sin documento (iTipIDRec==9 o dNumIDRec vacío/0)
             bool esConsumidorFinal = !esContribuyente && (tipMap == "9" || string.IsNullOrWhiteSpace(Digits(numIdRaw)) || Digits(numIdRaw) == "0");
             // iTiOpe según manual SIFEN: 1=B2B (empresa a empresa), 2=B2C (empresa a consumidor final)
-            // El XML aprobado de PowerBuilder usa iTiOpe=1 para contribuyentes
-            // Para contado debe ser 1, para crédito puede ser 1 o 2 según si es B2B o B2C
-            var iTiOpeVal = esContribuyente ? "1" : "2"; // B2B=1, B2C=2
+            // FIX 23-Ene-2026: Usar el valor de iTiOpe del ClienteSifenService que respeta el campo TipoOperacion del cliente
+            // NO forzar basándose en iNatRec - un contribuyente (iNatRec=1) puede ser B2C (iTiOpe=2)
+            var iTiOpeVal = gDatRecRaw.Element("iTiOpe")?.Value ?? (esContribuyente ? "1" : "2");
             gDatRec.Add(new XElement(NsSifen + "iTiOpe", iTiOpeVal));
             gDatRec.Add(new XElement(NsSifen + "cPaisRec", gDatRecRaw.Element("cPaisRec")?.Value ?? "PRY"));
             gDatRec.Add(new XElement(NsSifen + "dDesPaisRe", gDatRecRaw.Element("dDesPaisRe")?.Value ?? "Paraguay"));
@@ -249,13 +259,20 @@ namespace SistemIA.Services
                 ? "SIN NOMBRE-CONSUMIDOR FINAL"
                 : (gDatRecRaw.Element("dNomRec")?.Value ?? (esContribuyente ? "SIN NOMBRE" : "Sin Nombre"));
             gDatRec.Add(new XElement(NsSifen + "dNomRec", dNomRecVal));
-            // Dirección y número de casa son opcionales, agregar si hay dato o un fallback aceptable
-            var dirRec = gDatRecRaw.Element("dDirRec")?.Value;
-            if (!string.IsNullOrWhiteSpace(dirRec))
-                gDatRec.Add(new XElement(NsSifen + "dDirRec", dirRec));
+            
+            // FIX 23-Ene-2026: Para contribuyentes con RUC (iNatRec=1), NO incluir dDirRec
+            // El XML de PowerBuilder que SIFEN acepta NO incluye la dirección del receptor
+            // Solo incluir dirección para no contribuyentes si es necesario
+            if (!esContribuyente)
+            {
+                var dirRec = gDatRecRaw.Element("dDirRec")?.Value;
+                if (!string.IsNullOrWhiteSpace(dirRec))
+                    gDatRec.Add(new XElement(NsSifen + "dDirRec", dirRec));
+            }
+            
+            // dNumCasRec siempre se incluye (es requerido según XSD)
             var numCasRec = gDatRecRaw.Element("dNumCasRec")?.Value;
-            if (!string.IsNullOrWhiteSpace(numCasRec))
-                gDatRec.Add(new XElement(NsSifen + "dNumCasRec", numCasRec));
+            gDatRec.Add(new XElement(NsSifen + "dNumCasRec", numCasRec ?? "0"));
 
             // gDatGralOpe: fecha emisión, operación comercial, emisor y receptor
             
@@ -267,13 +284,25 @@ namespace SistemIA.Services
                 new XElement(NsSifen + "dDesOblAfe", "IMPUESTO AL VALOR AGREGADO - GRAVADAS Y EXONERADAS - EXPORTADORES")
             );
             
+            // FIX 22-Ene-2026: Descripción de moneda según catálogo SIFEN
+            string codigoMoneda = venta.Moneda?.CodigoISO ?? "PYG";
+            string nombreMoneda = codigoMoneda switch
+            {
+                "PYG" => "Guarani",
+                "USD" => "Dolar americano",
+                "BRL" => "Real",
+                "EUR" => "Euro",
+                "ARS" => "Peso Argentino",
+                _ => "Guarani"
+            };
+            
             var gOpeCom = new XElement(NsSifen + "gOpeCom",
                 new XElement(NsSifen + "iTipTra", 3),
                 new XElement(NsSifen + "dDesTipTra", "Mixto (Venta de mercadería y servicios)"),
                 new XElement(NsSifen + "iTImp", 1),
                 new XElement(NsSifen + "dDesTImp", "IVA"),
-                new XElement(NsSifen + "cMoneOpe", venta.Moneda?.CodigoISO ?? "PYG"),
-                new XElement(NsSifen + "dDesMoneOpe", "Guarani"),
+                new XElement(NsSifen + "cMoneOpe", codigoMoneda),
+                new XElement(NsSifen + "dDesMoneOpe", nombreMoneda),
                 gOblAfe  // FIX 16-Ene-2026: Requerido por SIFEN según XML de referencia
             );
 

@@ -297,8 +297,9 @@ namespace SistemIA.Models
                 if (string.IsNullOrEmpty(RUC))
                     errores.Add("• RUC: Campo obligatorio para contribuyentes - formato: ########-#");
                 
-                if (DV <= 0)
-                    errores.Add("• Dígito Verificador (DV): Debe ser un número válido mayor a 0");
+                // FIX 23-Ene-2026: DV=0 es un valor válido para algunos RUCs según SIFEN
+                // Ejemplo: RUC 4637249-0 tiene DV=0 y es válido en la BD del SET
+                // No validamos DV > 0 porque 0 es un dígito verificador válido
 
                 if (IdTipoContribuyente <= 0)
                     errores.Add("• Tipo de Contribuyente: Debe seleccionar un tipo válido del catálogo SIFEN");

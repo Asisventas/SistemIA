@@ -121,6 +121,14 @@
     {
         try
         {
+            // PRIORIDAD 1: Usar la URL completa del QR firmado (dCarQR/UrlQrSifen) si está disponible
+            if (!string.IsNullOrWhiteSpace(nc?.UrlQrSifen))
+            {
+                Console.WriteLine($"[KudeNC] QR: Usando UrlQrSifen oficial");
+                return GenerarQrDesdeUrl(nc.UrlQrSifen);
+            }
+            
+            // PRIORIDAD 2: Si no hay UrlQrSifen pero sí CDC, usar URL genérica
             var cdcParaQr = nc?.CDC;
             if (string.IsNullOrWhiteSpace(cdcParaQr))
             {
@@ -128,7 +136,8 @@
                 if (string.IsNullOrWhiteSpace(cdcParaQr)) return string.Empty;
             }
             
-            var url = $"https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={cdcParaQr}";
+            // URL genérica (solo como fallback para preview/borrador)
+            var url = $"https://ekuatia.set.gov.py/consultas/qr?cdc={cdcParaQr}";
             
             using var generator = new QRCodeGenerator();
             using var data = generator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
@@ -140,6 +149,28 @@
         }
         catch
         {
+            return string.Empty;
+        }
+    }
+    
+    /// <summary>
+    /// Genera el QR a partir de una URL completa (UrlQrSifen con cHashQR)
+    /// </summary>
+    private string GenerarQrDesdeUrl(string url)
+    {
+        try
+        {
+            using var generator = new QRCodeGenerator();
+            using var data = generator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+            
+            var png = new PngByteQRCode(data);
+            var bytes = png.GetGraphic(12);
+            var base64 = Convert.ToBase64String(bytes);
+            return $"data:image/png;base64,{base64}";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[KudeNC] Error generando QR desde URL: {ex.Message}");
             return string.Empty;
         }
     }
@@ -241,6 +272,10 @@ else
         {
         <div class="doc-asociado">
             <b>Documento Asociado:</b> @nc.TipoDocumentoAsociado |
+            @if (nc.IdVentaAsociada.HasValue)
+            {
+                <span><b>ID:</b> @nc.IdVentaAsociada |</span>
+            }
             <b>Factura Ref.:</b> @ventaAsociada.Establecimiento-@ventaAsociada.PuntoExpedicion-@ventaAsociada.NumeroFactura |
             <b>Timbrado Ref.:</b> @ventaAsociada.Timbrado |
             <b>Fecha Ref.:</b> @ventaAsociada.Fecha.ToString("dd/MM/yyyy")
@@ -323,9 +358,15 @@ else
                     {
                         <img src="@qrDataUrl" alt="QR de la Nota de Crédito" />
                     }
+                    else if (!string.IsNullOrWhiteSpace(nc.UrlQrSifen))
+                    {
+                        <!-- Fallback: usar API externa con la URL oficial -->
+                        <img src="@($"https://api.qrserver.com/v1/create-qr-code/?size=140x140&data={Uri.EscapeDataString(nc.UrlQrSifen)}")" alt="QR de la Nota de Crédito" />
+                    }
                     else if (!string.IsNullOrWhiteSpace(nc.CDC))
                     {
-                        <img src="@($"https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=https://ekuatia.set.gov.py/consultas/gestionarDoc/qr?CDC={Uri.EscapeDataString(nc.CDC)}")" alt="QR de la Nota de Crédito" />
+                        <!-- Fallback para CDC sin hash (solo preview) -->
+                        <img src="@($"https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=https://ekuatia.set.gov.py/consultas/qr?cdc={Uri.EscapeDataString(nc.CDC)}")" alt="QR de la Nota de Crédito" />
                     }
                     else
                     {

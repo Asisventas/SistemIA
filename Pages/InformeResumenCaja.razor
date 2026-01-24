@@ -1069,11 +1069,26 @@ else
             // Agregar compras contado (egresos)
             foreach (var comp in comprasContado)
             {
+                // Formatear número de documento similar a ventas
+                string docCompra;
+                if (!string.IsNullOrWhiteSpace(comp.Establecimiento) && !string.IsNullOrWhiteSpace(comp.PuntoExpedicion) && !string.IsNullOrWhiteSpace(comp.NumeroFactura))
+                {
+                    docCompra = $"{comp.Establecimiento}-{comp.PuntoExpedicion}-{comp.NumeroFactura}";
+                }
+                else if (!string.IsNullOrWhiteSpace(comp.NumeroFactura))
+                {
+                    docCompra = comp.NumeroFactura;
+                }
+                else
+                {
+                    docCompra = $"COMP-{comp.IdCompra}";
+                }
+                
                 operaciones.Add(new OperacionCaja
                 {
                     Fecha = comp.Fecha,
                     Tipo = "Compra Contado",
-                    Documento = comp.NumeroFactura ?? $"COMP-{comp.IdCompra}",
+                    Documento = docCompra,
                     Cliente = comp.Proveedor?.RazonSocial ?? "Proveedor",
                     MedioPago = "EFECTIVO",
                     Monto = -comp.Total, // Negativo porque es egreso

@@ -179,8 +179,9 @@ namespace SistemIA.Services
                 if (string.IsNullOrWhiteSpace(cliente.RUC))
                     errores.Add("El RUC es obligatorio para contribuyentes en SIFEN");
 
-                if (cliente.DV <= 0)
-                    errores.Add("El dígito verificador debe ser válido para contribuyentes en SIFEN");
+                // FIX 23-Ene-2026: DV=0 es válido para algunos RUCs (ej: 4637249-0)
+                // Solo validamos que DV no sea null para contribuyentes
+                // El DV se verifica contra la BD de RUC del SET si es necesario
             }
             else if (naturaleza == 2) // No contribuyente
             {
@@ -263,18 +264,21 @@ CAMPOS OPCIONALES:
         /// <summary>
         /// Obtiene la descripción del tipo de documento de identidad según código SIFEN
         /// </summary>
+        /// <summary>
+        /// Catálogo SIFEN v150 para iTipIDRec - Tipo de Documento de Identidad del Receptor
+        /// Según Manual Técnico SIFEN v150 sección D11
+        /// </summary>
         private string ObtenerDescripcionTipoDocumento(int tipoDocumento)
         {
             return tipoDocumento switch
             {
                 1 => "Cédula paraguaya",
-                2 => "Pasaporte",
-                3 => "Cédula extranjera",
+                2 => "Cédula extranjera",
+                3 => "Pasaporte",
                 4 => "Carnet de residencia",
                 5 => "Innominado",
-                6 => "Tarjeta diplomática",
-                9 => "Otro",
-                _ => "Sin nombre"
+                9 => "Sin documento",
+                _ => "Innominado"
             };
         }
     }

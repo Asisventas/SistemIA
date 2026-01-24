@@ -600,7 +600,7 @@
             </div>
             <div class="col-md-3">
               <label class="form-label">Nº Comprobante</label>
-              <input type="text" class="form-control" @bind="_detalleCajaComprobante" 
+              <input type="text" class="form-control" @bind="_detalleCajaComprobante" @bind:event="oninput"
                      placeholder="@(_detalleCajaMedio == "EFECTIVO" ? "N/A" : "Ingrese nº")"
                      disabled="@(_detalleCajaMedio == "EFECTIVO")" maxlength="60" />
             </div>

@@ -63,9 +63,9 @@
     <DataAnnotationsValidator />
     <ValidationSummary />
 
-    <div class="row g-3">
+    <div class="row g-3 align-items-end">
     <div class="col-md-6">
-        <div class="alert alert-info py-2">
+        <div class="alert alert-info py-2 mb-0">
                 <div class="d-flex flex-wrap gap-3 align-items-center">
             <div class="d-flex align-items-center gap-1">
                 <strong>Caja:</strong>
@@ -91,7 +91,7 @@
             </div>
         </div>
         <div class="col-md-5">
-            <label class="form-label d-flex align-items-center justify-content-between">
+            <label class="form-label d-flex align-items-center justify-content-between mb-1">
                 <span>Proveedor</span>
                 <span class="d-flex gap-1">
                     <button type="button" class="btn btn-sm btn-outline-secondary" title="Refrescar proveedores" @onclick="RefrescarProveedoresAsync">
@@ -135,7 +135,7 @@
         </div>
         
     <div class="col-md-2">
-            <label class="form-label">Moneda</label>
+            <label class="form-label mb-1">Moneda</label>
             <InputSelect class="form-select" @bind-Value="Compra.IdMoneda" TValue="int?" @onchange="OnMonedaChangedAsync">
                 <option value="">-- Seleccione --</option>
                 @foreach (var m in Monedas)
@@ -147,7 +147,7 @@
         @if (Compra.IdMoneda.HasValue && Monedas.FirstOrDefault(m => m.IdMoneda == Compra.IdMoneda.Value)?.EsMonedaBase == false)
         {
             <div class="col-md-2">
-                <label class="form-label">Tipo de Cambio</label>
+                <label class="form-label mb-1">Tipo de Cambio</label>
                 <div class="input-group">
                     <span class="input-group-text">@(Monedas.FirstOrDefault(m => m.EsMonedaBase)?.Simbolo ?? "Gs.")</span>
                     <input type="number" class="form-control" step="0.01" min="0" 
@@ -159,7 +159,7 @@
             </div>
         }
         <div class="col-md-3">
-            <label class="form-label">Fecha</label>
+            <label class="form-label mb-1">Fecha</label>
             <InputDate TValue="DateTime" class="form-control" @bind-Value="Compra.Fecha" />
         </div>
     </div>
@@ -299,9 +299,9 @@
         }
         @if (esPaquete && cantidadPorPaq > 1)
         {
-            <div class="col-md-1">
-                <label class="form-label">Modo</label>
-                <select class="form-select form-select-sm" value="@ModoIngresoCompra" @onchange="OnModoIngresoCompraChanged">
+            <div class="col-auto">
+                <label class="form-label text-center d-block">Modo</label>
+                <select class="form-select form-select-sm" style="width: 95px;" value="@ModoIngresoCompra" @onchange="OnModoIngresoCompraChanged">
                     <option value="paquete">@nombreUnidadCompra</option>
                     @if (permiteUnidad)
                     {
@@ -309,50 +309,50 @@
                     }
                 </select>
             </div>
-            <div class="col-md-1">
-                <label class="form-label">Cantidad</label>
-                <input id="inputCantidadCompras" type="number" step="1" min="1" class="form-control" 
+            <div class="col-auto position-relative">
+                <label class="form-label text-center d-block">Cantidad</label>
+                <input id="inputCantidadCompras" type="number" step="1" min="1" class="form-control text-center" style="width: 80px;"
                        @bind="CantidadIngresadaCompra" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
                 @if (ModoIngresoCompra == "paquete")
                 {
-                    <small class="text-muted">= @((CantidadIngresadaCompra * cantidadPorPaq).ToString("N0")) und.</small>
+                    <small class="text-muted position-absolute start-50 translate-middle-x" style="top: 100%; white-space: nowrap; font-size: 0.7rem;">= @((CantidadIngresadaCompra * cantidadPorPaq).ToString("N0")) und.</small>
                 }
             </div>
         }
         else
         {
-            <div class="col-md-1">
-                <label class="form-label">Cantidad</label>
-                <input id="inputCantidadCompras" type="number" step="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" min="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" class="form-control" @bind="CantidadInput" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
+            <div class="col-auto">
+                <label class="form-label text-center d-block">Cantidad</label>
+                <input id="inputCantidadCompras" type="number" step="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" min="@(NuevoDetalle.PermiteDecimal ? "0.01" : "1")" class="form-control text-center" style="width: 90px;" @bind="CantidadInput" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
             </div>
         }
-        <div class="col-md-1">
-            <label class="form-label">Precio</label>
-            <input id="inputPrecioCompras" type="number" step="0.01" class="form-control" 
+        <div class="col-auto">
+            <label class="form-label text-center d-block">Precio</label>
+            <input id="inputPrecioCompras" type="number" step="0.01" class="form-control text-end" style="width: 120px;"
                    value="@(PrecioInput.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
                    @onchange="OnPrecioInputChanged" />
         </div>
-        <div class="col-md-1">
-            <label class="form-label">Factor</label>
-            <input id="inputFactorCompras" type="number" step="any" class="form-control" 
+        <div class="col-auto">
+            <label class="form-label text-center d-block">Factor</label>
+            <input id="inputFactorCompras" type="number" step="any" class="form-control text-center" style="width: 75px;"
                    value="@(FactorMultiplicador?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
                    @onchange="OnFactorInputChanged" placeholder="1.30" />
         </div>
-        <div class="col-md-1">
-            <label class="form-label">% Mark-up</label>
-            <input id="inputMarkupCompras" type="number" step="any" class="form-control" 
+        <div class="col-auto">
+            <label class="form-label text-center d-block">% Mark-up</label>
+            <input id="inputMarkupCompras" type="number" step="any" class="form-control text-center" style="width: 75px;"
                    value="@(PorcentajeMargen?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
                    @onchange="OnPorcentajeInputChanged" placeholder="30" title="Porcentaje sobre el costo" />
         </div>
-        <div class="col-md-1">
-            <label class="form-label">Pre. Venta <span class="text-danger">*</span></label>
-            <input id="inputPrecioVentaCompras" type="number" step="1" class="form-control" 
+        <div class="col-auto">
+            <label class="form-label text-center d-block">Pre. Venta <span class="text-danger">*</span></label>
+            <input id="inputPrecioVentaCompras" type="number" step="1" class="form-control text-end" style="width: 120px;"
                    value="@(PrecioVentaCalculado?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
                    @onchange="OnPrecioVentaInputChanged" placeholder="0" title="Precio de venta al público" />
         </div>
-        <div class="col-md-1">
-            <label class="form-label">Depósito</label>
-            <select id="inputDepositoCompras" class="form-select" @bind="IdDepositoItemSeleccionado">
+        <div class="col-auto">
+            <label class="form-label text-center d-block">Depósito</label>
+            <select id="inputDepositoCompras" class="form-select" style="width: 110px;" @bind="IdDepositoItemSeleccionado">
                 <option value="">-- Seleccione --</option>
                 @foreach (var d in Depositos)
                 {
@@ -362,9 +362,9 @@
         </div>
         @if (MostrarPrecioMinisterioEnCompras)
         {
-            <div class="col-md-1">
-                <label class="form-label">🏥 P.Min.</label>
-                <input id="inputPrecioMinisterioCompras" type="number" step="1" class="form-control" 
+            <div class="col-auto">
+                <label class="form-label text-center d-block">🏥 P.Min.</label>
+                <input id="inputPrecioMinisterioCompras" type="number" step="1" class="form-control text-end" style="width: 100px;"
                        value="@(PrecioMinisterioInput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" 
                        @onchange="OnPrecioMinisterioInputChanged" placeholder="0" title="Precio Ministerio (máximo regulado)" />
             </div>
@@ -376,23 +376,23 @@
         }
         @if (productoRequiereLote)
         {
-            <div class="col-md-2">
-                <label class="form-label">
+            <div class="col-auto">
+                <label class="form-label text-center d-block">
                     <i class="bi bi-box-seam me-1 text-info"></i>Nro. Lote
                 </label>
-                <input id="inputNumeroLoteCompras" type="text" class="form-control" @bind="NumeroLoteInput" placeholder="Ej: L2024-001" title="Número de lote del proveedor" />
+                <input id="inputNumeroLoteCompras" type="text" class="form-control" style="width: 120px;" @bind="NumeroLoteInput" placeholder="Ej: L2024-001" title="Número de lote del proveedor" />
             </div>
         }
         @if (productoRequiereVencimiento)
         {
-            <div class="col-md-2">
-                <label class="form-label">
+            <div class="col-auto">
+                <label class="form-label text-center d-block">
                     <i class="bi bi-calendar-x me-1 text-warning"></i>Vencimiento
                 </label>
-                <input id="inputVencimientoCompras" type="date" class="form-control" @bind="FechaVencimientoItemSeleccionada" />
+                <input id="inputVencimientoCompras" type="date" class="form-control" style="width: 140px;" @bind="FechaVencimientoItemSeleccionada" />
             </div>
         }
-        <div class="col-md-1 d-flex flex-column">
+        <div class="col-auto d-flex flex-column">
             <label class="form-label">&nbsp;</label>
             <button id="btnAgregarDetalleCompras" type="button" class="btn btn-primary" @onclick="AgregarDetalleAsync" @onkeydown="OnBtnAgregarKeyDown" @onkeydown:preventDefault="@_prevenirTabEnAgregar">
                 <i class="bi bi-plus-circle me-1"></i>Agregar
@@ -811,8 +811,8 @@
 @* Modal para crear nuevo producto rápido *@
 @if (_mostrarModalProducto)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);" @onclick="CerrarModalProducto">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" @onclick:stopPropagation="true">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.7); z-index:1060;" @onclick="CerrarModalProducto">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" style="z-index:1061;" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header bg-success text-white">
                     <h5 class="modal-title"><i class="bi bi-box-seam-fill me-2"></i>Nuevo Producto Rápido</h5>
@@ -898,9 +898,6 @@
                             <select class="form-select" @bind="_nuevoProducto.UnidadMedidaCodigo" @bind:after="OnUnidadMedidaChanged">
                                 <option value="77">Unidad</option>
                                 <option value="006">Paquete</option>
-                                <option value="71">Kg</option>
-                                <option value="72">Litro</option>
-                                <option value="73">Metro</option>
                             </select>
                         </div>
                         @if (_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005")
@@ -1003,7 +1000,7 @@
                             </h6>
                         </div>
                         
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label">💰 Costo Unitario Gs</label>
                             <input type="text" inputmode="numeric" class="form-control @(_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005" ? "bg-light" : "")" 
                                    value="@(_nuevoProducto.CostoUnitarioGs.HasValue ? _nuevoProducto.CostoUnitarioGs.Value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture) : "")" 
@@ -1024,14 +1021,14 @@
                             <label class="form-label">Factor</label>
                             <input type="text" inputmode="decimal" class="form-control" 
                                    value="@(_factorPrecioNP?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
-                                   @onchange="OnFactorNPChanged" placeholder="ej: 1.30" />
+                                   @oninput="OnFactorNPInput" placeholder="ej: 1.30" />
                             <div class="form-text">Multiplicador</div>
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">% Mark-up</label>
                             <input type="text" inputmode="decimal" class="form-control" 
                                    value="@(_porcentajePrecioNP?.ToString(System.Globalization.CultureInfo.InvariantCulture))" 
-                                   @onchange="OnPorcentajeNPChanged" placeholder="ej: 30" />
+                                   @oninput="OnPorcentajeNPInput" placeholder="ej: 30" />
                             @{
                                 decimal? pctUtilidadUnit = null;
                                 if (_nuevoProducto.CostoUnitarioGs.HasValue && _nuevoProducto.CostoUnitarioGs.Value > 0 && _nuevoProducto.PrecioUnitarioGs > 0)
@@ -1042,7 +1039,7 @@
                             }
                             <small class="@colorUtilidadUnit" title="% Utilidad (sobre precio venta)">Util: @(pctUtilidadUnit.HasValue ? $"{pctUtilidadUnit.Value:N1}%" : "—")</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label">🏷️ Precio Unitario Gs *</label>
                             <input type="text" inputmode="numeric" class="form-control @(_nuevoProducto.PrecioMinisterio.HasValue && _nuevoProducto.PrecioUnitarioGs > _nuevoProducto.PrecioMinisterio ? "is-invalid" : "")" 
                                    value="@((long)_nuevoProducto.PrecioUnitarioGs)" 
@@ -1058,8 +1055,10 @@
                                 }
                             </div>
                         </div>
-                        <div class="col-md-2">
-                            <label class="form-label">🏥 P. Ministerio</label>
+                        
+                        @* Segunda fila de precios unitarios *@
+                        <div class="col-md-4">
+                            <label class="form-label">🏥 Precio Ministerio</label>
                             <input type="text" inputmode="numeric" class="form-control" 
                                    value="@(_nuevoProducto.PrecioMinisterio.HasValue ? ((long)_nuevoProducto.PrecioMinisterio.Value).ToString() : "")" 
                                    @onchange="OnPrecioMinisterioNPChanged" placeholder="Máx. regulado" />
@@ -1067,6 +1066,10 @@
                                 @if ((_nuevoProducto.UnidadMedidaCodigo == "006" || _nuevoProducto.UnidadMedidaCodigo == "005") && _nuevoProducto.PrecioMinisterioPaquete.HasValue && _nuevoProducto.CantidadPorPaquete.HasValue && _nuevoProducto.CantidadPorPaquete > 0)
                                 {
                                     <span class="text-muted"><i class="bi bi-info-circle me-1"></i>Sugerido: @(Math.Round(_nuevoProducto.PrecioMinisterioPaquete.Value / _nuevoProducto.CantidadPorPaquete.Value, 0).ToString("N0"))</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Precio máximo regulado</span>
                                 }
                             </div>
                         </div>
@@ -5671,6 +5674,22 @@ END
         }
     }
 
+    // Versión con @oninput para cálculo en tiempo real
+    private void OnFactorNPInput(ChangeEventArgs e)
+    {
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var factor) && factor > 0)
+        {
+            _factorPrecioNP = factor;
+            _nuevoProducto.FactorMultiplicador = factor;
+            _porcentajePrecioNP = Math.Round((factor - 1) * 100, 2);
+            if (_nuevoProducto.CostoUnitarioGs.HasValue && _nuevoProducto.CostoUnitarioGs.Value > 0)
+            {
+                _nuevoProducto.PrecioUnitarioGs = Math.Round(_nuevoProducto.CostoUnitarioGs.Value * factor, 0);
+            }
+        }
+    }
+
     private void OnPorcentajeNPChanged(ChangeEventArgs e)
     {
         var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
@@ -5689,6 +5708,22 @@ END
         else
         {
             _porcentajePrecioNP = null;
+        }
+    }
+
+    // Versión con @oninput para cálculo en tiempo real
+    private void OnPorcentajeNPInput(ChangeEventArgs e)
+    {
+        var valorStr = e.Value?.ToString()?.Replace(',', '.') ?? "";
+        if (decimal.TryParse(valorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var porcentaje))
+        {
+            _porcentajePrecioNP = porcentaje;
+            _factorPrecioNP = Math.Round(1 + porcentaje / 100, 4);
+            _nuevoProducto.FactorMultiplicador = _factorPrecioNP;
+            if (_nuevoProducto.CostoUnitarioGs.HasValue && _nuevoProducto.CostoUnitarioGs.Value > 0)
+            {
+                _nuevoProducto.PrecioUnitarioGs = Math.Round(_nuevoProducto.CostoUnitarioGs.Value * (1 + porcentaje / 100), 0);
+            }
         }
     }
 
@@ -5746,11 +5781,11 @@ END
             _nuevoProducto.CostoUnitarioGs = Math.Round(_nuevoProducto.CostoPaqueteGs.Value / cantidadPorPaquete, 2);
         }
         
-        // NO recalcular Precio Unitario automáticamente - el usuario puede editarlo manualmente
-        // Solo sugerir el valor en el form-text
-        
-        // NO recalcular Precio Ministerio automáticamente - el usuario puede editarlo manualmente
-        // Solo sugerir el valor en el form-text
+        // Recalcular Precio Ministerio Unitario = Precio Ministerio Paquete / Cantidad
+        if (_nuevoProducto.PrecioMinisterioPaquete.HasValue && _nuevoProducto.PrecioMinisterioPaquete.Value > 0)
+        {
+            _nuevoProducto.PrecioMinisterio = Math.Round(_nuevoProducto.PrecioMinisterioPaquete.Value / cantidadPorPaquete, 0);
+        }
     }
     
     // ============ Métodos para modal de marca rápida ============

@@ -1,3 +1,0 @@
-=== RESPUESTA SIFEN 2026-01-19 20:56:44 ===
-<?xml version="1.0" encoding="UTF-8"?>
-<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"><env:Header/><env:Body><ns2:rResEnviLoteDe xmlns:ns2="http://ekuatia.set.gov.py/sifen/xsd"><ns2:dFecProc>2026-01-19T20:56:44-03:00</ns2:dFecProc><ns2:dCodRes>0301</ns2:dCodRes><ns2:dMsgRes>Lote no encolado para procesamiento {Se rechazaron todos los DE del lote}</ns2:dMsgRes><ns2:dProtConsLote>154307038997778464</ns2:dProtConsLote><ns2:dTpoProces>0</ns2:dTpoProces></ns2:rResEnviLoteDe></env:Body></env:Envelope>

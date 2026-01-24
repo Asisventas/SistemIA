@@ -53,7 +53,8 @@ else if (cliente is not null)
                                 </InputSelect>
                             </div>
                             <div class="col-md-5">
-                                <label class="form-label">Numero de Documento</label>
+                                <label class="form-label">RUC o Cédula</label>
+                                <small class="d-block text-muted mb-1" style="font-size: 0.75rem;">Se auto-detecta al consultar DNIT</small>
                                 <div class="input-group">
                                     <InputText class="form-control"
                                                @bind-Value="cliente.RUC" />
@@ -157,20 +158,44 @@ else if (cliente is not null)
                             </div>
                         </div>
 
-                        <div class="mt-3">
-                            <label class="form-label">Tipo de Contribuyente</label>
-                            <InputSelect class="form-select" @bind-Value="cliente.IdTipoContribuyente">
-                                <option value="">-- Seleccionar --</option>
-                                @foreach (var tipo in tiposContribuyentes)
+                        <div class="row g-2 mt-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Naturaleza SIFEN</label>
+                                <InputSelect class="form-select" @bind-Value="cliente.NaturalezaReceptor" @bind-Value:after="OnNaturalezaReceptorChanged">
+                                    <option value="1">1 - Contribuyente (con RUC activo)</option>
+                                    <option value="2">2 - No Contribuyente (sin RUC)</option>
+                                </InputSelect>
+                                <small class="form-text text-muted">
+                                    @if (cliente.NaturalezaReceptor == 1)
+                                    {
+                                        <span class="text-success"><i class="bi bi-check-circle me-1"></i>Se enviará RUC a SIFEN</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Se enviará documento de identidad</span>
+                                        <br/><small class="text-info">Seleccione tipo de documento en la sección inferior</small>
+                                    }
+                                </small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Tipo de Contribuyente</label>
+                                <InputSelect class="form-select" @bind-Value="cliente.IdTipoContribuyente" disabled="@(cliente.NaturalezaReceptor != 1)">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var tipo in tiposContribuyentes)
+                                    {
+                                        <option value="@tipo.IdTipoContribuyente">@tipo.NombreTipo</option>
+                                    }
+                                </InputSelect>
+                                @if (cliente.NaturalezaReceptor != 1)
                                 {
-                                    <option value="@tipo.IdTipoContribuyente">@tipo.NombreTipo</option>
+                                    <small class="text-muted">Solo para contribuyentes</small>
                                 }
-                            </InputSelect>
+                            </div>
                         </div>
 
                         <div class="mt-3">
                             <label class="form-label">Tipo de Operación</label>
-                            <small class="form-text text-muted">Se determina automáticamente según el RUC (>=50M = B2B)</small>
+                            <small class="form-text text-muted d-block">1=B2B (empresas), 2=B2C (personas físicas)</small>
                             <InputSelect @bind-Value="cliente.TipoOperacion" class="form-select">
                                 <option value="">Seleccione...</option>
                                 <option value="1">1 - B2B (Empresa a Empresa/Extranjero)</option>
@@ -338,10 +363,17 @@ else if (cliente is not null)
                             <small class="form-text text-muted d-block">
                                 1=Contribuyente (con RUC), 2=No contribuyente (consumidor final)
                             </small>
-                            <InputSelect class="form-select" @bind-Value="cliente.NaturalezaReceptor">
+                            <InputSelect class="form-select" @bind-Value="cliente.NaturalezaReceptor" @bind-Value:after="OnNaturalezaReceptorChanged">
                                 <option value="1">1 - Contribuyente (Persona con RUC activo)</option>
                                 <option value="2">2 - No contribuyente (Consumidor final sin RUC)</option>
                             </InputSelect>
+                            @if (cliente.NaturalezaReceptor == 1 && cliente.TipoDocumentoIdentidadSifen.HasValue)
+                            {
+                                <div class="alert alert-warning mt-2 py-1 small">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    Contribuyentes no usan Tipo Doc. Identidad SIFEN. Se limpiará al guardar.
+                                </div>
+                            }
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Código Departamento</label>
@@ -395,14 +427,14 @@ else if (cliente is not null)
                         <div class="mb-3">
                             <label class="form-label">Tipo de Documento de Identidad</label>
                             <small class="form-text text-muted d-block">
-                                1=CI Paraguaya, 2=Pasaporte, 3=CI Extranjera, 4=Otro, 5=Innominado (sin documento)
+                                Catálogo SIFEN v150: 1=CI Paraguaya, 2=CI Extranjera, 3=Pasaporte, 4=Carnet residencia, 5=Innominado
                             </small>
                             <InputSelect class="form-select" @bind-Value="cliente.TipoDocumentoIdentidadSifen" @bind-Value:after="OnTipoDocIdentidadChangedAfter">
                                 <option value="">-- Seleccionar --</option>
-                                <option value="1">1 - Cédula de Identidad Paraguaya</option>
-                                <option value="2">2 - Pasaporte</option>
-                                <option value="3">3 - Cédula de Identidad Extranjera</option>
-                                <option value="4">4 - Otro documento de identidad</option>
+                                <option value="1">1 - Cédula paraguaya</option>
+                                <option value="2">2 - Cédula extranjera</option>
+                                <option value="3">3 - Pasaporte</option>
+                                <option value="4">4 - Carnet de residencia</option>
                                 <option value="5">5 - Innominado (sin documento)</option>
                             </InputSelect>
                         </div>
@@ -797,6 +829,36 @@ END");
                 }
             }
             
+            // ========== NORMALIZACIÓN DE CAMPOS SIFEN ANTES DE GUARDAR ==========
+            // Para No Contribuyentes (NaturalezaReceptor=2), asegurar que los campos estén completos
+            if (cliente.NaturalezaReceptor == 2)
+            {
+                // Si no tiene tipo documento, usar CI paraguaya por defecto
+                if (!cliente.TipoDocumentoIdentidadSifen.HasValue)
+                {
+                    cliente.TipoDocumentoIdentidadSifen = 1; // CI paraguaya
+                }
+                
+                // Si NumeroDocumentoIdentidad está vacío pero tiene RUC, copiar el RUC
+                if (string.IsNullOrWhiteSpace(cliente.NumeroDocumentoIdentidad) && !string.IsNullOrWhiteSpace(cliente.RUC))
+                {
+                    cliente.NumeroDocumentoIdentidad = cliente.RUC.Replace("-", "").Replace(" ", "").Trim();
+                }
+                
+                // Si es Innominado (tipo 5), no necesita número de documento
+                if (cliente.TipoDocumentoIdentidadSifen == 5)
+                {
+                    cliente.NumeroDocumentoIdentidad = null;
+                }
+            }
+            else if (cliente.NaturalezaReceptor == 1)
+            {
+                // Contribuyentes usan RUC, no necesitan TipoDocumentoIdentidadSifen
+                cliente.TipoDocumentoIdentidadSifen = null;
+                cliente.NumeroDocumentoIdentidad = null;
+            }
+            // =====================================================================
+            
             dbContext.Clientes.Update(cliente);
             await dbContext.SaveChangesAsync();
             Navigation.NavigateTo("/clientes");
@@ -1058,9 +1120,18 @@ END");
             }
             else if (codRes == "0501")
             {
-                // 0501 = RUC no encontrado
-                mensajeRuc = $"RUC no encontrado: {msgRes}";
-                esErrorRuc = true;
+                // 0501 = RUC no encontrado en SIFEN
+                // Si no está en RucDnit local NI en SIFEN, es una Cédula de Identidad
+                cliente.NaturalezaReceptor = 2; // No contribuyente
+                cliente.TipoDocumentoIdentidadSifen = 1; // Cédula de Identidad Paraguaya
+                cliente.NumeroDocumentoIdentidad = cliente.RUC; // Copiar el número
+                cliente.TipoDocumento = "CI";
+                cliente.NumeroDocumento = cliente.RUC;
+                cliente.IdTipoContribuyente = 1; // Persona Física
+                
+                mensajeRuc = $"✓ Número identificado como Cédula de Identidad (no encontrado como RUC en SET)";
+                esErrorRuc = false; // No es error, es información
+                StateHasChanged();
             }
             else
             {
@@ -1163,6 +1234,41 @@ END");
         if (cliente != null && cliente.TipoDocumentoIdentidadSifen == 5)
         {
             cliente.NumeroDocumentoIdentidad = "0";
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Cuando cambia NaturalezaReceptor, ajustar campos SIFEN automáticamente.
+    /// Contribuyentes (1) NO usan iTipIDRec, solo usan RUC.
+    /// No Contribuyentes (2) SÍ usan iTipIDRec + NumeroDocumentoIdentidad.
+    /// </summary>
+    private Task OnNaturalezaReceptorChanged()
+    {
+        if (cliente != null)
+        {
+            if (cliente.NaturalezaReceptor == 1) // Contribuyente
+            {
+                // Contribuyentes no usan TipoDocumentoIdentidadSifen (se envía RUC en su lugar)
+                cliente.TipoDocumentoIdentidadSifen = null;
+                cliente.NumeroDocumentoIdentidad = null;
+            }
+            else if (cliente.NaturalezaReceptor == 2) // No contribuyente
+            {
+                // Si no tiene tipo doc, asignar CI paraguaya por defecto
+                if (!cliente.TipoDocumentoIdentidadSifen.HasValue)
+                {
+                    cliente.TipoDocumentoIdentidadSifen = 1; // Cédula paraguaya
+                }
+                
+                // FIX: Copiar RUC/Cédula al campo NumeroDocumentoIdentidad si está vacío
+                // Para No Contribuyentes, SIFEN requiere iTipIDRec + dNumIDRec
+                if (string.IsNullOrWhiteSpace(cliente.NumeroDocumentoIdentidad) && !string.IsNullOrWhiteSpace(cliente.RUC))
+                {
+                    // Quitar guiones y espacios, solo dejar números
+                    cliente.NumeroDocumentoIdentidad = cliente.RUC.Replace("-", "").Replace(" ", "").Trim();
+                }
+            }
         }
         return Task.CompletedTask;
     }

@@ -25,6 +25,9 @@ namespace SistemIA.Services
         /// </summary>
         public static async Task<string> ConstruirXmlAsync(NotaCreditoVenta nc, AppDbContext ctx)
         {
+            // Helper para extraer solo dígitos de un string
+            static string Digits(string? s) => new string((s ?? string.Empty).Where(char.IsDigit).ToArray());
+            
             // Cargar datos relacionados si no están cargados
             if (nc.Sucursal == null)
                 nc.Sucursal = await ctx.Sucursal.FirstOrDefaultAsync(s => s.Id == nc.IdSucursal);
@@ -86,20 +89,34 @@ namespace SistemIA.Services
             nc.CDC = idCdc;
             nc.CodigoSeguridad = idCdc.Length >= 43 ? idCdc.Substring(34, 9) : "000000001";
 
-            // Timbrado - usar timbrado de NC de la caja
-            string timbrado = nc.Timbrado ?? caja?.TimbradoNC ?? caja?.Timbrado ?? "12345678";
+            // Ambiente (test/prod) - FIX 22-Ene-2026: Detectar ambiente primero para decidir timbrado
+            // CRÍTICO: Misma lógica que DEXmlBuilder.cs
+            var ambiente = (sociedad.ServidorSifen ?? "test").ToLowerInvariant();
+            
+            // Timbrado - FIX 22-Ene-2026: Aplicar lógica TEST/PROD como DEXmlBuilder
+            // CRÍTICO para ambiente TEST: dNumTim debe ser el RUC del emisor (sin DV) con padding a 8 caracteres
+            // CRÍTICO para ambiente PROD: dNumTim es el número de timbrado asignado por SET
+            string timbrado;
+            if (ambiente == "prod")
+            {
+                // Producción: usar el timbrado real de la Caja para NC
+                timbrado = Digits(nc.Timbrado ?? caja?.TimbradoNC ?? caja?.Timbrado ?? string.Empty).PadLeft(8, '0');
+            }
+            else
+            {
+                // TEST: usar el RUC de la Sociedad (sin DV) con padding a 8 caracteres
+                // Ejemplo: RUC 495219 → "00495219"
+                timbrado = Digits(sociedad.RUC).PadLeft(8, '0');
+            }
 
             // Fecha inicio vigencia del timbrado
             string fechaIniT = caja?.VigenciaDelNC?.ToString("yyyy-MM-dd") ?? caja?.VigenciaDel?.ToString("yyyy-MM-dd") ?? nc.Fecha.AddMonths(-1).ToString("yyyy-MM-dd");
-
-            // Ambiente (test/prod)
-            string ambiente = sociedad.ServidorSifen?.ToLower().Contains("test") == true ? "test" : "prod";
 
             // ========== gTimb (Timbrado) ==========
             var gTimb = new XElement(NsSifen + "gTimb",
                 new XElement(NsSifen + "iTiDE", 5),  // 5 = Nota de Crédito Electrónica
                 new XElement(NsSifen + "dDesTiDE", "Nota de crédito electrónica"),
-                new XElement(NsSifen + "dNumTim", timbrado),
+                new XElement(NsSifen + "dNumTim", string.IsNullOrWhiteSpace(timbrado) ? "00000000" : timbrado),
                 new XElement(NsSifen + "dEst", establecimiento),
                 new XElement(NsSifen + "dPunExp", puntoExpedicion),
                 new XElement(NsSifen + "dNumDoc", numeroDoc),
@@ -109,13 +126,30 @@ namespace SistemIA.Services
             // ========== gOpeCom (Operación Comercial) ==========
             // NC no tiene iTipTra ni dDesTipTra (solo facturas)
             string codigoMoneda = moneda?.CodigoISO ?? "PYG";
-            string nombreMoneda = moneda?.Nombre ?? "Guarani";
+            // FIX 22-Ene-2026: Usar descripciones del catálogo SIFEN, no de la tabla Monedas
+            string nombreMoneda = codigoMoneda switch
+            {
+                "PYG" => "Guarani",
+                "USD" => "Dolar americano",
+                "BRL" => "Real",
+                "EUR" => "Euro",
+                "ARS" => "Peso Argentino",
+                _ => "Guarani"
+            };
+
+            // FIX 22-Ene-2026: SÍ incluir gOblAfe - El log de NC aprobada por PowerBuilder lo incluye
+            // Ver: .ai-docs/SifenProyecto2026/LogNCAprobado/sifen_xml_firmado.txt
+            var gOblAfe = new XElement(NsSifen + "gOblAfe",
+                new XElement(NsSifen + "cOblAfe", "211"),
+                new XElement(NsSifen + "dDesOblAfe", "IMPUESTO AL VALOR AGREGADO - GRAVADAS Y EXONERADAS - EXPORTADORES")
+            );
 
             var gOpeCom = new XElement(NsSifen + "gOpeCom",
                 new XElement(NsSifen + "iTImp", 1),  // IVA
                 new XElement(NsSifen + "dDesTImp", "IVA"),
                 new XElement(NsSifen + "cMoneOpe", codigoMoneda),
-                new XElement(NsSifen + "dDesMoneOpe", nombreMoneda)
+                new XElement(NsSifen + "dDesMoneOpe", nombreMoneda),
+                gOblAfe  // Requerido según log de NC aprobada
             );
 
             // Si es moneda extranjera, agregar tipo de cambio
@@ -214,8 +248,22 @@ namespace SistemIA.Services
             }
             else
             {
+                // FIX 23-Ene-2026: Para No Contribuyentes, si tiene TipoDocumentoIdentidadSifen Y NumeroDocumentoIdentidad, usarlos.
+                // Si no tiene datos de documento, caer a Innominado (tipo 5) para evitar errores SIFEN.
                 int tipoDoc = cliente?.TipoDocumentoIdentidadSifen ?? 5;
-                string numDoc = cliente?.NumeroDocumentoIdentidad ?? "0";
+                string numDoc = cliente?.NumeroDocumentoIdentidad ?? "";
+                
+                // Si el tipo es distinto de Innominado (5) pero no tiene número de documento, caer a Innominado
+                if (tipoDoc != 5 && string.IsNullOrWhiteSpace(numDoc))
+                {
+                    tipoDoc = 5; // Innominado
+                    numDoc = "0";
+                }
+                else if (string.IsNullOrWhiteSpace(numDoc))
+                {
+                    numDoc = "0";
+                }
+                
                 dNumIDRec = numDoc;
                 gDatRec.Add(new XElement(NsSifen + "iTipIDRec", tipoDoc));
                 gDatRec.Add(new XElement(NsSifen + "dDTipIDRec", DescripcionTipoDocRec(tipoDoc)));
@@ -262,10 +310,14 @@ namespace SistemIA.Services
                 decimal descuento = det.MontoDescuento;
                 decimal importe = det.Importe;
 
-                // IVA
+                // IVA - Catálogo SIFEN v150:
+                // 1 = Gravado IVA (incluye 10% y 5%)
+                // 2 = Exonerado (Art. 83 Ley 125/91)
+                // 3 = Exento
+                // 4 = Gravado parcial (Grav-Exe)
                 int tasaIva = det.TasaIVA;
-                int iAfecIVA = tasaIva switch { 10 => 1, 5 => 3, _ => 2 }; // 1=Gravado 10%, 2=Exento, 3=Gravado 5%
-                string dDesAfecIVA = tasaIva switch { 10 => "Gravado IVA", 5 => "Gravado IVA - TSR 5%", _ => "Exento" };
+                int iAfecIVA = tasaIva > 0 ? 1 : 3; // 1=Gravado IVA (10% o 5%), 3=Exento
+                string dDesAfecIVA = tasaIva > 0 ? "Gravado IVA" : "Exento";
                 
                 decimal baseGravIva = tasaIva > 0 ? importe - (tasaIva == 10 ? det.IVA10 : det.IVA5) : 0;
                 decimal liqIvaItem = tasaIva == 10 ? det.IVA10 : (tasaIva == 5 ? det.IVA5 : 0);
@@ -291,13 +343,17 @@ namespace SistemIA.Services
                 gCamItem.Add(gValorItem);
 
                 // IVA del item
+                // FIX 22-Ene-2026: Según XML aprobado LogNCAprobado/sifen_xml_firmado.txt
+                // dBasExe SIEMPRE es 0, independientemente del tipo de IVA (gravado, exento, exonerado)
+                // El subtotal exento se calcula en gTotSub.dSubExe, no en gCamIVA.dBasExe
                 var gCamIVA = new XElement(NsSifen + "gCamIVA",
                     new XElement(NsSifen + "iAfecIVA", iAfecIVA),
                     new XElement(NsSifen + "dDesAfecIVA", dDesAfecIVA),
-                    new XElement(NsSifen + "dPropIVA", 100),
+                    new XElement(NsSifen + "dPropIVA", iAfecIVA == 1 ? 100 : 0), // 100% cuando gravado, 0% cuando exento
                     new XElement(NsSifen + "dTasaIVA", tasaIva),
                     new XElement(NsSifen + "dBasGravIVA", baseGravIva.ToString("0", CultureInfo.InvariantCulture)),
-                    new XElement(NsSifen + "dLiqIVAItem", liqIvaItem.ToString("0", CultureInfo.InvariantCulture))
+                    new XElement(NsSifen + "dLiqIVAItem", liqIvaItem.ToString("0", CultureInfo.InvariantCulture)),
+                    new XElement(NsSifen + "dBasExe", "0")  // SIEMPRE 0 según XML aprobado
                 );
                 gCamItem.Add(gCamIVA);
 
@@ -310,7 +366,8 @@ namespace SistemIA.Services
                 gDtipDE.Add(item);
 
             // ========== gTotSub (Totales) ==========
-            decimal subExe = nc.TotalExenta;
+            // Calcular subExe desde los detalles para que coincida con la suma de dBasExe de items exentos
+            decimal subExe = detalles.Where(d => d.TasaIVA == 0).Sum(d => d.Importe);
             decimal sub5 = detalles.Where(d => d.TasaIVA == 5).Sum(d => d.Importe);
             decimal sub10 = detalles.Where(d => d.TasaIVA == 10).Sum(d => d.Importe);
             decimal totOpe = nc.Total;

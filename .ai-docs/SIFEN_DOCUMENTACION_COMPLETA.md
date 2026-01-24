@@ -2306,3 +2306,346 @@ Se creó migración para normalizar clientes CONSUMIDOR FINAL:
 - `Services/DEXmlBuilder.cs` - iTiContRec condicional + DescripcionTipoDocRec corregida
 - `Models/ClienteSifenMejorado.cs` - Catálogo actualizado
 - Migración: `20260121221757_Fix_TipoDocumento_Innominado_Clientes.cs`
+---
+
+## 🧾 Sesión 22 Enero 2026 - Notas de Crédito Electrónicas (NCE) - Consulta y QR
+
+### ⚠️ Problemas Encontrados y Solucionados
+
+Se identificaron y corrigieron múltiples errores relacionados con las Notas de Crédito Electrónicas.
+
+---
+
+### 🔴 Error 1: "La NC no tiene IdLote registrado"
+
+**Síntoma:** Al intentar consultar el estado de una NC en SIFEN, aparecía el error "La NC no tiene IdLote registrado" aunque la NC tenía CDC válido.
+
+**Causa:** El endpoint `/notascredito/{id}/consultar-sifen` solo verificaba la existencia de `IdLote`, pero las NC enviadas de forma síncrona solo tienen `CDC` (sin IdLote).
+
+**Solución:** Modificar el endpoint para soportar ambos escenarios:
+- Si tiene `IdLote` → Consultar por lote (`rEnviConsLoteDe`)
+- Si solo tiene `CDC` → Consultar por CDC (`rEnviConsDeRequest`)
+
+**Código corregido en `Program.cs`:**
+```csharp
+// Antes: Solo verificaba IdLote
+if (string.IsNullOrEmpty(nc.IdLote))
+    return Results.BadRequest(new { ok = false, error = "La NC no tiene IdLote registrado" });
+
+// Después: Verifica IdLote O CDC
+if (string.IsNullOrEmpty(nc.IdLote) && string.IsNullOrEmpty(nc.CDC))
+    return Results.BadRequest(new { ok = false, error = "La NC no tiene IdLote ni CDC registrado" });
+
+// Si tiene IdLote, consultar por lote
+// Si solo tiene CDC, consultar directamente por CDC
+```
+
+---
+
+### 🔴 Error 2: Error 0160 "XML Mal Formado" en Consulta de NC por CDC
+
+**Síntoma:** Al consultar una NC por CDC, SIFEN retornaba error 0160 "XML Mal Formado".
+
+**Causa:** El XML de consulta usaba elementos incorrectos:
+- ❌ `rEnviConsDe` (incorrecto)
+- ❌ `dCDCCons` (incorrecto)
+
+**Solución:** Usar los elementos correctos según el XSD de SIFEN:
+- ✅ `rEnviConsDeRequest` (correcto)
+- ✅ `dCDC` (correcto)
+
+**XML Incorrecto (causaba error 0160):**
+```xml
+<rEnviConsDe xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+    <dId>{dId}</dId>
+    <dCDCCons>{CDC}</dCDCCons>
+</rEnviConsDe>
+```
+
+**XML Correcto (funciona):**
+```xml
+<rEnviConsDeRequest xmlns="http://ekuatia.set.gov.py/sifen/xsd">
+    <dId>{dId}</dId>
+    <dCDC>{CDC}</dCDC>
+</rEnviConsDeRequest>
+```
+
+**Código corregido en `Program.cs`:**
+```csharp
+var soapConsultaCdc = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<soap:Envelope xmlns:soap=""http://www.w3.org/2003/05/soap-envelope"">
+<soap:Body>
+<rEnviConsDeRequest xmlns=""http://ekuatia.set.gov.py/sifen/xsd"">
+<dId>{dId}</dId>
+<dCDC>{nc.CDC}</dCDC>
+</rEnviConsDeRequest>
+</soap:Body>
+</soap:Envelope>";
+```
+
+---
+
+### 🔴 Error 3: QR en KuDE de NC No Escaneaba Correctamente
+
+**Síntoma:** El QR generado en el KuDE (impresión A4) de las NC no era válido y al escanearlo no llevaba al portal de SIFEN.
+
+**Causa:** El código generaba una URL genérica sin el `cHashQR` oficial:
+```
+https://ekuatia.set.gov.py/consultas/qr?nVersion=150&Id={CDC}...
+```
+
+Pero SIFEN requiere la URL completa con el hash que viene en el campo `dCarQR` del XML firmado.
+
+**Solución:** Usar el campo `nc.UrlQrSifen` que contiene la URL completa con `cHashQR` (extraído del `dCarQR` del XML firmado).
+
+**Código corregido en `KudeNotaCredito.razor`:**
+```csharp
+private string GenerarQrDataUrl()
+{
+    // PRIORIDAD 1: Usar la URL completa del QR firmado (dCarQR)
+    // Esta URL contiene el cHashQR oficial que SIFEN validó
+    if (!string.IsNullOrWhiteSpace(nc?.UrlQrSifen))
+    {
+        return GenerarQrDesdeUrl(nc.UrlQrSifen);
+    }
+    
+    // Fallback: Generar URL genérica (solo para preview, no válida para SIFEN)
+    // ...
+}
+
+private string GenerarQrDesdeUrl(string url)
+{
+    using var qrGenerator = new QRCodeGenerator();
+    using var qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.M);
+    using var qrCode = new PngByteQRCode(qrCodeData);
+    var qrBytes = qrCode.GetGraphic(4);
+    return $"data:image/png;base64,{Convert.ToBase64String(qrBytes)}";
+}
+```
+
+---
+
+### 🔴 Error 4: Estado de NC No Se Refrescaba Después de Operaciones SIFEN
+
+**Síntoma:** Después de enviar o consultar SIFEN, el estado de la NC en la tabla no se actualizaba visualmente hasta recargar la página.
+
+**Causa:** El método `StateHasChanged()` se llamaba solo en el bloque `finally`, después de mostrar el modal. El modal bloqueaba la actualización visual.
+
+**Solución:** Llamar `StateHasChanged()` **después** de actualizar la lista local y **antes** de mostrar el modal.
+
+**Código corregido en `NotasCreditoExplorar.razor`:**
+```csharp
+// Actualizar el item en la lista local
+var ncLocal = _notas.FirstOrDefault(n => n.IdNotaCredito == nc.IdNotaCredito);
+if (ncLocal != null)
+{
+    ncLocal.EstadoSifen = estado;
+    ncLocal.CDC = cdc;
+    ncLocal.MensajeSifen = mensaje;
+}
+
+// ✅ Refrescar UI ANTES de mostrar el modal
+StateHasChanged();
+
+// Ahora mostrar el modal
+MostrarResultadoSifen(true, estado, cdc, codigo, mensaje, null);
+```
+
+---
+
+### ✅ Mejora: Deshabilitación de Impresión Ticket para NC
+
+**Decisión:** Las Notas de Crédito Electrónicas solo deben imprimirse en formato A4 (KuDE), no en formato ticket.
+
+**Cambios realizados:**
+1. Eliminado botón "Ticket" de la tabla de acciones
+2. Eliminado modal de vista previa de ticket
+3. Eliminadas variables: `_mostrarTicket`, `_ncSeleccionada`
+4. Eliminados métodos: `ImprimirTicket()`, `CerrarTicket()`
+5. Renombrado botón a "Imprimir A4 (KuDE)" para claridad
+
+---
+
+### 📋 Resumen de Archivos Modificados
+
+| Archivo | Cambios |
+|---------|---------|
+| `Program.cs` | Endpoint `/notascredito/{id}/consultar-sifen` soporta IdLote y CDC, XML corregido con `rEnviConsDeRequest` |
+| `Shared/Reportes/KudeNotaCredito.razor` | QR usa `UrlQrSifen` con cHashQR oficial |
+| `Pages/NotasCreditoExplorar.razor` | StateHasChanged antes de modales, eliminado ticket |
+
+---
+
+### 🧪 Comandos de Prueba
+
+```powershell
+# Consultar NC por CDC
+curl.exe -s "https://localhost:7060/notascredito/{id}/consultar-sifen" --insecure
+
+# Debug: Ver información de NC
+curl.exe -s "https://localhost:7060/notascredito/{id}/debug" --insecure
+
+# Enviar NC a SIFEN
+curl.exe -X POST "https://localhost:7060/notascredito/{id}/enviar-sifen" --insecure
+```
+
+---
+
+### 📊 Flujo Completo de NC SIFEN (Actualizado)
+
+```
+1. Crear NC desde factura aprobada
+        ↓
+2. Confirmar NC (Estado = "Confirmada")
+        ↓
+3. Enviar a SIFEN (botón "Enviar SIFEN")
+        ↓
+4. SIFEN responde con CDC y estado
+        ↓
+5. Se guarda UrlQrSifen (dCarQR del XML firmado)
+        ↓
+6. Imprimir KuDE (QR usa UrlQrSifen con cHashQR)
+        ↓
+7. Consultar estado en SET (botón "Consultar SIFEN")
+   - Si tiene IdLote → Consulta por lote
+   - Si solo tiene CDC → Consulta directa por CDC
+```
+
+---
+
+## 🗑️ Sesión 23-24 Enero 2026 - Eliminación de Ventas RECHAZADAS por SIFEN
+
+### ⚠️ Problema Identificado
+
+Las ventas **RECHAZADAS** por SIFEN no podían eliminarse desde el explorador de ventas, aunque el usuario tuviera permisos de DELETE. El botón aparecía deshabilitado.
+
+**Causa:** La lógica anterior bloqueaba la eliminación de CUALQUIER venta que tuviera CDC, sin distinguir entre ventas ACEPTADAS y RECHAZADAS.
+
+### ✅ Solución Implementada
+
+Se modificó la lógica en `Pages/VentasExplorar.razor` para permitir eliminar ventas RECHAZADAS:
+
+#### Lógica Anterior (Incorrecta):
+```csharp
+// Bloqueaba TODAS las ventas con CDC
+var tieneCDC = !string.IsNullOrWhiteSpace(v.CDC);
+var deshabilitarEliminar = tieneCDC;  // ❌ No distinguía rechazadas
+```
+
+#### Lógica Nueva (Correcta):
+```csharp
+// Permite eliminar ventas RECHAZADAS por SIFEN
+var tieneCDC = !string.IsNullOrWhiteSpace(v.CDC);
+var esRechazada = v.EstadoSifen?.ToUpper() == "RECHAZADO" || v.EstadoSifen?.ToUpper() == "RECHAZADA";
+var deshabilitarEliminar = tieneCDC && !esRechazada;  // ✅ Rechazadas SÍ pueden eliminarse
+```
+
+### 📋 Reglas de Eliminación de Ventas con SIFEN
+
+| Estado SIFEN | ¿Puede Eliminarse? | Razón |
+|--------------|-------------------|-------|
+| Sin CDC | ✅ Sí | No fue enviada a SIFEN |
+| RECHAZADO/RECHAZADA | ✅ Sí | SIFEN nunca la aceptó oficialmente |
+| ENVIADO | ❌ No | Está pendiente de respuesta |
+| ACEPTADO | ❌ No | Tiene validez legal, debe cancelarse vía evento SIFEN |
+| CANCELADO | ❌ No | Ya fue procesada y cancelada en SIFEN |
+
+### 📁 Archivos Modificados
+
+| Archivo | Cambios |
+|---------|---------|
+| `Pages/VentasExplorar.razor` | Lógica de UI (líneas ~288-295) y método `Eliminar()` (líneas ~1242-1256) |
+
+### 🔧 Código Implementado
+
+**En la UI (botón de eliminar):**
+```razor
+@{
+    // SIFEN: Si tiene CDC Y está ACEPTADA/ENVIADA, NO puede eliminarse
+    // Las ventas RECHAZADAS por SIFEN SÍ pueden eliminarse
+    var tieneCDC = !string.IsNullOrWhiteSpace(v.CDC);
+    var esRechazada = v.EstadoSifen?.ToUpper() == "RECHAZADO" || v.EstadoSifen?.ToUpper() == "RECHAZADA";
+    var deshabilitarEliminar = tieneCDC && !esRechazada;
+    var tooltipEliminar = tieneCDC && !esRechazada 
+      ? "No se puede eliminar - Registrada en SIFEN (CDC: " + v.CDC?.Substring(0, 20) + "...)" 
+      : (esRechazada ? "Eliminar venta rechazada por SIFEN" : "Eliminar");
+}
+<button class="btn btn-danger" title="@tooltipEliminar" disabled="@deshabilitarEliminar" 
+        @onclick="() => Eliminar(v.IdVenta)">
+    <i class="bi bi-trash3"></i>
+</button>
+```
+
+**En el método Eliminar():**
+```csharp
+// SIFEN: No permitir eliminar ventas que tengan CDC Y estén ACEPTADAS/ENVIADAS
+// Las ventas RECHAZADAS por SIFEN SÍ pueden eliminarse porque nunca fueron aceptadas
+var esRechazadaSifen = venta.EstadoSifen?.ToUpper() == "RECHAZADO" || venta.EstadoSifen?.ToUpper() == "RECHAZADA";
+
+if (!string.IsNullOrWhiteSpace(venta.CDC) && !esRechazadaSifen)
+{
+    await JS.InvokeVoidAsync("alert", $"❌ No se puede eliminar esta venta.\n\n" +
+        $"Esta factura está REGISTRADA en SIFEN y no puede eliminarse físicamente.\n\n" +
+        $"CDC: {venta.CDC}\nEstado SIFEN: {venta.EstadoSifen ?? "N/A"}\n\n" +
+        $"Las facturas electrónicas deben permanecer en el sistema por requisitos legales.\n" +
+        $"Si necesita anularla, use el botón 'Anular' para enviar un evento de cancelación a SIFEN.");
+    return;
+}
+```
+
+---
+
+## 🛡️ Sesión 23 Enero 2026 - Monitor SIFEN como Módulo de Permisos
+
+### ✅ Módulo Monitor SIFEN agregado al sistema de permisos
+
+Se agregó el módulo Monitor SIFEN a la base de datos para que aparezca en la matriz de permisos y pueda controlarse el acceso.
+
+### 📋 Datos del Módulo
+
+| Campo | Valor |
+|-------|-------|
+| IdModulo | 69 |
+| Nombre | Monitor SIFEN |
+| Descripción | Monitor de cola y documentos electrónicos SIFEN |
+| RutaPagina | `/monitor-sifen` |
+| Icono | `bi-broadcast-pin` |
+| IdModuloPadre | 8 (Configuración) |
+| Orden | 10 |
+
+### 🔐 Permisos Asignados al Rol Administrador
+
+| IdPermiso | Código | Descripción |
+|-----------|--------|-------------|
+| 1 | VIEW | Ver y consultar información |
+| 2 | CREATE | Crear nuevos registros |
+| 3 | EDIT | Modificar registros existentes |
+| 4 | DELETE | Eliminar registros |
+
+### 📁 Archivos Creados/Modificados
+
+| Archivo | Cambios |
+|---------|---------|
+| `Migrations/20260123220001_Agregar_Modulo_MonitorSifen.cs` | Migración idempotente para insertar módulo y permisos |
+| `Pages/MonitorSifen.razor` | PageProtection actualizado de `/configuracion` a `/monitor-sifen` |
+
+### 🔧 SQL de la Migración
+
+```sql
+-- Insertar módulo Monitor SIFEN si no existe
+IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/monitor-sifen')
+BEGIN
+    INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+    VALUES ('Monitor SIFEN', 'Monitor de cola y documentos electrónicos SIFEN', 
+            '/monitor-sifen', 'bi-broadcast-pin', 8, 10, 1, GETDATE());
+    
+    DECLARE @NuevoIdModulo INT = SCOPE_IDENTITY();
+    
+    -- Agregar permisos VIEW, CREATE, EDIT, DELETE al rol Admin
+    INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+    VALUES (1, @NuevoIdModulo, 1, 1, GETDATE()),  -- VIEW
+           (1, @NuevoIdModulo, 2, 1, GETDATE()),  -- CREATE
+           (1, @NuevoIdModulo, 3, 1, GETDATE()),  -- EDIT
+           (1, @NuevoIdModulo, 4, 1, GETDATE());  -- DELETE
+END
+```

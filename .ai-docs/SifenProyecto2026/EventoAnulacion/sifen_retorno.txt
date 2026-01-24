@@ -1,4 +1,0 @@
-=== RETORNO JSON 2026-01-20 18:39:57 ===
-Longitud: 115
-RETORNO COMPLETO:
-{"codigo":"0600","mensaje":"Evento registrado correctamente","qr":"","idLote":"Tag not found.","documento":"12529"}

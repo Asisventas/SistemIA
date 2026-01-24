@@ -88,8 +88,10 @@ namespace SistemIA.Services
             {
                 if (venta.Cliente.NaturalezaReceptor == 1)
                 {
-                    if (string.IsNullOrWhiteSpace(venta.Cliente.RUC) || venta.Cliente.DV == 0)
-                        res.Errores.Add("Receptor contribuyente sin RUC/DV válido");
+                    // FIX 23-Ene-2026: DV puede ser 0 (es un valor válido)
+                    // Solo validar que RUC no esté vacío. El DV=0 es válido para algunos RUCs.
+                    if (string.IsNullOrWhiteSpace(venta.Cliente.RUC))
+                        res.Errores.Add("Receptor contribuyente sin RUC válido");
                 }
                 else
                 {

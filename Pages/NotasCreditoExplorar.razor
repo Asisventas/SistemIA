@@ -81,6 +81,7 @@
                     <table class="table table-hover table-sm">
                         <thead class="table-light">
                             <tr>
+                                <th style="width:70px;">ID Venta</th>
                                 <th style="width:100px;">Número</th>
                                 <th style="width:100px;">Fecha</th>
                                 <th>Cliente</th>
@@ -97,6 +98,7 @@
                             @foreach (var nc in _notas)
                             {
                                 <tr class="@(nc.Estado == "Anulada" ? "table-secondary text-decoration-line-through" : "")">
+                                    <td class="text-muted small">@(nc.IdVentaAsociada?.ToString() ?? "-")</td>
                                     <td>@nc.Establecimiento-@nc.PuntoExpedicion-@nc.NumeroNota.ToString("D7")</td>
                                     <td>@nc.Fecha.ToString("dd/MM/yyyy")</td>
                                     <td>@(nc.Cliente?.RazonSocial ?? nc.NombreCliente ?? "S/N")</td>
@@ -135,11 +137,8 @@
                                             <button class="btn btn-outline-primary" title="Editar" @onclick="() => Editar(nc.IdNotaCredito)" disabled="@(nc.Estado != "Borrador")">
                                                 <i class="bi bi-pencil"></i>
                                             </button>
-                                            <button class="btn btn-outline-info" title="Imprimir A4" @onclick="() => ImprimirA4(nc.IdNotaCredito)">
+                                            <button class="btn btn-outline-info" title="Imprimir A4 (KuDE)" @onclick="() => ImprimirA4(nc.IdNotaCredito)">
                                                 <i class="bi bi-printer"></i>
-                                            </button>
-                                            <button class="btn btn-outline-secondary" title="Ticket" @onclick="() => ImprimirTicket(nc)">
-                                                <i class="bi bi-receipt"></i>
                                             </button>
                                             @if (nc.Estado == "Borrador")
                                             {
@@ -153,26 +152,34 @@
                                                     <i class="bi bi-x-lg"></i>
                                                 </button>
                                             }
-                                            @* Botones SIFEN *@
-                                            @if (nc.Estado == "Confirmada" && string.IsNullOrEmpty(nc.EstadoSifen))
+                                        </div>
+                                        @* Botones SIFEN - Igual que VentasExplorar *@
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            @if (!string.IsNullOrWhiteSpace(nc.CDC))
                                             {
-                                                <button class="btn btn-outline-warning" title="Enviar a SIFEN" @onclick="() => EnviarSifen(nc)" disabled="@_enviandoSifen">
-                                                    @if (_enviandoSifen && _ncEnviando == nc.IdNotaCredito)
-                                                    {
-                                                        <span class="spinner-border spinner-border-sm"></span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <i class="bi bi-cloud-upload"></i>
-                                                    }
-                                                </button>
+                                                <button class="btn btn-outline-info" title="Ver QR" @onclick="() => MostrarQR(nc.CDC, nc.UrlQrSifen)"><i class="bi bi-qr-code"></i></button>
                                             }
-                                            @if (!string.IsNullOrEmpty(nc.IdLote) && nc.EstadoSifen != "ACEPTADO" && nc.EstadoSifen != "RECHAZADO")
-                                            {
-                                                <button class="btn btn-outline-info" title="Consultar SIFEN" @onclick="() => ConsultarSifen(nc)" disabled="@_consultandoSifen">
-                                                    <i class="bi bi-cloud-download"></i>
-                                                </button>
-                                            }
+                                            <button class="btn btn-outline-primary" title="Enviar SIFEN" disabled="@(nc.Estado != "Confirmada" || nc.EstadoSifen == "ACEPTADO" || _enviandoSifen)" @onclick="() => EnviarSifen(nc)">
+                                                @if (_enviandoSifen && _ncEnviando == nc.IdNotaCredito)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm"></span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-send"></i>
+                                                }
+                                            </button>
+                                            <button class="btn btn-outline-success" title="Consultar SIFEN" disabled="@(string.IsNullOrWhiteSpace(nc.IdLote) && string.IsNullOrWhiteSpace(nc.CDC))" @onclick="() => ConsultarSifen(nc)">
+                                                @if (_consultandoSifen && _ncConsultando == nc.IdNotaCredito)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm"></span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-cloud-check"></i>
+                                                }
+                                            </button>
+                                            <a class="btn btn-outline-dark" title="Ver XML" href="/notascredito/@nc.IdNotaCredito/xml" target="_blank"><i class="bi bi-filetype-xml"></i></a>
                                         </div>
                                     </td>
                                 </tr>
@@ -195,21 +202,161 @@
     </div>
 </div>
 
-@* Modal Ticket *@
-@if (_mostrarTicket && _ncSeleccionada != null)
+@* Modal QR SIFEN *@
+@if (_mostrarQR && !string.IsNullOrWhiteSpace(_qrCdc))
 {
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-sm">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Ticket NC</h5>
-                    <button type="button" class="btn-close" @onclick="CerrarTicket"></button>
+                <div class="modal-header bg-primary text-white">
+                    <h6 class="modal-title"><i class="bi bi-qr-code me-2"></i>QR SIFEN</h6>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarQR"></button>
+                </div>
+                <div class="modal-body text-center">
+                    @{
+                        var esTest = _empresa?.ServidorSifen?.Contains("test", StringComparison.OrdinalIgnoreCase) ?? true;
+                        var baseConsulta = esTest 
+                            ? "https://ekuatia.set.gov.py/consultas-test/qr?"
+                            : "https://ekuatia.set.gov.py/consultas/qr?";
+                        
+                        var consultaUrl = !string.IsNullOrWhiteSpace(_qrUrl) 
+                            ? _qrUrl 
+                            : $"{baseConsulta}cdc={_qrCdc}";
+                        
+                        var qrImgUrl = $"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={Uri.EscapeDataString(consultaUrl)}";
+                    }
+                    <img src="@qrImgUrl" alt="QR SIFEN" class="img-fluid mb-3" style="max-width: 200px;" />
+                    <p class="small text-muted mb-1">CDC:</p>
+                    <p class="small text-break" style="font-family: monospace;">@_qrCdc</p>
+                </div>
+                <div class="modal-footer justify-content-between">
+                    <a href="@consultaUrl" target="_blank" class="btn btn-primary btn-sm">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Consultar en SET
+                    </a>
+                    <button class="btn btn-secondary btn-sm" @onclick="CerrarQR">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal de Resultado SIFEN (Envío/Consulta) *@
+@if (_mostrarResultadoSifen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.6);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header @(_resultadoSifenExito ? "bg-success" : "bg-danger") text-white">
+                    <h5 class="modal-title">
+                        <i class="bi @(_resultadoSifenExito ? "bi-check-circle" : "bi-x-circle") me-2"></i>
+                        @(_resultadoSifenExito ? "Operación Exitosa" : "Error en Operación")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarResultadoSifen"></button>
                 </div>
                 <div class="modal-body">
-                    <NotaCreditoTicketVistaPrevia NotaCredito="_ncSeleccionada" Empresa="_empresa" MostrarBotonImprimir="true" />
+                    @if (_resultadoSifenExito)
+                    {
+                        <div class="text-center mb-3">
+                            <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+                        </div>
+                        <div class="alert alert-success">
+                            <strong>Estado:</strong> @_resultadoSifenEstado
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_resultadoSifenCdc))
+                        {
+                            <div class="mb-2">
+                                <strong>CDC:</strong>
+                                <div class="small text-muted text-break font-monospace">@_resultadoSifenCdc</div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_resultadoSifenCodigo))
+                        {
+                            <div class="mb-2"><strong>Código:</strong> @_resultadoSifenCodigo</div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center mb-3">
+                            <i class="bi bi-x-circle-fill text-danger" style="font-size: 4rem;"></i>
+                        </div>
+                        <div class="alert alert-danger">
+                            <strong>Error:</strong> @_resultadoSifenError
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_resultadoSifenCodigo))
+                        {
+                            <div class="mb-2"><strong>Código:</strong> @_resultadoSifenCodigo</div>
+                        }
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_resultadoSifenMensaje))
+                    {
+                        <div class="mb-2"><strong>Mensaje:</strong> @_resultadoSifenMensaje</div>
+                    }
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary btn-sm" @onclick="CerrarTicket">Cerrar</button>
+                    <button class="btn btn-primary" @onclick="CerrarResultadoSifen">
+                        <i class="bi bi-check-lg me-1"></i>Aceptar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal Confirmar Anulación SIFEN *@
+@if (_mostrarConfirmarAnulacion)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.6);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Anular NC con SIFEN
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CancelarAnulacion"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Esta NC fue <strong>APROBADA</strong> por SIFEN. Se enviará un Evento de Cancelación antes de anular.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>NC:</strong> @_ncAnulando?.Establecimiento-@_ncAnulando?.PuntoExpedicion-@_ncAnulando?.NumeroNota.ToString("D7")
+                    </div>
+                    <div class="mb-3">
+                        <strong>CDC:</strong>
+                        <div class="small text-muted text-break font-monospace">@_ncAnulando?.CDC</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Motivo de anulación:</strong> <span class="text-danger">*</span></label>
+                        <textarea class="form-control" rows="3" @bind="_motivoAnulacion" 
+                                  placeholder="Ingrese el motivo (5-500 caracteres)"></textarea>
+                        <small class="text-muted">@(_motivoAnulacion?.Length ?? 0)/500 caracteres</small>
+                    </div>
+                    
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-octagon me-2"></i>
+                        <strong>¡Atención!</strong> Esta acción es <strong>IRREVERSIBLE</strong> en SIFEN.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CancelarAnulacion" disabled="@_procesandoAnulacion">
+                        Cancelar
+                    </button>
+                    <button class="btn btn-danger" @onclick="ConfirmarAnulacionSifen" disabled="@_procesandoAnulacion">
+                        @if (_procesandoAnulacion)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Procesando...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-send me-1"></i>
+                            <span>Enviar Cancelación</span>
+                        }
+                    </button>
                 </div>
             </div>
         </div>
@@ -229,14 +376,31 @@
     private string _filtroEstado = "";
     private string _filtroBusqueda = "";
     
-    // Modal ticket
-    private bool _mostrarTicket;
-    private NotaCreditoVenta? _ncSeleccionada;
-    
     // SIFEN
     private bool _enviandoSifen;
     private bool _consultandoSifen;
     private int? _ncEnviando;
+    private int? _ncConsultando;
+    
+    // QR Modal
+    private bool _mostrarQR;
+    private string? _qrCdc;
+    private string? _qrUrl;
+    
+    // Modal Resultado SIFEN
+    private bool _mostrarResultadoSifen;
+    private bool _resultadoSifenExito;
+    private string? _resultadoSifenEstado;
+    private string? _resultadoSifenCdc;
+    private string? _resultadoSifenCodigo;
+    private string? _resultadoSifenMensaje;
+    private string? _resultadoSifenError;
+    
+    // Modal Anulación SIFEN
+    private bool _mostrarConfirmarAnulacion;
+    private bool _procesandoAnulacion;
+    private NotaCreditoVenta? _ncAnulando;
+    private string? _motivoAnulacion;
 
     protected override async Task OnInitializedAsync()
     {
@@ -275,7 +439,7 @@
                 n.NumeroNota.ToString().Contains(busq));
         }
         
-        _notas = await query.OrderByDescending(n => n.Fecha).ThenByDescending(n => n.NumeroNota).ToListAsync();
+        _notas = await query.OrderByDescending(n => n.IdNotaCredito).ToListAsync();
         _loading = false;
     }
 
@@ -300,28 +464,6 @@
     private void ImprimirA4(int id)
     {
         Nav.NavigateTo($"/notas-credito/imprimir/{id}");
-    }
-
-    private async Task ImprimirTicket(NotaCreditoVenta nc)
-    {
-        // Cargar detalles si no están
-        if (nc.Detalles == null || !nc.Detalles.Any())
-        {
-            nc = await Db.NotasCreditoVentas
-                .Include(n => n.Cliente)
-                .Include(n => n.VentaAsociada)
-                .Include(n => n.Detalles!)
-                    .ThenInclude(d => d.Producto)
-                .FirstOrDefaultAsync(n => n.IdNotaCredito == nc.IdNotaCredito) ?? nc;
-        }
-        _ncSeleccionada = nc;
-        _mostrarTicket = true;
-    }
-
-    private void CerrarTicket()
-    {
-        _mostrarTicket = false;
-        _ncSeleccionada = null;
     }
 
     private async Task Confirmar(NotaCreditoVenta nc)
@@ -349,9 +491,118 @@
 
     private async Task Anular(NotaCreditoVenta nc)
     {
+        // Si la NC fue aprobada por SIFEN, mostrar modal de confirmación con motivo
+        var estadosSifenAprobados = new[] { "ACEPTADO", "APROBADO" };
+        var ncAprobadaSifen = !string.IsNullOrWhiteSpace(nc.EstadoSifen) && 
+                             estadosSifenAprobados.Contains(nc.EstadoSifen.ToUpper());
+        
+        if (ncAprobadaSifen && !string.IsNullOrWhiteSpace(nc.CDC))
+        {
+            // Verificar si puede cancelar (dentro de 48 horas)
+            var ncDb = await Db.NotasCreditoVentas.FirstOrDefaultAsync(n => n.IdNotaCredito == nc.IdNotaCredito);
+            if (ncDb?.FechaEnvioSifen.HasValue == true)
+            {
+                var horasTranscurridas = (DateTime.Now - ncDb.FechaEnvioSifen.Value).TotalHours;
+                if (horasTranscurridas > 48)
+                {
+                    MostrarResultadoSifen(false, null, null, null, 
+                        $"Han pasado más de 48 horas desde el envío a SIFEN ({horasTranscurridas:F1} horas).\nNo se puede cancelar vía evento SIFEN.",
+                        null);
+                    return;
+                }
+            }
+            
+            // Mostrar modal de confirmación con motivo
+            _ncAnulando = nc;
+            _motivoAnulacion = "Operación cancelada";
+            _mostrarConfirmarAnulacion = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // NC no fue aprobada por SIFEN, anulación normal
         if (!await JS.InvokeAsync<bool>("confirm", $"¿Anular la NC #{nc.NumeroNota}? Esta acción no se puede deshacer."))
             return;
         
+        await ProcesarAnulacionLocal(nc);
+    }
+    
+    private void CancelarAnulacion()
+    {
+        _mostrarConfirmarAnulacion = false;
+        _ncAnulando = null;
+        _motivoAnulacion = null;
+        _procesandoAnulacion = false;
+    }
+    
+    private async Task ConfirmarAnulacionSifen()
+    {
+        if (_ncAnulando == null || string.IsNullOrWhiteSpace(_motivoAnulacion))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe ingresar un motivo de anulación.");
+            return;
+        }
+        
+        if (_motivoAnulacion.Length < 5 || _motivoAnulacion.Length > 500)
+        {
+            await JS.InvokeVoidAsync("alert", "El motivo debe tener entre 5 y 500 caracteres.");
+            return;
+        }
+        
+        _procesandoAnulacion = true;
+        StateHasChanged();
+        
+        try
+        {
+            // Enviar evento de cancelación a SIFEN para la NC
+            var handler = new HttpClientHandler();
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+            using var http = new HttpClient(handler);
+            http.Timeout = TimeSpan.FromSeconds(120);
+            
+            var baseUrl = Nav.BaseUri.TrimEnd('/');
+            var response = await http.PostAsync(
+                $"{baseUrl}/notascredito/{_ncAnulando.IdNotaCredito}/cancelar-sifen?motivo={Uri.EscapeDataString(_motivoAnulacion)}", 
+                null);
+            var json = await response.Content.ReadAsStringAsync();
+            
+            var result = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+            var exito = result?.TryGetValue("ok", out var okEl) == true && okEl.GetBoolean();
+            
+            if (exito)
+            {
+                // SIFEN aceptó, procesar anulación local
+                _mostrarConfirmarAnulacion = false;
+                await ProcesarAnulacionLocal(_ncAnulando);
+                
+                var codigo = result?.TryGetValue("codigo", out var codEl) == true ? codEl.GetString() : "";
+                MostrarResultadoSifen(true, "CANCELADO EN SIFEN", _ncAnulando.CDC, codigo, 
+                    "La NC fue cancelada en SIFEN y anulada en el sistema.", null);
+            }
+            else
+            {
+                var error = result?.TryGetValue("error", out var errEl) == true ? errEl.GetString() : "Error desconocido";
+                var codigo = result?.TryGetValue("codigo", out var codEl) == true ? codEl.GetString() : "";
+                var mensaje = result?.TryGetValue("mensaje", out var msgEl) == true ? msgEl.GetString() : "";
+                
+                MostrarResultadoSifen(false, null, null, codigo, mensaje, error);
+            }
+        }
+        catch (Exception ex)
+        {
+            MostrarResultadoSifen(false, null, null, null, null, $"Error de conexión: {ex.Message}");
+        }
+        finally
+        {
+            _procesandoAnulacion = false;
+            _mostrarConfirmarAnulacion = false;
+            _ncAnulando = null;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ProcesarAnulacionLocal(NotaCreditoVenta nc)
+    {
         using var db = await DbFactory.CreateDbContextAsync();
         
         // Recargar NC con detalles para reversión de stock
@@ -441,7 +692,8 @@
         // Verificar que tenga factura asociada con CDC
         if (nc.VentaAsociada == null || string.IsNullOrEmpty(nc.VentaAsociada.CDC))
         {
-            await JS.InvokeVoidAsync("alert", "La factura asociada no tiene CDC. Primero debe enviar la factura a SIFEN.");
+            MostrarResultadoSifen(false, null, null, null, null, 
+                "La factura asociada no tiene CDC. Primero debe enviar la factura a SIFEN.");
             return;
         }
         
@@ -469,9 +721,22 @@
             {
                 var estado = result.TryGetValue("estado", out var estadoEl) ? estadoEl.GetString() : "ENVIADO";
                 var cdc = result.TryGetValue("cdc", out var cdcEl) ? cdcEl.GetString() : "";
+                var codigo = result.TryGetValue("codigo", out var codEl) ? codEl.GetString() : "";
                 var mensaje = result.TryGetValue("mensaje", out var msgEl) ? msgEl.GetString() : "";
                 
-                await JS.InvokeVoidAsync("alert", $"✅ NC enviada exitosamente.\nEstado: {estado}\nCDC: {cdc}\n{mensaje}");
+                // Actualizar el item en la lista local para refrescar UI inmediatamente
+                var ncLocal = _notas.FirstOrDefault(n => n.IdNotaCredito == nc.IdNotaCredito);
+                if (ncLocal != null)
+                {
+                    ncLocal.EstadoSifen = estado;
+                    ncLocal.CDC = cdc;
+                    ncLocal.MensajeSifen = mensaje;
+                }
+                
+                // Refrescar UI antes de mostrar el modal
+                StateHasChanged();
+                
+                MostrarResultadoSifen(true, estado, cdc, codigo, mensaje, null);
             }
             else
             {
@@ -479,14 +744,26 @@
                 var codigo = result?.TryGetValue("codigo", out var codEl) == true ? codEl.GetString() : "";
                 var mensaje = result?.TryGetValue("mensaje", out var msgEl) == true ? msgEl.GetString() : "";
                 
-                await JS.InvokeVoidAsync("alert", $"❌ Error al enviar NC:\n{error}\nCódigo: {codigo}\n{mensaje}");
+                // Actualizar estado de rechazo en la lista local
+                var ncLocal = _notas.FirstOrDefault(n => n.IdNotaCredito == nc.IdNotaCredito);
+                if (ncLocal != null && codigo == "0160")
+                {
+                    ncLocal.EstadoSifen = "RECHAZADO";
+                    ncLocal.MensajeSifen = mensaje ?? error;
+                }
+                
+                // Refrescar UI antes de mostrar el modal
+                StateHasChanged();
+                
+                MostrarResultadoSifen(false, null, null, codigo, mensaje, error);
             }
             
+            // Recargar datos completos
             await CargarDatos();
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"❌ Error de conexión: {ex.Message}");
+            MostrarResultadoSifen(false, null, null, null, null, $"Error de conexión: {ex.Message}");
         }
         finally
         {
@@ -498,9 +775,10 @@
 
     private async Task ConsultarSifen(NotaCreditoVenta nc)
     {
-        if (_consultandoSifen || string.IsNullOrEmpty(nc.IdLote)) return;
+        if (_consultandoSifen || (string.IsNullOrEmpty(nc.IdLote) && string.IsNullOrEmpty(nc.CDC))) return;
         
         _consultandoSifen = true;
+        _ncConsultando = nc.IdNotaCredito;
         StateHasChanged();
         
         try
@@ -522,24 +800,82 @@
                 var codigo = result.TryGetValue("codigo", out var codEl) ? codEl.GetString() : "";
                 var mensaje = result.TryGetValue("mensaje", out var msgEl) ? msgEl.GetString() : "";
                 
-                await JS.InvokeVoidAsync("alert", $"📋 Estado NC en SIFEN:\nEstado: {estado}\nCódigo: {codigo}\n{mensaje}");
+                // Actualizar el item en la lista local para refrescar UI inmediatamente
+                var ncLocal = _notas.FirstOrDefault(n => n.IdNotaCredito == nc.IdNotaCredito);
+                if (ncLocal != null)
+                {
+                    ncLocal.EstadoSifen = estado;
+                    ncLocal.MensajeSifen = mensaje;
+                }
+                
+                // Refrescar UI antes de mostrar el modal
+                StateHasChanged();
+                
+                MostrarResultadoSifen(true, estado, nc.CDC, codigo, mensaje, null);
             }
             else
             {
                 var error = result?.TryGetValue("error", out var errEl) == true ? errEl.GetString() : "Error desconocido";
-                await JS.InvokeVoidAsync("alert", $"❌ Error al consultar: {error}");
+                
+                // Refrescar UI antes de mostrar el modal
+                StateHasChanged();
+                
+                MostrarResultadoSifen(false, null, null, null, null, error);
             }
             
             await CargarDatos();
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"❌ Error de conexión: {ex.Message}");
+            MostrarResultadoSifen(false, null, null, null, null, $"Error de conexión: {ex.Message}");
         }
         finally
         {
             _consultandoSifen = false;
+            _ncConsultando = null;
             StateHasChanged();
         }
+    }
+    
+    // ========== Métodos de Modales ==========
+    
+    private void MostrarResultadoSifen(bool exito, string? estado, string? cdc, string? codigo, string? mensaje, string? error)
+    {
+        _resultadoSifenExito = exito;
+        _resultadoSifenEstado = estado;
+        _resultadoSifenCdc = cdc;
+        _resultadoSifenCodigo = codigo;
+        _resultadoSifenMensaje = mensaje;
+        _resultadoSifenError = error;
+        _mostrarResultadoSifen = true;
+        StateHasChanged();
+    }
+    
+    private void CerrarResultadoSifen()
+    {
+        _mostrarResultadoSifen = false;
+        _resultadoSifenExito = false;
+        _resultadoSifenEstado = null;
+        _resultadoSifenCdc = null;
+        _resultadoSifenCodigo = null;
+        _resultadoSifenMensaje = null;
+        _resultadoSifenError = null;
+        StateHasChanged();
+    }
+    
+    private void MostrarQR(string? cdc, string? urlQr)
+    {
+        _qrCdc = cdc;
+        _qrUrl = urlQr;
+        _mostrarQR = true;
+        StateHasChanged();
+    }
+    
+    private void CerrarQR()
+    {
+        _mostrarQR = false;
+        _qrCdc = null;
+        _qrUrl = null;
+        StateHasChanged();;
     }
 }
