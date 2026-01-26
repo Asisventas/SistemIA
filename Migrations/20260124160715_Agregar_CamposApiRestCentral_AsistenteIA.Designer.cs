@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SistemIA.Models;
 
@@ -11,9 +12,11 @@ using SistemIA.Models;
 namespace SistemIA.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260124160715_Agregar_CamposApiRestCentral_AsistenteIA")]
+    partial class Agregar_CamposApiRestCentral_AsistenteIA
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2032,86 +2035,6 @@ namespace SistemIA.Migrations
                     b.ToTable("ComprasDetalles", (string)null);
                 });
 
-            modelBuilder.Entity("SistemIA.Models.ConfiguracionCloudSync", b =>
-                {
-                    b.Property<int>("IdConfiguracion")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdConfiguracion"));
-
-                    b.Property<bool>("Activo")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("ApiKey")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<bool>("BackupAutomaticoHabilitado")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("CarpetaBackup")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<bool>("ComprimirAntesDeSubir")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("DiasBackup")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("EstadoUltimaSincronizacion")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("ExtensionesIncluir")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTime>("FechaCreacion")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("FechaModificacion")
-                        .HasColumnType("datetime2");
-
-                    b.Property<TimeSpan?>("HoraBackup")
-                        .HasColumnType("time");
-
-                    b.Property<int>("IntervaloHoras")
-                        .HasColumnType("int");
-
-                    b.Property<string>("MensajeUltimaSincronizacion")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("ProximaEjecucion")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("RetenerUltimosBackups")
-                        .HasColumnType("int");
-
-                    b.Property<string>("TipoProgramacion")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime?>("UltimaSincronizacion")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("UltimoBackupExitoso")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UrlApi")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.HasKey("IdConfiguracion");
-
-                    b.ToTable("ConfiguracionesCloudSync");
-                });
-
             modelBuilder.Entity("SistemIA.Models.ConfiguracionCorreo", b =>
                 {
                     b.Property<int>("IdConfiguracionCorreo")
@@ -2948,68 +2871,6 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdMoneda");
 
                     b.ToTable("EntregasCaja", (string)null);
-                });
-
-            modelBuilder.Entity("SistemIA.Models.HistorialBackupCloud", b =>
-                {
-                    b.Property<int>("IdHistorial")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdHistorial"));
-
-                    b.Property<int?>("DuracionSegundos")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Estado")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<DateTime?>("FechaFin")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("FechaInicio")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("FueAutomatico")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("HashMD5")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("IdArchivoRemoto")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<int?>("IdUsuario")
-                        .HasColumnType("int");
-
-                    b.Property<string>("MensajeError")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NombreArchivo")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<string>("RutaLocal")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("RutaRemota")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<long>("TamanoBytes")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("IdHistorial");
-
-                    b.HasIndex("IdUsuario");
-
-                    b.ToTable("HistorialBackupsCloud");
                 });
 
             modelBuilder.Entity("SistemIA.Models.HistorialCambioSistema", b =>
@@ -7393,15 +7254,6 @@ namespace SistemIA.Migrations
                     b.Navigation("CierreCaja");
 
                     b.Navigation("Moneda");
-                });
-
-            modelBuilder.Entity("SistemIA.Models.HistorialBackupCloud", b =>
-                {
-                    b.HasOne("SistemIA.Models.Usuario", "Usuario")
-                        .WithMany()
-                        .HasForeignKey("IdUsuario");
-
-                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("SistemIA.Models.HistorialCambioSistema", b =>

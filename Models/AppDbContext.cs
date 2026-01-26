@@ -139,6 +139,10 @@ namespace SistemIA.Models
         public DbSet<HistorialCambioSistema> HistorialCambiosSistema { get; set; }
         public DbSet<ConversacionIAHistorial> ConversacionesIAHistorial { get; set; }
 
+        // CloudSync - Backup en la Nube
+        public DbSet<ConfiguracionCloudSync> ConfiguracionesCloudSync { get; set; }
+        public DbSet<HistorialBackupCloud> HistorialBackupsCloud { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

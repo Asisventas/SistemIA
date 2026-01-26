@@ -35,7 +35,7 @@
 
 <body>
     <app>
-        <!--Blazor:{"type":"server","key":{"locationHash":"EB410886F539C2CE9C20AA3A59B87C09120F364475359B0043C47D0F0779D5E4:0","formattedComponentKey":""},"sequence":0,"descriptor":"CfDJ8HwYiVpbv5BPhAAHYgVXaJTcXBMKfLGgxywRE43ypg6Wk/WR2ykFSDrvDDgEtbqQJqsRJlkLqx8aVFn46NGUD7ZfGTm1YhaU9S1MQyF1kp7FUVgpYmxVIQH2y8py\u002BAObN4X047iGv8rsKKs501LB8b4T6hpzEKKVhBvNFIDQ4adY5oEH5d9WB3l86i2fks5\u002BM1zbNgCGroLJbWwqVV5r\u002B2ltvAWw7Mv5Nn/FgRhY8nsmSUFxxU7rToXT7aCvV5duQDpuTk5TBMAoWvILGtkh6NYJYUU0ZvDc07rse\u002BgZlS5ZSAG8\u002Bsg1\u002BvCCwyCguLL5cEOz1meDAu1PB8h9zjiPuiN5hBMDZIaLZr6VO/n4n19yE8XfsfKeXtHm13zJW4/W4seUuKmME2xg/oRYqc5NsyMyrOK93Wk369ugzm87taYXC3cGjt4DXb3BBL5Gq/NIG98gCNDb6YvHYab9zialP8Y8FpWel2FBqyqi05pszohiZxDdCpJmixd4xVRP87vcjA=="}-->
+        <!--Blazor:{"type":"server","key":{"locationHash":"EB410886F539C2CE9C20AA3A59B87C09120F364475359B0043C47D0F0779D5E4:0","formattedComponentKey":""},"sequence":0,"descriptor":"CfDJ8HwYiVpbv5BPhAAHYgVXaJSs2KAV3j1UP7jTHJEDvM8TyyQi3J0fIxR0g8fi3xkUYgD/RLVqPzojuwckNKjudCePHahlUOcCdmyD7cit8UCOOzitHgPT\u002BnwC6o\u002BIgjKb0ihjzujVby7ZEnd7BA8OX\u002B0R6SKs\u002BJseXHlqXAFpu8kh2QeX4XLJzcpFuZMk\u002Br6I1rqRiT4CmV0nLRoulfb731IdFtwYUhvNu\u002BdKqcI6EmmtELa3AiUXBNAR7QaJEtYulidp0uDq9C6lwFRDK4xb7HR6WeTVKBV7G5OACMoeyoIs/9WXH9ogcdmO5UyQJbhYyKUvjkd9kLQ8A47S0wAGp03vXNBvsqDV1C9SzN/Ut5kcY9Y2KkmEHijtM4AoK2VzRy5F22G0UjvJQFBqzrrmu5CyYCfSxmCUE7UNkqJSEGnKr8TTmCsJEKKM27WnNq4FPmLojnfBbdqT8cNSDF8XdLJnY0Pr4H4dgSGSrW4EPPu6ZpYx7IqkfXCVVLSlsmQRkg=="}-->
     </app>
 
     <!-- JsBarcode y wrapper deben cargarse antes que Blazor para garantizar disponibilidad -->
@@ -72,6 +72,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     
-    <script src="js/funciones.js?v=639038576268048971"></script>
+    <script src="js/funciones.js?v=639048661641050364"></script>
 </body>
 </html>

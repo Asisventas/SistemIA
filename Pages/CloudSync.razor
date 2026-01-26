@@ -1,0 +1,1527 @@
+@page "/configuracion/cloudsync"
+@using SistemIA.Data
+@using SistemIA.Models
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ICloudSyncService CloudSyncService
+@inject BackupService BackupService
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>CloudSync - Backup en la Nube</PageTitle>
+
+<PageProtection Modulo="/configuracion/cloudsync" Permiso="VIEW">
+
+<div class="container-fluid">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-cloud-upload text-primary me-2"></i>
+            CloudSync - Backup en la Nube
+        </h3>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary" @onclick="VerificarConexion" disabled="@_verificando">
+                @if (_verificando)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-wifi me-1"></i>
+                }
+                Verificar Conexión
+            </button>
+            <button class="btn btn-outline-warning" @onclick="DiagnosticarApi" disabled="@_diagnosticando" title="Diagnosticar configuración de la API">
+                @if (_diagnosticando)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-bug me-1"></i>
+                }
+                Diagnosticar API
+            </button>
+            <button class="btn btn-success" @onclick="SincronizarAhora" disabled="@(_sincronizando || !_conexionOk)">
+                @if (_sincronizando)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-cloud-arrow-up me-1"></i>
+                }
+                Sincronizar Ahora
+            </button>
+        </div>
+    </div>
+
+    <!-- Estado de conexión -->
+    @if (_estadoConexion != null)
+    {
+        <div class="alert @(_estadoConexion.Conectado ? "alert-success" : "alert-warning") d-flex align-items-center mb-4">
+            <i class="bi @(_estadoConexion.Conectado ? "bi-check-circle" : "bi-exclamation-triangle") me-2 fs-5"></i>
+            <div>
+                <strong>@(_estadoConexion.Conectado ? "Conectado" : "Desconectado")</strong>
+                @if (!string.IsNullOrEmpty(_estadoConexion.Mensaje))
+                {
+                    <span class="ms-2">- @_estadoConexion.Mensaje</span>
+                }
+                @if (_estadoConexion.ArchivosEnNube.HasValue)
+                {
+                    <span class="ms-3 badge bg-primary">@_estadoConexion.ArchivosEnNube archivos en la nube</span>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Card de Backup de Base de Datos -->
+    <div class="card shadow-sm mb-4 border-primary">
+        <div class="card-header bg-primary bg-gradient text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-database-fill me-2"></i>
+                    Backup de Base de Datos
+                </h5>
+                @if (_backupEnNube != null)
+                {
+                    <span class="badge bg-light text-dark">
+                        <i class="bi bi-cloud-check me-1"></i>
+                        Último backup: @FormatearTamano(_backupEnNube.Size)
+                    </span>
+                }
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <p class="mb-2">
+                        <i class="bi bi-info-circle text-primary me-2"></i>
+                        Crea un backup de la base de datos y lo sube automáticamente a la nube.
+                        <strong>Se sobrescribe</strong> el backup anterior para no ocupar espacio.
+                    </p>
+                    @if (_backupEnNube != null)
+                    {
+                        <div class="d-flex align-items-center text-muted small">
+                            <i class="bi bi-cloud me-1"></i>
+                            <span>En la nube: <strong>@_backupEnNube.Name</strong></span>
+                            <span class="mx-2">|</span>
+                            <i class="bi bi-calendar me-1"></i>
+                            <span>Subido: @(_backupEnNube.UpdatedAt?.ToString("dd/MM/yyyy HH:mm") ?? _backupEnNube.CreatedAt?.ToString("dd/MM/yyyy HH:mm") ?? "N/A")</span>
+                        </div>
+                    }
+                    else if (_conexionOk && !_buscandoBackupNube)
+                    {
+                        <div class="text-muted small">
+                            <i class="bi bi-cloud-slash me-1"></i>
+                            No hay backup previo en la nube
+                        </div>
+                    }
+                </div>
+                <div class="col-md-4 text-end">
+                    @if (_creandoBackup)
+                    {
+                        <button class="btn btn-primary btn-lg" disabled>
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            @_estadoBackup
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-primary btn-lg" 
+                                @onclick="CrearBackupYSincronizar" 
+                                disabled="@(!_conexionOk)">
+                            <i class="bi bi-database-add me-2"></i>
+                            Crear Backup y Sincronizar
+                        </button>
+                    }
+                </div>
+            </div>
+            
+            @if (_creandoBackup && _progresoBackup > 0)
+            {
+                <div class="mt-3">
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             style="width: @(_progresoBackup)%">
+                            @(_progresoBackup)%
+                        </div>
+                    </div>
+                </div>
+            }
+            
+            @if (!string.IsNullOrEmpty(_mensajeBackup))
+            {
+                <div class="alert @(_backupExitoso ? "alert-success" : "alert-danger") mt-3 mb-0">
+                    <i class="bi @(_backupExitoso ? "bi-check-circle" : "bi-exclamation-triangle") me-2"></i>
+                    @_mensajeBackup
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Configuración -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-gear me-2"></i>
+                        Configuración
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @if (_config != null)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">URL de la API</label>
+                            <input type="text" class="form-control" @bind="_config.UrlApi" 
+                                   placeholder="https://190.104.149.35:3000/api" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">API Key</label>
+                            <div class="input-group">
+                                <input type="@(_mostrarApiKey ? "text" : "password")" class="form-control" 
+                                       @bind="_config.ApiKey" placeholder="sk_live_xxxxxxxxxxxx" />
+                                <button class="btn btn-outline-secondary" type="button" 
+                                        @onclick="() => _mostrarApiKey = !_mostrarApiKey">
+                                    <i class="bi @(_mostrarApiKey ? "bi-eye-slash" : "bi-eye")"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <hr class="my-3" />
+
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Carpeta de Backup</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" @bind="_config.CarpetaBackup" 
+                                       placeholder="C:\Backups" />
+                                <button class="btn btn-outline-secondary" type="button" @onclick="ExplorarCarpeta">
+                                    <i class="bi bi-folder2-open"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted">Carpeta donde se guardan los archivos de backup</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Extensiones a Incluir</label>
+                            <input type="text" class="form-control" @bind="_config.ExtensionesIncluir" 
+                                   placeholder=".bak,.zip,.sql" />
+                            <small class="text-muted">Separadas por coma</small>
+                        </div>
+
+                        <hr class="my-3" />
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="backupAuto" 
+                                   @bind="_config.BackupAutomaticoHabilitado" />
+                            <label class="form-check-label" for="backupAuto">
+                                <strong>Backup Automático Programado</strong>
+                            </label>
+                        </div>
+
+                        @if (_config.BackupAutomaticoHabilitado)
+                        {
+                            <div class="ms-4 p-3 bg-light rounded">
+                                <!-- Tipo de Programación -->
+                                <div class="mb-3">
+                                    <label class="form-label small text-muted fw-bold">Tipo de Programación</label>
+                                    <div class="d-flex gap-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="tipoProgramacion" id="tipoHorario"
+                                                   checked="@(_config.TipoProgramacion == "Horario")"
+                                                   @onchange="@(() => CambiarTipoProgramacion("Horario"))" />
+                                            <label class="form-check-label" for="tipoHorario">
+                                                <i class="bi bi-clock me-1"></i>Hora Fija del Día
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="tipoProgramacion" id="tipoIntervalo"
+                                                   checked="@(_config.TipoProgramacion == "Intervalo")"
+                                                   @onchange="@(() => CambiarTipoProgramacion("Intervalo"))" />
+                                            <label class="form-check-label" for="tipoIntervalo">
+                                                <i class="bi bi-hourglass-split me-1"></i>Cada X Horas
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if (_config.TipoProgramacion == "Horario")
+                                {
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label small text-muted">Hora del Backup</label>
+                                            <input type="time" class="form-control" 
+                                                   value="@(_config.HoraBackup?.ToString(@"hh\:mm"))"
+                                                   @onchange="CambiarHoraBackup" />
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">Días de Backup</label>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            @foreach (var dia in _diasSemana)
+                                            {
+                                                var seleccionado = _diasSeleccionados.Contains(dia.Key);
+                                                <button type="button" 
+                                                        class="btn btn-sm @(seleccionado ? "btn-primary" : "btn-outline-secondary")"
+                                                        @onclick="() => ToggleDia(dia.Key)">
+                                                    @dia.Value
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label small text-muted">Ejecutar Backup Cada</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" 
+                                                       @bind="_config.IntervaloHoras" min="1" max="24" />
+                                                <span class="input-group-text">horas</span>
+                                            </div>
+                                            <small class="text-muted">Valor entre 1 y 24 horas</small>
+                                        </div>
+                                    </div>
+                                }
+
+                                <hr class="my-3" />
+
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label small text-muted">Retener Últimos</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" 
+                                                   @bind="_config.RetenerUltimosBackups" min="1" max="365" />
+                                            <span class="input-group-text">backups</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-check mt-3">
+                                    <input class="form-check-input" type="checkbox" id="comprimir" 
+                                           @bind="_config.ComprimirAntesDeSubir" />
+                                    <label class="form-check-label" for="comprimir">
+                                        Comprimir archivos antes de subir
+                                    </label>
+                                </div>
+
+                                <!-- Información de próxima ejecución -->
+                                @if (_config.ProximaEjecucion.HasValue)
+                                {
+                                    <div class="alert alert-info mt-3 mb-0 py-2">
+                                        <small>
+                                            <i class="bi bi-clock-history me-1"></i>
+                                            <strong>Próximo backup:</strong> @_config.ProximaEjecucion.Value.ToString("dd/MM/yyyy HH:mm")
+                                        </small>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        <div class="mt-4">
+                            <button class="btn btn-primary" @onclick="GuardarConfiguracion" disabled="@_guardando">
+                                @if (_guardando)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                <i class="bi bi-check-lg me-1"></i>
+                                Guardar Configuración
+                            </button>
+                        </div>
+
+                        @if (_config.UltimaSincronizacion.HasValue)
+                        {
+                            <div class="mt-3 p-3 bg-light rounded">
+                                <small class="text-muted">
+                                    <i class="bi bi-clock-history me-1"></i>
+                                    Última sincronización: @_config.UltimaSincronizacion.Value.ToString("dd/MM/yyyy HH:mm")
+                                    <span class="badge @(_config.EstadoUltimaSincronizacion == "Exitoso" ? "bg-success" : "bg-danger") ms-2">
+                                        @_config.EstadoUltimaSincronizacion
+                                    </span>
+                                </small>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Archivos Pendientes -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-earmark-arrow-up me-2"></i>
+                        Archivos de Backup Local
+                    </h5>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-info" 
+                                @onclick="VerificarEstadoSincronizacion" 
+                                disabled="@(_verificandoSincronizacion || !_conexionOk)"
+                                title="Verificar si los archivos locales están sincronizados con la nube">
+                            @if (_verificandoSincronizacion)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                <span>Verificando...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-cloud-check me-1"></i>
+                                <span>Verificar Sincronización</span>
+                            }
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CargarArchivosPendientes" title="Recargar lista de archivos">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    @if (_verificandoSincronizacion)
+                    {
+                        <div class="text-center py-3">
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span class="text-muted">Verificando estado de sincronización con la nube...</span>
+                        </div>
+                    }
+                    @* Mostrar resumen de sincronización si hay estados *@
+                    @if (_estadosSincronizacion.Any() && !_verificandoSincronizacion)
+                    {
+                        var sincronizados = _estadosSincronizacion.Values.Count(e => e.EstaSincronizado);
+                        var noSincronizados = _estadosSincronizacion.Values.Count(e => !e.ExisteEnNube);
+                        var necesitanActualizar = _estadosSincronizacion.Values.Count(e => e.NecesitaActualizar);
+                        var total = _estadosSincronizacion.Count;
+                        
+                        <div class="p-3 border-bottom @(sincronizados == total ? "bg-success-subtle" : noSincronizados > 0 ? "bg-warning-subtle" : "bg-info-subtle")">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    @if (sincronizados == total)
+                                    {
+                                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                        <span class="text-success fw-medium">Todos los archivos están sincronizados</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-info-circle-fill text-warning me-2"></i>
+                                        <span class="fw-medium">
+                                            @if (noSincronizados > 0)
+                                            {
+                                                <span class="text-warning">@noSincronizados sin sincronizar</span>
+                                            }
+                                            @if (noSincronizados > 0 && necesitanActualizar > 0) { <span class="mx-1">|</span> }
+                                            @if (necesitanActualizar > 0)
+                                            {
+                                                <span class="text-info">@necesitanActualizar para actualizar</span>
+                                            }
+                                            @if ((noSincronizados > 0 || necesitanActualizar > 0) && sincronizados > 0) { <span class="mx-1">|</span> }
+                                            @if (sincronizados > 0)
+                                            {
+                                                <span class="text-success">@sincronizados sincronizados</span>
+                                            }
+                                        </span>
+                                    }
+                                </div>
+                                <small class="text-muted">Total: @total archivos</small>
+                            </div>
+                        </div>
+                    }
+                    @if (_archivosPendientes.Any())
+                    {
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Archivo</th>
+                                        <th class="text-center">Estado</th>
+                                        <th class="text-end">Tamaño</th>
+                                        <th>Fecha</th>
+                                        <th class="text-center">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var archivo in _archivosPendientes)
+                                    {
+                                        var estadoSync = _estadosSincronizacion.TryGetValue(archivo.ruta, out var est) ? est : null;
+                                        <tr>
+                                            <td>
+                                                <i class="bi bi-file-earmark text-primary me-1"></i>
+                                                @Path.GetFileName(archivo.ruta)
+                                            </td>
+                                            <td class="text-center">
+                                                @if (estadoSync != null)
+                                                {
+                                                    <span class="@estadoSync.ClaseCss" title="@GetTooltipSincronizacion(estadoSync)">
+                                                        <i class="bi @estadoSync.Icono me-1"></i>
+                                                        @estadoSync.DescripcionEstado
+                                                    </span>
+                                                }
+                                                else if (_verificandoSincronizacion)
+                                                {
+                                                    <span class="text-muted">
+                                                        <span class="spinner-border spinner-border-sm"></span>
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">-</span>
+                                                }
+                                            </td>
+                                            <td class="text-end">@FormatearTamano(archivo.tamano)</td>
+                                            <td>@archivo.fechaModificacion.ToString("dd/MM HH:mm")</td>
+                                            <td class="text-center">
+                                                @if (estadoSync?.EstaSincronizado == true)
+                                                {
+                                                    <button class="btn btn-sm btn-outline-secondary" 
+                                                            @onclick="() => SubirArchivoConConfirmacion(archivo.ruta, estadoSync)"
+                                                            disabled="@(_subiendo == archivo.ruta)"
+                                                            title="Ya sincronizado - Click para sobrescribir">
+                                                        @if (_subiendo == archivo.ruta)
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm"></span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-cloud-check text-success"></i>
+                                                        }
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-sm @(estadoSync?.NecesitaActualizar == true ? "btn-warning" : "btn-outline-success")" 
+                                                            @onclick="() => SubirArchivo(archivo.ruta)"
+                                                            disabled="@(_subiendo == archivo.ruta)"
+                                                            title="@(estadoSync?.NecesitaActualizar == true ? "Actualizar en la nube" : "Subir a la nube")">
+                                                        @if (_subiendo == archivo.ruta)
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm"></span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi @(estadoSync?.NecesitaActualizar == true ? "bi-cloud-arrow-up" : "bi-cloud-upload")"></i>
+                                                        }
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-5 text-muted">
+                            <i class="bi bi-check-circle fs-1 d-block mb-2 text-success"></i>
+                            <p>No hay archivos pendientes de sincronizar</p>
+                            @if (string.IsNullOrEmpty(_config?.CarpetaBackup))
+                            {
+                                <small>Configure la carpeta de backup primero</small>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historial de Backups -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-clock-history me-2"></i>
+                Historial de Backups
+            </h5>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CargarHistorial">
+                    <i class="bi bi-arrow-clockwise me-1"></i>
+                    Actualizar
+                </button>
+                @if (_historial.Any())
+                {
+                    <button class="btn btn-sm btn-outline-danger" @onclick="EliminarHistorial" disabled="@_eliminandoHistorial">
+                        @if (_eliminandoHistorial)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-trash me-1"></i>
+                        }
+                        Limpiar Historial
+                    </button>
+                }
+            </div>
+        </div>
+        <div class="card-body p-0">
+            @if (_historial.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 30%">Archivo</th>
+                                <th class="text-end">Tamaño</th>
+                                <th>Fecha</th>
+                                <th>Duración</th>
+                                <th class="text-center">Estado</th>
+                                <th>Tipo</th>
+                                <th>Usuario</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _historial)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-file-earmark-zip text-warning me-2"></i>
+                                            <div>
+                                                <div class="fw-medium">@item.NombreArchivo</div>
+                                                @if (!string.IsNullOrEmpty(item.IdArchivoRemoto))
+                                                {
+                                                    <small class="text-muted">ID: @item.IdArchivoRemoto[..Math.Min(12, item.IdArchivoRemoto.Length)]...</small>
+                                                }
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="text-end">@item.TamanoFormateado</td>
+                                    <td>
+                                        <div>@item.FechaInicio.ToString("dd/MM/yyyy")</div>
+                                        <small class="text-muted">@item.FechaInicio.ToString("HH:mm:ss")</small>
+                                    </td>
+                                    <td>@item.DuracionFormateada</td>
+                                    <td class="text-center">
+                                        @switch (item.Estado)
+                                        {
+                                            case "Completado":
+                                                <span class="badge bg-success">
+                                                    <i class="bi bi-check-circle me-1"></i>
+                                                    Completado
+                                                </span>
+                                                break;
+                                            case "Error":
+                                                <span class="badge bg-danger" title="@item.MensajeError">
+                                                    <i class="bi bi-x-circle me-1"></i>
+                                                    Error
+                                                </span>
+                                                break;
+                                            case "Subiendo":
+                                                <span class="badge bg-primary">
+                                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                                    Subiendo
+                                                </span>
+                                                break;
+                                            default:
+                                                <span class="badge bg-secondary">@item.Estado</span>
+                                                break;
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (item.FueAutomatico)
+                                        {
+                                            <span class="badge bg-info">
+                                                <i class="bi bi-robot me-1"></i>Auto
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">
+                                                <i class="bi bi-person me-1"></i>Manual
+                                            </span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (item.Usuario != null)
+                                        {
+                                            <small>@item.Usuario.Nombres @item.Usuario.Apellidos</small>
+                                        }
+                                        else if (item.FueAutomatico)
+                                        {
+                                            <small class="text-muted">Sistema</small>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                    <p>No hay historial de backups</p>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Archivos en la Nube -->
+    <div class="card shadow-sm mt-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-cloud me-2"></i>
+                Archivos en la Nube
+            </h5>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CargarArchivosRemotos" disabled="@_cargandoRemotos">
+                @if (_cargandoRemotos)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-arrow-clockwise me-1"></i>
+                }
+                Actualizar
+            </button>
+        </div>
+        <div class="card-body p-0">
+            @if (_archivosRemotos.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nombre</th>
+                                <th class="text-end">Tamaño</th>
+                                <th>Fecha Creación</th>
+                                <th class="text-center" style="width: 150px">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var archivo in _archivosRemotos)
+                            {
+                                <tr>
+                                    <td>
+                                        <i class="bi bi-file-earmark-cloud text-info me-2"></i>
+                                        @archivo.Name
+                                    </td>
+                                    <td class="text-end">@FormatearTamano(archivo.Size)</td>
+                                    <td>@archivo.CreatedAt?.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" 
+                                                    @onclick="() => DescargarArchivo(archivo)"
+                                                    title="Descargar">
+                                                <i class="bi bi-download"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" 
+                                                    @onclick="() => EliminarArchivoRemoto(archivo)"
+                                                    title="Eliminar">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else if (_conexionOk)
+            {
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-cloud fs-1 d-block mb-2"></i>
+                    <p>No hay archivos en la nube</p>
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-cloud-slash fs-1 d-block mb-2"></i>
+                    <p>Verifique la conexión para ver archivos remotos</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+</PageProtection>
+
+<!-- Modal de Progreso de Subida -->
+@if (_mostrarProgresoSubida)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cloud-upload me-2 text-primary"></i>
+                        Subiendo Archivo
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    @if (_progresoActual != null)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="fw-medium">@_progresoActual.NombreArchivo</span>
+                                <span class="badge @(_progresoActual.Estado == "Error" ? "bg-danger" : "bg-primary")">
+                                    @_progresoActual.Estado
+                                </span>
+                            </div>
+                            
+                            <!-- Barra de progreso -->
+                            <div class="progress mb-2" style="height: 25px;">
+                                <div class="progress-bar progress-bar-striped @(_progresoActual.Estado == "Error" ? "bg-danger" : "progress-bar-animated")" 
+                                     role="progressbar" 
+                                     style="width: @_progresoActual.PorcentajeCompletado%"
+                                     aria-valuenow="@_progresoActual.PorcentajeCompletado" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    @_progresoActual.PorcentajeCompletado%
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-between text-muted small">
+                                <span>@FormatearTamano(_progresoActual.BytesEnviados) / @FormatearTamano(_progresoActual.TotalBytes)</span>
+                                <span>@_progresoActual.VelocidadMBps MB/s</span>
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(_progresoActual.MensajeError))
+                            {
+                                <div class="alert alert-danger mt-3 mb-0 small">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    @_progresoActual.MensajeError
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (_progresoActual?.Estado == "Error" || _progresoActual?.Estado == "Completado")
+                {
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" @onclick="CerrarProgresoSubida">Cerrar</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ConfiguracionCloudSync? _config;
+    private CloudSyncEstadoConexion? _estadoConexion;
+    private List<HistorialBackupCloud> _historial = new();
+    private List<(string ruta, long tamano, DateTime fechaModificacion)> _archivosPendientes = new();
+    private List<CloudSyncFileInfo> _archivosRemotos = new();
+    private Dictionary<string, EstadoSincronizacionArchivo> _estadosSincronizacion = new();
+    private bool _verificandoSincronizacion = false;
+
+    private bool _verificando = false;
+    private bool _sincronizando = false;
+    private bool _guardando = false;
+    private bool _mostrarApiKey = false;
+    private bool _conexionOk = false;
+    private bool _cargandoRemotos = false;
+    private string? _subiendo = null;
+    private bool _diagnosticando = false;
+    
+    // Progreso de subida
+    private bool _mostrarProgresoSubida = false;
+    private CloudSyncUploadProgress? _progresoActual;
+    private bool _eliminandoHistorial = false;
+
+    // Backup de BD
+    private bool _creandoBackup = false;
+    private bool _buscandoBackupNube = false;
+    private string _estadoBackup = "";
+    private int _progresoBackup = 0;
+    private string _mensajeBackup = "";
+    private bool _backupExitoso = false;
+    private CloudSyncFileInfo? _backupEnNube = null;
+    private const string BACKUP_FILENAME = "SistemIA_CloudSync_Backup.bak";
+
+    private int? _idUsuarioActual;
+
+    private readonly Dictionary<int, string> _diasSemana = new()
+    {
+        { 1, "Lun" }, { 2, "Mar" }, { 3, "Mié" }, { 4, "Jue" }, 
+        { 5, "Vie" }, { 6, "Sáb" }, { 7, "Dom" }
+    };
+    private HashSet<int> _diasSeleccionados = new() { 1, 2, 3, 4, 5 };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarConfiguracion();
+        await CargarHistorial();
+        await ObtenerUsuarioActual();
+        
+        // Verificar conexión automáticamente al iniciar
+        await VerificarConexion();
+        
+        // Si hay conexión, buscar si existe backup previo en la nube
+        if (_conexionOk)
+        {
+            await BuscarBackupEnNube();
+        }
+    }
+
+    private async Task ObtenerUsuarioActual()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var idClaim = user.FindFirst("IdUsuario")?.Value;
+                if (int.TryParse(idClaim, out var id))
+                    _idUsuarioActual = id;
+            }
+        }
+        catch { }
+    }
+
+    private async Task CargarConfiguracion()
+    {
+        _config = await CloudSyncService.ObtenerConfiguracionAsync() ?? new ConfiguracionCloudSync();
+        
+        // Parsear días seleccionados
+        if (!string.IsNullOrEmpty(_config.DiasBackup))
+        {
+            _diasSeleccionados = _config.DiasBackup
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(d => int.TryParse(d.Trim(), out var n) ? n : 0)
+                .Where(n => n > 0)
+                .ToHashSet();
+        }
+
+        await CargarArchivosPendientes();
+    }
+
+    private async Task CargarHistorial()
+    {
+        _historial = await CloudSyncService.ObtenerHistorialAsync(100);
+    }
+
+    private async Task EliminarHistorial()
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", "¿Está seguro de eliminar todo el historial de backups?\n\nEsta acción no se puede deshacer y solo elimina los registros del historial, no los archivos en la nube.");
+        if (!confirmar) return;
+
+        _eliminandoHistorial = true;
+        StateHasChanged();
+
+        try
+        {
+            var (exito, cantidad) = await CloudSyncService.EliminarHistorialAsync();
+            
+            if (exito)
+            {
+                await JS.InvokeVoidAsync("alert", $"✅ Se eliminaron {cantidad} registros del historial.");
+                _historial.Clear();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "❌ Error al eliminar el historial.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ Error: {ex.Message}");
+        }
+        finally
+        {
+            _eliminandoHistorial = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CargarArchivosPendientes()
+    {
+        _archivosPendientes = await CloudSyncService.ObtenerArchivosPendientesAsync();
+        
+        // Verificar estado de sincronización si hay conexión
+        if (_conexionOk && _archivosPendientes.Any())
+        {
+            await VerificarEstadoSincronizacion();
+        }
+    }
+
+    private async Task VerificarEstadoSincronizacion()
+    {
+        if (!_conexionOk || !_archivosPendientes.Any()) return;
+        
+        _verificandoSincronizacion = true;
+        StateHasChanged();
+        
+        try
+        {
+            var rutas = _archivosPendientes.Select(a => a.ruta).ToList();
+            var estados = await CloudSyncService.ObtenerEstadoSincronizacionAsync(rutas);
+            _estadosSincronizacion = estados.ToDictionary(e => e.RutaLocal, e => e);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error verificando sincronización: {ex.Message}");
+        }
+        finally
+        {
+            _verificandoSincronizacion = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CargarArchivosRemotos()
+    {
+        if (!_conexionOk) return;
+        
+        _cargandoRemotos = true;
+        StateHasChanged();
+
+        try
+        {
+            _archivosRemotos = await CloudSyncService.ListarArchivosRemotosAsync();
+        }
+        finally
+        {
+            _cargandoRemotos = false;
+        }
+    }
+
+    private async Task VerificarConexion()
+    {
+        _verificando = true;
+        StateHasChanged();
+
+        try
+        {
+            _estadoConexion = await CloudSyncService.VerificarConexionAsync();
+            _conexionOk = _estadoConexion.Conectado;
+
+            if (_conexionOk)
+            {
+                await CargarArchivosRemotos();
+            }
+        }
+        finally
+        {
+            _verificando = false;
+        }
+    }
+
+    private async Task DiagnosticarApi()
+    {
+        _diagnosticando = true;
+        StateHasChanged();
+
+        try
+        {
+            var diagnostico = await CloudSyncService.DiagnosticarApiAsync();
+            
+            var mensaje = "🔍 DIAGNÓSTICO DE LA API CLOUDSYNC\n\n";
+            
+            if (!string.IsNullOrEmpty(diagnostico.CampoArchivo))
+            {
+                mensaje += $"✅ API FUNCIONANDO\n";
+                mensaje += $"   Endpoint: {diagnostico.EndpointUpload}\n";
+                mensaje += $"   Campo archivo: {diagnostico.CampoArchivo}\n\n";
+            }
+            else
+            {
+                mensaje += "❌ NO SE ENCONTRÓ CONFIGURACIÓN VÁLIDA\n\n";
+            }
+            
+            mensaje += "📋 Endpoints probados:\n";
+            foreach (var endpoint in diagnostico.EndpointsEncontrados.Take(15))
+            {
+                mensaje += $"   {endpoint}\n";
+            }
+            
+            if (diagnostico.Errores.Any())
+            {
+                mensaje += "\n⚠️ Errores:\n";
+                foreach (var error in diagnostico.Errores.Take(5))
+                {
+                    mensaje += $"   {error}\n";
+                }
+            }
+
+            if (!string.IsNullOrEmpty(diagnostico.RespuestaServidor))
+            {
+                mensaje += $"\n📄 Respuesta servidor:\n{diagnostico.RespuestaServidor.Substring(0, Math.Min(300, diagnostico.RespuestaServidor.Length))}";
+            }
+
+            await JS.InvokeVoidAsync("alert", mensaje);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ Error durante diagnóstico: {ex.Message}");
+        }
+        finally
+        {
+            _diagnosticando = false;
+        }
+    }
+
+    private async Task GuardarConfiguracion()
+    {
+        if (_config == null) return;
+
+        _guardando = true;
+        StateHasChanged();
+
+        try
+        {
+            _config.DiasBackup = string.Join(",", _diasSeleccionados.OrderBy(d => d));
+            
+            var exito = await CloudSyncService.GuardarConfiguracionAsync(_config);
+            
+            if (exito)
+            {
+                await JS.InvokeVoidAsync("alert", "✅ Configuración guardada correctamente");
+                await CargarArchivosPendientes();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "❌ Error al guardar la configuración");
+            }
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task SincronizarAhora()
+    {
+        if (!_conexionOk)
+        {
+            await JS.InvokeVoidAsync("alert", "Verifique la conexión primero");
+            return;
+        }
+
+        _sincronizando = true;
+        _mostrarProgresoSubida = true;
+        StateHasChanged();
+
+        var exitosos = 0;
+        var fallidos = 0;
+        var errores = new List<string>();
+
+        try
+        {
+            foreach (var (ruta, tamano, _) in _archivosPendientes.ToList())
+            {
+                _progresoActual = new CloudSyncUploadProgress 
+                { 
+                    NombreArchivo = Path.GetFileName(ruta),
+                    Estado = "Preparando",
+                    TotalBytes = tamano
+                };
+                StateHasChanged();
+
+                // Usar chunks PARALELOS para archivos > 50 MB (4 conexiones simultáneas)
+                bool usarParalelo = tamano > 50 * 1024 * 1024;
+
+                var (exito, mensaje, _) = usarParalelo
+                    ? await CloudSyncService.SubirArchivoParaleloAsync(
+                        ruta,
+                        onProgress: progress => 
+                        {
+                            _progresoActual = progress;
+                            InvokeAsync(StateHasChanged);
+                        },
+                        chunkSizeMB: 5,
+                        maxParalelo: 4)
+                    : await CloudSyncService.SubirArchivoAsync(
+                        ruta, 
+                        esAutomatico: false, 
+                        idUsuario: _idUsuarioActual,
+                        onProgress: progress => 
+                        {
+                            _progresoActual = progress;
+                            InvokeAsync(StateHasChanged);
+                        });
+                
+                if (exito)
+                {
+                    exitosos++;
+                }
+                else
+                {
+                    fallidos++;
+                    errores.Add($"{Path.GetFileName(ruta)}: {mensaje}");
+                }
+                
+                await Task.Delay(500); // Pequeña pausa entre archivos
+            }
+            
+            await CargarHistorial();
+            await CargarArchivosPendientes();
+            await CargarArchivosRemotos();
+        }
+        finally
+        {
+            _sincronizando = false;
+            _mostrarProgresoSubida = false;
+            _progresoActual = null;
+        }
+
+        var mensaje2 = $"Sincronización completada:\n✅ {exitosos} archivo(s) subido(s)\n❌ {fallidos} error(es)";
+        if (errores.Any())
+        {
+            mensaje2 += "\n\nErrores:\n" + string.Join("\n", errores.Take(5));
+        }
+        
+        await JS.InvokeVoidAsync("alert", mensaje2);
+    }
+
+    private async Task SubirArchivo(string ruta)
+    {
+        _subiendo = ruta;
+        _mostrarProgresoSubida = true;
+        _progresoActual = new CloudSyncUploadProgress 
+        { 
+            NombreArchivo = Path.GetFileName(ruta),
+            Estado = "Preparando"
+        };
+        StateHasChanged();
+
+        try
+        {
+            var fileInfo = new FileInfo(ruta);
+            _progresoActual.TotalBytes = fileInfo.Length;
+
+            // Usar chunks PARALELOS para archivos > 50 MB (4 conexiones simultáneas)
+            bool usarParalelo = fileInfo.Length > 50 * 1024 * 1024;
+            
+            var (exito, mensaje, _) = usarParalelo 
+                ? await CloudSyncService.SubirArchivoParaleloAsync(
+                    ruta,
+                    onProgress: progress => 
+                    {
+                        _progresoActual = progress;
+                        InvokeAsync(StateHasChanged);
+                    },
+                    chunkSizeMB: 5,
+                    maxParalelo: 4)
+                : await CloudSyncService.SubirArchivoAsync(
+                    ruta, 
+                    esAutomatico: false, 
+                    idUsuario: _idUsuarioActual,
+                    onProgress: progress => 
+                    {
+                        _progresoActual = progress;
+                        InvokeAsync(StateHasChanged);
+                    });
+            
+            await CargarHistorial();
+            await CargarArchivosPendientes();
+
+            if (exito)
+            {
+                await CargarArchivosRemotos();
+                
+                // Mostrar estado completado por 2 segundos antes de cerrar
+                if (_progresoActual != null)
+                {
+                    _progresoActual.Estado = "Completado";
+                    StateHasChanged();
+                    await Task.Delay(2000);
+                }
+                
+                _mostrarProgresoSubida = false;
+                StateHasChanged();
+                
+                await JS.InvokeVoidAsync("alert", $"✅ Archivo subido exitosamente\n\n{mensaje}");
+            }
+            else
+            {
+                // Si hay error, actualizar el progreso con el error
+                if (_progresoActual != null)
+                {
+                    _progresoActual.Estado = "Error";
+                    _progresoActual.MensajeError = mensaje;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_progresoActual != null)
+            {
+                _progresoActual.Estado = "Error";
+                _progresoActual.MensajeError = ex.Message;
+                StateHasChanged();
+            }
+        }
+        finally
+        {
+            _subiendo = null;
+            StateHasChanged();
+        }
+    }
+
+    private void CerrarProgresoSubida()
+    {
+        _mostrarProgresoSubida = false;
+        _progresoActual = null;
+        StateHasChanged();
+    }
+
+    private async Task DescargarArchivo(CloudSyncFileInfo archivo)
+    {
+        if (string.IsNullOrEmpty(archivo.Id))
+        {
+            await JS.InvokeVoidAsync("alert", "ID de archivo no válido");
+            return;
+        }
+
+        var carpetaDestino = _config?.CarpetaBackup ?? Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+        
+        var (exito, rutaLocal) = await CloudSyncService.DescargarArchivoAsync(archivo.Id, carpetaDestino);
+        
+        if (exito)
+        {
+            await JS.InvokeVoidAsync("alert", $"✅ Archivo descargado en:\n{rutaLocal}");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "❌ Error al descargar el archivo");
+        }
+    }
+
+    private async Task EliminarArchivoRemoto(CloudSyncFileInfo archivo)
+    {
+        if (string.IsNullOrEmpty(archivo.Id)) return;
+
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            $"¿Está seguro de eliminar '{archivo.Name}' de la nube?\n\nEsta acción no se puede deshacer.");
+        
+        if (!confirmar) return;
+
+        var exito = await CloudSyncService.EliminarArchivoRemotoAsync(archivo.Id);
+        
+        if (exito)
+        {
+            _archivosRemotos.Remove(archivo);
+            StateHasChanged();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "❌ Error al eliminar el archivo");
+        }
+    }
+
+    private void ToggleDia(int dia)
+    {
+        if (_diasSeleccionados.Contains(dia))
+            _diasSeleccionados.Remove(dia);
+        else
+            _diasSeleccionados.Add(dia);
+    }
+
+    private void CambiarHoraBackup(ChangeEventArgs e)
+    {
+        if (_config != null && TimeSpan.TryParse(e.Value?.ToString(), out var hora))
+        {
+            _config.HoraBackup = hora;
+        }
+    }
+
+    private void CambiarTipoProgramacion(string tipo)
+    {
+        if (_config != null)
+        {
+            _config.TipoProgramacion = tipo;
+        }
+    }
+
+    private async Task ExplorarCarpeta()
+    {
+        // En Blazor Server no podemos abrir el explorador directamente
+        // El usuario debe escribir la ruta manualmente
+        await JS.InvokeVoidAsync("alert", 
+            "Escriba la ruta completa de la carpeta de backups.\n\n" +
+            "Ejemplo: C:\\Backups\\SistemIA\n\n" +
+            "Asegúrese de que la aplicación tenga permisos de lectura en esa carpeta.");
+    }
+
+    private static string FormatearTamano(long bytes)
+    {
+        string[] sufijos = { "B", "KB", "MB", "GB", "TB" };
+        int i = 0;
+        double tamano = bytes;
+        while (tamano >= 1024 && i < sufijos.Length - 1)
+        {
+            tamano /= 1024;
+            i++;
+        }
+        return $"{tamano:N2} {sufijos[i]}";
+    }
+
+    private string GetTooltipSincronizacion(EstadoSincronizacionArchivo estado)
+    {
+        if (!estado.ExisteEnNube)
+            return "Este archivo no existe en la nube";
+        
+        if (estado.EstaSincronizado)
+            return $"Sincronizado\nTamaño: {FormatearTamano(estado.TamanoLocal)}\nÚltima subida: {estado.FechaRemota?.ToString("dd/MM/yyyy HH:mm") ?? "N/A"}";
+        
+        return $"Diferencia detectada\nLocal: {FormatearTamano(estado.TamanoLocal)}\nNube: {FormatearTamano(estado.TamanoRemoto ?? 0)}";
+    }
+
+    private async Task SubirArchivoConConfirmacion(string ruta, EstadoSincronizacionArchivo estado)
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            $"⚠️ El archivo '{estado.NombreArchivo}' ya está sincronizado en la nube.\n\n" +
+            $"📁 Local: {FormatearTamano(estado.TamanoLocal)}\n" +
+            $"☁️ Nube: {FormatearTamano(estado.TamanoRemoto ?? 0)}\n" +
+            $"📅 Subido: {estado.FechaRemota?.ToString("dd/MM/yyyy HH:mm") ?? "N/A"}\n\n" +
+            "¿Desea sobrescribir el archivo en la nube?");
+        
+        if (!confirmar) return;
+
+        // Si existe, primero eliminar el archivo remoto para luego subirlo de nuevo
+        if (!string.IsNullOrEmpty(estado.IdRemoto))
+        {
+            var eliminado = await CloudSyncService.EliminarArchivoRemotoAsync(estado.IdRemoto);
+            if (!eliminado)
+            {
+                await JS.InvokeVoidAsync("alert", "❌ Error al intentar sobrescribir el archivo existente");
+                return;
+            }
+        }
+
+        // Subir archivo normalmente
+        await SubirArchivo(ruta);
+    }
+
+    private async Task RefrescarEstadoSincronizacion()
+    {
+        await CargarArchivosPendientes();
+    }
+
+    // ========== BACKUP DE BASE DE DATOS ==========
+
+    /// <summary>
+    /// Busca si existe un backup previo en la nube
+    /// </summary>
+    private async Task BuscarBackupEnNube()
+    {
+        try
+        {
+            _buscandoBackupNube = true;
+            StateHasChanged();
+
+            var archivosRemotos = await CloudSyncService.ListarArchivosRemotosAsync();
+            _backupEnNube = archivosRemotos.FirstOrDefault(f => 
+                f.Name?.Equals(BACKUP_FILENAME, StringComparison.OrdinalIgnoreCase) == true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error buscando backup en nube: {ex.Message}");
+        }
+        finally
+        {
+            _buscandoBackupNube = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Crea un backup de la BD y lo sube a la nube, sobrescribiendo el anterior
+    /// </summary>
+    private async Task CrearBackupYSincronizar()
+    {
+        if (_creandoBackup || !_conexionOk) return;
+
+        _creandoBackup = true;
+        _mensajeBackup = "";
+        _progresoBackup = 0;
+        _estadoBackup = "Creando backup...";
+        StateHasChanged();
+
+        try
+        {
+            // Paso 1: Crear el backup de la BD
+            _progresoBackup = 10;
+            StateHasChanged();
+
+            var resultado = await BackupService.CrearBackupParaCloudSync();
+            
+            if (!resultado.Success)
+            {
+                _mensajeBackup = $"Error al crear backup: {resultado.Error}";
+                _backupExitoso = false;
+                return;
+            }
+
+            _estadoBackup = "Backup creado, verificando nube...";
+            _progresoBackup = 30;
+            StateHasChanged();
+
+            // Paso 2: Verificar si existe backup anterior en la nube y eliminarlo
+            await BuscarBackupEnNube();
+            
+            if (_backupEnNube != null && !string.IsNullOrEmpty(_backupEnNube.Id))
+            {
+                _estadoBackup = "Eliminando backup anterior...";
+                _progresoBackup = 40;
+                StateHasChanged();
+
+                var eliminado = await CloudSyncService.EliminarArchivoRemotoAsync(_backupEnNube.Id);
+                if (!eliminado)
+                {
+                    Console.WriteLine("No se pudo eliminar el backup anterior, continuando con la subida...");
+                }
+            }
+
+            // Paso 3: Subir el nuevo backup a la nube
+            _estadoBackup = "Subiendo a la nube...";
+            _progresoBackup = 50;
+            StateHasChanged();
+
+            // Usar subida paralela para mejor rendimiento
+            var (exito, mensaje, idRemoto) = await CloudSyncService.SubirArchivoParaleloAsync(
+                resultado.BackupPath,
+                onProgress: (progreso) =>
+                {
+                    // Mapear progreso 0-100 a 50-95
+                    _progresoBackup = 50 + (int)(progreso.PorcentajeCompletado * 0.45);
+                    _estadoBackup = $"Subiendo... {progreso.PorcentajeCompletado}%";
+                    InvokeAsync(StateHasChanged);
+                }
+            );
+
+            _progresoBackup = 100;
+            StateHasChanged();
+
+            if (exito)
+            {
+                _mensajeBackup = $"✅ Backup creado y sincronizado exitosamente. Tamaño: {FormatearTamano(new FileInfo(resultado.BackupPath).Length)}";
+                _backupExitoso = true;
+                
+                // Actualizar referencia al backup en nube
+                await BuscarBackupEnNube();
+                
+                // Actualizar historial
+                await CargarHistorial();
+            }
+            else
+            {
+                _mensajeBackup = $"El backup se creó localmente pero falló la sincronización: {mensaje}";
+                _backupExitoso = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensajeBackup = $"Error: {ex.Message}";
+            _backupExitoso = false;
+        }
+        finally
+        {
+            _creandoBackup = false;
+            _estadoBackup = "";
+            StateHasChanged();
+        }
+    }
+}

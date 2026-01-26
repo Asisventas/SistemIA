@@ -9185,3 +9185,339 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123134823_Agregar_ConfiguracionSifen'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260123134823_Agregar_ConfiguracionSifen', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123140023_Agregar_Configuracion_SifenCola'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [SifenColaActiva] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123140023_Agregar_Configuracion_SifenCola'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [SifenIntervaloMinutos] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123140023_Agregar_Configuracion_SifenCola'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [SifenMaxDocumentosPorCiclo] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123140023_Agregar_Configuracion_SifenCola'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [SifenMaxReintentos] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123140023_Agregar_Configuracion_SifenCola'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260123140023_Agregar_Configuracion_SifenCola', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123172326_Fix_DV_ClienteSifen_AllowZero'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260123172326_Fix_DV_ClienteSifen_AllowZero', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123205401_Corregir_TipoDocumentoIdentidadSifen_Clientes'
+)
+BEGIN
+                    UPDATE Clientes 
+                    SET TipoDocumentoIdentidadSifen = 1
+                    WHERE TipoDocumento = 'CI' 
+                      AND (TipoDocumentoIdentidadSifen IS NULL OR TipoDocumentoIdentidadSifen <> 1)
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123205401_Corregir_TipoDocumentoIdentidadSifen_Clientes'
+)
+BEGIN
+                    UPDATE Clientes 
+                    SET TipoDocumentoIdentidadSifen = 5,
+                        NaturalezaReceptor = 2
+                    WHERE UPPER(RazonSocial) LIKE '%CONSUMIDOR FINAL%'
+                       OR UPPER(RazonSocial) LIKE '%SIN NOMBRE%'
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123205401_Corregir_TipoDocumentoIdentidadSifen_Clientes'
+)
+BEGIN
+                    UPDATE Clientes 
+                    SET NaturalezaReceptor = 1,
+                        TipoDocumentoIdentidadSifen = NULL
+                    WHERE RUC IS NOT NULL 
+                      AND LEN(RUC) >= 5 
+                      AND RUC <> '0'
+                      AND NaturalezaReceptor <> 2
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123205401_Corregir_TipoDocumentoIdentidadSifen_Clientes'
+)
+BEGIN
+                    UPDATE Clientes 
+                    SET TipoDocumentoIdentidadSifen = 1
+                    WHERE NaturalezaReceptor = 2
+                      AND NumeroDocumentoIdentidad IS NOT NULL 
+                      AND LEN(NumeroDocumentoIdentidad) >= 5
+                      AND TipoDocumentoIdentidadSifen IS NULL
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123205401_Corregir_TipoDocumentoIdentidadSifen_Clientes'
+)
+BEGIN
+                    UPDATE Clientes 
+                    SET TipoDocumentoIdentidadSifen = 3
+                    WHERE TipoDocumento = 'PA' 
+                      AND TipoDocumentoIdentidadSifen = 2
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123205401_Corregir_TipoDocumentoIdentidadSifen_Clientes'
+)
+BEGIN
+                    UPDATE Clientes 
+                    SET TipoDocumentoIdentidadSifen = 2
+                    WHERE (TipoDocumento = 'CEE' OR TipoDocumento = 'CE')
+                      AND TipoDocumentoIdentidadSifen = 3
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260123205401_Corregir_TipoDocumentoIdentidadSifen_Clientes'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260123205401_Corregir_TipoDocumentoIdentidadSifen_Clientes', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [BaseDatosCentral] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [ConexionCentralExitosa] bit NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [ContrasenaCentral] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [HabilitarServidorCentral] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [PuertoCentral] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [ServidorCentral] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [TimeoutConexionCentral] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [UltimaVerificacionCentral] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [UsarWindowsAuthCentral] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [UsuarioCentral] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260124155617_Agregar_ConfiguracionServidorCentral_AsistenteIA', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124160715_Agregar_CamposApiRestCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [ApiKeyCentral] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124160715_Agregar_CamposApiRestCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [ApiSecretCentral] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124160715_Agregar_CamposApiRestCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [ModoConexionCentral] nvarchar(10) NOT NULL DEFAULT N'';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124160715_Agregar_CamposApiRestCentral_AsistenteIA'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesAsistenteIA] ADD [UrlApiCentral] nvarchar(500) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124160715_Agregar_CamposApiRestCentral_AsistenteIA'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260124160715_Agregar_CamposApiRestCentral_AsistenteIA', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+

@@ -1,6 +1,7 @@
 @page "/admin/asistente-ia"
 @using SistemIA.Models
 @using SistemIA.Models.AsistenteIA
+@using SistemIA.Utils
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
@@ -769,6 +770,240 @@ else
                     </div>
                 </div>
             </div>
+
+            <!-- SERVIDOR CENTRAL DE CONOCIMIENTO -->
+            <hr class="my-4" />
+            <div class="row">
+                <div class="col-12">
+                    <h6 class="border-bottom pb-2 mb-3">
+                        <i class="bi bi-cloud-arrow-down me-2"></i>Servidor Central de Conocimiento
+                        <small class="text-muted fw-normal ms-2">(Consulta externa cuando no hay respuesta local)</small>
+                    </h6>
+                </div>
+                <div class="col-12">
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="chkHabilitarCentral" @bind="_configuracion.HabilitarServidorCentral" />
+                        <label class="form-check-label fw-bold" for="chkHabilitarCentral">
+                            <i class="bi bi-toggle-on me-1"></i>Habilitar consulta a servidor central
+                        </label>
+                    </div>
+                </div>
+
+                @if (_configuracion.HabilitarServidorCentral)
+                {
+                    <div class="col-12 mb-3">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white py-2">
+                                <i class="bi bi-shield-lock me-2"></i>Modo de Conexión
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="modoConexion" id="modoAPI" 
+                                                   checked="@(_configuracion.ModoConexionCentral == "API")"
+                                                   @onchange="@(() => _configuracion.ModoConexionCentral = "API")" />
+                                            <label class="form-check-label fw-bold text-success" for="modoAPI">
+                                                <i class="bi bi-shield-fill-check me-1"></i>API REST (Recomendado - Más Seguro)
+                                            </label>
+                                            <div class="small text-muted mt-1">
+                                                <i class="bi bi-check text-success"></i> No expone la base de datos<br/>
+                                                <i class="bi bi-check text-success"></i> Comunicación HTTPS encriptada<br/>
+                                                <i class="bi bi-check text-success"></i> Autenticación con API Key<br/>
+                                                <i class="bi bi-check text-success"></i> Control de acceso granular
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="modoConexion" id="modoSQL" 
+                                                   checked="@(_configuracion.ModoConexionCentral == "SQL")"
+                                                   @onchange="@(() => _configuracion.ModoConexionCentral = "SQL")" />
+                                            <label class="form-check-label fw-bold text-warning" for="modoSQL">
+                                                <i class="bi bi-database me-1"></i>SQL Directo (Solo red local)
+                                            </label>
+                                            <div class="small text-muted mt-1">
+                                                <i class="bi bi-exclamation-triangle text-warning"></i> Requiere puerto SQL abierto (1433)<br/>
+                                                <i class="bi bi-exclamation-triangle text-warning"></i> Solo para redes privadas/VPN<br/>
+                                                <i class="bi bi-exclamation-triangle text-warning"></i> Mayor superficie de ataque
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ========== MODO API REST ========== *@
+                    @if (_configuracion.ModoConexionCentral == "API")
+                    {
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label"><i class="bi bi-link-45deg me-1"></i>URL de la API Central</label>
+                                <input type="url" class="form-control" @bind="_configuracion.UrlApiCentral" 
+                                       placeholder="https://api.empresa.com/asistente-ia" />
+                                <small class="text-muted">URL base del endpoint de la API</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label"><i class="bi bi-key me-1"></i>API Key</label>
+                                <div class="input-group">
+                                    <input type="@(_mostrarApiKey ? "text" : "password")" class="form-control" 
+                                           @bind="_configuracion.ApiKeyCentral" 
+                                           placeholder="sk_live_xxxxxxxxxxxx" autocomplete="off" />
+                                    <button class="btn btn-outline-secondary" type="button" 
+                                            @onclick="() => _mostrarApiKey = !_mostrarApiKey">
+                                        <i class="bi @(_mostrarApiKey ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted"><i class="bi bi-shield-lock me-1"></i>Se guarda encriptada</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label"><i class="bi bi-file-lock me-1"></i>API Secret (Opcional)</label>
+                                <div class="input-group">
+                                    <input type="@(_mostrarApiSecret ? "text" : "password")" class="form-control" 
+                                           @bind="_configuracion.ApiSecretCentral" 
+                                           placeholder="secret_xxxxxxxxxxxx" autocomplete="off" />
+                                    <button class="btn btn-outline-secondary" type="button" 
+                                            @onclick="() => _mostrarApiSecret = !_mostrarApiSecret">
+                                        <i class="bi @(_mostrarApiSecret ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted">Para firmar peticiones (seguridad adicional)</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Timeout (segundos)</label>
+                                <input type="number" class="form-control" style="max-width: 100px;" 
+                                       @bind="_configuracion.TimeoutConexionCentral" min="5" max="60" />
+                            </div>
+                        </div>
+                    }
+
+                    @* ========== MODO SQL DIRECTO ========== *@
+                    @if (_configuracion.ModoConexionCentral == "SQL")
+                    {
+                        <div class="col-12">
+                            <div class="alert alert-warning py-2 mb-3">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>Advertencia de seguridad:</strong> La conexión SQL directa solo es segura en redes privadas o a través de VPN.
+                                No exponga el puerto SQL Server (1433) a internet.
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Servidor SQL Server</label>
+                                <input type="text" class="form-control" @bind="_configuracion.ServidorCentral" 
+                                       placeholder="192.168.1.100 o servidor.empresa.com\\SQLSERVER" />
+                                <small class="text-muted">IP o nombre del servidor con la BD central</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Puerto</label>
+                                <input type="number" class="form-control" style="max-width: 120px;" 
+                                       @bind="_configuracion.PuertoCentral" min="1" max="65535" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Base de Datos</label>
+                                <input type="text" class="form-control" @bind="_configuracion.BaseDatosCentral" 
+                                       placeholder="SistemIA_Central" />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mb-3">
+                                <input type="checkbox" class="form-check-input" id="chkWindowsAuth" 
+                                       @bind="_configuracion.UsarWindowsAuthCentral" />
+                                <label class="form-check-label" for="chkWindowsAuth">
+                                    <i class="bi bi-windows me-1"></i>Usar autenticación de Windows
+                                </label>
+                            </div>
+
+                            @if (!_configuracion.UsarWindowsAuthCentral)
+                            {
+                                <div class="mb-3">
+                                    <label class="form-label">Usuario SQL</label>
+                                    <input type="text" class="form-control" @bind="_configuracion.UsuarioCentral" 
+                                           placeholder="SistemIA_Reader" />
+                                    <small class="text-muted">Use un usuario con permisos mínimos (solo SELECT)</small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Contraseña</label>
+                                    <div class="input-group">
+                                        <input type="@(_mostrarContrasena ? "text" : "password")" class="form-control" 
+                                               @bind="_configuracion.ContrasenaCentral" autocomplete="off" />
+                                        <button class="btn btn-outline-secondary" type="button" 
+                                                @onclick="() => _mostrarContrasena = !_mostrarContrasena">
+                                            <i class="bi @(_mostrarContrasena ? "bi-eye-slash" : "bi-eye")"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted"><i class="bi bi-shield-lock me-1"></i>Se guarda encriptada</small>
+                                </div>
+                            }
+
+                            <div class="mb-3">
+                                <label class="form-label">Timeout (segundos)</label>
+                                <input type="number" class="form-control" style="max-width: 100px;" 
+                                       @bind="_configuracion.TimeoutConexionCentral" min="5" max="60" />
+                            </div>
+                        </div>
+                    }
+
+                    @* ========== BOTÓN PROBAR CONEXIÓN ========== *@
+                    <div class="col-12">
+                        <div class="d-flex align-items-center gap-3">
+                            <button class="btn btn-outline-primary" @onclick="ProbarConexionCentral" disabled="@_probandoConexion">
+                                @if (_probandoConexion)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Probando...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-plug me-1"></i>
+                                    <span>Probar Conexión</span>
+                                }
+                            </button>
+
+                            @if (_configuracion.UltimaVerificacionCentral.HasValue)
+                            {
+                                <span class="small text-muted">
+                                    <i class="bi bi-clock me-1"></i>
+                                    Última prueba: @_configuracion.UltimaVerificacionCentral.Value.ToString("dd/MM/yyyy HH:mm")
+                                    @if (_configuracion.ConexionCentralExitosa == true)
+                                    {
+                                        <span class="badge bg-success ms-1">OK</span>
+                                    }
+                                    else if (_configuracion.ConexionCentralExitosa == false)
+                                    {
+                                        <span class="badge bg-danger ms-1">Error</span>
+                                    }
+                                </span>
+                            }
+                        </div>
+
+                        @if (_resultadoPruebaConexion != null)
+                        {
+                            <div class="alert @(_conexionExitosa ? "alert-success" : "alert-danger") mt-3 py-2">
+                                <i class="bi @(_conexionExitosa ? "bi-check-circle" : "bi-x-circle") me-2"></i>
+                                @_resultadoPruebaConexion
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (_configuracion.HabilitarServidorCentral)
+            {
+                <div class="alert alert-info mt-3">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Funcionamiento:</strong> El asistente buscará primero en la base de datos local. 
+                    Si no encuentra respuesta, consultará al servidor central @(_configuracion.ModoConexionCentral == "API" ? "a través de la API REST" : "por conexión SQL directa").
+                </div>
+            }
         </div>
         <div class="card-footer bg-white">
             <button class="btn btn-primary" @onclick="GuardarConfiguracion" disabled="@_guardandoConfig">
@@ -931,6 +1166,14 @@ else
     private string? _mensajeConfig;
     private bool _exitoConfig = false;
 
+    // Prueba conexión servidor central
+    private bool _probandoConexion = false;
+    private string? _resultadoPruebaConexion;
+    private bool _conexionExitosa = false;
+    private bool _mostrarContrasena = false;
+    private bool _mostrarApiKey = false;
+    private bool _mostrarApiSecret = false;
+
     private IEnumerable<ArticuloConocimientoDB> ArticulosFiltrados => _articulos
         .Where(a => string.IsNullOrEmpty(_filtroTexto) || 
                     a.Titulo.Contains(_filtroTexto, StringComparison.OrdinalIgnoreCase) ||
@@ -1004,6 +1247,13 @@ else
         // Cargar o crear configuración
         _configuracion = await _context.ConfiguracionesAsistenteIA.FirstOrDefaultAsync() 
                          ?? new ConfiguracionAsistenteIA();
+        
+        // Desencriptar contraseña para mostrar en UI
+        if (!string.IsNullOrEmpty(_configuracion.ContrasenaCentral) && 
+            EncriptacionHelper.EstaEncriptado(_configuracion.ContrasenaCentral))
+        {
+            _configuracion.ContrasenaCentral = EncriptacionHelper.Desencriptar(_configuracion.ContrasenaCentral);
+        }
 
         // Si no hay categorías, crear las predeterminadas
         if (!_categorias.Any())
@@ -1265,6 +1515,34 @@ else
                     existente.HabilitarCapturaPantalla = _configuracion.HabilitarCapturaPantalla;
                     existente.HabilitarGrabacionVideo = _configuracion.HabilitarGrabacionVideo;
                     existente.MaxSegundosVideo = _configuracion.MaxSegundosVideo;
+                    // Servidor central
+                    existente.HabilitarServidorCentral = _configuracion.HabilitarServidorCentral;
+                    existente.ServidorCentral = _configuracion.ServidorCentral;
+                    existente.PuertoCentral = _configuracion.PuertoCentral;
+                    existente.BaseDatosCentral = _configuracion.BaseDatosCentral;
+                    existente.UsuarioCentral = _configuracion.UsuarioCentral;
+                    // Encriptar contraseña si no está ya encriptada
+                    existente.ContrasenaCentral = !string.IsNullOrEmpty(_configuracion.ContrasenaCentral) && 
+                                                  !EncriptacionHelper.EstaEncriptado(_configuracion.ContrasenaCentral)
+                        ? EncriptacionHelper.Encriptar(_configuracion.ContrasenaCentral)
+                        : _configuracion.ContrasenaCentral;
+                    existente.UsarWindowsAuthCentral = _configuracion.UsarWindowsAuthCentral;
+                    existente.TimeoutConexionCentral = _configuracion.TimeoutConexionCentral;
+                    existente.UltimaVerificacionCentral = _configuracion.UltimaVerificacionCentral;
+                    existente.ConexionCentralExitosa = _configuracion.ConexionCentralExitosa;
+                    // Modo de conexión y API REST
+                    existente.ModoConexionCentral = _configuracion.ModoConexionCentral;
+                    existente.UrlApiCentral = _configuracion.UrlApiCentral;
+                    // Encriptar API Key si no está ya encriptada
+                    existente.ApiKeyCentral = !string.IsNullOrEmpty(_configuracion.ApiKeyCentral) && 
+                                              !EncriptacionHelper.EstaEncriptado(_configuracion.ApiKeyCentral)
+                        ? EncriptacionHelper.Encriptar(_configuracion.ApiKeyCentral)
+                        : _configuracion.ApiKeyCentral;
+                    // Encriptar API Secret si no está ya encriptado
+                    existente.ApiSecretCentral = !string.IsNullOrEmpty(_configuracion.ApiSecretCentral) && 
+                                                 !EncriptacionHelper.EstaEncriptado(_configuracion.ApiSecretCentral)
+                        ? EncriptacionHelper.Encriptar(_configuracion.ApiSecretCentral)
+                        : _configuracion.ApiSecretCentral;
                     existente.FechaActualizacion = DateTime.Now;
                 }
             }
@@ -1281,6 +1559,156 @@ else
         finally
         {
             _guardandoConfig = false;
+        }
+    }
+
+    // ========== MÉTODOS DE CONEXIÓN CENTRAL ==========
+    private async Task ProbarConexionCentral()
+    {
+        _probandoConexion = true;
+        _resultadoPruebaConexion = null;
+        _conexionExitosa = false;
+        StateHasChanged();
+
+        try
+        {
+            if (_configuracion.ModoConexionCentral == "API")
+            {
+                // Probar conexión a API REST
+                await ProbarConexionAPI();
+            }
+            else
+            {
+                // Probar conexión SQL directa
+                await ProbarConexionSQL();
+            }
+
+            // Actualizar estado de verificación
+            _configuracion.UltimaVerificacionCentral = DateTime.Now;
+            _configuracion.ConexionCentralExitosa = _conexionExitosa;
+        }
+        catch (Exception ex)
+        {
+            _conexionExitosa = false;
+            _resultadoPruebaConexion = $"✗ Error: {ex.Message}";
+            _configuracion.UltimaVerificacionCentral = DateTime.Now;
+            _configuracion.ConexionCentralExitosa = false;
+        }
+        finally
+        {
+            _probandoConexion = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProbarConexionAPI()
+    {
+        if (string.IsNullOrWhiteSpace(_configuracion.UrlApiCentral))
+        {
+            _conexionExitosa = false;
+            _resultadoPruebaConexion = "⚠ Ingrese la URL de la API";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_configuracion.ApiKeyCentral))
+        {
+            _conexionExitosa = false;
+            _resultadoPruebaConexion = "⚠ Ingrese la API Key";
+            return;
+        }
+
+        using var httpClient = new HttpClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(_configuracion.TimeoutConexionCentral > 0 ? _configuracion.TimeoutConexionCentral : 10);
+        
+        // Agregar API Key en el header
+        var apiKey = EncriptacionHelper.EstaEncriptado(_configuracion.ApiKeyCentral)
+            ? EncriptacionHelper.Desencriptar(_configuracion.ApiKeyCentral)
+            : _configuracion.ApiKeyCentral;
+        httpClient.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+        
+        // Si hay secret, agregarlo como header adicional
+        if (!string.IsNullOrWhiteSpace(_configuracion.ApiSecretCentral))
+        {
+            var secret = EncriptacionHelper.EstaEncriptado(_configuracion.ApiSecretCentral)
+                ? EncriptacionHelper.Desencriptar(_configuracion.ApiSecretCentral)
+                : _configuracion.ApiSecretCentral;
+            httpClient.DefaultRequestHeaders.Add("X-API-Secret", secret);
+        }
+
+        // Endpoint de salud/verificación
+        var urlBase = _configuracion.UrlApiCentral.TrimEnd('/');
+        var response = await httpClient.GetAsync($"{urlBase}/health");
+        
+        if (response.IsSuccessStatusCode)
+        {
+            var content = await response.Content.ReadAsStringAsync();
+            _conexionExitosa = true;
+            _resultadoPruebaConexion = $"✓ API conectada correctamente. Respuesta: {content}";
+        }
+        else
+        {
+            _conexionExitosa = false;
+            _resultadoPruebaConexion = $"✗ Error de API: {response.StatusCode} - {response.ReasonPhrase}";
+        }
+    }
+
+    private async Task ProbarConexionSQL()
+    {
+        if (string.IsNullOrWhiteSpace(_configuracion.ServidorCentral))
+        {
+            _conexionExitosa = false;
+            _resultadoPruebaConexion = "⚠ Ingrese el servidor SQL";
+            return;
+        }
+
+        // Construir connection string
+        var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder();
+        builder.DataSource = _configuracion.PuertoCentral != 1433 
+            ? $"{_configuracion.ServidorCentral},{_configuracion.PuertoCentral}" 
+            : _configuracion.ServidorCentral;
+        builder.InitialCatalog = _configuracion.BaseDatosCentral ?? "master";
+        builder.ConnectTimeout = _configuracion.TimeoutConexionCentral > 0 ? _configuracion.TimeoutConexionCentral : 10;
+        builder.Encrypt = true;  // Conexión encriptada
+        builder.TrustServerCertificate = true;  // Para desarrollo
+
+        if (_configuracion.UsarWindowsAuthCentral)
+        {
+            builder.IntegratedSecurity = true;
+        }
+        else
+        {
+            builder.UserID = _configuracion.UsuarioCentral ?? "";
+            // Desencriptar contraseña si está encriptada
+            var password = !string.IsNullOrEmpty(_configuracion.ContrasenaCentral) && 
+                          EncriptacionHelper.EstaEncriptado(_configuracion.ContrasenaCentral)
+                ? EncriptacionHelper.Desencriptar(_configuracion.ContrasenaCentral)
+                : _configuracion.ContrasenaCentral;
+            builder.Password = password ?? "";
+        }
+
+        using var connection = new Microsoft.Data.SqlClient.SqlConnection(builder.ConnectionString);
+        await connection.OpenAsync();
+
+        // Verificar que existe la tabla ArticulosConocimiento
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
+                            WHERE TABLE_NAME = 'ArticulosConocimiento'";
+        var tablaExiste = (int)await cmd.ExecuteScalarAsync() > 0;
+
+        if (tablaExiste)
+        {
+            // Contar artículos
+            cmd.CommandText = "SELECT COUNT(*) FROM ArticulosConocimiento WHERE Activo = 1";
+            var cantidadArticulos = (int)await cmd.ExecuteScalarAsync();
+
+            _conexionExitosa = true;
+            _resultadoPruebaConexion = $"✓ Conexión SQL exitosa. BD: {_configuracion.BaseDatosCentral}. " +
+                                       $"Artículos: {cantidadArticulos}";
+        }
+        else
+        {
+            _conexionExitosa = false;
+            _resultadoPruebaConexion = "⚠ Conexión OK, pero la tabla ArticulosConocimiento no existe";
         }
     }
 

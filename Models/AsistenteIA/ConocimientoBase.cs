@@ -69,6 +69,89 @@ namespace SistemIA.Models.AsistenteIA
         /// </summary>
         public int MaxSegundosVideo { get; set; } = 30;
 
+        // ========== SERVIDOR CENTRAL DE CONOCIMIENTO ==========
+        /// <summary>
+        /// Habilitar consulta a servidor central cuando no hay respuesta local
+        /// </summary>
+        public bool HabilitarServidorCentral { get; set; } = false;
+
+        /// <summary>
+        /// Servidor SQL Server central (ej: 192.168.1.100 o servidor.empresa.com\SQLSERVER)
+        /// </summary>
+        [MaxLength(200)]
+        public string? ServidorCentral { get; set; }
+
+        /// <summary>
+        /// Puerto del servidor (default 1433)
+        /// </summary>
+        public int PuertoCentral { get; set; } = 1433;
+
+        /// <summary>
+        /// Nombre de la base de datos central de conocimiento IA
+        /// </summary>
+        [MaxLength(100)]
+        public string? BaseDatosCentral { get; set; }
+
+        /// <summary>
+        /// Usuario para autenticación SQL (si es vacío, usa Windows Auth)
+        /// </summary>
+        [MaxLength(100)]
+        public string? UsuarioCentral { get; set; }
+
+        /// <summary>
+        /// Contraseña para autenticación SQL (encriptada)
+        /// </summary>
+        [MaxLength(200)]
+        public string? ContrasenaCentral { get; set; }
+
+        /// <summary>
+        /// Usar autenticación de Windows en lugar de SQL
+        /// </summary>
+        public bool UsarWindowsAuthCentral { get; set; } = false;
+
+        /// <summary>
+        /// Timeout en segundos para conexión al servidor central
+        /// </summary>
+        public int TimeoutConexionCentral { get; set; } = 10;
+
+        /// <summary>
+        /// Última vez que se verificó la conexión al servidor central
+        /// </summary>
+        public DateTime? UltimaVerificacionCentral { get; set; }
+
+        /// <summary>
+        /// Estado de la última conexión al servidor central
+        /// </summary>
+        public bool? ConexionCentralExitosa { get; set; }
+
+        // ========== MODO DE CONEXIÓN (SQL vs API REST) ==========
+        /// <summary>
+        /// Modo de conexión: "SQL" = conexión directa a SQL Server, "API" = API REST (más segura)
+        /// </summary>
+        [MaxLength(10)]
+        public string ModoConexionCentral { get; set; } = "API";
+
+        /// <summary>
+        /// URL base de la API REST central (ej: https://api.empresa.com/asistente-ia)
+        /// Solo se usa cuando ModoConexionCentral = "API"
+        /// </summary>
+        [MaxLength(500)]
+        public string? UrlApiCentral { get; set; }
+
+        /// <summary>
+        /// API Key para autenticación con el servidor central
+        /// Se encripta antes de guardar
+        /// </summary>
+        [MaxLength(200)]
+        public string? ApiKeyCentral { get; set; }
+
+        /// <summary>
+        /// Secret adicional para firmar peticiones (opcional, para mayor seguridad)
+        /// Se encripta antes de guardar
+        /// </summary>
+        [MaxLength(200)]
+        public string? ApiSecretCentral { get; set; }
+
         // ========== AUDITORÍA ==========
         public DateTime FechaCreacion { get; set; } = DateTime.Now;
         public DateTime FechaActualizacion { get; set; } = DateTime.Now;

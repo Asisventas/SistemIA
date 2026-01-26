@@ -95,13 +95,15 @@ namespace SistemIA.Services
         };
 
         private readonly ITrackingService? _trackingService;
+        private readonly IHubIACentralService? _hubIAService;
 
-        public AsistenteIAService(AppDbContext context, ILogger<AsistenteIAService> logger, RutasSistemaService rutasService, ITrackingService? trackingService = null)
+        public AsistenteIAService(AppDbContext context, ILogger<AsistenteIAService> logger, RutasSistemaService rutasService, ITrackingService? trackingService = null, IHubIACentralService? hubIAService = null)
         {
             _context = context;
             _logger = logger;
             _rutasService = rutasService;
             _trackingService = trackingService;
+            _hubIAService = hubIAService;
             _rutaConocimiento = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "Conocimiento", "base_conocimiento.json");
             _conocimiento = CargarBaseConocimiento();
         }
@@ -268,6 +270,56 @@ namespace SistemIA.Services
                 }
                 else
                 {
+                    // ========== HUB IA CENTRAL FALLBACK ==========
+                    // Si no encontró respuesta local, intentar con el Hub IA Central
+                    if (_hubIAService != null)
+                    {
+                        try
+                        {
+                            var conexionHub = await _hubIAService.VerificarConexionAsync();
+                            if (conexionHub.Conectado && conexionHub.Habilitado)
+                            {
+                                _logger.LogInformation("[Hub IA] Consultando Hub para: {Consulta}", consulta);
+                                
+                                var hubRespuesta = await _hubIAService.ConsultarAsync(consulta, null, paginaActual);
+                                
+                                if (hubRespuesta != null && hubRespuesta.Success && !string.IsNullOrEmpty(hubRespuesta.Respuesta))
+                                {
+                                    respuesta.Mensaje = $"{nombreUsuario}, {hubRespuesta.Respuesta}";
+                                    respuesta.TipoRespuesta = "hub_ia";
+                                    respuesta.Exito = true;
+                                    
+                                    // Indicar que la respuesta vino del Hub
+                                    if (hubRespuesta.Fuentes?.Any() == true)
+                                    {
+                                        respuesta.Mensaje += $"\n\n📡 *Respuesta del Hub IA Central*";
+                                        var fuentesTitulos = hubRespuesta.Fuentes
+                                            .Where(f => !string.IsNullOrEmpty(f.Titulo))
+                                            .Select(f => f.Titulo);
+                                        if (fuentesTitulos.Any())
+                                        {
+                                            respuesta.Mensaje += $"\n_Fuentes: {string.Join(", ", fuentesTitulos)}_";
+                                        }
+                                    }
+                                    
+                                    respuesta.Sugerencias = new List<string> {
+                                        "¿Cómo crear una venta?",
+                                        "¿Cómo funciona SIFEN?",
+                                        "¿Cómo ver reportes?"
+                                    };
+                                    
+                                    await GuardarConversacionAsync(idUsuario, nombreUsuario, consulta, respuesta, paginaActual);
+                                    return respuesta;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Hub IA] Error consultando Hub, usando respuesta local");
+                        }
+                    }
+                    // ========== FIN HUB IA CENTRAL FALLBACK ==========
+                    
                     respuesta.Mensaje = string.Format(_respuestasNoEntendido[_random.Next(_respuestasNoEntendido.Length)], nombreUsuario);
                     respuesta.Exito = false;
                     

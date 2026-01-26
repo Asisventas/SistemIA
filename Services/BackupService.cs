@@ -146,6 +146,74 @@ namespace SistemIA.Services
             }
         }
 
+        /// <summary>
+        /// Crea backup de la BD con un nombre fijo (para sobrescribir siempre el mismo archivo)
+        /// Usado para CloudSync donde se quiere mantener solo 1 copia en la nube
+        /// </summary>
+        public async Task<BackupResult> CrearBackupParaCloudSync()
+        {
+            var result = new BackupResult();
+            
+            try
+            {
+                // Crear directorio de backup si no existe
+                var backupDir = @"C:\backup";
+                if (!Directory.Exists(backupDir))
+                {
+                    Directory.CreateDirectory(backupDir);
+                }
+
+                // 1. Obtener nombre de la base de datos desde la cadena de conexión
+                var connectionString = _configuration.GetConnectionString("DefaultConnection");
+                if (string.IsNullOrEmpty(connectionString))
+                {
+                    result.Error = "No se encontró la cadena de conexión";
+                    return result;
+                }
+                
+                var databaseName = ExtraerNombreBaseDatos(connectionString);
+                
+                if (string.IsNullOrEmpty(databaseName))
+                {
+                    result.Error = "No se pudo obtener el nombre de la base de datos";
+                    return result;
+                }
+
+                // 2. Usar nombre fijo para siempre sobrescribir el mismo archivo
+                // Esto facilita la sincronización y evita acumular backups
+                var backupFileName = $"SistemIA_CloudSync_Backup.bak";
+                var backupPath = Path.Combine(backupDir, backupFileName);
+                
+                // Si existe el archivo anterior, eliminarlo primero (SQL Server no sobrescribe)
+                if (File.Exists(backupPath))
+                {
+                    File.Delete(backupPath);
+                }
+                
+                var backupSuccess = await CrearBackupBaseDatos(connectionString, databaseName, backupPath);
+                if (!backupSuccess)
+                {
+                    result.Error = "Error al crear el backup de la base de datos";
+                    return result;
+                }
+
+                result.Success = true;
+                result.BackupPath = backupPath;
+                result.DatabaseName = databaseName;
+                result.Timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                
+                _logger.LogInformation($"Backup para CloudSync creado: {backupPath}");
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                result.Error = $"Error general: {ex.Message}";
+                _logger.LogError(ex, "Error al crear backup para CloudSync");
+                return result;
+            }
+        }
+
         private string ExtraerNombreBaseDatos(string connectionString)
         {
             try

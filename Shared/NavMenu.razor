@@ -2,6 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Routing
 @using SistemIA.Shared
+@using SistemIA.Services
 
 <div class="nav-menu d-flex flex-column @(AnySubMenuOpen ? "has-submenu-open" : "")">
     <div class="nav-header p-3">
@@ -39,6 +40,31 @@
                </NavLink>  
            </div>  
        }  
+
+        <!-- CloudSync - Backup en la Nube (Acceso directo) -->
+        <div class="nav-item mb-1">
+            <NavLink class="nav-link" href="/configuracion/cloudsync" title="@(IsCollapsed ? "CloudSync" : "")" @onclick="OnAnyNavigate">
+                <i class="bi bi-cloud-arrow-up me-2"></i>
+                @if (!IsCollapsed)
+                {
+                    <span class="link-text d-flex align-items-center">
+                        CloudSync
+                        @if (_backupActualizado)
+                        {
+                            <i class="bi bi-check-circle-fill text-success ms-2" title="Backup sincronizado"></i>
+                        }
+                        else if (_ultimoBackup.HasValue)
+                        {
+                            <i class="bi bi-exclamation-circle-fill text-warning ms-2" title="Backup desactualizado"></i>
+                        }
+                        else
+                        {
+                            <i class="bi bi-x-circle-fill text-danger ms-2" title="Sin backup"></i>
+                        }
+                    </span>
+                }
+            </NavLink>
+        </div>
 
         <!-- Submenú de Productos -->
         <div class="nav-item mb-1">
@@ -608,6 +634,11 @@
                         <i class="bi bi-envelope-at me-2"></i>
                         <span class="link-text">Correo Electrónico</span>
                     </NavLink>
+                    <NavLink class="nav-link submenu-item" href="/configuracion/cloudsync" title="Backup en la Nube - CloudSync" @onclick="OnAnyNavigate">
+                        <i class="bi bi-cloud-arrow-up me-2"></i>
+                        <span class="link-text">CloudSync (Backups)</span>
+                        <span class="badge bg-success ms-1" style="font-size: 0.55rem;">Nuevo</span>
+                    </NavLink>
                     <NavLink class="nav-link submenu-item" href="/configuracion/tema" title="Configuración de Tema" @onclick="OnAnyNavigate">
                         <i class="bi bi-palette me-2"></i>
                         <span class="link-text">Tema</span>
@@ -675,6 +706,49 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Indicador de Estado de Backup -->
+        @if (!IsCollapsed)
+        {
+            <div class="backup-status-indicator px-3 py-2 mt-2" title="@_backupTooltip">
+                <a href="/configuracion/cloudsync" class="text-decoration-none d-flex align-items-center">
+                    @if (_backupActualizado)
+                    {
+                        <i class="bi bi-cloud-check-fill text-success me-2"></i>
+                        <small class="text-success">Backup sincronizado</small>
+                    }
+                    else if (_ultimoBackup.HasValue)
+                    {
+                        <i class="bi bi-cloud-slash text-warning me-2"></i>
+                        <small class="text-warning">Backup desactualizado</small>
+                    }
+                    else
+                    {
+                        <i class="bi bi-cloud-slash text-muted me-2"></i>
+                        <small class="text-muted">Sin backup</small>
+                    }
+                </a>
+            </div>
+        }
+        else
+        {
+            <div class="backup-status-indicator text-center py-2 mt-2" title="@_backupTooltip">
+                <a href="/configuracion/cloudsync" class="text-decoration-none">
+                    @if (_backupActualizado)
+                    {
+                        <i class="bi bi-cloud-check-fill text-success"></i>
+                    }
+                    else if (_ultimoBackup.HasValue)
+                    {
+                        <i class="bi bi-cloud-slash text-warning"></i>
+                    }
+                    else
+                    {
+                        <i class="bi bi-cloud-slash text-muted"></i>
+                    }
+                </a>
+            </div>
+        }
     </div>
     </div>
 
@@ -694,7 +768,11 @@
     private bool isClientesSubMenuOpen = false;
     private string? logoImageDataUrl;
     private string? navMenuError;
-    // Sin indicadores de caja en la barra lateral (se muestran en el Panel de control)
+    
+    // Estado del backup para el indicador
+    private bool _backupActualizado = false;
+    private DateTime? _ultimoBackup;
+    private string _backupTooltip = "Estado del backup";
 
     protected override void OnParametersSet()
     {
@@ -719,12 +797,34 @@
                 logoImageDataUrl = $"data:image/png;base64,{base64}";
             }
 
-            // Indicadores de caja solo se muestran en el Panel; aquí no cargamos.
+            // Cargar estado del backup desde cache
+            ActualizarEstadoBackup();
         }
         catch (Exception ex)
         {
             navMenuError = $"Error en NavMenu: {ex.Message}";
             Console.WriteLine($"[ERROR NavMenu] {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    private void ActualizarEstadoBackup()
+    {
+        var (ultimoBackup, estado, sincronizado) = BackupStatusCache.ObtenerEstado();
+        _ultimoBackup = ultimoBackup;
+        _backupActualizado = BackupStatusCache.EstaActualizado(24);
+        
+        if (_backupActualizado)
+        {
+            _backupTooltip = $"Backup sincronizado: {ultimoBackup:dd/MM/yyyy HH:mm}";
+        }
+        else if (ultimoBackup.HasValue)
+        {
+            var horas = (DateTime.Now - ultimoBackup.Value).TotalHours;
+            _backupTooltip = $"Último backup hace {horas:F0} horas";
+        }
+        else
+        {
+            _backupTooltip = "No hay backup sincronizado";
         }
     }
 

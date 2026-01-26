@@ -94,6 +94,31 @@ builder.Services.AddHostedService<SifenColaService>(); // Cola de reintentos SIF
 builder.Services.AddSingleton<ChatStateService>(); // Estado del chat (singleton por circuito)
 builder.Services.AddSingleton<RutasSistemaService>(); // Escaneo automático de rutas del sistema
 builder.Services.AddSingleton<ITrackingService, TrackingService>(); // Tracking de acciones del usuario
+
+// CloudSync - Backup en la nube (Angular frontend)
+builder.Services.AddScoped<ICloudSyncService, CloudSyncService>();
+builder.Services.AddHostedService<CloudSyncBackgroundService>(); // Backups automáticos programados
+
+// Hub IA Central (futuro servicio centralizado de IA)
+builder.Services.Configure<HubIACentralSettings>(builder.Configuration.GetSection("HubIACentral"));
+var hubSettings = builder.Configuration.GetSection("HubIACentral").Get<HubIACentralSettings>();
+if (hubSettings?.Enabled == true && !string.IsNullOrWhiteSpace(hubSettings.BaseUrl))
+{
+    builder.Services.AddHttpClient<IHubIACentralService, HubIACentralService>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(hubSettings.TimeoutSeconds);
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        // Para desarrollo, aceptar certificados auto-firmados
+        ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+    });
+}
+else
+{
+    builder.Services.AddSingleton<IHubIACentralService, HubIACentralServiceStub>();
+}
+
 // Impresión directa sin diálogo (solo Windows)
 if (OperatingSystem.IsWindows())
 {

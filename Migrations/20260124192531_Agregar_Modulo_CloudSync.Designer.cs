@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SistemIA.Models;
 
@@ -11,9 +12,11 @@ using SistemIA.Models;
 namespace SistemIA.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260124192531_Agregar_Modulo_CloudSync")]
+    partial class Agregar_Modulo_CloudSync
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2079,27 +2082,13 @@ namespace SistemIA.Migrations
                     b.Property<TimeSpan?>("HoraBackup")
                         .HasColumnType("time");
 
-                    b.Property<int>("IntervaloHoras")
-                        .HasColumnType("int");
-
                     b.Property<string>("MensajeUltimaSincronizacion")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("ProximaEjecucion")
-                        .HasColumnType("datetime2");
 
                     b.Property<int>("RetenerUltimosBackups")
                         .HasColumnType("int");
 
-                    b.Property<string>("TipoProgramacion")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
                     b.Property<DateTime?>("UltimaSincronizacion")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("UltimoBackupExitoso")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("UrlApi")
