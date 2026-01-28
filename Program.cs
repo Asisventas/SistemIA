@@ -921,30 +921,43 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen", async (
             venta.EstadoSifen = "RECHAZADO";
         else
             venta.EstadoSifen = "ENVIADO";
-        // Guardar también el XML DE base generado por nuestro builder por trazabilidad
-        venta.XmlCDE = xmlString;
+        
+        // FIX 31-Ene-2026: Guardar XML FIRMADO (con dCarQR correcto que incluye cHashQR)
+        // Antes se guardaba xmlString que era el XML SIN firma, ahora se extrae xmlFirmado del JSON
         // Extraer CDC e IdLote del JSON simple (ignorar "Tag not found.")
         try
         {
             using var doc = System.Text.Json.JsonDocument.Parse(resultJson);
+            
+            // PRIORIDAD 1: Extraer xmlFirmado que contiene el dCarQR con cHashQR correcto
+            if (doc.RootElement.TryGetProperty("xmlFirmado", out var xmlFirmadoProp) && xmlFirmadoProp.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var xmlFirmadoVal = xmlFirmadoProp.GetString();
+                if (!string.IsNullOrWhiteSpace(xmlFirmadoVal))
+                {
+                    venta.XmlCDE = xmlFirmadoVal;
+                    
+                    // Extraer URL del QR (dCarQR) del XML FIRMADO - este SÍ tiene cHashQR correcto
+                    var qrMatch = System.Text.RegularExpressions.Regex.Match(xmlFirmadoVal, @"<dCarQR>([^<]+)</dCarQR>");
+                    if (qrMatch.Success)
+                    {
+                        var urlQr = qrMatch.Groups[1].Value.Replace("&amp;", "&");
+                        if (!string.IsNullOrWhiteSpace(urlQr))
+                            venta.UrlQrSifen = urlQr;
+                    }
+                }
+            }
+            else
+            {
+                // FALLBACK: Guardar XML original si no hay xmlFirmado (no debería ocurrir)
+                venta.XmlCDE = xmlString;
+            }
+            
             if (doc.RootElement.TryGetProperty("cdc", out var cdcProp) && cdcProp.ValueKind == System.Text.Json.JsonValueKind.String)
             {
                 var cdcVal = cdcProp.GetString();
                 if (!string.IsNullOrWhiteSpace(cdcVal) && !string.Equals(cdcVal, "Tag not found.", StringComparison.OrdinalIgnoreCase))
                     venta.CDC = cdcVal;
-            }
-            
-            // Extraer URL del QR (dCarQR) del documento SOAP enviado
-            if (doc.RootElement.TryGetProperty("documento", out var docProp) && docProp.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                var soapEnviado = docProp.GetString() ?? string.Empty;
-                var qrMatch = System.Text.RegularExpressions.Regex.Match(soapEnviado, @"<dCarQR>([^<]+)</dCarQR>");
-                if (qrMatch.Success)
-                {
-                    var urlQr = qrMatch.Groups[1].Value.Replace("&amp;", "&");
-                    if (!string.IsNullOrWhiteSpace(urlQr))
-                        venta.UrlQrSifen = urlQr;
-                }
             }
             
             string? idLoteLocal = null;
@@ -1780,6 +1793,329 @@ app.MapGet("/ventas/{idVenta:int}/consultar-sifen-cdc", async (
             consulta = sifen.FormatearXML(consultaXml),
             respuesta = sifen.FormatearXML(resp),
             detalles = new { ambiente, urlConsultaDe, dId }
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint para consultar SIFEN por CDC y regenerar el dCarQR desde la respuesta
+// Usado por el Monitor SIFEN para corregir QRs inválidos
+// SIFEN NO devuelve el gCamFuFD/dCarQR en la consulta, por lo que debemos regenerarlo
+// usando el DigestValue del Signature y los datos del DE
+app.MapGet("/ventas/consultar-sifen-por-cdc", async (
+    string cdc,
+    IDbContextFactory<AppDbContext> dbFactory,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(cdc) || cdc.Length != 44)
+            return Results.BadRequest(new { ok = false, error = "CDC inválido. Debe tener 44 dígitos." });
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad; configure IdCSC/CSC y certificados." });
+
+        // Configuración de ambiente y certificados
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlConsultaDe = sociedad.DeUrlConsultaDocumento ?? SistemIA.Utils.SifenConfig.GetConsultaDeUrl(ambiente);
+        var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+        
+        if (string.IsNullOrWhiteSpace(p12Path) || string.IsNullOrWhiteSpace(p12Pass))
+            return Results.BadRequest(new { ok = false, error = "Falta configurar ruta/contraseña del certificado (.p12)." });
+
+        // Construir SOAP para consulta de DE por CDC
+        var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
+        var xmlDoc = new System.Xml.XmlDocument();
+        var decl = xmlDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
+        xmlDoc.AppendChild(decl);
+        
+        var soapNs = "http://www.w3.org/2003/05/soap-envelope";
+        var sifenNs = "http://ekuatia.set.gov.py/sifen/xsd";
+        
+        var envelope = xmlDoc.CreateElement("soap", "Envelope", soapNs);
+        xmlDoc.AppendChild(envelope);
+        
+        var header = xmlDoc.CreateElement("soap", "Header", soapNs);
+        envelope.AppendChild(header);
+        
+        var body = xmlDoc.CreateElement("soap", "Body", soapNs);
+        envelope.AppendChild(body);
+        
+        var req = xmlDoc.CreateElement("rEnviConsDeRequest", sifenNs);
+        body.AppendChild(req);
+        
+        var dIdNode = xmlDoc.CreateElement("dId", sifenNs);
+        dIdNode.InnerText = dId;
+        req.AppendChild(dIdNode);
+        
+        var dCdcNode = xmlDoc.CreateElement("dCDC", sifenNs);
+        dCdcNode.InnerText = cdc;
+        req.AppendChild(dCdcNode);
+        
+        var consultaXml = xmlDoc.OuterXml;
+        
+        // Enviar consulta a SIFEN
+        var resp = await sifen.Enviar(urlConsultaDe, consultaXml, p12Path, p12Pass);
+        
+        // Extraer código de respuesta
+        string codigo = sifen.GetTagValue(resp, "ns2:dCodRes");
+        if (string.IsNullOrWhiteSpace(codigo) || codigo == "Tag not found.") 
+            codigo = sifen.GetTagValue(resp, "dCodRes");
+        
+        string mensaje = sifen.GetTagValue(resp, "ns2:dMsgRes");
+        if (string.IsNullOrWhiteSpace(mensaje) || mensaje == "Tag not found.") 
+            mensaje = sifen.GetTagValue(resp, "dMsgRes");
+        
+        // ========================================================================
+        // REGENERAR dCarQR desde el XML del DE que SIFEN devuelve
+        // SIFEN NO devuelve el gCamFuFD/dCarQR en la consulta
+        // Debemos regenerarlo usando el DigestValue del Signature y los datos del DE
+        // ========================================================================
+        string? dCarQR = null;
+        string estadoDocumento = "NO ENCONTRADO";
+        
+        // Extraer xContenDE (el XML del DE, viene HTML-encoded)
+        var matchContenDE = System.Text.RegularExpressions.Regex.Match(resp, @"<(?:\w+:)?xContenDE>(.+?)</(?:\w+:)?xContenDE>", System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (matchContenDE.Success && codigo == "0422")
+        {
+            estadoDocumento = "APROBADO";
+            
+            // Decodificar HTML entities para obtener el XML real
+            var deXml = System.Net.WebUtility.HtmlDecode(matchContenDE.Groups[1].Value);
+            
+            // Extraer DigestValue del Signature
+            var matchDigest = System.Text.RegularExpressions.Regex.Match(deXml, @"<DigestValue>([^<]+)</DigestValue>");
+            if (matchDigest.Success)
+            {
+                var digestValueBase64 = matchDigest.Groups[1].Value;
+                // Convertir Base64 a Hex (hex de los caracteres ASCII del Base64)
+                var digestValueHex = string.Concat(digestValueBase64.Select(c => ((int)c).ToString("x2")));
+                
+                // Extraer datos necesarios para reconstruir el QR
+                var matchFecha = System.Text.RegularExpressions.Regex.Match(deXml, @"<dFeEmiDE>([^<]+)</dFeEmiDE>");
+                var matchRucRec = System.Text.RegularExpressions.Regex.Match(deXml, @"<dRucRec>([^<]+)</dRucRec>");
+                var matchNumIDRec = System.Text.RegularExpressions.Regex.Match(deXml, @"<dNumIDRec>([^<]+)</dNumIDRec>");
+                var matchTotGral = System.Text.RegularExpressions.Regex.Match(deXml, @"<dTotGralOpe>([^<]+)</dTotGralOpe>");
+                var matchTotIVA = System.Text.RegularExpressions.Regex.Match(deXml, @"<dTotIVA>([^<]+)</dTotIVA>");
+                
+                // Contar items
+                var itemsCount = System.Text.RegularExpressions.Regex.Matches(deXml, @"<gCamItem>").Count;
+                
+                // Fecha en formato HEX (hex de los bytes UTF-8)
+                string fechaEmision = matchFecha.Success ? matchFecha.Groups[1].Value : DateTime.Now.ToString("yyyy-MM-ddT00:00:00");
+                string fechaHex = BitConverter.ToString(System.Text.Encoding.UTF8.GetBytes(fechaEmision)).Replace("-", "").ToLowerInvariant();
+                
+                // Determinar parámetro de receptor (RUC o NumID)
+                string idRecParam, idRecValue;
+                if (matchRucRec.Success && !string.IsNullOrWhiteSpace(matchRucRec.Groups[1].Value))
+                {
+                    idRecParam = "dRucRec";
+                    idRecValue = matchRucRec.Groups[1].Value;
+                }
+                else
+                {
+                    idRecParam = "dNumIDRec";
+                    idRecValue = matchNumIDRec.Success ? matchNumIDRec.Groups[1].Value : "0";
+                }
+                
+                string totGralOpe = matchTotGral.Success ? matchTotGral.Groups[1].Value : "0";
+                string totIVA = matchTotIVA.Success ? matchTotIVA.Groups[1].Value : "0";
+                
+                // Obtener CSC de la sociedad
+                string cscValue = sociedad.Csc ?? "ABCD0000000000000000000000000000";
+                string idCscValue = (sociedad.IdCsc ?? "1").TrimStart('0');
+                if (string.IsNullOrEmpty(idCscValue)) idCscValue = "1";
+                
+                // Construir parámetros QR (exacto formato DLL)
+                // El CSC (32 chars) va pegado al final para calcular el hash
+                string qrParams = $"nVersion=150&Id={cdc}&dFeEmiDE={fechaHex}&{idRecParam}={idRecValue}&dTotGralOpe={totGralOpe}&dTotIVA={totIVA}&cItems={itemsCount}&DigestValue={digestValueHex}&IdCSC={idCscValue}{cscValue}";
+                
+                // Calcular hash SHA256 de los parámetros (con CSC pegado)
+                var qrHash = Sifen.SHA256ToString(qrParams);
+                
+                // URL final = urlQR + params sin CSC + &cHashQR=hash
+                string urlQrBase = ambiente == "prod"
+                    ? "https://ekuatia.set.gov.py/consultas/qr?"
+                    : "https://ekuatia.set.gov.py/consultas-test/qr?";
+                
+                // Quitar los últimos 32 chars (el CSC) y agregar cHashQR
+                dCarQR = urlQrBase + qrParams.Substring(0, qrParams.Length - 32) + "&cHashQR=" + qrHash;
+            }
+        }
+        
+        return Results.Ok(new
+        {
+            ok = codigo == "0422" && !string.IsNullOrWhiteSpace(dCarQR),
+            cdc,
+            codigo,
+            mensaje,
+            estadoDocumento,
+            dCarQR,
+            respuestaXml = resp.Length > 5000 ? resp.Substring(0, 5000) + "..." : resp
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Endpoint para regenerar el QR de una venta específica consultando SIFEN
+// Actualiza UrlQrSifen en la base de datos y cambia EstadoSifen a ACEPTADO si corresponde
+app.MapPost("/ventas/{idVenta:int}/regenerar-qr", async (
+    int idVenta,
+    IDbContextFactory<AppDbContext> dbFactory,
+    Sifen sifen
+) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var venta = await db.Ventas.FindAsync(idVenta);
+        
+        if (venta == null)
+            return Results.NotFound(new { ok = false, error = "Venta no encontrada" });
+        
+        if (string.IsNullOrWhiteSpace(venta.CDC))
+            return Results.BadRequest(new { ok = false, error = "La venta no tiene CDC" });
+        
+        var cdc = venta.CDC;
+        
+        var sociedad = await db.Sociedades.AsNoTracking().FirstOrDefaultAsync();
+        if (sociedad == null)
+            return Results.BadRequest(new { ok = false, error = "No existe registro de Sociedad" });
+
+        var ambiente = (sociedad.ServidorSifen ?? "test").ToLower();
+        var urlConsultaDe = sociedad.DeUrlConsultaDocumento ?? SistemIA.Utils.SifenConfig.GetConsultaDeUrl(ambiente);
+        var p12Path = sociedad.PathCertificadoP12 ?? string.Empty;
+        var p12Pass = sociedad.PasswordCertificadoP12 ?? string.Empty;
+        
+        if (string.IsNullOrWhiteSpace(p12Path) || string.IsNullOrWhiteSpace(p12Pass))
+            return Results.BadRequest(new { ok = false, error = "Falta configurar certificado" });
+
+        // Construir SOAP para consulta de DE por CDC
+        var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
+        var soapConsulta = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<soap:Envelope xmlns:soap=""http://www.w3.org/2003/05/soap-envelope"">
+<soap:Body>
+<rEnviConsDeRequest xmlns=""http://ekuatia.set.gov.py/sifen/xsd"">
+<dId>{dId}</dId>
+<dCDC>{cdc}</dCDC>
+</rEnviConsDeRequest>
+</soap:Body>
+</soap:Envelope>";
+        
+        var resp = await sifen.Enviar(urlConsultaDe, soapConsulta, p12Path, p12Pass);
+        
+        string codigo = sifen.GetTagValue(resp, "ns2:dCodRes");
+        if (string.IsNullOrWhiteSpace(codigo) || codigo == "Tag not found.") 
+            codigo = sifen.GetTagValue(resp, "dCodRes");
+        
+        string mensaje = sifen.GetTagValue(resp, "ns2:dMsgRes");
+        if (string.IsNullOrWhiteSpace(mensaje) || mensaje == "Tag not found.") 
+            mensaje = sifen.GetTagValue(resp, "dMsgRes");
+        
+        if (codigo != "0422")
+        {
+            return Results.Ok(new { 
+                ok = false, 
+                error = $"Documento no encontrado en SIFEN: {codigo} - {mensaje}",
+                estadoAnterior = venta.EstadoSifen,
+                urlQrAnterior = venta.UrlQrSifen
+            });
+        }
+        
+        // Extraer xContenDE y regenerar QR
+        var matchContenDE = System.Text.RegularExpressions.Regex.Match(resp, @"<(?:\w+:)?xContenDE>(.+?)</(?:\w+:)?xContenDE>", System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (!matchContenDE.Success)
+            return Results.BadRequest(new { ok = false, error = "No se encontró xContenDE en la respuesta de SIFEN" });
+        
+        var deXml = System.Net.WebUtility.HtmlDecode(matchContenDE.Groups[1].Value);
+        
+        // Extraer DigestValue
+        var matchDigest = System.Text.RegularExpressions.Regex.Match(deXml, @"<DigestValue>([^<]+)</DigestValue>");
+        if (!matchDigest.Success)
+            return Results.BadRequest(new { ok = false, error = "No se encontró DigestValue en el XML" });
+        
+        var digestBase64 = matchDigest.Groups[1].Value;
+        var digestHex = string.Concat(digestBase64.Select(c => ((int)c).ToString("x2")));
+        
+        // Extraer otros datos
+        var matchFecha = System.Text.RegularExpressions.Regex.Match(deXml, @"<dFeEmiDE>([^<]+)</dFeEmiDE>");
+        var fechaEmision = matchFecha.Success ? matchFecha.Groups[1].Value : "";
+        var fechaHex = string.Concat(fechaEmision.Select(c => ((int)c).ToString("x2")));
+        
+        var matchRucRec = System.Text.RegularExpressions.Regex.Match(deXml, @"<dRucRec>([^<]+)</dRucRec>");
+        var matchNumIDRec = System.Text.RegularExpressions.Regex.Match(deXml, @"<dNumIDRec>([^<]+)</dNumIDRec>");
+        
+        string idRecParam, idRecValue;
+        if (matchRucRec.Success && !string.IsNullOrWhiteSpace(matchRucRec.Groups[1].Value))
+        {
+            idRecParam = "dRucRec";
+            idRecValue = matchRucRec.Groups[1].Value;
+        }
+        else
+        {
+            idRecParam = "dNumIDRec";
+            idRecValue = matchNumIDRec.Success ? matchNumIDRec.Groups[1].Value : "0";
+        }
+        
+        var matchTotGral = System.Text.RegularExpressions.Regex.Match(deXml, @"<dTotGralOpe>([^<]+)</dTotGralOpe>");
+        var matchTotIVA = System.Text.RegularExpressions.Regex.Match(deXml, @"<dTotIVA>([^<]+)</dTotIVA>");
+        
+        string totGralOpe = matchTotGral.Success ? matchTotGral.Groups[1].Value : "0";
+        string totIVA = matchTotIVA.Success ? matchTotIVA.Groups[1].Value : "0";
+        
+        int itemsCount = System.Text.RegularExpressions.Regex.Matches(deXml, @"<gCamItem>").Count;
+        
+        string cscValue = sociedad.Csc ?? "ABCD0000000000000000000000000000";
+        string idCscValue = (sociedad.IdCsc ?? "1").TrimStart('0');
+        if (string.IsNullOrEmpty(idCscValue)) idCscValue = "1";
+        
+        // Construir parámetros QR SIN el CSC
+        string qrParamsSinCsc = $"nVersion=150&Id={cdc}&dFeEmiDE={fechaHex}&{idRecParam}={idRecValue}&dTotGralOpe={totGralOpe}&dTotIVA={totIVA}&cItems={itemsCount}&DigestValue={digestHex}&IdCSC={idCscValue}";
+        
+        // Para el hash: parámetros + CSC (pegado sin &)
+        string qrParamsConCsc = qrParamsSinCsc + cscValue;
+        var qrHash = Sifen.SHA256ToString(qrParamsConCsc);
+        
+        // URL final
+        string urlQrBase = ambiente == "prod"
+            ? "https://ekuatia.set.gov.py/consultas/qr?"
+            : "https://ekuatia.set.gov.py/consultas-test/qr?";
+        
+        var nuevoQr = $"{urlQrBase}{qrParamsSinCsc}&cHashQR={qrHash}";
+        
+        // Guardar en BD
+        var urlQrAnterior = venta.UrlQrSifen;
+        var estadoAnterior = venta.EstadoSifen;
+        
+        venta.UrlQrSifen = nuevoQr;
+        venta.EstadoSifen = "ACEPTADO";
+        venta.MensajeSifen = $"QR regenerado {DateTime.Now:yyyy-MM-dd HH:mm:ss} - Confirmado por SIFEN";
+        
+        await db.SaveChangesAsync();
+        
+        return Results.Ok(new
+        {
+            ok = true,
+            idVenta,
+            cdc,
+            estadoAnterior,
+            estadoNuevo = "ACEPTADO",
+            urlQrAnterior,
+            urlQrNuevo = nuevoQr,
+            longitudQrAnterior = urlQrAnterior?.Length ?? 0,
+            longitudQrNuevo = nuevoQr.Length,
+            mensaje = "QR regenerado y guardado exitosamente"
         });
     }
     catch (Exception ex)

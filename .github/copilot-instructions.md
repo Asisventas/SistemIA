@@ -88,6 +88,60 @@ wwwroot/css/     → Estilos (site.css es el principal)
 .ai-docs/        → Documentación técnica de referencia
 ```
 
+---
+
+## 🖨️ Impresión Directa de Tickets (Térmica)
+
+### Archivo Principal
+**`Services/ImpresionDirectaService.cs`** - Genera el bitmap del ticket para impresoras térmicas POS-80C (80mm).
+
+### Secciones Clave del Código
+
+| Sección | Descripción |
+|---------|-------------|
+| **Encabezado** (~líneas 250-320) | Logo, nombre empresa, RUC, dirección, timbrado |
+| **Detalle productos** (~líneas 320-400) | Columnas: Cantidad, Descripción, Importe, IVA |
+| **Modo Farmacia** (~líneas 340-380) | Columnas adicionales: %Desc, P.Ministerio |
+| **Totales** (~líneas 400-450) | Subtotales por IVA, total general |
+| **Pie** (~líneas 450-500) | QR, CDC, mensaje final |
+
+### Modo Farmacia (ModoFarmacia = true)
+Cuando `ticket.ModoFarmacia` es true, se muestran columnas adicionales:
+- **%D**: Porcentaje de descuento del producto
+- **P.MN**: Precio Ministerio
+- **IMPORTE**: Total del item
+- **IVA**: Código de IVA (10, 5, E)
+
+### Métodos Auxiliares Importantes
+```csharp
+TruncarTexto(texto, maxLargo)      // Trunca texto largo con ".."
+FormatearNumero(decimal)           // Formato: "36.667" (con separador miles)
+FormatearNumeroCorto(decimal)      // ⚠️ NO USAR - Abrevia a "37k" 
+DividirTextoEnLineas(texto, max)   // Divide texto en múltiples líneas
+```
+
+### ⚠️ Reglas de Formato para Tickets
+1. **NUNCA usar `FormatearNumeroCorto`** para importes - muestra "37k" en lugar de "36.667"
+2. **Truncar descripciones** largas en lugar de hacer múltiples líneas
+3. **Una línea por producto** - Los montos deben estar en la misma línea que el producto
+4. **Ancho máximo**: ~38-40 caracteres para tickets de 80mm
+
+### Modelo de Datos
+```csharp
+// DatosTicket (Shared/TicketVistaPrevia.razor define la estructura)
+ticket.ModoFarmacia       // bool - Activa columnas farmacia
+ticket.Items              // Lista de ItemTicket
+
+// ItemTicket
+item.Descripcion          // Nombre del producto
+item.Cantidad             // Cantidad vendida
+item.PorcentajeDescuento  // decimal? - % descuento (farmacia)
+item.PrecioMinisterio     // decimal? - Precio ministerio (farmacia)
+item.Exenta, Gravado5, Gravado10  // Montos por tipo IVA
+```
+
+---
+
 ## 📖 Documentación de Referencia
 **IMPORTANTE:** Consultar `.ai-docs/` antes de implementar:
 - `MODULO_NUEVO_GUIA.md` - Guía completa para crear módulos nuevos
@@ -2377,3 +2431,60 @@ Se creó migración para normalizar clientes CONSUMIDOR FINAL:
 - `Pages/NotasCreditoExplorar.razor` - StateHasChanged antes de modales, sin ticket
 
 > **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 22-Ene-2026"
+
+### 🔄 Sesión 28 Enero 2026 - QR Inválido y Regeneración
+
+#### 🔴 Error: "Código QR inválido" en Portal SIFEN
+
+**Síntoma:** QR de factura 341 mostraba "Código QR inválido" en portal SIFEN aunque estaba ACEPTADA.
+
+**Causa:** `UrlQrSifen` contenía URL con hash incorrecto (349 chars vs 390 chars correctos).
+
+#### ✅ Solución: Endpoint de Regeneración de QR
+
+**Nuevo endpoint:** `POST /ventas/{idVenta}/regenerar-qr`
+
+Funcionalidad:
+1. Consulta SIFEN por CDC para obtener XML oficial
+2. Extrae `dCarQR` del XML de respuesta
+3. Actualiza `UrlQrSifen` con la URL correcta
+4. Cambia estado de RECHAZADO a ACEPTADO si corresponde
+
+**Uso:**
+```powershell
+curl.exe -X POST "http://localhost:5095/ventas/341/regenerar-qr"
+# Resultado: { "urlQrAnterior": 349, "urlQrNueva": 390 }
+```
+
+#### Archivos Modificados:
+- `Program.cs` (~línea 1970) - Nuevo endpoint `/ventas/{idVenta}/regenerar-qr`
+
+### 🔴 Sesión 28 Enero 2026 - Corrupción Encoding UTF-8 Triple
+
+#### Error: Caracteres Corruptos en MonitorSifen.razor
+
+**Síntoma:** Textos mostraban caracteres corruptos:
+- "Envío" → "ÃÂ­o"
+- "Atención" → "AtenciÃ³n"
+
+**Causa:** Archivo con **corrupción de encoding UTF-8 triple** a nivel de bytes.
+
+#### ✅ Solución: Manipulación de Bytes con Python
+
+Las herramientas estándar (PowerShell, .NET) no funcionaban. Se usó Python para reemplazar bytes directamente:
+
+```python
+# Patrones de triple encoding UTF-8
+replacements = {
+    b'\xc3\x9a\xc2\x83\xc3\x82\xc2\xad': b'\xc3\xad',  # í
+    b'\xc3\x9a\xc2\x83\xc3\x82\xc2\xb3': b'\xc3\xb3',  # ó
+    # ... más patrones
+}
+```
+
+**40+ caracteres corregidos:** Envío, Atención, contraseña, Crédito, SECCIÓN, etc.
+
+#### Archivos Modificados:
+- `Pages/MonitorSifen.razor` - 40+ correcciones de encoding
+
+> **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 28-Ene-2026"

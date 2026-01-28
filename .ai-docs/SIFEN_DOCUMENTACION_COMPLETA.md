@@ -2649,3 +2649,176 @@ BEGIN
            (1, @NuevoIdModulo, 4, 1, GETDATE());  -- DELETE
 END
 ```
+
+---
+
+## 🔄 Sesión 28 Enero 2026 - QR Inválido y Regeneración + Encoding UTF-8
+
+### 🔴 Error: "Código QR inválido" en Portal SIFEN
+
+**Síntoma:** Al escanear el QR de la factura 341, el portal SIFEN mostraba "Código QR inválido" aunque la venta estaba ACEPTADA.
+
+**Causa:** El campo `UrlQrSifen` contenía una URL con hash incorrecto (349 caracteres) que no coincidía con el `dCarQR` del XML firmado original.
+
+**Diagnóstico:**
+```
+UrlQrSifen actual: 349 caracteres (hash incorrecto)
+UrlQrSifen correcto (de SIFEN): 390 caracteres (con cHashQR válido)
+```
+
+### ✅ Solución: Endpoint de Regeneración de QR
+
+Se creó el endpoint `POST /ventas/{idVenta}/regenerar-qr` que:
+1. Consulta SIFEN por CDC para obtener el XML oficial aprobado
+2. Extrae el campo `dCarQR` del XML de respuesta
+3. Actualiza `UrlQrSifen` en la BD con la URL correcta
+4. Actualiza `EstadoSifen` a "ACEPTADO" si estaba como "RECHAZADO"
+
+**Archivo:** `Program.cs` (~línea 1970)
+
+**Código del Endpoint:**
+```csharp
+app.MapPost("/ventas/{idVenta}/regenerar-qr", async (int idVenta, AppDbContext ctx) =>
+{
+    var venta = await ctx.Ventas.FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+    if (venta == null) return Results.NotFound(new { error = "Venta no encontrada" });
+    if (string.IsNullOrEmpty(venta.CDC)) return Results.BadRequest(new { error = "La venta no tiene CDC" });
+
+    // Consultar SIFEN para obtener el XML oficial
+    var urlConsulta = "https://sifen.set.gov.py/de/ws/consultas/consulta.wsdl";
+    var dId = DateTime.Now.ToString("ddMMyyyyHHmm");
+    var soapConsulta = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+    <soap:Envelope xmlns:soap=""http://www.w3.org/2003/05/soap-envelope"">
+    <soap:Body>
+    <rEnviConsDeRequest xmlns=""http://ekuatia.set.gov.py/sifen/xsd"">
+    <dId>{dId}</dId>
+    <dCDC>{venta.CDC}</dCDC>
+    </rEnviConsDeRequest>
+    </soap:Body>
+    </soap:Envelope>";
+
+    // Enviar consulta con certificado...
+    // Extraer dCarQR de la respuesta...
+    
+    venta.UrlQrSifen = dCarQR;  // URL completa con hash correcto
+    if (venta.EstadoSifen == "RECHAZADO") venta.EstadoSifen = "ACEPTADO";
+    await ctx.SaveChangesAsync();
+
+    return Results.Ok(new { 
+        ok = true, 
+        mensaje = "QR regenerado exitosamente",
+        urlQrAnterior = urlAnterior?.Length ?? 0,
+        urlQrNueva = dCarQR.Length
+    });
+});
+```
+
+**Uso:**
+```powershell
+curl.exe -X POST "http://localhost:5095/ventas/341/regenerar-qr"
+```
+
+**Resultado:**
+```json
+{
+  "ok": true,
+  "mensaje": "QR regenerado exitosamente",
+  "urlQrAnterior": 349,
+  "urlQrNueva": 390
+}
+```
+
+### 📁 Archivos Modificados
+- `Program.cs` - Nuevo endpoint `/ventas/{idVenta}/regenerar-qr`
+
+---
+
+## 🔴 Sesión 28 Enero 2026 - Corrupción de Encoding UTF-8 Triple
+
+### 🔴 Error: Caracteres Corruptos en MonitorSifen.razor
+
+**Síntoma:** Los textos en español mostraban caracteres corruptos:
+- "Envío" → "Envío" o "ÃÂ­o"
+- "Atención" → "AtenciÃ³n"
+- "contraseña" → "contraseÃ±a"
+
+**Causa:** El archivo `MonitorSifen.razor` tenía **corrupción de encoding UTF-8 triple**. Los bytes estaban codificados como si se hubieran guardado múltiples veces con encoding incorrecto.
+
+**Ejemplo de corrupción a nivel de bytes:**
+```
+Texto correcto: "í" = \xc3\xad (UTF-8)
+Texto corrupto: "í" = \xc3\x9a\xc2\x83\xc3\x82\xc2\xad (triple encoding)
+```
+
+### ✅ Solución: Manipulación de Bytes con Python
+
+Las herramientas estándar de reemplazo de texto (PowerShell, .NET String.Replace) no funcionaban porque trabajaban a nivel de caracteres, no de bytes. La solución requirió **manipulación directa de bytes** usando Python.
+
+**Script de corrección:**
+```python
+import re
+
+# Leer archivo como bytes
+with open('Pages/MonitorSifen.razor', 'rb') as f:
+    content = f.read()
+
+# Diccionario de reemplazos a nivel de bytes
+replacements = {
+    b'\xc3\x9a\xc2\x83\xc3\x82\xc2\xad': b'\xc3\xad',  # í
+    b'\xc3\x9a\xc2\x83\xc3\x82\xc2\xb3': b'\xc3\xb3',  # ó
+    b'\xc3\x9a\xc2\x83\xc3\x82\xc2\xa1': b'\xc3\xa1',  # á
+    b'\xc3\x9a\xc2\x83\xc3\x82\xc2\xb1': b'\xc3\xb1',  # ñ
+    b'\xc3\x9a\xc2\x83\xc3\x82\xc2\xa9': b'\xc3\xa9',  # é
+    b'\xc3\x9a\xc2\x83\xc3\x82\xc2\xba': b'\xc3\xba',  # ú
+    # ... más patrones
+}
+
+# Aplicar reemplazos
+for old, new in replacements.items():
+    content = content.replace(old, new)
+
+# Guardar archivo corregido
+with open('Pages/MonitorSifen.razor', 'wb') as f:
+    f.write(content)
+```
+
+**Caracteres corregidos (40+ ocurrencias):**
+- `Envío`, `envío`
+- `Atención`, `atención`
+- `contraseña`
+- `Crédito`, `crédito`
+- `Última`, `últimas`, `últimos`
+- `confirmación`
+- `acción`
+- `SECCIÓN`
+- `Estadísticas`
+- `descripción`
+- `navegación`
+- `CORRECCIÓN`
+- `inválido`
+- `está`
+- `encontró`
+- Y más...
+
+### 📋 Lección Aprendida: Encoding Triple UTF-8
+
+**¿Cuándo ocurre?**
+- Al copiar/pegar texto entre editores con diferente encoding
+- Al guardar archivo UTF-8 como Latin-1 y luego volver a UTF-8
+- Al usar herramientas que no respetan el BOM o encoding del archivo
+
+**¿Cómo detectar?**
+```python
+# Buscar patrones de triple encoding
+pattern = rb'\xc3\x9a\xc2'
+if re.search(pattern, content):
+    print("Archivo tiene encoding corrupto")
+```
+
+**¿Cómo prevenir?**
+1. Usar siempre UTF-8 sin BOM
+2. Configurar VS Code para usar UTF-8 por defecto
+3. Verificar encoding antes de commits importantes
+
+### 📁 Archivos Modificados
+- `Pages/MonitorSifen.razor` - 40+ correcciones de encoding a nivel de bytes
