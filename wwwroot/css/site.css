@@ -511,6 +511,7 @@ html, body {
 html[data-theme="tenue"] .sidebar,
 html[data-theme="tenue"] .sidebar.open {
     background-color: #1a252f; /* Azul oscuro elegante */
+    border-right: 2px solid #3b82f6; /* Borde azul brillante */
 }
 
 html[data-theme="tenue"] .nav-menu {
@@ -540,6 +541,7 @@ html[data-theme="tenue"] .sidebar .submenu-items .nav-link:hover {
 html[data-theme="tenue"] .sidebar .submenu-items .nav-link.active {
     color: #ffffff !important;
     background-color: rgba(96, 165, 250, 0.2) !important; /* Azul sutil */
+    border-left: 3px solid #3b82f6 !important; /* Borde izquierdo azul en activo */
 }
 
 /* Iconos de submenú items */
