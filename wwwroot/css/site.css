@@ -505,7 +505,75 @@ html, body {
         box-shadow: none; /* Quitamos la sombra azul de foco */
     }
 
-/* --- Barra de Navegaci�n Superior (sin cambios) --- */
+/* ========================================
+   TEMA TENUE - Sidebar Oscuro Personalizado
+   ======================================== */
+html[data-theme="tenue"] .sidebar,
+html[data-theme="tenue"] .sidebar.open {
+    background-color: #1a252f; /* Azul oscuro elegante */
+}
+
+html[data-theme="tenue"] .nav-menu {
+    background-color: #1a252f; /* Mismo fondo para consistencia */
+}
+
+/* Títulos de sección en blanco con iconos azules */
+html[data-theme="tenue"] .sidebar .submenu-button {
+    color: #ffffff !important;
+}
+
+html[data-theme="tenue"] .sidebar .submenu-button i,
+html[data-theme="tenue"] .sidebar .submenu-button .bi {
+    color: #60a5fa !important; /* Azul claro para iconos */
+}
+
+/* Items del submenú en gris claro */
+html[data-theme="tenue"] .sidebar .submenu-items .nav-link {
+    color: #9ca3af !important; /* Gris claro */
+}
+
+html[data-theme="tenue"] .sidebar .submenu-items .nav-link:hover {
+    color: #ffffff !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme="tenue"] .sidebar .submenu-items .nav-link.active {
+    color: #ffffff !important;
+    background-color: rgba(96, 165, 250, 0.2) !important; /* Azul sutil */
+}
+
+/* Iconos de submenú items */
+html[data-theme="tenue"] .sidebar .submenu-items .nav-link i,
+html[data-theme="tenue"] .sidebar .submenu-items .nav-link .bi {
+    color: inherit !important;
+}
+
+/* Hover en botones de sección */
+html[data-theme="tenue"] .sidebar .submenu-button:hover,
+html[data-theme="tenue"] .sidebar .submenu-button.active {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Separadores con color sutil */
+html[data-theme="tenue"] .sidebar hr {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Brand container */
+html[data-theme="tenue"] .sidebar .brand-container {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Scrollbar del nav-menu en tema tenue */
+html[data-theme="tenue"] .nav-menu::-webkit-scrollbar-thumb {
+    background: rgba(96, 165, 250, 0.4);
+}
+
+html[data-theme="tenue"] .nav-menu::-webkit-scrollbar-thumb:hover {
+    background: rgba(96, 165, 250, 0.6);
+}
+
+/* --- Barra de Navegación Superior (sin cambios) --- */
 .top-row {
     height: 60px;
     background-color: var(--bar-bg);
