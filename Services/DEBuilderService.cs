@@ -302,13 +302,23 @@ namespace SistemIA.Services
             var pc = new PagoCredito { dAnticipo = p.Anticipo };
             if (p.Cuotas != null)
             {
+                var codigoMoneda = p.Moneda?.CodigoISO ?? "PYG";
+                var descMoneda = codigoMoneda switch
+                {
+                    "PYG" => "Guarani",
+                    "USD" => "Dolar americano",
+                    "BRL" => "Real",
+                    "EUR" => "Euro",
+                    _ => codigoMoneda
+                };
                 foreach (var c in p.Cuotas.OrderBy(x => x.NumeroCuota))
                 {
                     pc.gCuotas.Add(new PagoCuota
                     {
-                        cMoneCuo = p.Moneda?.CodigoISO ?? "PYG",
+                        cMoneCuo = codigoMoneda,
+                        dDMoneCuo = descMoneda,
                         dMonCuota = c.MontoCuota,
-                        dFeFinCuo = c.FechaVencimiento
+                        dVencCuo = c.FechaVencimiento
                     });
                 }
             }
@@ -319,8 +329,9 @@ namespace SistemIA.Services
     public class PagoCuota
     {
         public string cMoneCuo { get; set; } = "PYG";
+        public string dDMoneCuo { get; set; } = "Guarani";
         public decimal dMonCuota { get; set; }
-        public DateTime dFeFinCuo { get; set; }
+        public DateTime dVencCuo { get; set; }
     }
 
     public class DEPagoResult

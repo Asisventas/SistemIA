@@ -16,11 +16,21 @@ namespace SistemIA.Services
     /// <summary>
     /// Servicio de cola para reintentar envíos SIFEN pendientes cuando hay conexión a internet.
     /// Procesa automáticamente Ventas y Notas de Crédito que quedaron pendientes por falta de conectividad.
+    /// 
+    /// ⚠️ IMPORTANTE: Este servicio SOLO procesa documentos de FACTURACIÓN ELECTRÓNICA.
+    /// Las facturas de autoimpresor NO se procesan a través de este servicio.
+    /// La diferenciación se hace mediante el campo Caja.TipoFacturacion.
     /// </summary>
     public class SifenColaService : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<SifenColaService> _logger;
+        
+        /// <summary>
+        /// Valor que indica facturación electrónica SIFEN.
+        /// Se usa Contains() para compatibilidad con "ELECTRONICA" y "Electrónica".
+        /// </summary>
+        private const string TIPO_FACTURACION_ELECTRONICA = "ELECTR";
         
         // Configuración del servicio (valores por defecto, se sobreescriben desde BD)
         private TimeSpan _intervaloVerificacion = TimeSpan.FromMinutes(2);
@@ -62,10 +72,19 @@ namespace SistemIA.Services
                     _intervaloVerificacion = TimeSpan.FromMinutes(Math.Max(1, config.SifenIntervaloMinutos));
                     _maxReintentos = Math.Max(1, config.SifenMaxReintentos);
                     _maxDocumentosPorCiclo = Math.Max(1, config.SifenMaxDocumentosPorCiclo);
-                    _colaActiva = config.SifenColaActiva;
+                    
+                    // La cola se activa si:
+                    // 1. Está explícitamente activada en configuración, O
+                    // 2. Hay al menos una caja con facturación electrónica (activación automática)
+                    _colaActiva = config.SifenColaActiva || await TieneCajasFacturacionElectronicaAsync(db);
                     
                     _logger.LogDebug("[SIFEN Cola] Configuración cargada: Intervalo={Intervalo}min, MaxDocs={MaxDocs}, MaxReintentos={MaxReintentos}, Activa={Activa}",
                         config.SifenIntervaloMinutos, _maxDocumentosPorCiclo, _maxReintentos, _colaActiva);
+                }
+                else
+                {
+                    // Si no hay configuración, verificar si hay cajas con facturación electrónica
+                    _colaActiva = await TieneCajasFacturacionElectronicaAsync(db);
                 }
                 
                 _ultimaCargaConfig = DateTime.Now;
@@ -73,6 +92,37 @@ namespace SistemIA.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[SIFEN Cola] No se pudo cargar configuración, usando valores por defecto");
+            }
+        }
+        
+        /// <summary>
+        /// Verifica si existe al menos una caja configurada con facturación electrónica.
+        /// Solo las cajas con TipoFacturacion que contiene "ELECTR" son consideradas electrónicas.
+        /// Las cajas con TipoFacturacion = "AUTOIMPRESOR" o null NO activan el servicio.
+        /// </summary>
+        private async Task<bool> TieneCajasFacturacionElectronicaAsync(AppDbContext db)
+        {
+            try
+            {
+                var hayCajaElectronica = await db.Cajas
+                    .AnyAsync(c => c.TipoFacturacion != null && 
+                                   c.TipoFacturacion.ToUpper().Contains(TIPO_FACTURACION_ELECTRONICA));
+                
+                if (hayCajaElectronica)
+                {
+                    _logger.LogInformation("[SIFEN Cola] ✅ Servicio activado automáticamente - Se detectó caja con facturación electrónica");
+                }
+                else
+                {
+                    _logger.LogDebug("[SIFEN Cola] No hay cajas con facturación electrónica configuradas (solo autoimpresor o sin configurar)");
+                }
+                
+                return hayCajaElectronica;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[SIFEN Cola] Error al verificar cajas con facturación electrónica");
+                return false;
             }
         }
 
@@ -197,7 +247,9 @@ namespace SistemIA.Services
         }
 
         /// <summary>
-        /// Procesa ventas pendientes de envío a SIFEN
+        /// Procesa ventas pendientes de envío a SIFEN.
+        /// ⚠️ SOLO procesa ventas de cajas con TipoFacturacion = "ELECTRONICA".
+        /// Las ventas de cajas autoimpresor son ignoradas.
         /// </summary>
         private async Task<int> ProcesarVentasPendientesAsync(
             IServiceProvider serviceProvider,
@@ -207,9 +259,10 @@ namespace SistemIA.Services
             await using var db = await dbFactory.CreateDbContextAsync(stoppingToken);
             
             // Buscar ventas confirmadas que:
-            // 1. No tienen CDC (nunca se enviaron) O
-            // 2. Tienen EstadoSifen = PENDIENTE o null O
-            // 3. Tienen EstadoSifen = RECHAZADO con mensaje de error de conexión
+            // 1. Están en una CAJA con facturación ELECTRÓNICA (ignora autoimpresor)
+            // 2. No tienen CDC (nunca se enviaron) O
+            // 3. Tienen EstadoSifen = PENDIENTE o null O
+            // 4. Tienen EstadoSifen = RECHAZADO con mensaje de error de conexión
             // NOTA: Usamos ToLower() en lugar de StringComparison para compatibilidad con EF Core
             // NOTA 2: Estado puede ser "Confirmada" o "Confirmado" (inconsistencia histórica)
             var ventasPendientes = await db.Ventas
@@ -217,9 +270,10 @@ namespace SistemIA.Services
                 .Include(v => v.Cliente)
                 .Include(v => v.Caja)
                 .Where(v => (v.Estado == "Confirmada" || v.Estado == "Confirmado") &&
+                            // ⚠️ FILTRO CRÍTICO: Solo facturas electrónicas, NO autoimpresor
                             v.Caja != null &&
                             v.Caja.TipoFacturacion != null &&
-                            v.Caja.TipoFacturacion.ToUpper().Contains("ELECTR") &&
+                            v.Caja.TipoFacturacion.ToUpper().Contains(TIPO_FACTURACION_ELECTRONICA) &&
                             (
                                 string.IsNullOrEmpty(v.EstadoSifen) ||
                                 v.EstadoSifen == "PENDIENTE" ||
@@ -282,7 +336,9 @@ namespace SistemIA.Services
         }
 
         /// <summary>
-        /// Procesa notas de crédito pendientes de envío a SIFEN
+        /// Procesa notas de crédito pendientes de envío a SIFEN.
+        /// ⚠️ SOLO procesa NC de cajas con TipoFacturacion = "ELECTRONICA".
+        /// Las NC de cajas autoimpresor son ignoradas.
         /// </summary>
         private async Task<int> ProcesarNCPendientesAsync(
             IServiceProvider serviceProvider,
@@ -291,7 +347,10 @@ namespace SistemIA.Services
         {
             await using var db = await dbFactory.CreateDbContextAsync(stoppingToken);
             
-            // Buscar NC confirmadas pendientes de envío
+            // Buscar NC confirmadas pendientes de envío:
+            // 1. Están en una CAJA con facturación ELECTRÓNICA (ignora autoimpresor)
+            // 2. La venta original tiene CDC (fue procesada por SIFEN)
+            // 3. Tienen EstadoSifen pendiente o error de conexión
             // NOTA: Usamos ToLower() en lugar de StringComparison para compatibilidad con EF Core
             // NOTA 2: Estado puede ser "Confirmada" o "Confirmado" (inconsistencia histórica)
             var ncPendientes = await db.NotasCreditoVentas
@@ -300,9 +359,10 @@ namespace SistemIA.Services
                 .Include(nc => nc.Caja)
                 .Include(nc => nc.VentaAsociada)
                 .Where(nc => (nc.Estado == "Confirmada" || nc.Estado == "Confirmado") &&
+                             // ⚠️ FILTRO CRÍTICO: Solo NC electrónicas, NO autoimpresor
                              nc.Caja != null &&
                              nc.Caja.TipoFacturacion != null &&
-                             nc.Caja.TipoFacturacion.ToUpper().Contains("ELECTR") &&
+                             nc.Caja.TipoFacturacion.ToUpper().Contains(TIPO_FACTURACION_ELECTRONICA) &&
                              nc.VentaAsociada != null &&
                              !string.IsNullOrEmpty(nc.VentaAsociada.CDC) && // La venta original debe tener CDC
                              (

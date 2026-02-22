@@ -9,7 +9,7 @@
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @using ClosedXML.Excel
 
-<PageProtection Modulo="/inventario" Permiso="VIEW">
+<PageProtection Modulo="/informes/productos-detallado" Permiso="VIEW">
 
 <h3 class="mb-3">Listado de Productos Detallado</h3>
 
@@ -193,17 +193,8 @@
                     var paquetes = esPaqueteOCaja && cantPaq > 1 ? Math.Floor(r.Stock / cantPaq) : 0;
                     var unidadesSueltas = esPaqueteOCaja && cantPaq > 1 ? r.Stock % cantPaq : 0;
                   }
-                  @if (esPaqueteOCaja && cantPaq > 1 && r.Stock > 0)
-                  {
-                    <span title="@r.Stock.ToString("N0") unidades totales">
-                      @r.Stock.ToString("N0")
-                      <small class="text-muted">(@paquetes.ToString("N0") paq@(unidadesSueltas > 0 ? $" +{unidadesSueltas:N0}" : ""))</small>
-                    </span>
-                  }
-                  else
-                  {
-                    @r.Stock.ToString("N2")
-                  }
+                  @* Stock solo muestra cantidad total - los paquetes se muestran en columna separada *@
+                  @r.Stock.ToString("N0")
                 </td>
                 <td class="text-end">
                   @if (cantPaq > 1 && paquetes > 0)

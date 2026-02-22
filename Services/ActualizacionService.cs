@@ -681,6 +681,31 @@ namespace SistemIA.Services
             {
                 progress?.Report("Iniciando generación de paquete de actualización...");
                 
+                // Paso 0: Verificar procesos que puedan bloquear la compilación
+                progress?.Report("[0/7] Verificando procesos del sistema...");
+                var procesosBloqueantes = VerificarProcesosBloqueantes();
+                if (procesosBloqueantes.Any())
+                {
+                    var listaProcs = string.Join(", ", procesosBloqueantes.Select(p => $"{p.ProcessName} (PID: {p.Id})"));
+                    progress?.Report($"  ⚠️ Procesos detectados: {listaProcs}");
+                    
+                    // Intentar detener los procesos bloqueantes
+                    progress?.Report("  → Intentando detener procesos bloqueantes...");
+                    var detenidos = await IntentarDetenerProcesosBloqueantes(procesosBloqueantes);
+                    if (detenidos)
+                    {
+                        progress?.Report("  ✓ Procesos detenidos exitosamente");
+                    }
+                    else
+                    {
+                        progress?.Report("  ⚠️ No se pudieron detener todos los procesos. Continuando de todos modos...");
+                    }
+                }
+                else
+                {
+                    progress?.Report("  ✓ No hay procesos bloqueantes");
+                }
+                
                 var publishDir = Path.Combine(_tempDir, "publish_" + Guid.NewGuid().ToString("N"));
                 var outputDir = Path.Combine(_appDir, "Releases");
                 Directory.CreateDirectory(publishDir);
@@ -697,15 +722,34 @@ namespace SistemIA.Services
 
                 // Paso 2: Limpiar compilaciones anteriores
                 progress?.Report("[2/7] Limpiando compilaciones anteriores...");
-                await EjecutarComandoDotnet("clean", "-c Release");
+                var cleanResult = await EjecutarComandoDotnet("clean", "-c Release");
+                if (!cleanResult.Success)
+                {
+                    progress?.Report($"  ⚠️ Limpieza con advertencias: {cleanResult.Error}");
+                    // Continuar de todos modos
+                }
 
                 // Paso 3: Compilar en modo Release
                 progress?.Report("[3/7] Compilando en modo Release...");
-                var buildResult = await EjecutarComandoDotnet("build", "-c Release");
+                var buildResult = await EjecutarComandoDotnet("build", "-c Release", "--no-incremental");
                 if (!buildResult.Success)
                 {
-                    throw new Exception($"Error en compilación: {buildResult.Error}");
+                    // Intentar con más opciones
+                    progress?.Report("  → Reintentando compilación con opciones alternativas...");
+                    buildResult = await EjecutarComandoDotnet("build", "-c Release", "-p:UseSharedCompilation=false");
+                    
+                    if (!buildResult.Success)
+                    {
+                        var errorDetalle = buildResult.Error;
+                        if (errorDetalle.Contains("being used by another process"))
+                        {
+                            throw new Exception("Error en compilación: Los archivos están siendo utilizados por otro proceso. " +
+                                "Detenga el servicio SistemIA antes de generar el paquete, o use el Actualizador externo (puerto 5096).");
+                        }
+                        throw new Exception($"Error en compilación: {errorDetalle}");
+                    }
                 }
+                progress?.Report("  ✓ Compilación exitosa");
 
                 // Paso 4: Publicar aplicación SELF-CONTAINED para que no requiera .NET instalado
                 progress?.Report("[4/7] Publicando aplicación (self-contained para no requerir .NET)...");
@@ -1062,6 +1106,78 @@ echo.
 pause
 ";
             await File.WriteAllTextAsync(rutaDestino, contenido, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Verifica si hay procesos de SistemIA corriendo que puedan bloquear la compilación
+        /// </summary>
+        private List<Process> VerificarProcesosBloqueantes()
+        {
+            var procesosBloqueantes = new List<Process>();
+            try
+            {
+                // Buscar procesos SistemIA (excepto el actual)
+                var currentPid = Environment.ProcessId;
+                var processSistemIA = Process.GetProcessesByName("SistemIA")
+                    .Where(p => p.Id != currentPid);
+                procesosBloqueantes.AddRange(processSistemIA);
+                
+                // También verificar SistemIA.Actualizador
+                var processActualizador = Process.GetProcessesByName("SistemIA.Actualizador")
+                    .Where(p => p.Id != currentPid);
+                procesosBloqueantes.AddRange(processActualizador);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error al verificar procesos bloqueantes");
+            }
+            return procesosBloqueantes;
+        }
+
+        /// <summary>
+        /// Intenta detener los procesos bloqueantes de forma segura
+        /// </summary>
+        private async Task<bool> IntentarDetenerProcesosBloqueantes(List<Process> procesos)
+        {
+            try
+            {
+                foreach (var proceso in procesos)
+                {
+                    try
+                    {
+                        // Primero intentar cerrar gracefully
+                        if (!proceso.CloseMainWindow())
+                        {
+                            // Si no tiene ventana principal, forzar cierre
+                            proceso.Kill();
+                        }
+                        
+                        // Esperar hasta 5 segundos que termine
+                        if (!proceso.WaitForExit(5000))
+                        {
+                            proceso.Kill(true);
+                        }
+                        
+                        _logger.LogInformation("Proceso {Nombre} (PID: {Pid}) detenido", proceso.ProcessName, proceso.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "No se pudo detener proceso {Nombre} (PID: {Pid})", proceso.ProcessName, proceso.Id);
+                    }
+                }
+                
+                // Esperar un momento para que liberen los archivos
+                await Task.Delay(2000);
+                
+                // Verificar si quedaron procesos
+                var quedaron = VerificarProcesosBloqueantes();
+                return !quedaron.Any();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al intentar detener procesos bloqueantes");
+                return false;
+            }
         }
 
         private async Task<ComandoResult> EjecutarComandoDotnet(string comando, params string[] argumentos)

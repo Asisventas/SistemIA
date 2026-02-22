@@ -168,6 +168,12 @@ namespace SistemIA.Models
         public bool RecibeResumenCaja { get; set; } = false;
 
         /// <summary>
+        /// Recibir informe de cierre de complejos/restaurante
+        /// </summary>
+        [Display(Name = "Informe Complejos")]
+        public bool RecibeInformeComplejos { get; set; } = false;
+
+        /// <summary>
         /// Recibir informe de asistencia de empleados
         /// </summary>
         [Display(Name = "Asistencia")]
@@ -196,6 +202,12 @@ namespace SistemIA.Models
         /// </summary>
         [Display(Name = "Resumen al Cierre")]
         public bool RecibeResumenCierre { get; set; } = false;
+
+        /// <summary>
+        /// Recibir informes del módulo de gimnasio
+        /// </summary>
+        [Display(Name = "Informes Gimnasio")]
+        public bool RecibeInformeGimnasio { get; set; } = false;
 
         // ========== CONFIGURACIÓN DE ENVÍO ==========
 
@@ -284,6 +296,7 @@ namespace SistemIA.Models
                 if (RecibeAlertaVencimientos) informes.Add("Vencimientos");
                 if (RecibeCopiaFacturas) informes.Add("Facturas");
                 if (RecibeResumenCierre) informes.Add("Cierre Sistema");
+                if (RecibeInformeGimnasio) informes.Add("Gimnasio");
 
                 return informes.Count > 0 ? string.Join(", ", informes) : "Ninguno";
             }
@@ -324,6 +337,7 @@ namespace SistemIA.Models
                 "AlertaVencimientos" => RecibeAlertaVencimientos,
                 "CopiaFacturas" => RecibeCopiaFacturas,
                 "ResumenCierre" => RecibeResumenCierre,
+                "InformeGimnasio" => RecibeInformeGimnasio,
                 _ => false
             };
         }

@@ -182,6 +182,114 @@ window.capturarFotoConCamara = async function (dotNetHelper) {
     }
 };
 
+// =================== FUNCIONES PARA GIMNASIO (/clientes/editar - Sección Gimnasio) ===================
+window.capturarFotoConCamaraGimnasio = async function (dotNetHelper) {
+    const MAX_WIDTH = 800;
+
+    let modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1050;';
+
+    let modalContent = document.createElement('div');
+    modalContent.style.cssText = 'background: white; padding: 20px; border-radius: 8px; text-align: center;';
+
+    const video = document.createElement('video');
+    const canvas = document.createElement('canvas');
+    canvas.style.display = 'none';
+
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.marginTop = '15px';
+
+    modalContent.appendChild(video);
+    modalContent.appendChild(canvas);
+    modalContent.appendChild(buttonsContainer);
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+
+    let stream;
+
+    const cleanupAndClose = () => {
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+        }
+        if (document.body.contains(modal)) {
+            document.body.removeChild(modal);
+        }
+        dotNetHelper.dispose();
+    };
+
+    const showCaptureView = () => {
+        video.style.display = 'block';
+        canvas.style.display = 'none';
+        buttonsContainer.innerHTML = `
+            <button id="capture-btn-gym" class="btn btn-success"><i class="bi bi-camera-fill me-1"></i>Capturar</button>
+            <button id="cancel-btn-gym" class="btn btn-secondary ms-2">Cancelar</button>
+        `;
+        document.getElementById('capture-btn-gym').onclick = capturePhoto;
+        document.getElementById('cancel-btn-gym').onclick = () => {
+            cleanupAndClose();
+            dotNetHelper.invokeMethodAsync('RecibirImagenDesdeCamaraGimnasio', null);
+        };
+    };
+
+    const showPreviewView = (imageDataUrl) => {
+        video.style.display = 'none';
+        canvas.style.display = 'block';
+
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+        };
+        img.src = imageDataUrl;
+
+        buttonsContainer.innerHTML = `
+            <button id="use-photo-btn-gym" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Usar esta foto</button>
+            <button id="retake-btn-gym" class="btn btn-warning ms-2"><i class="bi bi-arrow-clockwise me-1"></i>Tomar de nuevo</button>
+        `;
+        document.getElementById('use-photo-btn-gym').onclick = () => {
+            dotNetHelper.invokeMethodAsync('RecibirImagenDesdeCamaraGimnasio', imageDataUrl);
+            cleanupAndClose();
+        };
+        document.getElementById('retake-btn-gym').onclick = showCaptureView;
+    };
+
+    const capturePhoto = () => {
+        const ratio = video.videoWidth / video.videoHeight;
+        let newWidth = video.videoWidth;
+        let newHeight = video.videoHeight;
+
+        if (newWidth > MAX_WIDTH) {
+            newWidth = MAX_WIDTH;
+            newHeight = newWidth / ratio;
+        }
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = newWidth;
+        tempCanvas.height = newHeight;
+
+        const ctx = tempCanvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, newWidth, newHeight);
+
+        const imageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.9);
+        showPreviewView(imageDataUrl);
+    };
+
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        video.style.width = '100%';
+        video.style.maxWidth = '500px';
+        video.onloadedmetadata = () => video.play();
+        showCaptureView();
+    } catch (e) {
+        console.error("Error al acceder a la cámara:", e);
+        modalContent.innerHTML = `<p class="text-danger">No se pudo acceder a la cámara. Verifique los permisos.</p><button id="close-error-btn-gym" class="btn btn-secondary mt-2">Cerrar</button>`;
+        document.getElementById('close-error-btn-gym').onclick = cleanupAndClose;
+    }
+};
+
 // =================== FUNCIONES PARA ASISTENCIA (/asistencia) ===================
 let currentStream;
 
@@ -1798,4 +1906,73 @@ window.imprimirHtml = (htmlContent) => {
     } else {
         alert('Por favor habilite las ventanas emergentes para imprimir.');
     }
+};
+
+// =================== TOAST AUTO-CIERRE CON BARRA DE PROGRESO ===================
+window.mostrarToastProgreso = function (mensaje, duracionMs, tipo) {
+    duracionMs = duracionMs || 3000;
+    tipo = tipo || 'info'; // 'info', 'success', 'error'
+
+    // Remover toast anterior si existe
+    var prev = document.getElementById('toast-progreso-overlay');
+    if (prev) prev.remove();
+
+    var iconos = { info: 'ℹ️', success: '✅', error: '❌' };
+    var colores = { info: '#0d6efd', success: '#198754', error: '#dc3545' };
+    var icono = iconos[tipo] || iconos.info;
+    var color = colores[tipo] || colores.info;
+
+    // Crear overlay
+    var overlay = document.createElement('div');
+    overlay.id = 'toast-progreso-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);';
+
+    overlay.innerHTML =
+        '<div style="background:var(--bg-surface,#fff);border-radius:12px;padding:24px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.25);text-align:center;">' +
+            '<div style="font-size:2.5rem;margin-bottom:12px;">' + icono + '</div>' +
+            '<div style="font-size:1rem;color:var(--text-primary,#333);margin-bottom:18px;line-height:1.5;white-space:pre-line;">' + mensaje + '</div>' +
+            '<div style="background:#e9ecef;border-radius:6px;height:6px;overflow:hidden;">' +
+                '<div id="toast-progreso-barra" style="height:100%;width:100%;background:' + color + ';border-radius:6px;transition:width ' + duracionMs + 'ms linear;"></div>' +
+            '</div>' +
+            '<div style="font-size:0.8rem;color:var(--text-muted,#888);margin-top:8px;">Cerrando automáticamente...</div>' +
+        '</div>';
+
+    document.body.appendChild(overlay);
+
+    // Iniciar animación de barra (de 100% a 0%)
+    requestAnimationFrame(function () {
+        var barra = document.getElementById('toast-progreso-barra');
+        if (barra) barra.style.width = '0%';
+    });
+
+    // Auto-cerrar después de la duración
+    setTimeout(function () {
+        var el = document.getElementById('toast-progreso-overlay');
+        if (el) {
+            el.style.transition = 'opacity 0.3s';
+            el.style.opacity = '0';
+            setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+        }
+    }, duracionMs);
+};
+
+// ========== SUSCRIPCIONES - Listener PostMessage desde iframe ==========
+window.registrarSuscripcionesListener = function (dotNetRef) {
+    // Remover listener anterior si existe
+    if (window._suscripcionesMessageHandler) {
+        window.removeEventListener('message', window._suscripcionesMessageHandler);
+    }
+    window._suscripcionesDotNetRef = dotNetRef;
+    window._suscripcionesMessageHandler = function (e) {
+        if (e.data && e.data.tipo === 'ventaSuscripcionCreada' && e.data.idVenta) {
+            console.log('[Suscripciones] PostMessage recibido, idVenta:', e.data.idVenta);
+            if (window._suscripcionesDotNetRef) {
+                window._suscripcionesDotNetRef.invokeMethodAsync('ManejarVentaDesdeJS', e.data.idVenta)
+                    .then(function () { console.log('[Suscripciones] Modal cerrado exitosamente'); })
+                    .catch(function (err) { console.error('[Suscripciones] Error:', err); });
+            }
+        }
+    };
+    window.addEventListener('message', window._suscripcionesMessageHandler);
+    console.log('[Suscripciones] Listener postMessage registrado (instancia)');
 };

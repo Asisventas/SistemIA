@@ -8,8 +8,9 @@ namespace SistemIA.Services
     {
         Task<int> CrearDepositoAsync(string nombre, int idSucursal, string? descripcion = null);
         Task AjustarStockAsync(int idProducto, int idDeposito, decimal cantidad, int tipo, string? motivo, string? usuario);
+        Task AjustarStockAsync(int idProducto, int idDeposito, decimal cantidad, int tipo, string? motivo, string? usuario, int? idLote);
         Task AjustarStockAsync(int idProducto, int idDeposito, decimal cantidad, int tipo, string? motivo, string? usuario, 
-            int? idSucursal = null, int? idCaja = null, DateTime? fechaCaja = null, int? turno = null);
+            int? idSucursal = null, int? idCaja = null, DateTime? fechaCaja = null, int? turno = null, int? idLote = null);
         Task<decimal> ObtenerStockAsync(int idProducto, int idDeposito);
         Task<IReadOnlyList<ProductoDeposito>> ObtenerStocksPorProductoAsync(int idProducto);
     }
@@ -47,10 +48,14 @@ namespace SistemIA.Services
 
         // Sobrecarga simple para compatibilidad hacia atrás
         public Task AjustarStockAsync(int idProducto, int idDeposito, decimal cantidad, int tipo, string? motivo, string? usuario)
-            => AjustarStockAsync(idProducto, idDeposito, cantidad, tipo, motivo, usuario, null, null, null, null);
+            => AjustarStockAsync(idProducto, idDeposito, cantidad, tipo, motivo, usuario, null, null, null, null, null);
+
+        public Task AjustarStockAsync(int idProducto, int idDeposito, decimal cantidad, int tipo, string? motivo, string? usuario,
+            int? idLote)
+            => AjustarStockAsync(idProducto, idDeposito, cantidad, tipo, motivo, usuario, null, null, null, null, idLote);
 
         public async Task AjustarStockAsync(int idProducto, int idDeposito, decimal cantidad, int tipo, string? motivo, string? usuario,
-            int? idSucursal = null, int? idCaja = null, DateTime? fechaCaja = null, int? turno = null)
+            int? idSucursal = null, int? idCaja = null, DateTime? fechaCaja = null, int? turno = null, int? idLote = null)
         {
             _logger.LogInformation($"AjustarStockAsync llamado - Producto: {idProducto}, Deposito: {idDeposito}, Cantidad: {cantidad}, Tipo: {tipo}");
             
@@ -120,6 +125,28 @@ namespace SistemIA.Services
                         saldoPosterior = pd.Stock;
                         pd.FechaModificacion = DateTime.Now;
                         pd.UsuarioModificacion = usuario ?? "Sistema";
+                        
+                        // ========== ACTUALIZAR STOCK DEL LOTE SI CORRESPONDE ==========
+                        if (idLote.HasValue)
+                        {
+                            var lote = await ctx.ProductosLotes
+                                .FirstOrDefaultAsync(l => l.IdProductoLote == idLote.Value);
+                            if (lote != null)
+                            {
+                                var deltaLote = tipo == 1 ? cantidad : -cantidad;
+                                if (lote.Stock + deltaLote < 0)
+                                    throw new InvalidOperationException($"Stock insuficiente en el lote {lote.NumeroLote}. Stock actual: {lote.Stock}, intentando descontar: {cantidad}");
+                                
+                                lote.Stock += deltaLote;
+                                lote.FechaModificacion = DateTime.Now;
+                                lote.UsuarioModificacion = usuario ?? "Sistema";
+                                _logger.LogInformation($"Stock del lote {lote.NumeroLote} actualizado: {lote.Stock - deltaLote} → {lote.Stock}");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"Lote con ID {idLote.Value} no encontrado para actualizar stock");
+                            }
+                        }
                     }
 
                     // Obtener precios y moneda del producto para valorización
@@ -175,10 +202,12 @@ namespace SistemIA.Services
                     await ctx.SaveChangesAsync();
                     await trx.CommitAsync();
 
-                    // Si es una salida de un combo, descontar los componentes también (fuera de la transacción principal)
-                    if (tipo == 2 && prod.EsCombo)
+                    // Si es un combo, procesar los componentes también (fuera de la transacción principal)
+                    // tipo 1 = entrada (devolución de combo = devolver stock de componentes)
+                    // tipo 2 = salida (venta de combo = descontar stock de componentes)
+                    if ((tipo == 1 || tipo == 2) && prod.EsCombo)
                     {
-                        await ProcesarComponentesComboAsync(idProducto, idDeposito, cantidad, usuario, sucursalId, idCaja, fechaCaja, turno);
+                        await ProcesarComponentesComboAsync(idProducto, idDeposito, cantidad, tipo, usuario, sucursalId, idCaja, fechaCaja, turno);
                     }
 
                     // Recalcular stock total del producto
@@ -196,8 +225,15 @@ namespace SistemIA.Services
             }
         }
         
-        private async Task ProcesarComponentesComboAsync(int idProducto, int idDeposito, decimal cantidad, string? usuario,
-            int? idSucursal, int? idCaja, DateTime? fechaCaja, int? turno)
+        /// <summary>
+        /// Procesa los componentes de un combo: descuenta o devuelve stock según el tipo de movimiento.
+        /// </summary>
+        /// <param name="idProducto">ID del producto combo</param>
+        /// <param name="idDeposito">ID del depósito</param>
+        /// <param name="cantidad">Cantidad de combos</param>
+        /// <param name="tipoMovimiento">1 = Entrada (devolver stock), 2 = Salida (descontar stock)</param>
+        private async Task ProcesarComponentesComboAsync(int idProducto, int idDeposito, decimal cantidad, int tipoMovimiento,
+            string? usuario, int? idSucursal, int? idCaja, DateTime? fechaCaja, int? turno)
         {
             await using var ctx = await _dbFactory.CreateDbContextAsync();
             var componentes = await ctx.ProductosComponentes
@@ -207,14 +243,23 @@ namespace SistemIA.Services
                 
             if (componentes.Count > 0)
             {
-                _logger.LogInformation($"Producto {idProducto} es combo con {componentes.Count} componentes.");
+                var accion = tipoMovimiento == 1 ? "Devolviendo" : "Descontando";
+                _logger.LogInformation($"Producto {idProducto} es combo con {componentes.Count} componentes. {accion} stock de componentes.");
+                
                 foreach (var comp in componentes)
                 {
-                    var cantDesc = comp.Cantidad * cantidad;
-                    if (cantDesc <= 0) continue;
+                    var cantidadComponente = comp.Cantidad * cantidad;
+                    if (cantidadComponente <= 0) continue;
                     
-                    _logger.LogInformation($"Descontando componente {comp.IdComponente}, cantidad: {cantDesc}");
-                    await AjustarStockAsync(comp.IdComponente, idDeposito, cantDesc, 2, $"Desc. combo #{idProducto}", usuario,
+                    var motivo = tipoMovimiento == 1 
+                        ? $"Devolución combo #{idProducto}" 
+                        : $"Desc. combo #{idProducto}";
+                    
+                    _logger.LogInformation($"{accion} componente {comp.IdComponente}, cantidad: {cantidadComponente}");
+                    
+                    // Llamar recursivamente con el mismo tipo de movimiento
+                    // tipo 1 = entrada (devolver), tipo 2 = salida (descontar)
+                    await AjustarStockAsync(comp.IdComponente, idDeposito, cantidadComponente, tipoMovimiento, motivo, usuario,
                         idSucursal, idCaja, fechaCaja, turno);
                 }
             }

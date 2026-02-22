@@ -63,6 +63,9 @@ namespace SistemIA.Models
         [Display(Name = "Resumen de Caja")]
         ResumenCaja = 41,
 
+        [Display(Name = "Cierre de Complejos")]
+        CierreComplejos = 42,
+
         // ========== INFORMES FINANCIEROS ==========
         [Display(Name = "Cuentas por Cobrar")]
         CuentasPorCobrar = 50,
@@ -90,7 +93,23 @@ namespace SistemIA.Models
 
         // ========== ALERTAS ==========
         [Display(Name = "Alerta Vencimientos")]
-        AlertaVencimientos = 90
+        AlertaVencimientos = 90,
+
+        // ========== INFORMES DE GIMNASIO ==========
+        [Display(Name = "Asistencia Clases Gimnasio")]
+        GimnasioAsistenciaClases = 100,
+
+        [Display(Name = "Resumen Membresías")]
+        GimnasioMembresias = 101,
+
+        [Display(Name = "Clases Más Populares")]
+        GimnasioClasesPopulares = 102,
+
+        [Display(Name = "Rendimiento Instructores")]
+        GimnasioInstructores = 103,
+
+        [Display(Name = "Membresías por Vencer")]
+        GimnasioMembresiasPorVencer = 104
     }
 
     /// <summary>
@@ -144,7 +163,8 @@ namespace SistemIA.Models
                 new("Caja", new List<InformeInfo>
                 {
                     new(TipoInformeEnum.CierreCaja, "Cierre de Caja", "Detalle del cierre de caja", "RecibeCierreCaja"),
-                    new(TipoInformeEnum.ResumenCaja, "Resumen de Caja", "Resumen diario de caja", "RecibeResumenCaja")
+                    new(TipoInformeEnum.ResumenCaja, "Resumen de Caja", "Resumen diario de caja", "RecibeResumenCaja"),
+                    new(TipoInformeEnum.CierreComplejos, "Cierre de Complejos", "Informe de cierre de complejos/restaurante", "RecibeInformeComplejos")
                 }),
 
                 // Financieros
@@ -178,6 +198,16 @@ namespace SistemIA.Models
                 new("Alertas", new List<InformeInfo>
                 {
                     new(TipoInformeEnum.AlertaVencimientos, "Vencimientos", "Alertas de productos/documentos próximos a vencer", "RecibeAlertaVencimientos")
+                }),
+
+                // Gimnasio
+                new("Gimnasio", new List<InformeInfo>
+                {
+                    new(TipoInformeEnum.GimnasioAsistenciaClases, "Asistencia a Clases", "Registro de asistencia diaria a clases grupales", "RecibeInformeGimnasio"),
+                    new(TipoInformeEnum.GimnasioMembresias, "Resumen Membresías", "Estado actual de membresías activas", "RecibeInformeGimnasio"),
+                    new(TipoInformeEnum.GimnasioClasesPopulares, "Clases Populares", "Ranking de clases por popularidad", "RecibeInformeGimnasio"),
+                    new(TipoInformeEnum.GimnasioInstructores, "Informe Instructores", "Rendimiento y horas de instructores", "RecibeInformeGimnasio"),
+                    new(TipoInformeEnum.GimnasioMembresiasPorVencer, "Membresías por Vencer", "Membresías próximas a expirar", "RecibeInformeGimnasio")
                 })
             };
         }

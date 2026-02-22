@@ -222,15 +222,50 @@ else
         await using var Db = await DbFactory.CreateDbContextAsync();
         if (usuario is null) return;
 
-        if (!string.IsNullOrWhiteSpace(contrasena))
+        try
         {
-            using var sha256 = System.Security.Cryptography.SHA256.Create();
-            usuario.ContrasenaHash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(contrasena));
-        }
+            // Buscar el usuario existente en la BD
+            var usuarioExistente = await Db.Usuarios.FirstOrDefaultAsync(u => u.Id_Usu == usuario.Id_Usu);
+            if (usuarioExistente is null)
+            {
+                errorContrasena = "Usuario no encontrado en la base de datos.";
+                return;
+            }
 
-        Db.Usuarios.Update(usuario);
-        await Db.SaveChangesAsync();
-        Navigation.NavigateTo("/menu-usuarios");
+            // Actualizar los campos manualmente
+            usuarioExistente.Nombres = usuario.Nombres;
+            usuarioExistente.Apellidos = usuario.Apellidos;
+            usuarioExistente.CI = usuario.CI;
+            usuarioExistente.Fecha_Nacimiento = usuario.Fecha_Nacimiento;
+            usuarioExistente.Direccion = usuario.Direccion;
+            usuarioExistente.Ciudad = usuario.Ciudad;
+            usuarioExistente.Telefono = usuario.Telefono;
+            usuarioExistente.Correo = usuario.Correo;
+            usuarioExistente.UsuarioNombre = usuario.UsuarioNombre;
+            usuarioExistente.Id_Rol = usuario.Id_Rol;
+            usuarioExistente.Estado_Usu = usuario.Estado_Usu;
+            usuarioExistente.Salario = usuario.Salario;
+            usuarioExistente.IPS = usuario.IPS;
+            usuarioExistente.Comision = usuario.Comision;
+            usuarioExistente.Descuento = usuario.Descuento;
+            usuarioExistente.Foto = usuario.Foto;
+            usuarioExistente.EmbeddingFacial = usuario.EmbeddingFacial;
+
+            // Actualizar contraseña solo si se proporcionó una nueva
+            if (!string.IsNullOrWhiteSpace(contrasena))
+            {
+                using var sha256 = System.Security.Cryptography.SHA256.Create();
+                usuarioExistente.ContrasenaHash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(contrasena));
+            }
+
+            await Db.SaveChangesAsync();
+            Navigation.NavigateTo("/menu-usuarios");
+        }
+        catch (Exception ex)
+        {
+            errorContrasena = $"Error al guardar: {ex.Message}";
+            Console.WriteLine($"[EditarUsuario] Error al guardar usuario: {ex}");
+        }
     }
 
     private static byte[] ConvertDoubleArrayToByteArray(double[] array)

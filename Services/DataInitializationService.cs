@@ -10,6 +10,7 @@ namespace SistemIA.Services
         Task InicializarGeografiaSifenAsync();
         Task<bool> ImportarCatalogoGeograficoAhoraAsync();
         Task InicializarArticulosAsistenteIAAsync();
+        Task InicializarConfiguracionVPNAsync();
     }
 
     public class DataInitializationService : IDataInitializationService
@@ -1232,6 +1233,54 @@ Precio Paquete: Gs 55.000 (descuento por caja)
                     FechaCreacion = ahora, FechaActualizacion = ahora, Activo = true
                 }
             };
+        }
+
+        /// <summary>
+        /// Inicializa la configuración VPN con valores por defecto si no existe.
+        /// Los valores se replican a los clientes con cada actualización.
+        /// </summary>
+        public async Task InicializarConfiguracionVPNAsync()
+        {
+            try
+            {
+                await using var context = await _dbFactory.CreateDbContextAsync();
+                
+                // Verificar si ya existe configuración VPN
+                var configExistente = await context.ConfiguracionesVPN.FirstOrDefaultAsync();
+                if (configExistente != null)
+                {
+                    _logger.LogInformation("Configuración VPN ya existe, no se sobrescribe.");
+                    return;
+                }
+                
+                // Crear configuración VPN inicial con valores por defecto de la empresa
+                var configVPN = new ConfiguracionVPN
+                {
+                    ServidorVPN = "190.104.149.35",           // IP del servidor Mikrotik
+                    PuertoPPTP = 1723,                         // Puerto PPTP estándar
+                    UsuarioVPN = "nextsys",                    // Usuario VPN
+                    ContrasenaVPN = "P3tr0l30$",               // Contraseña VPN
+                    NombreConexionWindows = "SistemIA VPN",    // Nombre que aparece en Windows
+                    RangoRedVPN = "192.168.89",                // Primeros 3 octetos del pool VPN
+                    IpLocalVPN = null,                         // Se asigna dinámicamente
+                    ConectarAlIniciar = true,                  // Conectar automáticamente al iniciar servicio
+                    IntentosReconexion = 3,                    // Intentos antes de fallar
+                    SegundosEntreIntentos = 10,                // Espera entre intentos
+                    MinutosVerificacion = 15,                  // Verificar conexión cada 15 minutos
+                    Activo = true,
+                    FechaCreacion = DateTime.Now,
+                    FechaModificacion = DateTime.Now
+                };
+                
+                context.ConfiguracionesVPN.Add(configVPN);
+                await context.SaveChangesAsync();
+                
+                _logger.LogInformation("Configuración VPN inicializada con valores por defecto.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al inicializar configuración VPN");
+            }
         }
     }
 }

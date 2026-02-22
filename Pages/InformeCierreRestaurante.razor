@@ -1,0 +1,1425 @@
+@page "/informes/cierre-restaurante"
+@page "/informes/cierre-operaciones"
+@page "/informes/cierre-complejo"
+@page "/informes/cierre-taller"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using SistemIA.Models
+@using SistemIA.Models.Enums
+@using Microsoft.AspNetCore.WebUtilities
+@attribute [Authorize]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject SistemIA.Services.ICajaService CajaService
+@inject NavigationManager Nav
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+
+<PageProtection Modulo="/reportes" Permiso="VIEW">
+
+<!-- ========== CABECERA CON LOGO ========== -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex align-items-center gap-3">
+        @if (!string.IsNullOrEmpty(logoDataUri))
+        {
+            <img src="@logoDataUri" alt="Logo" style="max-height:50px;max-width:80px;object-fit:contain;" />
+        }
+        <div>
+            <h3 class="mb-0"><i class="bi bi-buildings me-2 text-primary"></i>Informe de Cierre de @_nombreModulo</h3>
+            <small class="text-muted">@nombreEmpresa @(!string.IsNullOrEmpty(nombreSucursal) ? $"- {nombreSucursal}" : "")</small>
+        </div>
+    </div>
+    <div class="text-end">
+        <span class="badge bg-primary fs-6">@fFecha.ToString("dd/MM/yyyy")</span>
+        @if (fIdCaja > 0)
+        {
+            <span class="badge bg-secondary ms-1">Caja #@fIdCaja</span>
+        }
+        @if (fTurno > 0)
+        {
+            <span class="badge bg-info ms-1">Turno @fTurno</span>
+        }
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">Fecha</label>
+                <input type="date" class="form-control" @bind="fFecha" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Caja</label>
+                <select class="form-select" @bind="fIdCaja">
+                    <option value="0">Todas</option>
+                    @foreach (var c in cajas)
+                    {
+                        <option value="@c.IdCaja">Caja @c.IdCaja</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Turno</label>
+                <select class="form-select" @bind="fTurno">
+                    <option value="0">Todos</option>
+                    @for (int i = 1; i <= 4; i++)
+                    {
+                        <option value="@i">Turno @i</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">@_nombreOperador</label>
+                <select class="form-select" @bind="fMesero">
+                    <option value="">Todos</option>
+                    @foreach (var m in meseros)
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2 justify-content-end flex-wrap">
+                <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
+                <button class="btn btn-outline-info" title="Vista Previa" @onclick="AbrirVistaPrevia"><i class="bi bi-eye"></i> Vista Previa</button>
+                <button class="btn btn-outline-secondary" title="Imprimir Ticket" @onclick="ImprimirTicket"><i class="bi bi-receipt"></i></button>
+                <button class="btn btn-outline-primary" title="Imprimir A4" @onclick="ImprimirA4"><i class="bi bi-printer"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (cargando)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2 text-muted">Cargando información...</p>
+    </div>
+}
+else
+{
+    <!-- ========== RESUMEN GENERAL ========== -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1"><i class="bi bi-table me-1"></i>@_nombreEspacios Atendid@(_tipoNegocio == "Taller" ? "as" : "as")</h6>
+                    <h3 class="mb-0">@resumen.MesasAtendidas</h3>
+                    <small>@resumen.TotalComensales @(_tipoNegocio == "Taller" ? "vehículos" : "comensales")</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1"><i class="bi bi-cash me-1"></i>Ventas Totales</h6>
+                    <h3 class="mb-0">@resumen.TotalVentas.ToString("N0") ₲</h3>
+                    <small>@resumen.CantVentas ventas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1"><i class="bi bi-clock me-1"></i>Tiempo Promedio</h6>
+                    <h3 class="mb-0">@resumen.TiempoPromedioTexto</h3>
+                    <small>por @_nombreEspacio.ToLower()</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark h-100">
+                <div class="card-body text-center">
+                    <h6 class="card-title mb-1"><i class="bi bi-person me-1"></i>Ticket Promedio</h6>
+                    <h3 class="mb-0">@resumen.TicketPromedio.ToString("N0") ₲</h3>
+                    <small>por @_nombreEspacio.ToLower()</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== DESGLOSE DE VENTAS ========== -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-success text-white py-2">
+                    <h6 class="mb-0"><i class="bi bi-cash-coin me-2"></i>Ventas Contado</h6>
+                </div>
+                <div class="card-body text-center">
+                    <h4 class="text-success">@resumen.VentasContado.ToString("N0") ₲</h4>
+                    <small class="text-muted">@resumen.CantVentasContado operaciones</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white py-2">
+                    <h6 class="mb-0"><i class="bi bi-credit-card me-2"></i>Ventas Crédito</h6>
+                </div>
+                <div class="card-body text-center">
+                    <h4 class="text-primary">@resumen.VentasCredito.ToString("N0") ₲</h4>
+                    <small class="text-muted">@resumen.CantVentasCredito operaciones</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-secondary text-white py-2">
+                    <h6 class="mb-0"><i class="bi bi-percent me-2"></i>Cargo Servicio</h6>
+                </div>
+                <div class="card-body text-center">
+                    <h4 class="text-secondary">@resumen.TotalCargoServicio.ToString("N0") ₲</h4>
+                    <small class="text-muted">propinas/servicio</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== VENTAS POR OPERADOR ========== -->
+    @if (ventasPorMesero.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header bg-dark text-white">
+                <h6 class="mb-0"><i class="bi bi-people me-2"></i>Ventas por @_nombreOperador</h6>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>@_nombreOperador</th>
+                            <th class="text-center">@_nombreEspacios</th>
+                            <th class="text-center">@_nombreOrdenPlural</th>
+                            <th class="text-end">Total Vendido</th>
+                            <th class="text-end">Ticket Prom.</th>
+                            <th class="text-center">Tiempo Prom.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in ventasPorMesero.OrderByDescending(x => x.TotalVendido))
+                        {
+                            <tr>
+                                <td><i class="bi bi-person-badge me-2 text-primary"></i>@m.NombreMesero</td>
+                                <td class="text-center"><span class="badge bg-primary">@m.MesasAtendidas</span></td>
+                                <td class="text-center"><span class="badge bg-info">@m.CantPedidos</span></td>
+                                <td class="text-end fw-bold text-success">@m.TotalVendido.ToString("N0") ₲</td>
+                                <td class="text-end">@m.TicketPromedio.ToString("N0") ₲</td>
+                                <td class="text-center">@m.TiempoPromedioTexto</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-secondary">
+                        <tr class="fw-bold">
+                            <td>TOTAL</td>
+                            <td class="text-center">@ventasPorMesero.Sum(x => x.MesasAtendidas)</td>
+                            <td class="text-center">@ventasPorMesero.Sum(x => x.CantPedidos)</td>
+                            <td class="text-end text-success">@ventasPorMesero.Sum(x => x.TotalVendido).ToString("N0") ₲</td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    }
+
+    <!-- ========== PRODUCTOS MÁS VENDIDOS ========== -->
+    @if (productosMasVendidos.Any())
+    {
+        <div class="row g-3 mb-4">
+            <!-- Tabla de productos -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0"><i class="bi bi-star me-2"></i>Productos Más Vendidos (Top 10)</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-hover mb-0 table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:5%">#</th>
+                                    <th>Producto</th>
+                                    <th class="text-center">Cantidad</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ int pos = 1; }
+                                @foreach (var p in productosMasVendidos)
+                                {
+                                    <tr>
+                                        <td>
+                                            @if (pos <= 3)
+                                            {
+                                                <span class="badge @(pos == 1 ? "bg-warning text-dark" : pos == 2 ? "bg-secondary" : "bg-danger bg-opacity-75")">@pos</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">@pos</span>
+                                            }
+                                        </td>
+                                        <td>@p.Descripcion</td>
+                                        <td class="text-center"><span class="badge bg-primary">@p.CantidadTotal.ToString("N0")</span></td>
+                                        <td class="text-end fw-bold">@p.TotalVendido.ToString("N0") ₲</td>
+                                    </tr>
+                                    pos++;
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- Gráfico de productos -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header bg-gradient" style="background:linear-gradient(135deg,#ff9800,#f57c00);color:#fff;">
+                        <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Gráfico de Productos</h6>
+                    </div>
+                    <div class="card-body" style="height:280px;">
+                        <canvas id="chartProductos"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ========== DETALLE POR @_nombreEspacios.ToUpper() ========== -->
+    @if (detallesPorMesa.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header bg-gradient" style="background:linear-gradient(135deg,#673ab7,#9c27b0);color:#fff;">
+                <h6 class="mb-0"><i class="bi bi-table me-2"></i>Detalle por @_nombreEspacios (@detallesPorMesa.Count @_nombreEspacios.ToLower())</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height:350px;">
+                    <table class="table table-hover mb-0 table-sm">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>@_nombreEspacio</th>
+                                <th class="text-center">@(_tipoNegocio == "Taller" ? "Vehículos" : "Comensales")</th>
+                                <th class="text-center">Pedidos</th>
+                                <th>Mesero</th>
+                                <th class="text-center">Tiempo</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in detallesPorMesa.OrderByDescending(x => x.TotalVendido))
+                            {
+                                <tr>
+                                    <td><i class="bi bi-grid-3x3 me-1 text-primary"></i>@m.NombreMesa</td>
+                                    <td class="text-center"><span class="badge bg-info">@m.Comensales</span></td>
+                                    <td class="text-center">@m.CantPedidos</td>
+                                    <td><small>@m.Meseros</small></td>
+                                    <td class="text-center">
+                                        <span class="badge @(m.TiempoPromedioMinutos <= 30 ? "bg-success" : m.TiempoPromedioMinutos <= 60 ? "bg-warning text-dark" : "bg-danger")">
+                                            @m.TiempoPromedioTexto
+                                        </span>
+                                    </td>
+                                    <td class="text-end fw-bold text-success">@m.TotalVendido.ToString("N0") ₲</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="table-secondary">
+                            <tr class="fw-bold">
+                                <td>TOTAL</td>
+                                <td class="text-center">@detallesPorMesa.Sum(x => x.Comensales)</td>
+                                <td class="text-center">@detallesPorMesa.Sum(x => x.CantPedidos)</td>
+                                <td></td>
+                                <td></td>
+                                <td class="text-end text-success">@detallesPorMesa.Sum(x => x.TotalVendido).ToString("N0") ₲</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ========== GRÁFICO DE TIEMPOS DE ENTREGA ========== -->
+    @if (tiemposPorMesa.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header bg-gradient" style="background:linear-gradient(135deg,#00bcd4,#0097a7);color:#fff;">
+                <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>Análisis de Tiempos de Atención</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <canvas id="chartTiempos" style="height:200px;"></canvas>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex flex-column gap-2">
+                            <div class="p-2 rounded" style="background:#e8f5e9;">
+                                <small class="text-muted">⚡ Atención Rápida (≤30min)</small>
+                                <div class="fw-bold text-success fs-5">@tiemposPorMesa.Count(t => t.TiempoMinutos <= 30) @_nombreEspacios.ToLower()</div>
+                            </div>
+                            <div class="p-2 rounded" style="background:#fff3e0;">
+                                <small class="text-muted">⏱️ Normal (31-60min)</small>
+                                <div class="fw-bold text-warning fs-5">@tiemposPorMesa.Count(t => t.TiempoMinutos > 30 && t.TiempoMinutos <= 60) @_nombreEspacios.ToLower()</div>
+                            </div>
+                            <div class="p-2 rounded" style="background:#ffebee;">
+                                <small class="text-muted">🐢 Demorado (&gt;60min)</small>
+                                <div class="fw-bold text-danger fs-5">@tiemposPorMesa.Count(t => t.TiempoMinutos > 60) @_nombreEspacios.ToLower()</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ========== DESGLOSE POR FORMA DE PAGO ========== -->
+    @if (pagosPorMedio.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0"><i class="bi bi-wallet2 me-2"></i>Desglose por Forma de Pago</h6>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Medio de Pago</th>
+                            <th class="text-center">Cantidad</th>
+                            <th class="text-end">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pago in pagosPorMedio.OrderByDescending(x => x.Total))
+                        {
+                            <tr>
+                                <td>
+                                    <i class="bi @ObtenerIconoMedio(pago.Medio) me-2"></i>
+                                    @ObtenerNombreMedio(pago.Medio)
+                                </td>
+                                <td class="text-center"><span class="badge bg-secondary">@pago.Cantidad</span></td>
+                                <td class="text-end fw-bold">@pago.Total.ToString("N0") ₲</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-secondary">
+                        <tr class="fw-bold">
+                            <td>TOTAL</td>
+                            <td class="text-center">@pagosPorMedio.Sum(x => x.Cantidad)</td>
+                            <td class="text-end">@pagosPorMedio.Sum(x => x.Total).ToString("N0") ₲</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    }
+
+    <!-- ========== RESUMEN FINAL ========== -->
+    <div class="card bg-dark text-white mb-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h5><i class="bi bi-calculator me-2"></i>Resumen del Día</h5>
+                    <div class="row">
+                        <div class="col-4">
+                            <small class="text-muted">Ventas Brutas</small>
+                            <div class="fw-bold">@((resumen.VentasContado + resumen.VentasCredito).ToString("N0")) ₲</div>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted">NC / Devoluciones</small>
+                            <div class="fw-bold text-warning">-@resumen.TotalNC.ToString("N0") ₲</div>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted">Cargo Servicio</small>
+                            <div class="fw-bold text-info">+@resumen.TotalCargoServicio.ToString("N0") ₲</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <small class="text-muted">TOTAL NETO</small>
+                    <h2 class="mb-0 text-success">@resumen.TotalNeto.ToString("N0") ₲</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ========== MODAL VISTA PREVIA ========== -->
+@if (mostrarVistaPrevia)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.85);">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content" style="background:var(--bg-page);">
+                <div class="modal-header bg-primary text-white py-2">
+                    <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Vista Previa - Cierre de @_nombreModulo</h5>
+                    <div class="d-flex gap-2 ms-auto me-3">
+                        <button class="btn btn-sm btn-outline-light" @onclick="ImprimirTicket"><i class="bi bi-receipt me-1"></i>Ticket</button>
+                        <button class="btn btn-sm btn-light" @onclick="ImprimirA4"><i class="bi bi-printer me-1"></i>Imprimir A4</button>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarVistaPrevia"></button>
+                </div>
+                <div class="modal-body p-4" style="overflow-y:auto;">
+                    <!-- Encabezado con logo -->
+                    <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+                        <div class="d-flex align-items-center gap-3">
+                            @if (!string.IsNullOrEmpty(logoDataUri))
+                            {
+                                <img src="@logoDataUri" alt="Logo" style="max-height:60px;max-width:120px;" />
+                            }
+                            <div>
+                                <h4 class="mb-0">@nombreEmpresa</h4>
+                                <small class="text-muted">@nombreSucursal</small>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <h5 class="text-primary mb-0">CIERRE DE @_nombreModulo.ToUpper()</h5>
+                            <span class="badge bg-primary">@fFecha.ToString("dd/MM/yyyy")</span>
+                            @if (fIdCaja > 0) { <span class="badge bg-secondary ms-1">Caja #@fIdCaja</span> }
+                            @if (fTurno > 0) { <span class="badge bg-info ms-1">Turno @fTurno</span> }
+                        </div>
+                    </div>
+
+                    <!-- Resumen General -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <div class="card bg-primary text-white h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-1"><i class="bi bi-table me-1"></i>@_nombreEspacios Atendid@(_tipoNegocio == "Taller" ? "as" : "as")</h6>
+                                    <h3 class="mb-0">@resumen.MesasAtendidas</h3>
+                                    <small>@resumen.TotalComensales @(_tipoNegocio == "Taller" ? "vehículos" : "comensales")</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-success text-white h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-1"><i class="bi bi-cash me-1"></i>Ventas Totales</h6>
+                                    <h3 class="mb-0">@resumen.TotalVentas.ToString("N0") ₲</h3>
+                                    <small>@resumen.CantVentas ventas</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-info text-white h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-1"><i class="bi bi-clock me-1"></i>Tiempo Promedio</h6>
+                                    <h3 class="mb-0">@resumen.TiempoPromedioTexto</h3>
+                                    <small>por @_nombreEspacio.ToLower()</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning text-dark h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title mb-1"><i class="bi bi-person me-1"></i>Ticket Promedio</h6>
+                                    <h3 class="mb-0">@resumen.TicketPromedio.ToString("N0") ₲</h3>
+                                    <small>por mesa</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desglose ventas y meseros en row -->
+                    <div class="row g-3 mb-4">
+                        <!-- Ventas por mesero -->
+                        @if (ventasPorMesero.Any())
+                        {
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header bg-dark text-white py-2">
+                                        <h6 class="mb-0"><i class="bi bi-people me-2"></i>Ventas por @(_tipoNegocio == "Taller" ? "Técnico" : "Mesero")</h6>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <table class="table table-hover table-sm mb-0">
+                                            <thead class="table-light">
+                                                <tr><th>@(_tipoNegocio == "Taller" ? "Técnico" : "Mesero")</th><th class="text-center">@_nombreEspacios</th><th class="text-end">Total</th><th class="text-center">Tiempo</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var m in ventasPorMesero.OrderByDescending(x => x.TotalVendido))
+                                                {
+                                                    <tr>
+                                                        <td>@m.NombreMesero</td>
+                                                        <td class="text-center"><span class="badge bg-primary">@m.MesasAtendidas</span></td>
+                                                        <td class="text-end fw-bold text-success">@m.TotalVendido.ToString("N0") ₲</td>
+                                                        <td class="text-center">@m.TiempoPromedioTexto</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Top productos -->
+                        @if (productosMasVendidos.Any())
+                        {
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header bg-warning text-dark py-2">
+                                        <h6 class="mb-0"><i class="bi bi-star me-2"></i>Top 10 Productos</h6>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <table class="table table-hover table-sm mb-0">
+                                            <thead class="table-light">
+                                                <tr><th>#</th><th>Producto</th><th class="text-center">Cant.</th><th class="text-end">Total</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                @{ int posVP = 1; }
+                                                @foreach (var p in productosMasVendidos)
+                                                {
+                                                    <tr>
+                                                        <td>@posVP</td>
+                                                        <td>@p.Descripcion</td>
+                                                        <td class="text-center"><span class="badge bg-primary">@p.CantidadTotal.ToString("N0")</span></td>
+                                                        <td class="text-end fw-bold">@p.TotalVendido.ToString("N0") ₲</td>
+                                                    </tr>
+                                                    posVP++;
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Detalle por @_nombreEspacios.ToLower() -->
+                    @if (detallesPorMesa.Any())
+                    {
+                        <div class="card mb-4">
+                            <div class="card-header bg-gradient text-white py-2" style="background:linear-gradient(135deg,#673ab7,#9c27b0);">
+                                <h6 class="mb-0"><i class="bi bi-table me-2"></i>Detalle por @_nombreEspacios (@detallesPorMesa.Count)</h6>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive" style="max-height:250px;">
+                                    <table class="table table-hover table-sm mb-0">
+                                        <thead class="table-light sticky-top">
+                                            <tr><th>@_nombreEspacio</th><th class="text-center">@(_tipoNegocio == "Taller" ? "Vehículos" : "Comensales")</th><th>@(_tipoNegocio == "Taller" ? "Técnico" : "Mesero")</th><th class="text-center">Tiempo</th><th class="text-end">Total</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var m in detallesPorMesa.OrderByDescending(x => x.TotalVendido))
+                                            {
+                                                <tr>
+                                                    <td>@m.NombreMesa</td>
+                                                    <td class="text-center"><span class="badge bg-info">@m.Comensales</span></td>
+                                                    <td><small>@m.Meseros</small></td>
+                                                    <td class="text-center">
+                                                        <span class="badge @(m.TiempoPromedioMinutos <= 30 ? "bg-success" : m.TiempoPromedioMinutos <= 60 ? "bg-warning text-dark" : "bg-danger")">@m.TiempoPromedioTexto</span>
+                                                    </td>
+                                                    <td class="text-end fw-bold text-success">@m.TotalVendido.ToString("N0") ₲</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Formas de pago -->
+                    @if (pagosPorMedio.Any())
+                    {
+                        <div class="card mb-4">
+                            <div class="card-header bg-info text-white py-2">
+                                <h6 class="mb-0"><i class="bi bi-wallet2 me-2"></i>Formas de Pago</h6>
+                            </div>
+                            <div class="card-body p-0">
+                                <table class="table table-hover table-sm mb-0">
+                                    <thead class="table-light">
+                                        <tr><th>Medio</th><th class="text-center">Cantidad</th><th class="text-end">Total</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var pago in pagosPorMedio.OrderByDescending(x => x.Total))
+                                        {
+                                            <tr>
+                                                <td><i class="bi @ObtenerIconoMedio(pago.Medio) me-2"></i>@ObtenerNombreMedio(pago.Medio)</td>
+                                                <td class="text-center"><span class="badge bg-secondary">@pago.Cantidad</span></td>
+                                                <td class="text-end fw-bold">@pago.Total.ToString("N0") ₲</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Resumen final -->
+                    <div class="card bg-dark text-white">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-8">
+                                    <h5><i class="bi bi-calculator me-2"></i>Resumen del Día</h5>
+                                    <div class="row">
+                                        <div class="col-4">
+                                            <small class="text-muted">Ventas Brutas</small>
+                                            <div class="fw-bold">@((resumen.VentasContado + resumen.VentasCredito).ToString("N0")) ₲</div>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted">NC / Devoluciones</small>
+                                            <div class="fw-bold text-warning">-@resumen.TotalNC.ToString("N0") ₲</div>
+                                        </div>
+                                        <div class="col-4">
+                                            <small class="text-muted">Cargo Servicio</small>
+                                            <div class="fw-bold text-info">+@resumen.TotalCargoServicio.ToString("N0") ₲</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 text-end">
+                                    <small class="text-muted">TOTAL NETO</small>
+                                    <h2 class="mb-0 text-success">@resumen.TotalNeto.ToString("N0") ₲</h2>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private DateTime fFecha = DateTime.Today;
+    private int fIdCaja = 0;
+    private int fTurno = 0;
+    private string fMesero = "";
+    private bool cargando = true;
+    private bool mostrarVistaPrevia = false;
+
+    // Datos empresa
+    private string logoDataUri = "";
+    private string nombreEmpresa = "";
+    private string nombreSucursal = "";
+    
+    // Tipo de negocio para nombres dinámicos
+    private string _tipoNegocio = "Restaurante";
+    private string _nombreModulo = "Restaurante";
+    private string _nombreEspacios = "Mesas";
+    private string _nombreEspacio = "Mesa";
+    private string _nombreOperador = "Mesero"; // Mesero, Técnico, Encargado
+    #pragma warning disable CS0414 // Campos para uso futuro en UI dinámica
+    private string _nombreOperadorPlural = "Meseros";
+    private string _nombreOrden = "Pedido"; // Pedido, Orden, Servicio
+    #pragma warning restore CS0414
+    private string _nombreOrdenPlural = "Pedidos";
+    // Icono de espacio - usado para futuras visualizaciones
+    #pragma warning disable CS0414
+    private string _iconoEspacio = "bi-table";
+    #pragma warning restore CS0414
+
+    private List<Caja> cajas = new();
+    private List<string> meseros = new();
+
+    private ResumenRestaurante resumen = new();
+    private List<VentaMesero> ventasPorMesero = new();
+    private List<ProductoVendido> productosMasVendidos = new();
+    private List<PagoMedio> pagosPorMedio = new();
+    private List<DetalleMesa> detallesPorMesa = new();
+    private List<TiempoMesa> tiemposPorMesa = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar datos de empresa y caja actual
+        await CargarDatosEmpresa();
+        
+        // Obtener caja actual con fecha y turno predeterminados
+        var cajaActual = await CajaService.ObtenerCajaActualAsync();
+        if (cajaActual != null)
+        {
+            fFecha = cajaActual.FechaActualCaja ?? DateTime.Today;
+            fIdCaja = cajaActual.IdCaja;
+            fTurno = cajaActual.TurnoActual ?? 1;
+        }
+        
+        // Sobrescribir con parámetros de URL si vienen de cierre de caja
+        var uri = new Uri(Nav.Uri);
+        var queryParams = QueryHelpers.ParseQuery(uri.Query);
+        
+        if (queryParams.TryGetValue("fecha", out var fechaStr) && DateTime.TryParse(fechaStr, out var fechaParsed))
+        {
+            fFecha = fechaParsed;
+        }
+        
+        if (queryParams.TryGetValue("caja", out var cajaStr) && int.TryParse(cajaStr, out var cajaParsed))
+        {
+            fIdCaja = cajaParsed;
+        }
+        
+        if (queryParams.TryGetValue("turno", out var turnoStr) && int.TryParse(turnoStr, out var turnoParsed))
+        {
+            fTurno = turnoParsed;
+        }
+        
+        await CargarFiltros();
+        await Buscar();
+    }
+
+    private async Task CargarFiltros()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+
+        cajas = await ctx.Cajas
+            .Where(c => c.IdSucursal == sucId)
+            .OrderBy(c => c.IdCaja)
+            .ToListAsync();
+
+        // Obtener meseros que han atendido pedidos
+        meseros = await ctx.Pedidos
+            .Where(p => p.IdSucursal == sucId && !string.IsNullOrEmpty(p.NombreMesero))
+            .Select(p => p.NombreMesero!)
+            .Distinct()
+            .OrderBy(m => m)
+            .ToListAsync();
+    }
+
+    private async Task CargarDatosEmpresa()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+        
+        if (suc != null)
+        {
+            nombreEmpresa = suc.NombreEmpresa ?? "Restaurante";
+            nombreSucursal = suc.NombreSucursal ?? "";
+            if (suc.Logo != null && suc.Logo.Length > 0)
+            {
+                logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+            }
+        }
+        
+        // Cargar tipo de negocio para nombres dinámicos
+        var config = await ctx.ConfiguracionSistema.AsNoTracking().FirstOrDefaultAsync();
+        _tipoNegocio = config?.TipoNegocioMesas ?? "Restaurante";
+        
+        switch (_tipoNegocio)
+        {
+            case "Taller":
+                _nombreModulo = "Taller";
+                _nombreEspacios = "Bahías";
+                _nombreEspacio = "Bahía";
+                _nombreOperador = "Técnico";
+                _nombreOperadorPlural = "Técnicos";
+                _nombreOrden = "Orden de Trabajo";
+                _nombreOrdenPlural = "Órdenes";
+                _iconoEspacio = "bi-wrench";
+                break;
+            case "Complejo":
+                _nombreModulo = "Complejo Deportivo";
+                _nombreEspacios = "Canchas";
+                _nombreEspacio = "Cancha";
+                _nombreOperador = "Encargado";
+                _nombreOperadorPlural = "Encargados";
+                _nombreOrden = "Reserva";
+                _nombreOrdenPlural = "Reservas";
+                _iconoEspacio = "bi-dribbble";
+                break;
+            default:
+                _nombreModulo = "Restaurante";
+                _nombreEspacios = "Mesas";
+                _nombreEspacio = "Mesa";
+                _nombreOperador = "Mesero";
+                _nombreOperadorPlural = "Meseros";
+                _nombreOrden = "Pedido";
+                _nombreOrdenPlural = "Pedidos";
+                _iconoEspacio = "bi-table";
+                break;
+        }
+    }
+
+    private async Task Buscar()
+    {
+        cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var sucId = SucursalProvider.GetSucursalId();
+
+            // Consulta base de pedidos cerrados (pagados)
+            var queryPedidos = ctx.Pedidos
+                .Include(p => p.Detalles)
+                .Include(p => p.Mesa)
+                .Where(p => p.IdSucursal == sucId
+                    && p.FechaCaja.HasValue && p.FechaCaja.Value.Date == fFecha.Date
+                    && (p.Estado == "Pagado" || p.Estado == "Cerrado"));
+
+            if (fIdCaja > 0)
+                queryPedidos = queryPedidos.Where(p => p.IdCaja == fIdCaja);
+
+            if (fTurno > 0)
+                queryPedidos = queryPedidos.Where(p => p.Turno == fTurno);
+
+            if (!string.IsNullOrEmpty(fMesero))
+                queryPedidos = queryPedidos.Where(p => p.NombreMesero == fMesero);
+
+            var pedidos = await queryPedidos.ToListAsync();
+
+            // Consulta de ventas (para el desglose financiero)
+            var queryVentas = ctx.Ventas
+                .Where(v => v.IdSucursal == sucId
+                    && v.Fecha.Date == fFecha.Date
+                    && v.Estado != "Anulada");
+
+            if (fIdCaja > 0)
+                queryVentas = queryVentas.Where(v => v.IdCaja == fIdCaja);
+
+            if (fTurno > 0)
+                queryVentas = queryVentas.Where(v => v.Turno.HasValue && v.Turno.Value.ToString() == fTurno.ToString());
+
+            var ventas = await queryVentas.ToListAsync();
+            var ventaIds = ventas.Select(v => v.IdVenta).ToList();
+
+            // Pagos de las ventas (VentaPagoDetalle tiene el medio de pago)
+            var ventaPagos = await ctx.VentasPagos
+                .Include(vp => vp.Detalles)
+                .Where(p => ventaIds.Contains(p.IdVenta))
+                .ToListAsync();
+
+            // Extraer todos los detalles de pago
+            var detallesPago = ventaPagos
+                .Where(vp => vp.Detalles != null)
+                .SelectMany(vp => vp.Detalles!)
+                .ToList();
+
+            // Notas de crédito
+            var queryNC = ctx.NotasCreditoVentas
+                .Where(nc => nc.IdSucursal == sucId
+                    && nc.Fecha.Date == fFecha.Date
+                    && nc.Estado == "Confirmada");
+
+            if (fIdCaja > 0)
+                queryNC = queryNC.Where(nc => nc.IdCaja == fIdCaja);
+
+            var notasCredito = await queryNC.ToListAsync();
+
+            // ========== CALCULAR RESUMEN ==========
+            resumen = new ResumenRestaurante
+            {
+                MesasAtendidas = pedidos.Select(p => p.IdMesa).Distinct().Count(),
+                TotalComensales = pedidos.Sum(p => p.Comensales),
+                TotalVentas = ventas.Sum(v => v.Total),
+                CantVentas = ventas.Count,
+                VentasContado = ventas.Where(v => v.FormaPago == "Contado" || v.FormaPago == "CONTADO").Sum(v => v.Total),
+                CantVentasContado = ventas.Count(v => v.FormaPago == "Contado" || v.FormaPago == "CONTADO"),
+                VentasCredito = ventas.Where(v => v.FormaPago == "Credito" || v.FormaPago == "CREDITO").Sum(v => v.Total),
+                CantVentasCredito = ventas.Count(v => v.FormaPago == "Credito" || v.FormaPago == "CREDITO"),
+                TotalCargoServicio = pedidos.Sum(p => p.CargoServicio),
+                TotalNC = notasCredito.Sum(nc => nc.Total)
+            };
+
+            // Tiempo promedio por mesa
+            var tiempos = pedidos
+                .Where(p => p.FechaCierre.HasValue)
+                .Select(p => (p.FechaCierre!.Value - p.FechaApertura).TotalMinutes)
+                .ToList();
+            
+            if (tiempos.Any())
+            {
+                resumen.TiempoPromedioMinutos = (int)tiempos.Average();
+            }
+
+            // Ticket promedio
+            if (resumen.MesasAtendidas > 0)
+            {
+                resumen.TicketPromedio = resumen.TotalVentas / resumen.MesasAtendidas;
+            }
+
+            resumen.TotalNeto = resumen.VentasContado + resumen.VentasCredito - resumen.TotalNC + resumen.TotalCargoServicio;
+
+            // ========== VENTAS POR MESERO ==========
+            ventasPorMesero = pedidos
+                .Where(p => !string.IsNullOrEmpty(p.NombreMesero))
+                .GroupBy(p => p.NombreMesero)
+                .Select(g => {
+                    var tiemposMesero = g
+                        .Where(p => p.FechaCierre.HasValue)
+                        .Select(p => (p.FechaCierre!.Value - p.FechaApertura).TotalMinutes)
+                        .ToList();
+                    
+                    return new VentaMesero
+                    {
+                        NombreMesero = g.Key ?? "Sin asignar",
+                        MesasAtendidas = g.Select(p => p.IdMesa).Distinct().Count(),
+                        CantPedidos = g.Count(),
+                        TotalVendido = g.Sum(p => p.Total),
+                        TiempoPromedioMinutos = tiemposMesero.Any() ? (int)tiemposMesero.Average() : 0
+                    };
+                })
+                .ToList();
+
+            // Calcular ticket promedio por mesero
+            foreach (var m in ventasPorMesero)
+            {
+                if (m.MesasAtendidas > 0)
+                    m.TicketPromedio = m.TotalVendido / m.MesasAtendidas;
+            }
+
+            // ========== PRODUCTOS MÁS VENDIDOS ==========
+            var todosDetalles = pedidos
+                .Where(p => p.Detalles != null)
+                .SelectMany(p => p.Detalles!)
+                .ToList();
+
+            productosMasVendidos = todosDetalles
+                .GroupBy(d => d.Descripcion)
+                .Select(g => new ProductoVendido
+                {
+                    Descripcion = g.Key,
+                    CantidadTotal = g.Sum(d => d.Cantidad),
+                    TotalVendido = g.Sum(d => d.Importe)
+                })
+                .OrderByDescending(p => p.CantidadTotal)
+                .Take(10)
+                .ToList();
+
+            // ========== PAGOS POR MEDIO ==========
+            pagosPorMedio = detallesPago
+                .GroupBy(p => p.Medio.ToString())
+                .Select(g => new PagoMedio
+                {
+                    Medio = g.Key ?? "Efectivo",
+                    Cantidad = g.Count(),
+                    Total = g.Sum(p => p.MontoGs)
+                })
+                .ToList();
+
+            // ========== DETALLE POR MESAS ==========
+            detallesPorMesa = pedidos
+                .GroupBy(p => new { p.IdMesa, Nombre = p.Mesa?.Descripcion ?? $"Mesa {p.IdMesa}" })
+                .Select(g => {
+                    var tiemposMesa = g
+                        .Where(p => p.FechaCierre.HasValue)
+                        .Select(p => (p.FechaCierre!.Value - p.FechaApertura).TotalMinutes)
+                        .ToList();
+                    
+                    return new DetalleMesa
+                    {
+                        IdMesa = g.Key.IdMesa,
+                        NombreMesa = g.Key.Nombre,
+                        Comensales = g.Sum(p => p.Comensales),
+                        CantPedidos = g.Count(),
+                        Meseros = string.Join(", ", g.Select(p => p.NombreMesero).Where(m => !string.IsNullOrEmpty(m)).Distinct()),
+                        TotalVendido = g.Sum(p => p.Total),
+                        TiempoPromedioMinutos = tiemposMesa.Any() ? (int)tiemposMesa.Average() : 0
+                    };
+                })
+                .ToList();
+
+            // ========== TIEMPOS POR MESA (para gráfico) ==========
+            tiemposPorMesa = pedidos
+                .Where(p => p.FechaCierre.HasValue)
+                .Select(p => new TiempoMesa
+                {
+                    NombreMesa = p.Mesa?.Descripcion ?? $"Mesa {p.IdMesa}",
+                    TiempoMinutos = (int)(p.FechaCierre!.Value - p.FechaApertura).TotalMinutes
+                })
+                .OrderBy(t => t.TiempoMinutos)
+                .ToList();
+
+            // Renderizar gráficos después de cargar datos
+            await RenderizarGraficos();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al buscar: {ex.Message}");
+        }
+        finally
+        {
+            cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RenderizarGraficos()
+    {
+        if (!productosMasVendidos.Any()) return;
+
+        try
+        {
+            // Preparar datos para gráfico de productos
+            var labels = productosMasVendidos.Select(p => TruncarTexto(p.Descripcion, 15)).ToArray();
+            var dataValues = productosMasVendidos.Select(p => (int)p.CantidadTotal).ToArray();
+            var colors = new[] { "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#7CFC00", "#00CED1", "#DC143C", "#8B008B" };
+
+            await JS.InvokeVoidAsync("crearGraficoRestaurante", "chartProductos", "bar", labels, dataValues, "Cantidad Vendida", colors.Take(labels.Length).ToArray());
+
+            // Gráfico de tiempos
+            if (tiemposPorMesa.Any())
+            {
+                var tiempoLabels = tiemposPorMesa.Take(15).Select(t => t.NombreMesa).ToArray();
+                var tiempoValues = tiemposPorMesa.Take(15).Select(t => t.TiempoMinutos).ToArray();
+                var tiempoColors = tiemposPorMesa.Take(15).Select(t => 
+                    t.TiempoMinutos <= 30 ? "#28a745" : 
+                    t.TiempoMinutos <= 60 ? "#ffc107" : "#dc3545").ToArray();
+
+                await JS.InvokeVoidAsync("crearGraficoRestaurante", "chartTiempos", "bar", tiempoLabels, tiempoValues, "Minutos", tiempoColors);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al renderizar gráficos: {ex.Message}");
+        }
+    }
+
+    private string ObtenerIconoMedio(string medio)
+    {
+        return medio?.ToLower() switch
+        {
+            "efectivo" => "bi-cash",
+            "tarjeta" or "tarjeta credito" or "tarjeta debito" => "bi-credit-card",
+            "transferencia" => "bi-bank",
+            "qr" => "bi-qr-code",
+            "cheque" => "bi-file-text",
+            _ => "bi-wallet2"
+        };
+    }
+
+    private string ObtenerNombreMedio(string medio)
+    {
+        return medio?.ToLower() switch
+        {
+            "efectivo" => "Efectivo",
+            "tarjeta" or "tarjeta credito" => "Tarjeta de Crédito",
+            "tarjeta debito" => "Tarjeta de Débito",
+            "transferencia" => "Transferencia Bancaria",
+            "qr" => "Pago QR",
+            "cheque" => "Cheque",
+            _ => medio ?? "Otros"
+        };
+    }
+
+    private async Task ImprimirTicket()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+
+        string empresa = suc?.NombreEmpresa ?? "Restaurante";
+        string sucursal = suc?.NombreSucursal ?? "";
+        string direccion = suc?.Direccion ?? "";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<!DOCTYPE html><html><head><meta charset='utf-8'/>");
+        sb.AppendLine($"<title>Cierre {_nombreModulo}</title>");
+        sb.AppendLine("<style>");
+        sb.AppendLine("@media print { @page { size: 80mm auto; margin: 2mm; } }");
+        sb.AppendLine("body{font-family:'Consolas',monospace;font-size:11px;width:76mm;margin:0 auto;}");
+        sb.AppendLine(".center{text-align:center;}.right{text-align:right;}.bold{font-weight:bold;}");
+        sb.AppendLine(".line{border-top:1px dashed #000;margin:3px 0;}");
+        sb.AppendLine(".doble{border-top:2px solid #000;margin:3px 0;}");
+        sb.AppendLine(".row{display:flex;justify-content:space-between;}");
+        sb.AppendLine(".titulo{font-size:13px;font-weight:bold;margin:5px 0;}");
+        sb.AppendLine("</style></head><body>");
+
+        // Encabezado
+        sb.AppendLine($"<div class='center bold' style='font-size:14px;'>{empresa}</div>");
+        if (!string.IsNullOrEmpty(sucursal)) sb.AppendLine($"<div class='center'>{sucursal}</div>");
+        if (!string.IsNullOrEmpty(direccion)) sb.AppendLine($"<div class='center' style='font-size:9px;'>{direccion}</div>");
+        sb.AppendLine("<div class='doble'></div>");
+
+        sb.AppendLine($"<div class='center titulo'>CIERRE {_nombreModulo.ToUpper()}</div>");
+        sb.AppendLine($"<div class='center'>Fecha: {fFecha:dd/MM/yyyy}</div>");
+        if (fIdCaja > 0) sb.AppendLine($"<div class='center'>Caja: #{fIdCaja}</div>");
+        if (fTurno > 0) sb.AppendLine($"<div class='center'>Turno: {fTurno}</div>");
+        sb.AppendLine("<div class='line'></div>");
+
+        // Resumen general
+        sb.AppendLine("<div class='titulo'>RESUMEN</div>");
+        sb.AppendLine($"<div class='row'><span>{_nombreEspacios} Atendid{(_tipoNegocio == "Taller" ? "as" : "as")}:</span><span class='bold'>{resumen.MesasAtendidas}</span></div>");
+        sb.AppendLine($"<div class='row'><span>Total {(_tipoNegocio == "Taller" ? "Vehículos" : "Comensales")}:</span><span>{resumen.TotalComensales}</span></div>");
+        sb.AppendLine($"<div class='row'><span>Tiempo Promedio:</span><span>{resumen.TiempoPromedioTexto}</span></div>");
+        sb.AppendLine($"<div class='row'><span>Ticket Promedio:</span><span>{resumen.TicketPromedio:N0} Gs</span></div>");
+        sb.AppendLine("<div class='line'></div>");
+
+        // Ventas
+        sb.AppendLine("<div class='titulo'>VENTAS</div>");
+        sb.AppendLine($"<div class='row'><span>Contado:</span><span>{resumen.VentasContado:N0} Gs</span></div>");
+        sb.AppendLine($"<div class='row'><span>Crédito:</span><span>{resumen.VentasCredito:N0} Gs</span></div>");
+        sb.AppendLine($"<div class='row'><span>Cargo Servicio:</span><span>{resumen.TotalCargoServicio:N0} Gs</span></div>");
+        if (resumen.TotalNC > 0)
+            sb.AppendLine($"<div class='row'><span>NC/Devoluciones:</span><span>-{resumen.TotalNC:N0} Gs</span></div>");
+        sb.AppendLine("<div class='doble'></div>");
+        sb.AppendLine($"<div class='row bold' style='font-size:13px;'><span>TOTAL NETO:</span><span>{resumen.TotalNeto:N0} Gs</span></div>");
+        sb.AppendLine("<div class='line'></div>");
+
+        // Ventas por mesero
+        if (ventasPorMesero.Any())
+        {
+            sb.AppendLine("<div class='titulo'>POR MESERO</div>");
+            foreach (var m in ventasPorMesero.OrderByDescending(x => x.TotalVendido))
+            {
+                sb.AppendLine($"<div class='row'><span>{m.NombreMesero}</span><span>{m.TotalVendido:N0} Gs</span></div>");
+                sb.AppendLine($"<div style='font-size:9px;color:#666;'>&nbsp;&nbsp;{m.MesasAtendidas} mesas | {m.TiempoPromedioTexto}</div>");
+            }
+            sb.AppendLine("<div class='line'></div>");
+        }
+
+        // Formas de pago
+        if (pagosPorMedio.Any())
+        {
+            sb.AppendLine("<div class='titulo'>FORMAS DE PAGO</div>");
+            foreach (var p in pagosPorMedio.OrderByDescending(x => x.Total))
+            {
+                sb.AppendLine($"<div class='row'><span>{ObtenerNombreMedio(p.Medio)}:</span><span>{p.Total:N0} Gs</span></div>");
+            }
+            sb.AppendLine("<div class='line'></div>");
+        }
+
+        // Top 5 productos
+        if (productosMasVendidos.Any())
+        {
+            sb.AppendLine("<div class='titulo'>TOP 5 PRODUCTOS</div>");
+            foreach (var p in productosMasVendidos.Take(5))
+            {
+                sb.AppendLine($"<div class='row'><span>{TruncarTexto(p.Descripcion, 25)}</span><span>{p.CantidadTotal:N0}</span></div>");
+            }
+            sb.AppendLine("<div class='line'></div>");
+        }
+
+        // Pie
+        sb.AppendLine($"<div class='center' style='font-size:9px;margin-top:5px;'>Generado: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
+        sb.AppendLine($"<div class='center' style='font-size:9px;'>SistemIA - {_nombreModulo}</div>");
+
+        sb.AppendLine("</body></html>");
+
+        await JS.InvokeVoidAsync("printHtml", sb.ToString());
+    }
+
+    private async Task ImprimirA4()
+    {
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset=\"utf-8\"/>");
+        head.AppendLine($"<title>Cierre {_nombreModulo}</title>");
+        head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: A4; margin: 8mm 10mm; } }");
+        head.AppendLine("body{font-family:'Segoe UI',Arial,sans-serif;font-size:10px;color:#111;line-height:1.2;}");
+        head.AppendLine(".header{border-bottom:2px solid #8b4513;padding-bottom:5px;margin-bottom:8px;}");
+        head.AppendLine(".logo{max-width:70px;max-height:45px;object-fit:contain;}");
+        head.AppendLine(".titulo-reporte{background:linear-gradient(135deg,#8b4513,#d2691e);color:#fff;padding:4px 10px;border-radius:4px;font-size:12px;}");
+        head.AppendLine(".seccion{background:#f8f9fa;border-radius:5px;padding:6px 8px;margin-bottom:6px;border-left:3px solid #8b4513;}");
+        head.AppendLine(".seccion-titulo{font-weight:bold;color:#8b4513;margin-bottom:4px;font-size:10px;border-bottom:1px solid #dee2e6;padding-bottom:2px;}");
+        head.AppendLine(".card-valor{background:#fff;border-radius:4px;padding:5px;text-align:center;border:1px solid #e9ecef;}");
+        head.AppendLine(".card-valor .etiqueta{font-size:8px;color:#6c757d;margin-bottom:1px;}");
+        head.AppendLine(".card-valor .monto{font-size:11px;font-weight:bold;}");
+        head.AppendLine(".ingreso{color:#198754;} .egreso{color:#dc3545;} .neutro{color:#0d6efd;} .warning{color:#ffc107;}");
+        head.AppendLine(".tabla{width:100%;border-collapse:collapse;font-size:9px;}");
+        head.AppendLine(".tabla th{background:#8b4513;color:#fff;padding:3px 5px;text-align:left;}");
+        head.AppendLine(".tabla td{padding:2px 5px;border-bottom:1px solid #e9ecef;}");
+        head.AppendLine(".tabla tr:nth-child(even){background:#f8f9fa;}");
+        head.AppendLine(".tabla .right{text-align:right;}");
+        head.AppendLine(".resumen-final{background:#8b4513;color:#fff;padding:8px;border-radius:5px;}");
+        head.AppendLine(".badge-cant{background:#6c757d;color:#fff;padding:1px 4px;border-radius:8px;font-size:7px;margin-left:3px;}");
+        head.AppendLine(".row{margin-left:-3px;margin-right:-3px;} .row>[class*=col-]{padding-left:3px;padding-right:3px;}");
+        head.AppendLine("</style>");
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var sucId = SucursalProvider.GetSucursalId();
+        var suc = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucId);
+        string empresa = suc?.NombreEmpresa ?? "Restaurante";
+        string sucursal = suc?.NombreSucursal ?? "";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+        string direccion = suc?.Direccion ?? "";
+        string telefono = suc?.Telefono ?? "";
+        string? logoDataUri = null;
+        if (suc?.Logo != null && suc.Logo.Length > 0)
+            logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+        string infoCaja = fIdCaja > 0 ? $"Caja #{fIdCaja}" : "Todas las Cajas";
+        string infoTurno = fTurno > 0 ? $"Turno {fTurno}" : "Todos los Turnos";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class='container-fluid'>");
+
+        // ========== ENCABEZADO ==========
+        sb.AppendLine("<div class='header d-flex justify-content-between align-items-start'>");
+        sb.AppendLine("<div class='d-flex align-items-center gap-2'>");
+        if (!string.IsNullOrEmpty(logoDataUri))
+            sb.AppendLine($"<img class='logo' src='{logoDataUri}' alt='Logo' />");
+        sb.AppendLine($"<div><h5 class='mb-0' style='color:#8b4513;font-size:13px;'>{empresa}</h5>");
+        sb.AppendLine($"<div style='font-size:9px;' class='text-muted'>RUC: {ruc} | {sucursal}</div>");
+        if (!string.IsNullOrEmpty(direccion)) sb.AppendLine($"<div style='font-size:8px;' class='text-muted'>{direccion}{(!string.IsNullOrEmpty(telefono) ? $" | Tel: {telefono}" : "")}</div>");
+        sb.AppendLine("</div></div>");
+        sb.AppendLine("<div class='text-end'>");
+        sb.AppendLine($"<div class='titulo-reporte'><span style='font-size:11px;'>📊 CIERRE {_nombreModulo.ToUpper()}</span></div>");
+        sb.AppendLine($"<div style='font-size:9px;'><strong>Fecha:</strong> {fFecha:dd/MM/yyyy}</div>");
+        sb.AppendLine($"<div style='font-size:8px;'>{infoCaja} | {infoTurno}" + (!string.IsNullOrEmpty(fMesero) ? $" | {fMesero}" : "") + $"</div>");
+        sb.AppendLine($"<div style='font-size:7px;' class='text-muted'>Generado: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
+        sb.AppendLine("</div></div>");
+
+        // ========== RESUMEN GENERAL ==========
+        sb.AppendLine("<div class='seccion'>");
+        sb.AppendLine("<div class='seccion-titulo'>📊 RESUMEN GENERAL</div>");
+        sb.AppendLine("<div class='row g-1'>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>{_nombreEspacios} Atendid{(_tipoNegocio == "Taller" ? "as" : "as")}</div><div class='monto neutro'>{resumen.MesasAtendidas}</div><span class='badge-cant'>{resumen.TotalComensales} {(_tipoNegocio == "Taller" ? "vehículos" : "personas")}</span></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Ventas Totales</div><div class='monto ingreso'>{resumen.TotalVentas:N0}</div><span class='badge-cant'>{resumen.CantVentas} ops</span></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Tiempo Promedio</div><div class='monto'>{resumen.TiempoPromedioTexto}</div><span class='badge-cant'>por mesa</span></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Ticket Promedio</div><div class='monto warning'>{resumen.TicketPromedio:N0}</div><span class='badge-cant'>por mesa</span></div></div>");
+        sb.AppendLine("</div></div>");
+
+        // ========== DESGLOSE DE VENTAS ==========
+        sb.AppendLine("<div class='seccion'>");
+        sb.AppendLine("<div class='seccion-titulo'>💰 DESGLOSE DE VENTAS</div>");
+        sb.AppendLine("<div class='row g-1'>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Ventas Contado</div><div class='monto ingreso'>{resumen.VentasContado:N0}</div><span class='badge-cant'>{resumen.CantVentasContado}</span></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Ventas Crédito</div><div class='monto neutro'>{resumen.VentasCredito:N0}</div><span class='badge-cant'>{resumen.CantVentasCredito}</span></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>Cargo Servicio</div><div class='monto'>{resumen.TotalCargoServicio:N0}</div></div></div>");
+        sb.AppendLine($"<div class='col-3'><div class='card-valor'><div class='etiqueta'>NC/Devoluciones</div><div class='monto egreso'>-{resumen.TotalNC:N0}</div></div></div>");
+        sb.AppendLine("</div></div>");
+
+        // ========== POR MESERO ==========
+        if (ventasPorMesero.Any())
+        {
+            sb.AppendLine("<div class='seccion'>");
+            sb.AppendLine("<div class='seccion-titulo'>👨‍🍳 VENTAS POR MESERO</div>");
+            sb.AppendLine("<table class='tabla'>");
+            sb.AppendLine("<thead><tr><th>Mesero</th><th class='right'>Mesas</th><th class='right'>Pedidos</th><th class='right'>Total</th><th class='right'>Ticket Prom.</th><th class='right'>Tiempo</th></tr></thead>");
+            sb.AppendLine("<tbody>");
+            foreach (var m in ventasPorMesero.OrderByDescending(x => x.TotalVendido))
+            {
+                sb.AppendLine($"<tr><td>{m.NombreMesero}</td><td class='right'>{m.MesasAtendidas}</td><td class='right'>{m.CantPedidos}</td><td class='right'><strong>{m.TotalVendido:N0}</strong></td><td class='right'>{m.TicketPromedio:N0}</td><td class='right'>{m.TiempoPromedioTexto}</td></tr>");
+            }
+            sb.AppendLine($"<tr style='background:#8b4513;color:#fff;'><td><strong>TOTAL</strong></td><td class='right'><strong>{ventasPorMesero.Sum(x => x.MesasAtendidas)}</strong></td><td class='right'><strong>{ventasPorMesero.Sum(x => x.CantPedidos)}</strong></td><td class='right'><strong>{ventasPorMesero.Sum(x => x.TotalVendido):N0}</strong></td><td></td><td></td></tr>");
+            sb.AppendLine("</tbody></table></div>");
+        }
+
+        // ========== TOP PRODUCTOS ==========
+        if (productosMasVendidos.Any())
+        {
+            sb.AppendLine("<div class='seccion'>");
+            sb.AppendLine("<div class='seccion-titulo'>⭐ TOP 10 PRODUCTOS</div>");
+            sb.AppendLine("<table class='tabla'>");
+            sb.AppendLine("<thead><tr><th>#</th><th>Producto</th><th class='right'>Cantidad</th><th class='right'>Total</th></tr></thead>");
+            sb.AppendLine("<tbody>");
+            int pos = 1;
+            foreach (var p in productosMasVendidos)
+            {
+                sb.AppendLine($"<tr><td>{pos}</td><td>{p.Descripcion}</td><td class='right'>{p.CantidadTotal:N0}</td><td class='right'><strong>{p.TotalVendido:N0}</strong></td></tr>");
+                pos++;
+            }
+            sb.AppendLine("</tbody></table></div>");
+        }
+
+        // ========== FORMAS DE PAGO ==========
+        if (pagosPorMedio.Any())
+        {
+            sb.AppendLine("<div class='seccion'>");
+            sb.AppendLine("<div class='seccion-titulo'>💳 FORMAS DE PAGO</div>");
+            sb.AppendLine("<table class='tabla'>");
+            sb.AppendLine("<thead><tr><th>Medio</th><th class='right'>Cantidad</th><th class='right'>Total</th></tr></thead>");
+            sb.AppendLine("<tbody>");
+            foreach (var p in pagosPorMedio.OrderByDescending(x => x.Total))
+            {
+                sb.AppendLine($"<tr><td>{ObtenerNombreMedio(p.Medio)}</td><td class='right'>{p.Cantidad}</td><td class='right'><strong>{p.Total:N0}</strong></td></tr>");
+            }
+            sb.AppendLine($"<tr style='background:#8b4513;color:#fff;'><td><strong>TOTAL</strong></td><td class='right'><strong>{pagosPorMedio.Sum(x => x.Cantidad)}</strong></td><td class='right'><strong>{pagosPorMedio.Sum(x => x.Total):N0}</strong></td></tr>");
+            sb.AppendLine("</tbody></table></div>");
+        }
+
+        // ========== RESUMEN FINAL ==========
+        sb.AppendLine("<div class='resumen-final d-flex justify-content-between align-items-center'>");
+        sb.AppendLine("<div>");
+        sb.AppendLine("<div style='font-size:9px;'>Ventas Brutas: " + $"{(resumen.VentasContado + resumen.VentasCredito):N0} ₲</div>");
+        sb.AppendLine("<div style='font-size:9px;'>NC/Devoluciones: " + $"-{resumen.TotalNC:N0} ₲</div>");
+        sb.AppendLine("<div style='font-size:9px;'>Cargo Servicio: " + $"+{resumen.TotalCargoServicio:N0} ₲</div>");
+        sb.AppendLine("</div>");
+        sb.AppendLine($"<div class='text-end'><div style='font-size:9px;'>TOTAL NETO</div><div style='font-size:16px;font-weight:bold;'>{resumen.TotalNeto:N0} ₲</div></div>");
+        sb.AppendLine("</div>");
+
+        sb.AppendLine("</div>");
+
+        var fullHtml = $"<!DOCTYPE html><html><head>{head}</head><body>{sb}</body></html>";
+        await JS.InvokeVoidAsync("printHtml", fullHtml);
+    }
+
+    private string TruncarTexto(string texto, int maxLargo)
+    {
+        if (string.IsNullOrEmpty(texto)) return "";
+        if (texto.Length <= maxLargo) return texto;
+        return texto.Substring(0, maxLargo - 2) + "..";
+    }
+
+    private async Task AbrirVistaPrevia()
+    {
+        // El modal ahora muestra el mismo contenido que el informe principal
+        mostrarVistaPrevia = true;
+        await Task.CompletedTask;
+    }
+
+    private void CerrarVistaPrevia()
+    {
+        mostrarVistaPrevia = false;
+    }
+
+    // ========== CLASES AUXILIARES ==========
+
+    private class ResumenRestaurante
+    {
+        public int MesasAtendidas { get; set; }
+        public int TotalComensales { get; set; }
+        public decimal TotalVentas { get; set; }
+        public int CantVentas { get; set; }
+        public decimal VentasContado { get; set; }
+        public int CantVentasContado { get; set; }
+        public decimal VentasCredito { get; set; }
+        public int CantVentasCredito { get; set; }
+        public decimal TotalCargoServicio { get; set; }
+        public decimal TotalNC { get; set; }
+        public decimal TotalNeto { get; set; }
+        public int TiempoPromedioMinutos { get; set; }
+        public decimal TicketPromedio { get; set; }
+
+        public string TiempoPromedioTexto => TiempoPromedioMinutos >= 60
+            ? $"{TiempoPromedioMinutos / 60}h {TiempoPromedioMinutos % 60}m"
+            : $"{TiempoPromedioMinutos}m";
+    }
+
+    private class VentaMesero
+    {
+        public string NombreMesero { get; set; } = "";
+        public int MesasAtendidas { get; set; }
+        public int CantPedidos { get; set; }
+        public decimal TotalVendido { get; set; }
+        public decimal TicketPromedio { get; set; }
+        public int TiempoPromedioMinutos { get; set; }
+
+        public string TiempoPromedioTexto => TiempoPromedioMinutos >= 60
+            ? $"{TiempoPromedioMinutos / 60}h {TiempoPromedioMinutos % 60}m"
+            : $"{TiempoPromedioMinutos}m";
+    }
+
+    private class ProductoVendido
+    {
+        public string Descripcion { get; set; } = "";
+        public decimal CantidadTotal { get; set; }
+        public decimal TotalVendido { get; set; }
+    }
+
+    private class PagoMedio
+    {
+        public string Medio { get; set; } = "";
+        public int Cantidad { get; set; }
+        public decimal Total { get; set; }
+    }
+
+    private class DetalleMesa
+    {
+        public int IdMesa { get; set; }
+        public string NombreMesa { get; set; } = "";
+        public int Comensales { get; set; }
+        public int CantPedidos { get; set; }
+        public string Meseros { get; set; } = "";
+        public decimal TotalVendido { get; set; }
+        public int TiempoPromedioMinutos { get; set; }
+
+        public string TiempoPromedioTexto => TiempoPromedioMinutos >= 60
+            ? $"{TiempoPromedioMinutos / 60}h {TiempoPromedioMinutos % 60}m"
+            : $"{TiempoPromedioMinutos}m";
+    }
+
+    private class TiempoMesa
+    {
+        public string NombreMesa { get; set; } = "";
+        public int TiempoMinutos { get; set; }
+    }
+}

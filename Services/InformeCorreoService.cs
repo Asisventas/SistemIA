@@ -188,8 +188,8 @@ namespace SistemIA.Services
                 var informesEnviados = 0;
                 var errores = new List<string>();
 
-                // Lista de informes que pueden enviarse al cierre
-                var informesCierre = new[]
+                // Lista base de informes que pueden enviarse al cierre
+                var informesCierreBase = new List<TipoInformeEnum>
                 {
                     TipoInformeEnum.VentasDetallado,
                     TipoInformeEnum.VentasAgrupado,
@@ -201,6 +201,16 @@ namespace SistemIA.Services
                     TipoInformeEnum.CuentasPorPagar,
                     TipoInformeEnum.ResumenCaja
                 };
+
+                // Si el modo complejos/restaurante está activo, agregar el informe de complejos
+                var configSistema = await ctx.ConfiguracionSistema.AsNoTracking().FirstOrDefaultAsync();
+                if (configSistema?.RestauranteModoActivo == true)
+                {
+                    informesCierreBase.Add(TipoInformeEnum.CierreComplejos);
+                    _logger.LogInformation("Modo Complejos activo: agregando informe de Cierre de Complejos");
+                }
+
+                var informesCierre = informesCierreBase.ToArray();
 
                 _logger.LogInformation("Iniciando envío de informes al cierre para sucursal {SucursalId}, FechaCaja: {FechaCaja}, Turno: {Turno}, Caja: {IdCaja}", 
                     sucursalId, fechaCaja, turno, idCaja);
@@ -233,6 +243,13 @@ namespace SistemIA.Services
                                 TipoInformeEnum.NCComprasAgrupado => await _informePdfService.GenerarPdfNCComprasAsync(sucursalId, fechaCaja, turno, idCaja),
                                 TipoInformeEnum.ProductosValorizado => await _informePdfService.GenerarPdfProductosValorizadoAsync(sucursalId),
                                 TipoInformeEnum.ResumenCaja => await _informePdfService.GenerarPdfResumenCajaAsync(sucursalId, fechaCaja, turno, idCaja),
+                                TipoInformeEnum.CierreComplejos => await _informePdfService.GenerarPdfCierreComplejosAsync(sucursalId, fechaCaja, turno, idCaja),
+                                // Informes de Gimnasio
+                                TipoInformeEnum.GimnasioAsistenciaClases => await _informePdfService.GenerarPdfGimnasioAsistenciaClasesAsync(sucursalId, fechaCaja),
+                                TipoInformeEnum.GimnasioMembresias => await _informePdfService.GenerarPdfGimnasioMembresiasAsync(sucursalId),
+                                TipoInformeEnum.GimnasioClasesPopulares => await _informePdfService.GenerarPdfGimnasioClasesPopularesAsync(sucursalId, fechaCaja.AddDays(-30), fechaCaja),
+                                TipoInformeEnum.GimnasioInstructores => await _informePdfService.GenerarPdfGimnasioInstructoresAsync(sucursalId, fechaCaja.AddDays(-30), fechaCaja),
+                                TipoInformeEnum.GimnasioMembresiasPorVencer => await _informePdfService.GenerarPdfGimnasioMembresiasPorVencerAsync(sucursalId),
                                 // Para informes sin generador QuestPDF, usar el método HTML legacy
                                 _ => await GenerarPdfLegacyAsync(tipo, sucursalId, fechaCaja, nombreEmpresa, nombreSucursal, turno, idCaja)
                             };
@@ -436,6 +453,7 @@ namespace SistemIA.Services
                 TipoInformeEnum.AlertaStockBajo => dest.RecibeAlertaStock,
                 TipoInformeEnum.CierreCaja => dest.RecibeCierreCaja,
                 TipoInformeEnum.ResumenCaja => dest.RecibeResumenCaja,
+                TipoInformeEnum.CierreComplejos => dest.RecibeInformeComplejos,
                 TipoInformeEnum.CuentasPorCobrar => dest.RecibeCuentasPorCobrar,
                 TipoInformeEnum.CuentasPorPagar => dest.RecibeCuentasPorPagar,
                 TipoInformeEnum.Asistencia => dest.RecibeAsistencia,

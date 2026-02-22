@@ -26,13 +26,39 @@ ELSE
     PRINT '- Sociedad ya existe'
 
 -- ============================================
+-- 1.5. CIUDAD (Requerida por Sucursal)
+-- ============================================
+IF NOT EXISTS (SELECT 1 FROM Ciudades WHERE IdCiudad = 1)
+BEGIN
+    SET IDENTITY_INSERT Ciudades ON;
+    INSERT INTO Ciudades (IdCiudad, Nombre, CodigoDepartamento)
+    VALUES (1, 'ASUNCION', '01');
+    SET IDENTITY_INSERT Ciudades OFF;
+    PRINT '✓ Ciudad Asunción creada'
+END
+ELSE
+    PRINT '- Ciudad ya existe'
+
+-- ============================================
 -- 2. SUCURSAL (Establecimiento principal)
 -- ============================================
-IF NOT EXISTS (SELECT 1 FROM Sucursal WHERE IdSucursal = 1)
+IF NOT EXISTS (SELECT 1 FROM Sucursal WHERE Id = 1)
 BEGIN
     SET IDENTITY_INSERT Sucursal ON;
-    INSERT INTO Sucursal (IdSucursal, Nombre, Direccion, NroEstablecimiento, Telefono, IdSociedad, Estado)
-    VALUES (1, 'Casa Matriz', 'Dirección de la sucursal', '001', '', 1, 1);
+    INSERT INTO Sucursal (
+        Id, NumSucursal, NombreSucursal, NombreEmpresa, Direccion, 
+        IdCiudad, Telefono, RUC, DV, SistemaPlaya, Automatizado,
+        ToleranciaEntradaMinutos, ToleranciaSalidaMinutos,
+        RequiereJustificacionTardanza, RequiereJustificacionSalidaTemprana,
+        MaximoHorasExtraDia, CalculoAutomaticoHorasExtra
+    )
+    VALUES (
+        1, '001', 'Casa Matriz', 'MI EMPRESA S.A.', 'Dirección de la sucursal',
+        1, '', '80000000', 0, 0, 0,
+        10, 10,
+        1, 1,
+        240, 1
+    );
     SET IDENTITY_INSERT Sucursal OFF;
     PRINT '✓ Sucursal creada'
 END
@@ -45,8 +71,8 @@ ELSE
 IF NOT EXISTS (SELECT 1 FROM Depositos WHERE IdDeposito = 1)
 BEGIN
     SET IDENTITY_INSERT Depositos ON;
-    INSERT INTO Depositos (IdDeposito, Nombre, Ubicacion, IdSucursal, Estado)
-    VALUES (1, 'Depósito Principal', 'Almacén general', 1, 1);
+    INSERT INTO Depositos (IdDeposito, Nombre, Descripcion, suc, Activo, FechaCreacion)
+    VALUES (1, 'Depósito Principal', 'Almacén general', 1, 1, GETDATE());
     SET IDENTITY_INSERT Depositos OFF;
     PRINT '✓ Depósito creado'
 END
@@ -59,8 +85,8 @@ ELSE
 IF NOT EXISTS (SELECT 1 FROM Cajas WHERE id_caja = 1)
 BEGIN
     SET IDENTITY_INSERT Cajas ON;
-    INSERT INTO Cajas (id_caja, Nombre, NroPuntoExpedicion, IdSucursal, Estado, IdDepositoDefault)
-    VALUES (1, 'Caja Principal', '001', 1, 1, 1);
+    INSERT INTO Cajas (id_caja, Nivel1, Nivel2, FacturaInicial, Serie, Timbrado, VigenciaDel, VigenciaAl)
+    VALUES (1, '001', '001', '0000001', 1, '00000000', GETDATE(), DATEADD(year, 1, GETDATE()));
     SET IDENTITY_INSERT Cajas OFF;
     PRINT '✓ Caja creada'
 END

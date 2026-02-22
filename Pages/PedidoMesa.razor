@@ -1,0 +1,1538 @@
+@page "/mesas/pedido/{IdMesa:int}"
+@page "/mesas/pedido/{IdMesa:int}/{IdPedido:int}"
+@page "/mesas/pedido/editar/{IdPedido:int}"
+@page "/mesas/pedido/cobrar/{IdPedido:int}"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Services
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager NavManager
+@inject IJSRuntime JS
+@inject ICorreoService CorreoService
+@inject PermisosService PermisosService
+@inject ComandaService ComandaService
+
+<PageTitle>Pedidos @_mesa?.TextoMostrar</PageTitle>
+
+<PageProtection Modulo="/mesas/pedido" Permiso="VIEW">
+
+<div class="container-fluid py-3">
+    @if (_cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2 text-muted">Cargando pedido...</p>
+        </div>
+    }
+    else if (_mesa == null)
+    {
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Mesa no encontrada o no disponible.
+            <a href="/mesas/panel" class="alert-link">Volver al panel</a>
+        </div>
+    }
+    else
+    {
+        <!-- Encabezado -->
+        <div class="row mb-3">
+            <div class="col">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <h4 class="mb-0">
+                            <i class="bi bi-grid-3x3-gap text-primary me-2"></i>
+                            @_mesa.TextoMostrar
+                            @if (_pedido != null && _pedido.IdPedido > 0)
+                            {
+                                <span class="badge bg-info ms-2">Pedido #@_pedido.IdPedido</span>
+                            }
+                        </h4>
+                        <small class="text-muted">
+                            @_mesa.Zona · Capacidad: @_mesa.Capacidad personas
+                            @if (_pedido?.HoraInicio != null)
+                            {
+                                <span class="ms-2">
+                                    <i class="bi bi-clock"></i> @_pedido.TiempoTranscurridoTexto
+                                </span>
+                            }
+                        </small>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        @if (_pedido?.Estado == "Abierto")
+                        {
+                            <button class="btn btn-outline-warning" @onclick="ImprimirComanda" title="Imprimir Comanda">
+                                <i class="bi bi-printer"></i>
+                                <span class="d-none d-md-inline ms-1">Comanda</span>
+                            </button>
+                            <button class="btn btn-success" @onclick="MostrarModalCerrar" title="Cerrar y Facturar">
+                                <i class="bi bi-cash-stack"></i>
+                                <span class="d-none d-md-inline ms-1">Cerrar Mesa</span>
+                            </button>
+                        }
+                        <a href="/mesas/panel" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i>
+                            <span class="d-none d-md-inline ms-1">Volver</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Panel izquierdo: Búsqueda de productos -->
+            <div class="col-lg-5 mb-3">
+                <div class="card h-100">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-search me-2"></i>Agregar Productos</h6>
+                    </div>
+                    <div class="card-body">
+                        <!-- Búsqueda -->
+                        <div class="input-group mb-3">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" placeholder="Buscar producto..." 
+                                   @bind="_busquedaProducto" @bind:event="oninput" @onkeyup="BuscarProductos" />
+                            @if (!string.IsNullOrEmpty(_busquedaProducto))
+                            {
+                                <button class="btn btn-outline-secondary" @onclick="LimpiarBusqueda">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            }
+                        </div>
+
+                        <!-- Categorías rápidas -->
+                        @if (_clasificaciones.Any())
+                        {
+                            <div class="mb-3">
+                                <div class="d-flex flex-wrap gap-1">
+                                    <button class="btn btn-sm @(_clasificacionSeleccionada == null ? "btn-primary" : "btn-outline-primary")"
+                                            @onclick="() => FiltrarClasificacion(null)">
+                                        Todas
+                                    </button>
+                                    @foreach (var cat in _clasificaciones.Take(8))
+                                    {
+                                        <button class="btn btn-sm @(_clasificacionSeleccionada == cat.IdClasificacion ? "btn-primary" : "btn-outline-secondary")"
+                                                @onclick="() => FiltrarClasificacion(cat.IdClasificacion)">
+                                            @cat.Nombre
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Resultados de búsqueda -->
+                        <div class="productos-lista" style="max-height: 400px; overflow-y: auto;">
+                            @if (_productosFiltrados.Any())
+                            {
+                                @foreach (var prod in _productosFiltrados.Take(20))
+                                {
+                                    <div class="producto-item d-flex justify-content-between align-items-center p-2 border-bottom hover-bg"
+                                         @onclick="() => AgregarProducto(prod)" style="cursor: pointer;">
+                                        <div>
+                                            <div class="fw-medium">@prod.Descripcion</div>
+                                            <small class="text-muted">@prod.Clasificacion?.Nombre</small>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="fw-bold text-primary">@prod.PrecioUnitarioGs.ToString("N0")</div>
+                                            <small class="text-muted">Stock: @prod.Stock.ToString("N0")</small>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                            else if (!string.IsNullOrEmpty(_busquedaProducto))
+                            {
+                                <div class="text-center text-muted py-4">
+                                    <i class="bi bi-search fs-3 d-block mb-2"></i>
+                                    No se encontraron productos
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center text-muted py-4">
+                                    <i class="bi bi-box-seam fs-3 d-block mb-2"></i>
+                                    Busque un producto o seleccione una categoría
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel derecho: Detalle del pedido -->
+            <div class="col-lg-7">
+                <div class="card">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="bi bi-receipt me-2"></i>
+                            Detalle del Pedido
+                            @if (_detalles.Any())
+                            {
+                                <span class="badge bg-secondary ms-2">@_detalles.Count items</span>
+                            }
+                        </h6>
+                        @if (_detalles.Any())
+                        {
+                            <button class="btn btn-sm btn-outline-success" @onclick="GuardarPedido" disabled="@_guardando">
+                                @if (_guardando)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                <i class="bi bi-check-lg me-1"></i>Guardar
+                            </button>
+                        }
+                    </div>
+                    <div class="card-body p-0">
+                        @if (_detalles.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Producto</th>
+                                            <th class="text-center" style="width: 120px;">Cant.</th>
+                                            <th class="text-end" style="width: 100px;">P.Unit</th>
+                                            <th class="text-end" style="width: 100px;">Importe</th>
+                                            <th style="width: 50px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var det in _detalles.OrderBy(d => d.NumeroComensal).ThenBy(d => d.FechaCreacion))
+                                        {
+                                            <tr class="@(det.Estado == "Listo" ? "table-success" : det.Estado == "EnPreparacion" ? "table-warning" : "")">
+                                                <td>
+                                                    <div class="fw-medium">@det.Descripcion</div>
+                                                    @if (!string.IsNullOrEmpty(det.NotasCocina))
+                                                    {
+                                                        <small class="text-muted fst-italic">@det.NotasCocina</small>
+                                                    }
+                                                    @if (_config?.RestaurantePermitirDivisionCuenta == true)
+                                                    {
+                                                        <small class="badge bg-secondary">Comensal @det.NumeroComensal</small>
+                                                    }
+                                                </td>
+                                                <td class="text-center">
+                                                    <div class="input-group input-group-sm justify-content-center">
+                                                        <button class="btn btn-outline-secondary" @onclick="() => CambiarCantidad(det, -1)">
+                                                            <i class="bi bi-dash"></i>
+                                                        </button>
+                                                        <input type="number" class="form-control text-center" style="width: 50px; min-width: 50px;"
+                                                               value="@det.Cantidad" @onchange="e => ActualizarCantidad(det, e)" />
+                                                        <button class="btn btn-outline-secondary" @onclick="() => CambiarCantidad(det, 1)">
+                                                            <i class="bi bi-plus"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                                <td class="text-end">@det.PrecioUnitario.ToString("N0")</td>
+                                                <td class="text-end fw-bold">@det.Importe.ToString("N0")</td>
+                                                <td>
+                                                    <div class="btn-group btn-group-sm">
+                                                        <button class="btn btn-outline-secondary" @onclick="() => MostrarModalNotas(det)" title="Notas cocina">
+                                                            <i class="bi bi-chat-dots"></i>
+                                                        </button>
+                                                        <button class="btn btn-outline-danger" @onclick="() => EliminarDetalle(det)" title="Eliminar">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Totales -->
+                            <div class="border-top p-3 bg-light">
+                                <div class="row">
+                                    <div class="col-6 col-md-4 text-start">
+                                        <small class="text-muted">Exenta:</small>
+                                        <div>@_totalExenta.ToString("N0")</div>
+                                    </div>
+                                    <div class="col-6 col-md-4 text-center">
+                                        <small class="text-muted">IVA 5%:</small>
+                                        <div>@_totalIva5.ToString("N0")</div>
+                                    </div>
+                                    <div class="col-6 col-md-4 text-end">
+                                        <small class="text-muted">IVA 10%:</small>
+                                        <div>@_totalIva10.ToString("N0")</div>
+                                    </div>
+                                </div>
+                                <hr />
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="fs-5">TOTAL:</span>
+                                    <span class="fs-4 fw-bold text-primary">Gs @_totalPedido.ToString("N0")</span>
+                                </div>
+                                @if (_pedido?.MontoPagado > 0)
+                                {
+                                    <div class="d-flex justify-content-between align-items-center text-success">
+                                        <span>Pagado:</span>
+                                        <span class="fw-bold">Gs @_pedido.MontoPagado.ToString("N0")</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center text-danger">
+                                        <span>Pendiente:</span>
+                                        <span class="fw-bold">Gs @_pedido.SaldoPendiente.ToString("N0")</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-cart3 fs-1 d-block mb-3"></i>
+                                <p>El pedido está vacío</p>
+                                <p class="small">Busque productos a la izquierda para agregarlos</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Pagos parciales (si está habilitado) -->
+                @if (_config?.RestaurantePermitirPagosParciales == true && _pedido != null && _pedido.Pagos?.Any() == true)
+                {
+                    <div class="card mt-3">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0"><i class="bi bi-cash-coin me-2"></i>Pagos Registrados</h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Forma</th>
+                                        <th class="text-end">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var pago in _pedido.Pagos)
+                                    {
+                                        <tr>
+                                            <td>@pago.FechaPago.ToString("dd/MM HH:mm")</td>
+                                            <td>@pago.FormaPago</td>
+                                            <td class="text-end fw-bold">@pago.Monto.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Modal Notas Cocina -->
+@if (_mostrarModalNotas && _detalleEditando != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-chat-dots me-2"></i>Notas para Cocina
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModalNotas"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label">@_detalleEditando.Descripcion</label>
+                    <textarea class="form-control" rows="3" @bind="_notasTemp" 
+                              placeholder="Ej: Sin sal, bien cocido, extra queso..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModalNotas">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="GuardarNotas">
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Cerrar Mesa -->
+@if (_mostrarModalCerrar)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cash-stack me-2"></i>Cerrar Mesa @_mesa?.TextoMostrar
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModalCerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted">Total del Pedido</h6>
+                                    <h3 class="text-primary mb-0">Gs @_totalPedido.ToString("N0")</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted">Saldo Pendiente</h6>
+                                    <h3 class="text-danger mb-0">Gs @(_pedido?.SaldoPendiente ?? _totalPedido).ToString("N0")</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (_config?.RestaurantePermitirDivisionCuenta == true)
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Puede dividir la cuenta por comensal o facturar todo junto.
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Tipo de Cierre</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" id="cierreTotal" name="tipoCierre" 
+                                       checked="@(_tipoCierre == "Total")" @onchange="@(() => _tipoCierre = "Total")" />
+                                <label class="btn btn-outline-primary" for="cierreTotal">
+                                    <i class="bi bi-receipt me-1"></i>Factura Total
+                                </label>
+                                <input type="radio" class="btn-check" id="cierreDividido" name="tipoCierre"
+                                       checked="@(_tipoCierre == "Dividido")" @onchange="@(() => _tipoCierre = "Dividido")" />
+                                <label class="btn btn-outline-primary" for="cierreDividido">
+                                    <i class="bi bi-people me-1"></i>Dividir por Comensal
+                                </label>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Forma de Pago</label>
+                        <select class="form-select" @bind="_formaPagoCierre">
+                            <option value="">Seleccione...</option>
+                            @foreach (var tipo in _tiposPago)
+                            {
+                                <option value="@tipo.Nombre">@tipo.Nombre</option>
+                            }
+                        </select>
+                    </div>
+
+                    @if (_formaPagoCierre == "Efectivo")
+                    {
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">Monto Recibido</label>
+                                <input type="number" class="form-control" @bind="_montoRecibido" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Vuelto</label>
+                                <input type="text" class="form-control" readonly 
+                                       value="@((_montoRecibido - (_pedido?.SaldoPendiente ?? _totalPedido)).ToString("N0"))" />
+                            </div>
+                        </div>
+                    }
+
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="generarFactura" @bind="_generarFactura" />
+                        <label class="form-check-label" for="generarFactura">
+                            Generar factura automáticamente
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <div>
+                        @if ((_pedido?.SaldoPendiente ?? _totalPedido) > 0)
+                        {
+                            <button class="btn btn-outline-warning" @onclick="MostrarModalCortesia" title="Declarar como cortesía de la casa">
+                                <i class="bi bi-gift me-1"></i>Cortesía
+                            </button>
+                        }
+                    </div>
+                    <div>
+                        <button class="btn btn-secondary" @onclick="CerrarModalCerrar">Cancelar</button>
+                        <button class="btn btn-success" @onclick="CerrarMesa" disabled="@(string.IsNullOrEmpty(_formaPagoCierre) || _cerrando)">
+                            @if (_cerrando)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-check-lg me-1"></i>Cerrar y Cobrar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Cortesía de la Casa -->
+@if (_mostrarModalCortesia)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.7);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-warning">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">
+                        <i class="bi bi-gift-fill me-2"></i>Cortesía de la Casa
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModalCortesia"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning mb-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Monto a condonar:</strong> Gs @((_pedido?.SaldoPendiente ?? _totalPedido).ToString("N0"))
+                    </div>
+                    
+                    <p class="text-muted small">
+                        Esta acción requiere autorización de un usuario con permisos administrativos.
+                        Se enviará notificación por correo.
+                    </p>
+
+                    @if (!string.IsNullOrWhiteSpace(_errorCortesia))
+                    {
+                        <div class="alert alert-danger py-2">
+                            <i class="bi bi-exclamation-circle me-2"></i>@_errorCortesia
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Usuario Autorizador</label>
+                        <input type="text" class="form-control" @bind="_usuarioCortesia" 
+                               placeholder="Nombre de usuario" disabled="@_validandoCortesia" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña</label>
+                        <input type="password" class="form-control" @bind="_passwordCortesia" 
+                               placeholder="Ingrese contraseña" disabled="@_validandoCortesia" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Motivo de la Cortesía <span class="text-danger">*</span></label>
+                        <textarea class="form-control" rows="3" @bind="_motivoCortesia" 
+                                  placeholder="Ej: Cliente frecuente, disculpa por demora, etc." disabled="@_validandoCortesia"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModalCortesia" disabled="@_validandoCortesia">
+                        Cancelar
+                    </button>
+                    <button class="btn btn-warning" @onclick="ValidarYProcesarCortesia" 
+                            disabled="@(_validandoCortesia || string.IsNullOrWhiteSpace(_usuarioCortesia) || string.IsNullOrWhiteSpace(_passwordCortesia) || string.IsNullOrWhiteSpace(_motivoCortesia))">
+                        @if (_validandoCortesia)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Procesando...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-check-lg me-1"></i>
+                            <span>Autorizar Cortesía</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    [Parameter] public int IdMesa { get; set; }
+    [Parameter] public int? IdPedido { get; set; }
+
+    private bool _cargando = true;
+    private bool _guardando = false;
+    private bool _cerrando = false;
+    private string? _error;
+
+    private Mesa? _mesa;
+    private Pedido? _pedido;
+    private SistemIA.Models.ConfiguracionSistema? _config;
+    private Sucursal? _sucursalActual;
+    private Caja? _cajaActual;
+    private int _idSucursal = 1; // TODO: Obtener de sesión
+    #pragma warning disable CS0649 // Campo para caja - será obtenido de sesión
+    private int? _idCaja; // TODO: Obtener de sesión
+    #pragma warning restore CS0649
+    private int _turnoActual = 1;
+    private DateTime _fechaCaja = DateTime.Today;
+
+    // Búsqueda de productos
+    private string _busquedaProducto = "";
+    private int? _clasificacionSeleccionada;
+    private List<Producto> _productosDisponibles = new();
+    private List<Producto> _productosFiltrados = new();
+    private List<Clasificacion> _clasificaciones = new();
+
+    // Detalle del pedido
+    private List<PedidoDetalle> _detalles = new();
+
+    // Totales
+    private decimal _totalExenta => _detalles.Sum(d => d.Exenta);
+    private decimal _totalIva5 => _detalles.Sum(d => d.Grabado5);
+    private decimal _totalIva10 => _detalles.Sum(d => d.Grabado10);
+    private decimal _totalPedido => _detalles.Sum(d => d.Importe);
+
+    // Modal notas
+    private bool _mostrarModalNotas = false;
+    private PedidoDetalle? _detalleEditando;
+    private string _notasTemp = "";
+
+    // Modal cerrar
+    private bool _mostrarModalCerrar = false;
+    private string _tipoCierre = "Total";
+    private string _formaPagoCierre = "";
+    private decimal _montoRecibido = 0;
+    private bool _generarFactura = true;
+    private List<TipoPago> _tiposPago = new();
+    
+    // Modal cortesía
+    private bool _mostrarModalCortesia = false;
+    private string _usuarioCortesia = "";
+    private string _passwordCortesia = "";
+    private string _motivoCortesia = "";
+    private string _errorCortesia = "";
+    private bool _validandoCortesia = false;
+
+    // Comanda
+    private bool _imprimiendoComanda = false;
+    private int _numeroComanda = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _cargando = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Cargar configuración
+            _config = await db.ConfiguracionSistema.FirstOrDefaultAsync();
+
+            // Si viene solo IdPedido (rutas /editar/{IdPedido} o /cobrar/{IdPedido}), cargar el pedido primero
+            if (IdMesa == 0 && IdPedido.HasValue)
+            {
+                var pedidoExistente = await db.Pedidos
+                    .Include(p => p.Detalles)
+                    .Include(p => p.Pagos)
+                    .Include(p => p.Mesa)
+                    .FirstOrDefaultAsync(p => p.IdPedido == IdPedido.Value);
+
+                if (pedidoExistente != null)
+                {
+                    _pedido = pedidoExistente;
+                    _mesa = pedidoExistente.Mesa;
+                    _detalles = _pedido.Detalles?.ToList() ?? new();
+                }
+            }
+            else
+            {
+                // Cargar mesa por IdMesa
+                _mesa = await db.Mesas
+                    .FirstOrDefaultAsync(m => m.IdMesa == IdMesa);
+
+                if (_mesa == null) return;
+
+                // Buscar pedido activo de la mesa
+                var pedidoActivo = await db.Pedidos
+                    .Include(p => p.Detalles)
+                    .Include(p => p.Pagos)
+                    .FirstOrDefaultAsync(p => p.IdMesa == IdMesa && p.Estado == "Abierto");
+
+                if (pedidoActivo != null)
+                {
+                    _pedido = pedidoActivo;
+                    _detalles = _pedido.Detalles?.ToList() ?? new();
+                }
+                else if (IdPedido.HasValue)
+                {
+                    // Cargar pedido específico por parámetro
+                    _pedido = await db.Pedidos
+                        .Include(p => p.Detalles)
+                        .Include(p => p.Pagos)
+                        .FirstOrDefaultAsync(p => p.IdPedido == IdPedido.Value);
+                    _detalles = _pedido?.Detalles?.ToList() ?? new();
+                }
+                else
+                {
+                    // Crear nuevo pedido
+                    _pedido = new Pedido
+                    {
+                        IdMesa = IdMesa,
+                        IdSucursal = _idSucursal,
+                        IdCaja = _idCaja,
+                        Turno = _turnoActual,
+                        FechaCaja = _fechaCaja,
+                        FechaApertura = DateTime.Now,
+                        HoraInicio = DateTime.Now,
+                        Estado = "Abierto"
+                    };
+                    _detalles = new();
+                }
+            }
+
+            if (_mesa == null) return;
+
+            // Cargar productos activos
+            _productosDisponibles = await db.Productos
+                .Include(p => p.Clasificacion)
+                .Where(p => p.Activo)
+                .OrderBy(p => p.Descripcion)
+                .ToListAsync();
+
+            // Cargar clasificaciones (categorías de productos)
+            _clasificaciones = await db.Clasificaciones
+                .Where(c => c.Activo)
+                .OrderBy(c => c.Nombre)
+                .ToListAsync();
+
+            // Cargar tipos de pago
+            _tiposPago = await db.TiposPago.Where(t => t.Activo).ToListAsync();
+
+            // Cargar sucursal y caja
+            _sucursalActual = await db.Sucursal.FindAsync(_idSucursal);
+            if (_idCaja.HasValue)
+            {
+                _cajaActual = await db.Cajas.FindAsync(_idCaja);
+                _fechaCaja = _cajaActual?.FechaActualCaja ?? DateTime.Today;
+            }
+
+            _productosFiltrados = _productosDisponibles;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            Console.WriteLine($"Error cargando pedido: {ex}");
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void BuscarProductos()
+    {
+        FiltrarProductos();
+    }
+
+    private void FiltrarClasificacion(int? idClasificacion)
+    {
+        _clasificacionSeleccionada = idClasificacion;
+        FiltrarProductos();
+    }
+
+    private void FiltrarProductos()
+    {
+        var query = _productosDisponibles.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(_busquedaProducto))
+        {
+            var busq = _busquedaProducto.ToLower();
+            query = query.Where(p => 
+                p.Descripcion.ToLower().Contains(busq) ||
+                (p.CodigoBarras ?? "").ToLower().Contains(busq) ||
+                p.CodigoInterno.ToLower().Contains(busq));
+        }
+
+        if (_clasificacionSeleccionada.HasValue)
+        {
+            query = query.Where(p => p.IdClasificacion == _clasificacionSeleccionada);
+        }
+
+        _productosFiltrados = query.OrderBy(p => p.Descripcion).ToList();
+    }
+
+    private void LimpiarBusqueda()
+    {
+        _busquedaProducto = "";
+        _clasificacionSeleccionada = null;
+        _productosFiltrados = _productosDisponibles;
+    }
+
+    private void AgregarProducto(Producto producto)
+    {
+        // Verificar si ya existe en el pedido
+        var existente = _detalles.FirstOrDefault(d => d.IdProducto == producto.IdProducto && string.IsNullOrEmpty(d.NotasCocina));
+        
+        if (existente != null)
+        {
+            existente.Cantidad++;
+            CalcularTotalesDetalle(existente, producto);
+        }
+        else
+        {
+            var detalle = new PedidoDetalle
+            {
+                IdProducto = producto.IdProducto,
+                CodigoProducto = producto.CodigoInterno,
+                Descripcion = producto.Descripcion,
+                Cantidad = 1,
+                PrecioUnitario = producto.PrecioUnitarioGs,
+                IdTipoIva = producto.IdTipoIva,
+                NumeroComensal = 1, // Por defecto comensal 1
+                Estado = "Pendiente",
+                FechaCreacion = DateTime.Now
+            };
+            CalcularTotalesDetalle(detalle, producto);
+            _detalles.Add(detalle);
+        }
+
+        StateHasChanged();
+    }
+
+    private void CalcularTotalesDetalle(PedidoDetalle detalle, Producto producto)
+    {
+        var importe = detalle.Cantidad * detalle.PrecioUnitario;
+        detalle.Importe = importe;
+
+        // Calcular IVA según el tipo de producto
+        var tipoIva = producto.IdTipoIva;
+        
+        if (tipoIva == 3) // Exenta
+        {
+            detalle.Exenta = importe;
+            detalle.Grabado5 = 0;
+            detalle.Grabado10 = 0;
+            detalle.IVA5 = 0;
+            detalle.IVA10 = 0;
+        }
+        else if (tipoIva == 2) // IVA 5%
+        {
+            detalle.Exenta = 0;
+            detalle.Grabado5 = importe;
+            detalle.Grabado10 = 0;
+            detalle.IVA5 = Math.Round(importe / 21m, 0);
+            detalle.IVA10 = 0;
+        }
+        else // IVA 10% (default)
+        {
+            detalle.Exenta = 0;
+            detalle.Grabado5 = 0;
+            detalle.Grabado10 = importe;
+            detalle.IVA5 = 0;
+            detalle.IVA10 = Math.Round(importe / 11m, 0);
+        }
+    }
+
+    private void CambiarCantidad(PedidoDetalle detalle, int cambio)
+    {
+        var nuevaCantidad = detalle.Cantidad + cambio;
+        if (nuevaCantidad < 1) return;
+
+        detalle.Cantidad = nuevaCantidad;
+        var producto = _productosDisponibles.FirstOrDefault(p => p.IdProducto == detalle.IdProducto);
+        if (producto != null)
+        {
+            CalcularTotalesDetalle(detalle, producto);
+        }
+        StateHasChanged();
+    }
+
+    private void ActualizarCantidad(PedidoDetalle detalle, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var cantidad) && cantidad >= 1)
+        {
+            detalle.Cantidad = cantidad;
+            var producto = _productosDisponibles.FirstOrDefault(p => p.IdProducto == detalle.IdProducto);
+            if (producto != null)
+            {
+                CalcularTotalesDetalle(detalle, producto);
+            }
+        }
+    }
+
+    private void EliminarDetalle(PedidoDetalle detalle)
+    {
+        _detalles.Remove(detalle);
+        StateHasChanged();
+    }
+
+    private void MostrarModalNotas(PedidoDetalle detalle)
+    {
+        _detalleEditando = detalle;
+        _notasTemp = detalle.NotasCocina ?? "";
+        _mostrarModalNotas = true;
+    }
+
+    private void CerrarModalNotas()
+    {
+        _mostrarModalNotas = false;
+        _detalleEditando = null;
+        _notasTemp = "";
+    }
+
+    private void GuardarNotas()
+    {
+        if (_detalleEditando != null)
+        {
+            _detalleEditando.NotasCocina = _notasTemp;
+        }
+        CerrarModalNotas();
+    }
+
+    private async Task GuardarPedido()
+    {
+        if (_guardando) return;
+        _guardando = true;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            // ========== VERIFICAR SI LA CAJA CAMBIÓ (CIERRE DE CAJA) - SOLO PARA NUEVOS PEDIDOS ==========
+            if (_pedido!.IdPedido == 0 && _cajaActual != null)
+            {
+                var cajaDb = await db.Cajas.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.IdCaja == _cajaActual.IdCaja);
+                
+                if (cajaDb != null)
+                {
+                    var fechaCajaDb = cajaDb.FechaActualCaja ?? DateTime.Today;
+                    var turnoDb = cajaDb.TurnoActual ?? 1;
+                    
+                    // Si cambió, actualizar el pedido con la nueva fecha/turno
+                    if (fechaCajaDb.Date != _fechaCaja.Date || turnoDb != _turnoActual)
+                    {
+                        Console.WriteLine($"[PedidoMesa] Caja cambió. Actualizando pedido: Fecha {_fechaCaja:dd/MM} → {fechaCajaDb:dd/MM}, Turno {_turnoActual} → {turnoDb}");
+                        _fechaCaja = fechaCajaDb;
+                        _turnoActual = turnoDb;
+                        _cajaActual = cajaDb;
+                        _pedido.FechaCaja = _fechaCaja;
+                        _pedido.Turno = _turnoActual;
+                    }
+                }
+            }
+
+            // Actualizar totales del pedido
+            _pedido!.TotalExenta = _totalExenta;
+            _pedido.TotalIva5 = _totalIva5;
+            _pedido.TotalIva10 = _totalIva10;
+            _pedido.Total = _totalPedido;
+            _pedido.Subtotal = _totalPedido;
+
+            if (_pedido.IdPedido == 0)
+            {
+                // Nuevo pedido
+                _pedido.Detalles = _detalles;
+                db.Pedidos.Add(_pedido);
+                await db.SaveChangesAsync();
+
+                // Actualizar la mesa como ocupada
+                var mesa = await db.Mesas.FindAsync(IdMesa);
+                if (mesa != null)
+                {
+                    mesa.Estado = "Ocupada";
+                    await db.SaveChangesAsync();
+                }
+            }
+            else
+            {
+                // Pedido existente - actualizar
+                var pedidoDb = await db.Pedidos
+                    .Include(p => p.Detalles)
+                    .FirstOrDefaultAsync(p => p.IdPedido == _pedido.IdPedido);
+
+                if (pedidoDb != null)
+                {
+                    // Actualizar campos del pedido
+                    pedidoDb.TotalExenta = _totalExenta;
+                    pedidoDb.TotalIva5 = _totalIva5;
+                    pedidoDb.TotalIva10 = _totalIva10;
+                    pedidoDb.Total = _totalPedido;
+                    pedidoDb.Subtotal = _totalPedido;
+
+                    // Eliminar detalles existentes que ya no están
+                    var detallesAEliminar = pedidoDb.Detalles?
+                        .Where(d => !_detalles.Any(nd => nd.IdPedidoDetalle == d.IdPedidoDetalle && d.IdPedidoDetalle > 0))
+                        .ToList();
+                    if (detallesAEliminar?.Any() == true)
+                    {
+                        db.PedidosDetalles.RemoveRange(detallesAEliminar);
+                    }
+
+                    // Agregar o actualizar detalles
+                    foreach (var det in _detalles)
+                    {
+                        if (det.IdPedidoDetalle == 0)
+                        {
+                            det.IdPedido = _pedido.IdPedido;
+                            db.PedidosDetalles.Add(det);
+                        }
+                        else
+                        {
+                            var detDb = pedidoDb.Detalles?.FirstOrDefault(d => d.IdPedidoDetalle == det.IdPedidoDetalle);
+                            if (detDb != null)
+                            {
+                                detDb.Cantidad = det.Cantidad;
+                                detDb.Importe = det.Importe;
+                                detDb.Exenta = det.Exenta;
+                                detDb.Grabado5 = det.Grabado5;
+                                detDb.Grabado10 = det.Grabado10;
+                                detDb.IVA5 = det.IVA5;
+                                detDb.IVA10 = det.IVA10;
+                                detDb.NotasCocina = det.NotasCocina;
+                                detDb.NumeroComensal = det.NumeroComensal;
+                            }
+                        }
+                    }
+
+                    await db.SaveChangesAsync();
+                }
+            }
+
+            await JS.InvokeVoidAsync("alert", "Pedido guardado correctamente");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}");
+            Console.WriteLine($"Error guardando pedido: {ex}");
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task ImprimirComanda()
+    {
+        if (_imprimiendoComanda || _detalles.Count == 0) return;
+        
+        // Verificar que haya items pendientes de enviar
+        var itemsPendientes = _detalles.Where(d => !d.EnviadoCocina).ToList();
+        if (!itemsPendientes.Any())
+        {
+            await JS.InvokeVoidAsync("alert", "No hay items nuevos para enviar a cocina.\n\nTodos los items ya fueron enviados.");
+            return;
+        }
+        
+        // Verificar que haya caja configurada con impresora
+        if (_cajaActual == null)
+        {
+            await JS.InvokeVoidAsync("alert", "No hay caja configurada. Configure una caja para imprimir comandas.");
+            return;
+        }
+        
+        if (string.IsNullOrEmpty(_cajaActual.ImpresoraComandaCocina) && string.IsNullOrEmpty(_cajaActual.ImpresoraComandaBarra))
+        {
+            await JS.InvokeVoidAsync("alert", "No hay impresoras de comanda configuradas en esta caja.\n\nConfigure la impresora de cocina o barra en Configuración > Cajas.");
+            return;
+        }
+        
+        _imprimiendoComanda = true;
+        StateHasChanged();
+        
+        try
+        {
+            // Primero guardar el pedido si no está guardado
+            if (_pedido?.IdPedido == 0)
+            {
+                await GuardarPedido();
+            }
+            
+            // Generar número de comanda
+            _numeroComanda++;
+            
+            // Separar items por destino (cocina vs barra)
+            var itemsCocina = new List<ComandaService.ItemComanda>();
+            var itemsBarra = new List<ComandaService.ItemComanda>();
+            
+            // Solo items que NO han sido enviados a cocina
+            foreach (var det in _detalles.Where(d => !d.EnviadoCocina))
+            {
+                var item = new ComandaService.ItemComanda
+                {
+                    Cantidad = (int)det.Cantidad,
+                    Descripcion = det.Descripcion ?? "",
+                    Modificadores = det.Modificadores,
+                    NotasCocina = det.NotasCocina,
+                    EsUrgente = det.EsUrgente
+                };
+                
+                // Determinar destino según categoría del producto
+                var producto = _productosDisponibles.FirstOrDefault(p => p.IdProducto == det.IdProducto);
+                var categoria = producto?.Clasificacion?.Nombre?.ToUpper() ?? "";
+                
+                // Items de barra: bebidas, tragos, cocteles, etc.
+                if (categoria.Contains("BEBIDA") || categoria.Contains("TRAGO") || 
+                    categoria.Contains("COCTEL") || categoria.Contains("CERVEZA") ||
+                    categoria.Contains("VINO") || categoria.Contains("CAFE") ||
+                    categoria.Contains("BARRA"))
+                {
+                    itemsBarra.Add(item);
+                }
+                else
+                {
+                    itemsCocina.Add(item);
+                }
+            }
+            
+            var errores = new List<string>();
+            var mesero = "Mesero"; // TODO: Obtener de sesión de usuario
+            
+            // Imprimir comanda de COCINA si hay items y hay impresora configurada
+            if (itemsCocina.Any() && !string.IsNullOrEmpty(_cajaActual.ImpresoraComandaCocina))
+            {
+                var comandaCocina = new ComandaService.DatosComanda
+                {
+                    NumeroComanda = _numeroComanda,
+                    NumeroPedido = _pedido?.IdPedido ?? 0,
+                    NombreMesa = _mesa?.TextoMostrar,
+                    NumeroMesa = _mesa?.Numero?.ToString(),
+                    Mesero = mesero,
+                    Comensales = _pedido?.Comensales ?? 1,
+                    Fecha = DateTime.Now,
+                    TipoDestino = "COCINA",
+                    Items = itemsCocina,
+                    Observaciones = _pedido?.Observaciones
+                };
+                
+                var resultadoCocina = await ComandaService.ImprimirComandaAsync(comandaCocina, _cajaActual);
+                if (!resultadoCocina.Exitoso)
+                {
+                    errores.Add($"COCINA: {resultadoCocina.Mensaje}");
+                }
+            }
+            
+            // Imprimir comanda de BARRA si hay items y hay impresora configurada
+            if (itemsBarra.Any() && !string.IsNullOrEmpty(_cajaActual.ImpresoraComandaBarra))
+            {
+                var comandaBarra = new ComandaService.DatosComanda
+                {
+                    NumeroComanda = _numeroComanda,
+                    NumeroPedido = _pedido?.IdPedido ?? 0,
+                    NombreMesa = _mesa?.TextoMostrar,
+                    NumeroMesa = _mesa?.Numero?.ToString(),
+                    Mesero = mesero,
+                    Comensales = _pedido?.Comensales ?? 1,
+                    Fecha = DateTime.Now,
+                    TipoDestino = "BARRA",
+                    Items = itemsBarra,
+                    Observaciones = _pedido?.Observaciones
+                };
+                
+                var resultadoBarra = await ComandaService.ImprimirComandaAsync(comandaBarra, _cajaActual);
+                if (!resultadoBarra.Exitoso)
+                {
+                    errores.Add($"BARRA: {resultadoBarra.Mensaje}");
+                }
+            }
+            
+            // Marcar items como enviados a cocina
+            foreach (var det in _detalles.Where(d => !d.EnviadoCocina))
+            {
+                det.EnviadoCocina = true;
+                det.FechaEnvioCocina = DateTime.Now;
+                det.NumeroComanda = _numeroComanda;
+                det.Estado = "EnPreparacion";
+            }
+            
+            // Guardar cambios
+            await GuardarPedido();
+            
+            if (errores.Any())
+            {
+                await JS.InvokeVoidAsync("alert", $"Errores al imprimir:\n{string.Join("\n", errores)}");
+            }
+            else
+            {
+                var mensaje = $"Comanda #{_numeroComanda} enviada";
+                if (itemsCocina.Any()) mensaje += $"\n• Cocina: {itemsCocina.Count} items";
+                if (itemsBarra.Any()) mensaje += $"\n• Barra: {itemsBarra.Count} items";
+                await JS.InvokeVoidAsync("alert", mensaje);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al imprimir comanda: {ex.Message}");
+            Console.WriteLine($"Error imprimiendo comanda: {ex}");
+        }
+        finally
+        {
+            _imprimiendoComanda = false;
+            StateHasChanged();
+        }
+    }
+
+    private void MostrarModalCerrar()
+    {
+        _montoRecibido = _pedido?.SaldoPendiente ?? _totalPedido;
+        _mostrarModalCerrar = true;
+    }
+
+    private void CerrarModalCerrar()
+    {
+        _mostrarModalCerrar = false;
+    }
+
+    private async Task CerrarMesa()
+    {
+        if (_cerrando || string.IsNullOrEmpty(_formaPagoCierre)) return;
+        
+        // Validar que el pedido esté completamente pagado antes de cerrar
+        // El saldo pendiente después de aplicar el pago final debe ser 0
+        var saldoDespuesDePago = _pedido!.SaldoPendiente - _pedido.SaldoPendiente; // Esto será 0 porque el modal paga todo el saldo
+        // Pero si por alguna razón hay saldo, no permitir cerrar
+        if (_pedido!.Total <= 0)
+        {
+            await JS.InvokeVoidAsync("alert", "No hay consumo registrado en esta mesa.");
+            return;
+        }
+        
+        _cerrando = true;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Primero guardar el pedido si hay cambios
+            await GuardarPedido();
+
+            // Registrar el pago final
+            var pagoFinal = new PedidoPago
+            {
+                IdPedido = _pedido!.IdPedido,
+                FormaPago = _formaPagoCierre,
+                Monto = _pedido.SaldoPendiente,
+                FechaPago = DateTime.Now
+            };
+            db.PedidosPagos.Add(pagoFinal);
+
+            // Cerrar el pedido
+            var pedidoDb = await db.Pedidos.FindAsync(_pedido.IdPedido);
+            if (pedidoDb != null)
+            {
+                pedidoDb.Estado = "Pagado";
+                pedidoDb.FechaCierre = DateTime.Now;
+                pedidoDb.MontoPagado = pedidoDb.Total;
+            }
+
+            // Liberar la mesa
+            var mesa = await db.Mesas.FindAsync(IdMesa);
+            if (mesa != null)
+            {
+                mesa.Estado = "Libre";
+            }
+
+            await db.SaveChangesAsync();
+
+            // Generar factura si está habilitado
+            if (_generarFactura)
+            {
+                // TODO: Redirigir a página de ventas con el pedido precargado
+                // NavManager.NavigateTo($"/ventas?idPedido={_pedido.IdPedido}");
+            }
+
+            await JS.InvokeVoidAsync("alert", "Mesa cerrada correctamente");
+            NavManager.NavigateTo("/mesas/panel");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al cerrar mesa: {ex.Message}");
+            Console.WriteLine($"Error cerrando mesa: {ex}");
+        }
+        finally
+        {
+            _cerrando = false;
+        }
+    }
+    
+    // ========== CORTESÍA DE LA CASA ==========
+    
+    private void MostrarModalCortesia()
+    {
+        _usuarioCortesia = "";
+        _passwordCortesia = "";
+        _motivoCortesia = "";
+        _errorCortesia = "";
+        _validandoCortesia = false;
+        _mostrarModalCortesia = true;
+        _mostrarModalCerrar = false; // Cerrar el otro modal
+    }
+    
+    private void CerrarModalCortesia()
+    {
+        _mostrarModalCortesia = false;
+        _usuarioCortesia = "";
+        _passwordCortesia = "";
+        _motivoCortesia = "";
+        _errorCortesia = "";
+    }
+    
+    private async Task ValidarYProcesarCortesia()
+    {
+        if (_pedido == null) return;
+        
+        _validandoCortesia = true;
+        _errorCortesia = "";
+        StateHasChanged();
+        
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            // Buscar usuario por nombre
+            var usuario = await db.Usuarios
+                .FirstOrDefaultAsync(u => u.UsuarioNombre.ToLower() == _usuarioCortesia.ToLower().Trim());
+            
+            if (usuario == null)
+            {
+                _errorCortesia = "Usuario no encontrado.";
+                return;
+            }
+            
+            // Validar contraseña
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var bytes = System.Text.Encoding.UTF8.GetBytes(_passwordCortesia);
+            var hashIngresado = sha.ComputeHash(bytes);
+            
+            if (usuario.ContrasenaHash == null || !hashIngresado.SequenceEqual(usuario.ContrasenaHash))
+            {
+                _errorCortesia = "Contraseña incorrecta.";
+                return;
+            }
+            
+            // Verificar permisos de EDIT y DELETE en mesas Y pedidos
+            var tienePermisoEditMesas = await PermisosService.TienePermisoAsync(usuario.Id_Usu, "/mesas", "EDIT");
+            var tienePermisoDeleteMesas = await PermisosService.TienePermisoAsync(usuario.Id_Usu, "/mesas", "DELETE");
+            var tienePermisoEditPedidos = await PermisosService.TienePermisoAsync(usuario.Id_Usu, "/mesas/panel", "EDIT");
+            var tienePermisoDeletePedidos = await PermisosService.TienePermisoAsync(usuario.Id_Usu, "/mesas/panel", "DELETE");
+            
+            // Validar que tenga TODOS los permisos requeridos
+            if (!tienePermisoEditMesas || !tienePermisoDeleteMesas || !tienePermisoEditPedidos || !tienePermisoDeletePedidos)
+            {
+                _errorCortesia = "El usuario no tiene permisos suficientes (requiere UPDATE y DELETE en Mesas y Pedidos).";
+                return;
+            }
+            
+            // ✅ Usuario autorizado - procesar cortesía
+            await ProcesarCortesiaAsync(db, usuario);
+            
+            _mostrarModalCortesia = false;
+            
+            await JS.InvokeVoidAsync("alert", "✅ Mesa cerrada como cortesía de la casa. Se enviaron los correos de notificación.");
+            NavManager.NavigateTo("/mesas/panel");
+        }
+        catch (Exception ex)
+        {
+            _errorCortesia = $"Error: {ex.Message}";
+            Console.WriteLine($"[PedidoMesa] Error en cortesía: {ex}");
+        }
+        finally
+        {
+            _validandoCortesia = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ProcesarCortesiaAsync(AppDbContext db, Usuario usuarioAutorizador)
+    {
+        if (_pedido == null || _mesa == null) return;
+        
+        var ahora = DateTime.Now;
+        var montoCondonado = _pedido.SaldoPendiente;
+        
+        // Primero guardar el pedido si hay cambios
+        await GuardarPedido();
+        
+        // Registrar el pago como cortesía
+        var pagoCortesia = new PedidoPago
+        {
+            IdPedido = _pedido.IdPedido,
+            FormaPago = "CORTESIA",
+            Monto = montoCondonado,
+            FechaPago = ahora,
+            Observaciones = $"CORTESÍA autorizada por {usuarioAutorizador.UsuarioNombre}. Motivo: {_motivoCortesia}"
+        };
+        db.PedidosPagos.Add(pagoCortesia);
+        
+        // Actualizar el pedido
+        var pedidoDb = await db.Pedidos.FindAsync(_pedido.IdPedido);
+        if (pedidoDb != null)
+        {
+            pedidoDb.Estado = "Cortesia";
+            pedidoDb.FechaCierre = ahora;
+            pedidoDb.MontoPagado = pedidoDb.Total; // Marcar como pagado
+            pedidoDb.Observaciones = (pedidoDb.Observaciones ?? "") + 
+                $"\n[CORTESÍA {ahora:dd/MM/yyyy HH:mm}] Monto condonado: Gs {montoCondonado:N0}. Autorizado por: {usuarioAutorizador.UsuarioNombre}. Motivo: {_motivoCortesia}";
+        }
+        
+        // Descontar stock de items no facturados
+        foreach (var item in _detalles.Where(d => !d.Facturado))
+        {
+            var producto = await db.Productos.FindAsync(item.IdProducto);
+            if (producto != null)
+            {
+                producto.Stock -= item.Cantidad;
+            }
+        }
+        
+        // Liberar mesa
+        var mesa = await db.Mesas.FindAsync(_mesa.IdMesa);
+        if (mesa != null)
+        {
+            mesa.Estado = "Libre";
+        }
+        
+        // Completar reservas en curso
+        var reservasEnCurso = await db.Reservas
+            .Where(r => r.IdMesa == _mesa.IdMesa 
+                     && r.FechaReserva.Date == DateTime.Today
+                     && r.Estado == "EnCurso")
+            .ToListAsync();
+        
+        foreach (var reserva in reservasEnCurso)
+        {
+            reserva.Estado = "Completada";
+            reserva.HoraFinReal = ahora.TimeOfDay;
+            reserva.FechaModificacion = ahora;
+        }
+        
+        await db.SaveChangesAsync();
+        
+        // Enviar correos de notificación
+        await EnviarCorreosCortesiaAsync(pedidoDb, reservasEnCurso.FirstOrDefault(), usuarioAutorizador, montoCondonado);
+    }
+    
+    private async Task EnviarCorreosCortesiaAsync(Pedido? pedido, Reserva? reserva, Usuario usuarioAutorizador, decimal montoCondonado)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            // Obtener configuración de correo principal
+            var configCorreo = await db.ConfiguracionesCorreo
+                .Where(c => c.Activo && c.IdSucursal == _idSucursal)
+                .FirstOrDefaultAsync();
+            
+            var correoAdmin = configCorreo?.CorreoRemitente;
+            
+            // Obtener email del cliente
+            string? emailCliente = reserva?.Email;
+            string nombreCliente = reserva?.NombreCliente ?? pedido?.NombreCliente ?? "Cliente";
+            
+            if (string.IsNullOrWhiteSpace(emailCliente) && pedido?.IdCliente != null)
+            {
+                var cliente = await db.Clientes.FindAsync(pedido.IdCliente);
+                emailCliente = cliente?.Email;
+                if (!string.IsNullOrWhiteSpace(cliente?.RazonSocial))
+                    nombreCliente = cliente.RazonSocial;
+            }
+            
+            var empresaNombre = _sucursalActual?.NombreEmpresa ?? "Restaurante";
+            var mesaTexto = _mesa?.TextoMostrar ?? "Mesa";
+            
+            // Generar HTML del correo
+            var htmlCortesia = $@"
+            <html>
+            <body style='font-family: Arial, sans-serif; padding: 20px;'>
+                <div style='max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 10px; overflow: hidden;'>
+                    <div style='background: linear-gradient(135deg, #f5a623, #f7931e); color: white; padding: 20px; text-align: center;'>
+                        <h1 style='margin: 0;'>🎁 Cortesía de la Casa</h1>
+                    </div>
+                    <div style='padding: 20px;'>
+                        <p>Estimado/a <strong>{nombreCliente}</strong>,</p>
+                        <p>Le comunicamos que su consumo en <strong>{mesaTexto}</strong> ha sido declarado como <strong>Cortesía de la Casa</strong>.</p>
+                        
+                        <div style='background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; padding: 15px; margin: 20px 0;'>
+                            <h3 style='margin-top: 0; color: #856404;'>Detalle de la Cortesía</h3>
+                            <p><strong>Monto condonado:</strong> Gs {montoCondonado:N0}</p>
+                            <p><strong>Motivo:</strong> {_motivoCortesia}</p>
+                            <p><strong>Fecha:</strong> {DateTime.Now:dd/MM/yyyy HH:mm}</p>
+                            <p><strong>Autorizado por:</strong> {usuarioAutorizador.Nombres} {usuarioAutorizador.Apellidos}</p>
+                        </div>
+                        
+                        <p>¡Esperamos que haya disfrutado de nuestro servicio y lo esperamos pronto!</p>
+                        
+                        <p style='color: #666; font-size: 12px; margin-top: 30px;'>
+                            Atentamente,<br/>
+                            <strong>{empresaNombre}</strong>
+                        </p>
+                    </div>
+                </div>
+            </body>
+            </html>";
+            
+            var asunto = $"🎁 Cortesía de la Casa - {empresaNombre}";
+            
+            // Enviar al cliente si tiene email
+            if (!string.IsNullOrWhiteSpace(emailCliente))
+            {
+                var (exitoCliente, _) = await CorreoService.EnviarCorreoAsync(emailCliente, asunto, htmlCortesia);
+                Console.WriteLine($"[PedidoMesa] Correo cortesía a cliente {emailCliente}: {(exitoCliente ? "OK" : "Error")}");
+            }
+            
+            // Enviar al correo principal de administración
+            if (!string.IsNullOrWhiteSpace(correoAdmin))
+            {
+                var htmlAdmin = $@"
+                <html>
+                <body style='font-family: Arial, sans-serif; padding: 20px;'>
+                    <div style='max-width: 600px; margin: 0 auto; border: 1px solid #dc3545; border-radius: 10px; overflow: hidden;'>
+                        <div style='background: #dc3545; color: white; padding: 20px; text-align: center;'>
+                            <h1 style='margin: 0;'>⚠️ NOTIFICACIÓN: Cortesía Autorizada</h1>
+                        </div>
+                        <div style='padding: 20px;'>
+                            <p>Se ha registrado una <strong>Cortesía de la Casa</strong> en el sistema.</p>
+                            
+                            <table style='width: 100%; border-collapse: collapse; margin: 20px 0;'>
+                                <tr style='background: #f8f9fa;'>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'><strong>Mesa:</strong></td>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'>{mesaTexto}</td>
+                                </tr>
+                                <tr>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'><strong>Cliente:</strong></td>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'>{nombreCliente}</td>
+                                </tr>
+                                <tr style='background: #f8f9fa;'>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'><strong>Monto Condonado:</strong></td>
+                                    <td style='padding: 10px; border: 1px solid #ddd; color: #dc3545; font-weight: bold;'>Gs {montoCondonado:N0}</td>
+                                </tr>
+                                <tr>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'><strong>Motivo:</strong></td>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'>{_motivoCortesia}</td>
+                                </tr>
+                                <tr style='background: #f8f9fa;'>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'><strong>Autorizado por:</strong></td>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'>{usuarioAutorizador.Nombres} {usuarioAutorizador.Apellidos} ({usuarioAutorizador.UsuarioNombre})</td>
+                                </tr>
+                                <tr>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'><strong>Fecha y Hora:</strong></td>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'>{DateTime.Now:dd/MM/yyyy HH:mm:ss}</td>
+                                </tr>
+                                <tr style='background: #f8f9fa;'>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'><strong>Pedido #:</strong></td>
+                                    <td style='padding: 10px; border: 1px solid #ddd;'>{pedido?.IdPedido}</td>
+                                </tr>
+                            </table>
+                            
+                            <p style='color: #666; font-size: 12px;'>
+                                Este correo es una notificación automática del sistema.
+                            </p>
+                        </div>
+                    </div>
+                </body>
+                </html>";
+                
+                var (exitoAdmin, _) = await CorreoService.EnviarCorreoAsync(correoAdmin, $"⚠️ CORTESÍA: {mesaTexto} - Gs {montoCondonado:N0}", htmlAdmin);
+                Console.WriteLine($"[PedidoMesa] Correo cortesía a admin {correoAdmin}: {(exitoAdmin ? "OK" : "Error")}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PedidoMesa] Error enviando correos de cortesía: {ex.Message}");
+        }
+    }
+}
+
+<style>
+    .productos-lista .producto-item:hover {
+        background-color: var(--bg-surface);
+    }
+    .hover-bg:hover {
+        background-color: rgba(var(--bs-primary-rgb), 0.1) !important;
+    }
+</style>

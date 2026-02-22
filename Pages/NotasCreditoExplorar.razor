@@ -15,6 +15,8 @@
 @inject ICajaService CajaService
 @inject ILoteService LoteService
 @inject IHttpClientFactory HttpClientFactory
+@inject PermisosService PermisosService
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 
 <PageProtection Modulo="/notas-credito" Permiso="VIEW">
 <PageTitle>Explorar Notas de Crédito</PageTitle>
@@ -150,6 +152,12 @@
                                             {
                                                 <button class="btn btn-outline-danger" title="Anular" @onclick="() => Anular(nc)">
                                                     <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            }
+                                            @if (_tienePermisoEliminar && PuedeEliminarNC(nc))
+                                            {
+                                                <button class="btn btn-danger" title="Eliminar permanentemente" @onclick="() => EliminarNC(nc)">
+                                                    <i class="bi bi-trash3"></i>
                                                 </button>
                                             }
                                         </div>
@@ -401,6 +409,10 @@
     private bool _procesandoAnulacion;
     private NotaCreditoVenta? _ncAnulando;
     private string? _motivoAnulacion;
+    
+    // Permiso DELETE
+    private bool _tienePermisoEliminar;
+    private int? _usuarioId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -412,6 +424,16 @@
         }
         
         _empresa = await Db.Sociedades.FirstOrDefaultAsync();
+        
+        // Verificar permiso DELETE
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var idUsuStr = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idUsuStr, out var idUsu))
+        {
+            _usuarioId = idUsu;
+            _tienePermisoEliminar = await PermisosService.TienePermisoAsync(idUsu, "/notas-credito", "DELETE");
+        }
+        
         await CargarDatos();
     }
 
@@ -877,5 +899,170 @@
         _qrCdc = null;
         _qrUrl = null;
         StateHasChanged();;
+    }
+    
+    // ========== Métodos de Eliminación ==========
+    
+    /// <summary>
+    /// Verifica si una NC puede ser eliminada.
+    /// Solo se puede eliminar si:
+    /// 1. Es autoimpresor (no tiene CDC) y estado Borrador o Confirmada
+    /// 2. O fue RECHAZADA por SIFEN (error de envío)
+    /// NO se puede eliminar si fue ACEPTADA por SIFEN.
+    /// </summary>
+    private bool PuedeEliminarNC(NotaCreditoVenta nc)
+    {
+        // Nunca se puede eliminar si fue ACEPTADA por SIFEN
+        var estadosSifenAceptados = new[] { "ACEPTADO", "APROBADO", "ENVIADO" };
+        if (!string.IsNullOrWhiteSpace(nc.EstadoSifen) && 
+            estadosSifenAceptados.Contains(nc.EstadoSifen.ToUpper()))
+        {
+            return false;
+        }
+        
+        // Si tiene CDC y fue RECHAZADA, se puede eliminar
+        var estadosSifenRechazados = new[] { "RECHAZADO", "RECHAZADA", "ERROR" };
+        if (!string.IsNullOrWhiteSpace(nc.CDC) && 
+            !string.IsNullOrWhiteSpace(nc.EstadoSifen) &&
+            estadosSifenRechazados.Contains(nc.EstadoSifen.ToUpper()))
+        {
+            return true;
+        }
+        
+        // Si no tiene CDC (autoimpresor), se puede eliminar si es Borrador o Confirmada
+        if (string.IsNullOrWhiteSpace(nc.CDC))
+        {
+            return nc.Estado == "Borrador" || nc.Estado == "Confirmada";
+        }
+        
+        return false;
+    }
+    
+    private async Task EliminarNC(NotaCreditoVenta nc)
+    {
+        // Verificar permiso DELETE
+        if (!_tienePermisoEliminar)
+        {
+            await JS.InvokeVoidAsync("alert", "❌ No tiene permiso para eliminar Notas de Crédito.\n\nContacte al administrador para solicitar el permiso DELETE en el módulo Notas de Crédito.");
+            return;
+        }
+        
+        // Verificar si se puede eliminar
+        if (!PuedeEliminarNC(nc))
+        {
+            await JS.InvokeVoidAsync("alert", "❌ Esta Nota de Crédito no puede ser eliminada.\n\n" +
+                $"Estado: {nc.Estado}\n" +
+                $"Estado SIFEN: {nc.EstadoSifen ?? "N/A"}\n" +
+                $"CDC: {(string.IsNullOrWhiteSpace(nc.CDC) ? "Sin CDC (Autoimpresor)" : nc.CDC)}\n\n" +
+                "Solo se pueden eliminar NC que:\n" +
+                "• Sean autoimpresor (sin CDC) y estén en Borrador o Confirmada\n" +
+                "• Hayan sido RECHAZADAS por SIFEN");
+            return;
+        }
+        
+        // Confirmación
+        var numeroNc = $"{nc.Establecimiento}-{nc.PuntoExpedicion}-{nc.NumeroNota.ToString("D7")}";
+        var mensajeConfirm = $"¿ELIMINAR PERMANENTEMENTE la Nota de Crédito #{numeroNc}?\n\n" +
+            $"Cliente: {nc.Cliente?.RazonSocial ?? nc.NombreCliente ?? "S/N"}\n" +
+            $"Total: {nc.SimboloMoneda ?? "Gs."} {nc.Total:N0}\n\n" +
+            "⚠️ Esta acción NO SE PUEDE DESHACER.";
+        
+        if (!await JS.InvokeAsync<bool>("confirm", mensajeConfirm))
+            return;
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Cargar la NC con sus detalles y caja
+            var ncDb = await ctx.NotasCreditoVentas
+                .Include(n => n.Detalles)
+                .Include(n => n.Caja)
+                .FirstOrDefaultAsync(n => n.IdNotaCredito == nc.IdNotaCredito);
+            
+            if (ncDb == null)
+            {
+                await JS.InvokeVoidAsync("alert", "La Nota de Crédito ya no existe.");
+                await CargarDatos();
+                return;
+            }
+            
+            // Revertir stock si la NC había afectado stock y estaba confirmada
+            if (ncDb.AfectaStock != 0 && ncDb.Estado == "Confirmada" && ncDb.Detalles?.Any() == true)
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var usuarioNombre = authState.User?.Identity?.Name ?? "Sistema";
+                
+                foreach (var det in ncDb.Detalles)
+                {
+                    if (det.IdProducto > 0 && det.IdDeposito > 0)
+                    {
+                        // Si AfectaStock = 1 (suma), revertimos con salida (2)
+                        // Si AfectaStock = -1 (resta), revertimos con entrada (1)
+                        var tipoMov = ncDb.AfectaStock == 1 ? 2 : 1;
+                        await Inventario.AjustarStockAsync(
+                            det.IdProducto,
+                            det.IdDeposito ?? 0,
+                            det.Cantidad,
+                            tipoMov,
+                            $"Eliminación NC #{ncDb.NumeroNota}",
+                            usuarioNombre);
+                    }
+                }
+            }
+            
+            // ========================================================================
+            // RETROCEDER CONTADOR DE CAJA SI ES LA ÚLTIMA NC
+            // ========================================================================
+            bool retrocedioContador = false;
+            if (ncDb.IdCaja > 0)
+            {
+                // Buscar el máximo NumeroNota RESTANTE para la misma caja/timbrado/serie
+                var maxNCRestante = await ctx.NotasCreditoVentas
+                    .Where(n => n.IdCaja == ncDb.IdCaja 
+                             && n.Timbrado == ncDb.Timbrado 
+                             && n.Serie == ncDb.Serie
+                             && n.IdNotaCredito != ncDb.IdNotaCredito)
+                    .OrderByDescending(n => n.NumeroNota)
+                    .Select(n => (int?)n.NumeroNota)
+                    .FirstOrDefaultAsync();
+                
+                // Si no hay ninguna NC restante, o la máxima restante es menor al que eliminamos
+                if (!maxNCRestante.HasValue || ncDb.NumeroNota > maxNCRestante.Value)
+                {
+                    var cajaActualizar = await ctx.Cajas.FindAsync(ncDb.IdCaja);
+                    if (cajaActualizar != null && 
+                        cajaActualizar.TimbradoNC == ncDb.Timbrado && 
+                        cajaActualizar.SerieNC == ncDb.Serie)
+                    {
+                        // Retroceder el contador al número de la NC eliminada
+                        cajaActualizar.NumeroNC = ncDb.NumeroNota.ToString("D7");
+                        retrocedioContador = true;
+                    }
+                }
+            }
+            
+            // Eliminar detalles
+            if (ncDb.Detalles?.Any() == true)
+            {
+                ctx.Set<NotaCreditoVentaDetalle>().RemoveRange(ncDb.Detalles);
+            }
+            
+            // Eliminar la NC
+            ctx.NotasCreditoVentas.Remove(ncDb);
+            
+            await ctx.SaveChangesAsync();
+            
+            var msgExtra = retrocedioContador 
+                ? $"\n\nEl número de NC {numeroNc} quedó disponible para la próxima nota de crédito."
+                : "";
+            await JS.InvokeVoidAsync("alert", $"✅ Nota de Crédito #{numeroNc} eliminada correctamente.{msgExtra}");
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException?.Message ?? ex.Message;
+            await JS.InvokeVoidAsync("alert", $"❌ Error al eliminar la Nota de Crédito:\n\n{innerMsg}");
+        }
     }
 }

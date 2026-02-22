@@ -1,5 +1,25 @@
 # 📋 Historial de Cambios - SistemIA
 
+## Versión 2026.02.16
+
+### 📊 Filtros de Ventas
+- **NUEVO**: Filtro por Condición (Contado/Crédito/Remisión) en VentasExplorar
+- **NUEVO**: Filtro por Condición en InformeVentasDetallado
+- **NUEVO**: Filtro por Condición en InformeVentasAgrupado
+- **NUEVO**: Filtro por Condición en InformeVentasClasificacion
+
+### 🍽️ Panel de Mesas/Canchas
+- **MEJORA**: Las categorías sin productos visibles ya no se muestran
+- **MEJORA**: El modal de ventas se cierra automáticamente al imprimir ticket
+- **MEJORA**: El modal de ventas se cierra al cerrar la vista previa
+- **NUEVO**: Campo Email en formulario de reserva para enviar confirmación
+- **NUEVO**: Envío automático de correo de confirmación al crear reserva
+
+### 🔧 Correcciones
+- Fix: Clasificaciones vacías aparecían en panel de mesas
+
+---
+
 ## Versión 2026.01.21
 
 ### 🧾 Nota de Crédito Electrónica (NCE) - SIFEN

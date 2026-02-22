@@ -2,6 +2,8 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IJSRuntime JS
 @inject IWebHostEnvironment Env
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject SistemIA.Services.PermisosService PermisosService
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @using System.Linq
@@ -10,7 +12,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject SistemIA.Services.IInventarioService Inventario
 
-<PageProtection Modulo="/inventario" Permiso="VIEW">
+<PageProtection Modulo="/productos" Permiso="VIEW">
 
 <div class="container-fluid">
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -25,7 +27,7 @@
     <div class="card-header">Filtros</div>
     <div class="card-body">
       <div class="row g-2">
-        <div class="col-md-3"><input class="form-control" placeholder="Buscar por descripción o código" @bind="filtro" @bind:after="Filtrar" /></div>
+        <div class="col-md-3"><input class="form-control" placeholder="Buscar por descripción, código o barras" @bind="filtro" @bind:after="Filtrar" /></div>
         <div class="col-md-2">
           <select class="form-select" @bind="filtroDeposito" @bind:after="Filtrar">
             <option value="">Todos los depósitos</option>
@@ -45,12 +47,29 @@
           </select>
         </div>
         <div class="col-md-2">
+          <select class="form-select" @bind="filtroTipoItem" @bind:after="Filtrar">
+            <option value="">Todos los tipos</option>
+            @foreach (var tipo in tiposItem)
+            {
+              <option value="@tipo.IdTipoItem">@tipo.Nombre</option>
+            }
+          </select>
+        </div>
+        <div class="col-md-1">
           <select class="form-select" @bind="soloActivos" @bind:after="Filtrar">
             <option value="true">Activos</option>
             <option value="false">Todos</option>
           </select>
         </div>
-        <div class="col-md-3 text-end"><span class="badge bg-primary">@filtrados.Count registro(s)</span></div>
+        <div class="col-md-2">
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="filtroStockBajo" @bind="soloStockBajo" @bind:after="Filtrar" />
+            <label class="form-check-label text-warning small" for="filtroStockBajo">
+              <i class="bi bi-exclamation-triangle-fill me-1"></i>Solo stock bajo
+            </label>
+          </div>
+        </div>
+        <div class="col-md-1 text-end"><span class="badge bg-primary">@filtrados.Count registro(s)</span></div>
       </div>
     </div>
   </div>
@@ -80,7 +99,7 @@
           </tr>
         </thead>
         <tbody>
-          @foreach (var p in filtrados.Take(100))
+          @foreach (var p in ProductosPagina)
           {
             <tr>
               <td class="col-foto">
@@ -156,6 +175,10 @@
           <span class="@(stockMostrar < p.StockMinimo ? "text-danger fw-semibold" : stockMostrar == 0 ? "text-muted" : "text-success fw-semibold")" 
                 title="@tooltip" 
                 style="cursor: help;">
+            @if (p.StockMinimo > 0 && stockMostrar <= p.StockMinimo)
+            {
+              <i class="bi bi-exclamation-triangle-fill text-warning me-1" title="Stock bajo mínimo (@p.StockMinimo.ToString("N0"))"></i>
+            }
             @stockMostrar.ToString("N0")
             @if (mostrarIconoMultiple)
             {
@@ -196,7 +219,11 @@
               <td class="col-estado">@(p.Activo ? "Activo" : "Inactivo")</td>
               <td class="col-acciones">
                 <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-info" title="Ver stock por depósito" @onclick="() => AbrirStocks(p)"><i class="bi bi-boxes"></i></button>
+                  @if (p.ControlaLote)
+                  {
+                    <button class="btn btn-outline-success" title="Ver Lotes" @onclick="() => AbrirLotesDesdeExplorador(p)"><i class="bi bi-collection"></i></button>
+                  }
+                  <button class="btn btn-outline-info" title="Ver stock por depósito" @onclick="() => AbrirStocks(p)"><i class="bi bi-box-seam"></i></button>
                   <button class="btn btn-outline-secondary" title="Etiqueta" @onclick="() => AbrirEtiqueta(p)"><i class="bi bi-upc"></i></button>
                   <button class="btn btn-warning" title="Editar" @onclick="() => Editar(p)"><i class="bi bi-pencil-square"></i></button>
                   <button class="btn btn-danger" title="Eliminar" @onclick="() => Eliminar(p)"><i class="bi bi-trash"></i></button>
@@ -207,9 +234,52 @@
         </tbody>
       </table>
     </div>
-    @if (filtrados.Count > 100)
+    
+    @* ========== PAGINACIÓN ========== *@
+    @if (TotalPaginas > 1)
     {
-      <div class="alert alert-info m-3"><i class="bi bi-info-circle me-2"></i>Mostrando 100 de @filtrados.Count. Use filtros para refinar.</div>
+      <div class="card-footer d-flex justify-content-between align-items-center py-2">
+        <small class="text-muted">
+          Mostrando @((paginaActual - 1) * registrosPorPagina + 1)-@Math.Min(paginaActual * registrosPorPagina, filtrados.Count) de @filtrados.Count productos
+        </small>
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+              <button class="page-link" @onclick="() => IrPagina(1)" disabled="@(paginaActual == 1)">
+                <i class="bi bi-chevron-double-left"></i>
+              </button>
+            </li>
+            <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+              <button class="page-link" @onclick="() => IrPagina(paginaActual - 1)" disabled="@(paginaActual == 1)">
+                <i class="bi bi-chevron-left"></i>
+              </button>
+            </li>
+            @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+            {
+              var pagina = i;
+              <li class="page-item @(pagina == paginaActual ? "active" : "")">
+                <button class="page-link" @onclick="() => IrPagina(pagina)">@pagina</button>
+              </li>
+            }
+            <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+              <button class="page-link" @onclick="() => IrPagina(paginaActual + 1)" disabled="@(paginaActual == TotalPaginas)">
+                <i class="bi bi-chevron-right"></i>
+              </button>
+            </li>
+            <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+              <button class="page-link" @onclick="() => IrPagina(TotalPaginas)" disabled="@(paginaActual == TotalPaginas)">
+                <i class="bi bi-chevron-double-right"></i>
+              </button>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    }
+    else if (filtrados.Count > 0)
+    {
+      <div class="card-footer py-2">
+        <small class="text-muted">Mostrando @filtrados.Count producto(s)</small>
+      </div>
     }
   </div>
 
@@ -427,20 +497,28 @@
                     <div class="row g-2">
                       <div class="col-12">
                         <span class="badge bg-primary">🏷️ UNITARIO</span>
-                        @if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") && editando.CantidadPorPaquete.HasValue)
+                        @if (editando.EsCombo && costoCalculadoComponentes.HasValue)
+                        {
+                          <small class="text-success ms-2"><i class="bi bi-boxes me-1"></i>Combo: costo calculado desde componentes = Gs @costoCalculadoComponentes.Value.ToString("N0")</small>
+                        }
+                        else if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") && editando.CantidadPorPaquete.HasValue)
                         {
                           <small class="text-muted ms-2">(costo calculado desde paquete)</small>
                         }
                       </div>
                       <div class="col-md-3">
-                        <label class="form-label small">Costo Unit. Gs</label>
-                        <input type="text" inputmode="numeric" class="form-control form-control-sm @(editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005" ? "bg-light" : "")" 
+                        <label class="form-label small">Costo Unit. Gs @(editando.EsCombo ? "(editable)" : "")</label>
+                        <input type="text" inputmode="numeric" class="form-control form-control-sm @(editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005" ? "bg-light" : "") @(editando.EsCombo && costoCalculadoComponentes.HasValue && editando.CostoUnitarioGs != costoCalculadoComponentes ? "border-warning" : "")" 
                                value="@(editando.CostoUnitarioGs.HasValue ? editando.CostoUnitarioGs.Value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture) : "")" 
                                @onchange="OnCostoChanged" 
                                readonly="@(editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")" />
                         @if ((editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005") && editando.CostoPaqueteGs.HasValue && editando.CantidadPorPaquete.HasValue && editando.CantidadPorPaquete > 0)
                         {
                           <small class="text-info">= @editando.CostoPaqueteGs.Value.ToString("N0") ÷ @editando.CantidadPorPaquete.Value</small>
+                        }
+                        @if (editando.EsCombo && costoCalculadoComponentes.HasValue && editando.CostoUnitarioGs != costoCalculadoComponentes)
+                        {
+                          <small class="text-warning d-block"><i class="bi bi-exclamation-triangle me-1"></i>Difiere del calculado</small>
                         }
                       </div>
                       <div class="col-md-2">
@@ -548,22 +626,41 @@
                                 <tr>
                                   <th>Componente</th>
                                   <th class="text-end">Cantidad</th>
+                                  <th class="text-end">Costo Unit.</th>
+                                  <th class="text-end">Subtotal</th>
                                   <th style="width:40px"></th>
                                 </tr>
                               </thead>
                               <tbody>
                                 @foreach (var pc in componentesCombo)
                                 {
+                                  var costoComp = pc.Componente?.CostoUnitarioGs ?? 0;
+                                  var subtotalComp = costoComp * pc.Cantidad;
                                   <tr>
                                     <td class="small">@pc.Componente?.Descripcion</td>
                                     <td class="text-end small">@pc.Cantidad.ToString("N4") @(pc.Componente?.UndMedida?.Trim())</td>
+                                    <td class="text-end small">@costoComp.ToString("N0")</td>
+                                    <td class="text-end small fw-bold">@subtotalComp.ToString("N0")</td>
                                     <td>
                                       <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" @onclick="() => QuitarComponente(pc.IdProductoComponente)"><i class="bi bi-trash"></i></button>
                                     </td>
                                   </tr>
                                 }
                               </tbody>
+                              <tfoot class="table-light">
+                                <tr>
+                                  <td colspan="3" class="text-end fw-bold">Costo Total Calculado:</td>
+                                  <td class="text-end fw-bold text-primary">Gs @(costoCalculadoComponentes?.ToString("N0") ?? "0")</td>
+                                  <td></td>
+                                </tr>
+                              </tfoot>
                             </table>
+                          </div>
+                          <div class="d-flex justify-content-between align-items-center mt-2">
+                            <small class="text-muted">El costo del combo se calcula sumando el costo de los componentes × cantidad</small>
+                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="AplicarCostoCalculado" title="Aplicar costo calculado al producto">
+                              <i class="bi bi-calculator me-1"></i>Aplicar Costo
+                            </button>
                           </div>
                         }
                       }
@@ -603,44 +700,186 @@
                       <input class="form-check-input" type="checkbox" id="permiteDecimalSwitch2" @bind="editando.PermiteDecimal" />
                       <label class="form-check-label" for="permiteDecimalSwitch2"><i class="bi bi-distribute-vertical me-1"></i>Permite Decimal</label>
                     </div>
-                    @if (editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")
+                    @{
+                      var esPaqueteOCaja = editando.UnidadMedidaCodigo?.Trim() == "006" || editando.UnidadMedidaCodigo?.Trim() == "005";
+                    }
+                    @if (esPaqueteOCaja)
                     {
                       <div class="form-check form-switch mb-2">
                         <input class="form-check-input" type="checkbox" id="permiteVentaUnidadSwitch2" @bind="editando.PermiteVentaPorUnidad" />
-                        <label class="form-check-label" for="permiteVentaUnidadSwitch2"><i class="bi bi-box-arrow-up me-1"></i>Venta por Unidad</label>
+                        <label class="form-check-label" for="permiteVentaUnidadSwitch2"><i class="bi bi-box2 text-primary me-1"></i>Permite Venta por Unidad</label>
                       </div>
                     }
                     <div class="form-check form-switch mb-2">
                       <input class="form-check-input" type="checkbox" id="permiteVentaBajoCostoSwitch2" @bind="editando.PermiteVentaBajoCosto" />
                       <label class="form-check-label" for="permiteVentaBajoCostoSwitch2"><i class="bi bi-exclamation-triangle text-warning me-1"></i>Bajo Costo</label>
                     </div>
-                    <div class="form-check form-switch mb-2">
-                      <input class="form-check-input" type="checkbox" id="controladoRecetaSwitch2" @bind="editando.ControladoReceta" />
-                      <label class="form-check-label" for="controladoRecetaSwitch2"><i class="bi bi-file-medical text-danger me-1"></i>Con Receta</label>
-                    </div>
+                    @if (ModoFarmaciaActivo)
+                    {
+                      <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="controladoRecetaSwitch2" @bind="editando.ControladoReceta" />
+                        <label class="form-check-label" for="controladoRecetaSwitch2"><i class="bi bi-file-medical text-danger me-1"></i>Con Receta</label>
+                      </div>
+                    }
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="esComboSwitch2" @bind="editando.EsCombo" />
                       <label class="form-check-label" for="esComboSwitch2"><i class="bi bi-collection me-1"></i>Es Combo</label>
                     </div>
+                    <div class="form-check form-switch mt-2">
+                      <input class="form-check-input" type="checkbox" id="visibleMesasSwitch2" @bind="editando.VisibleEnMesas" />
+                      <label class="form-check-label" for="visibleMesasSwitch2"><i class="bi bi-grid-3x3-gap text-success me-1"></i>Visible en Panel Mesas</label>
+                    </div>
+                    @if (ModoGimnasioActivo)
+                    {
+                      <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="esMembresiaSwitch2" @bind="editando.EsMembresia" />
+                        <label class="form-check-label" for="esMembresiaSwitch2"><i class="bi bi-person-badge text-info me-1"></i>Es Membresía Gimnasio</label>
+                      </div>
+                    }
                   </div>
                 </div>
                 
-                @* ========== CARD: CONTROL LOTES (FARMACIA) ========== *@
-                <div class="card mb-3 border-info">
-                  <div class="card-header bg-info bg-opacity-10 py-2">
-                    <h6 class="mb-0 text-info"><i class="bi bi-boxes me-2"></i>Control Lotes</h6>
+                @* ========== CARD: CONFIGURACIÓN MEMBRESÍA (GIMNASIO) ========== *@
+                @if (ModoGimnasioActivo && editando.EsMembresia)
+                {
+                  <div class="card mb-3 border-info">
+                    <div class="card-header bg-info bg-opacity-10 py-2">
+                      <h6 class="mb-0 text-info"><i class="bi bi-person-badge me-2"></i>Configuración Membresía</h6>
+                    </div>
+                    <div class="card-body">
+                      <div class="row g-2">
+                        <div class="col-6">
+                          <label class="form-label small">Duración (días)</label>
+                          <input type="number" class="form-control form-control-sm" @bind="editando.DuracionDiasMembresia" min="1" placeholder="30" />
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">Tipo Período</label>
+                          <select class="form-select form-select-sm" @bind="editando.TipoPeriodoMembresia">
+                            <option value="">Seleccionar...</option>
+                            <option value="Diario">Diario</option>
+                            <option value="Semanal">Semanal</option>
+                            <option value="Quincenal">Quincenal</option>
+                            <option value="Mensual">Mensual</option>
+                            <option value="Trimestral">Trimestral</option>
+                            <option value="Semestral">Semestral</option>
+                            <option value="Anual">Anual</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="row g-2 mt-2">
+                        <div class="col-6">
+                          <label class="form-label small">Inscripción (Gs)</label>
+                          <input type="number" class="form-control form-control-sm" @bind="editando.PrecioInscripcionMembresia" min="0" placeholder="0" />
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">Días Gracia</label>
+                          <input type="number" class="form-control form-control-sm" @bind="editando.DiasGraciaMembresia" min="0" placeholder="0" />
+                        </div>
+                      </div>
+                      <hr class="my-2" />
+                      <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="permiteCongelarSwitch" @bind="editando.PermiteCongelarMembresia" />
+                        <label class="form-check-label small" for="permiteCongelarSwitch"><i class="bi bi-snow me-1"></i>Permite Congelar</label>
+                      </div>
+                      @if (editando.PermiteCongelarMembresia)
+                      {
+                        <div class="mb-2">
+                          <label class="form-label small">Máx. Días Congelar</label>
+                          <input type="number" class="form-control form-control-sm" @bind="editando.DiasMaxCongelarMembresia" min="1" placeholder="30" />
+                        </div>
+                      }
+                      <hr class="my-2" />
+                      <div class="row g-2">
+                        <div class="col-6">
+                          <label class="form-label small">Clases Incluidas</label>
+                          <input type="number" class="form-control form-control-sm" @bind="editando.ClasesIncluidasMembresia" min="0" placeholder="0 = ilimitado" />
+                        </div>
+                        <div class="col-6">
+                          <div class="form-check form-switch mt-4">
+                            <input class="form-check-input" type="checkbox" id="incluyePTSwitch" @bind="editando.IncluyePTMembresia" />
+                            <label class="form-check-label small" for="incluyePTSwitch">Incluye PT</label>
+                          </div>
+                        </div>
+                      </div>
+                      @if (editando.IncluyePTMembresia)
+                      {
+                        <div class="mt-2">
+                          <label class="form-label small">Sesiones PT</label>
+                          <input type="number" class="form-control form-control-sm" @bind="editando.SesionesPTMembresia" min="1" placeholder="4" />
+                        </div>
+                      }
+                      <hr class="my-2" />
+                      <div class="row g-2">
+                        <div class="col-6">
+                          <label class="form-label small">Horario Acceso</label>
+                          <select class="form-select form-select-sm" @bind="editando.HorarioAccesoMembresia">
+                            <option value="">Sin restricción</option>
+                            <option value="Mañana">Mañana (06:00-12:00)</option>
+                            <option value="Tarde">Tarde (12:00-18:00)</option>
+                            <option value="Noche">Noche (18:00-23:00)</option>
+                            <option value="Todo">Todo el día</option>
+                          </select>
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">Días Acceso</label>
+                          <select class="form-select form-select-sm" @bind="editando.DiasAccesoMembresia">
+                            <option value="">Sin restricción</option>
+                            <option value="L-V">Lunes a Viernes</option>
+                            <option value="L-S">Lunes a Sábado</option>
+                            <option value="Todos">Todos los días</option>
+                          </select>
+                        </div>
+                      </div>
+                      <hr class="my-2" />
+                      @* ========== ÁREAS DE ACCESO ========== *@
+                      <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="accesoTodasAreasSwitch" @bind="editando.AccesoTodasAreasMembresia" />
+                        <label class="form-check-label small" for="accesoTodasAreasSwitch"><i class="bi bi-door-open me-1"></i>Acceso a Todas las Áreas</label>
+                      </div>
+                      @if (!editando.AccesoTodasAreasMembresia)
+                      {
+                        <div class="mb-2">
+                          <label class="form-label small">Áreas Incluidas (separar con coma)</label>
+                          <input type="text" class="form-control form-control-sm" @bind="editando.AreasIncluidasMembresia" placeholder="Pesas, Cardio, Piscina..." />
+                        </div>
+                      }
+                      <hr class="my-2" />
+                      @* ========== RENOVACIÓN AUTOMÁTICA ========== *@
+                      <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="renovacionAutoSwitch" @bind="editando.RenovacionAutomaticaMembresia" />
+                        <label class="form-check-label small" for="renovacionAutoSwitch"><i class="bi bi-arrow-repeat me-1"></i>Renovación Automática</label>
+                      </div>
+                      <div class="mb-2">
+                        <label class="form-label small">Días Recordatorio Vencimiento</label>
+                        <input type="number" class="form-control form-control-sm" @bind="editando.DiasRecordatorioMembresia" min="0" placeholder="7" />
+                      </div>
+                      <hr class="my-2" />
+                      <div class="mt-2">
+                        <label class="form-label small"><i class="bi bi-palette me-1"></i>Color Identificativo</label>
+                        <input type="color" class="form-control form-control-sm form-control-color" @bind="editando.ColorMembresia" />
+                      </div>
+                    </div>
                   </div>
-                  <div class="card-body">
-                    <div class="form-check form-switch mb-2">
-                      <input class="form-check-input" type="checkbox" id="controlaLoteSwitch2" @bind="editando.ControlaLote" @bind:after="OnControlaLoteChanged" />
-                      <label class="form-check-label" for="controlaLoteSwitch2"><i class="bi bi-upc me-1"></i>Controla Lote</label>
+                } @* Fin if ModoGimnasioActivo && EsMembresia *@
+                
+                @* ========== CARD: CONTROL LOTES (FARMACIA) ========== *@
+                @if (ModoFarmaciaActivo)
+                {
+                  <div class="card mb-3 border-info">
+                    <div class="card-header bg-info bg-opacity-10 py-2">
+                      <h6 class="mb-0 text-info"><i class="bi bi-boxes me-2"></i>Control Lotes</h6>
                     </div>
-                    <div class="form-check form-switch mb-2">
-                      <input class="form-check-input" type="checkbox" id="controlaVencimientoLoteSwitch2" @bind="editando.ControlaVencimiento" disabled="@(!editando.ControlaLote)" />
-                      <label class="form-check-label" for="controlaVencimientoLoteSwitch2"><i class="bi bi-calendar-event me-1"></i>Controla Vencimiento</label>
-                    </div>
-                    @if (editando.ControlaVencimiento)
-                    {
+                    <div class="card-body">
+                      <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="controlaLoteSwitch2" @bind="editando.ControlaLote" @bind:after="OnControlaLoteChanged" />
+                        <label class="form-check-label" for="controlaLoteSwitch2"><i class="bi bi-upc me-1"></i>Controla Lote</label>
+                      </div>
+                      <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="controlaVencimientoLoteSwitch2" @bind="editando.ControlaVencimiento" />
+                        <label class="form-check-label" for="controlaVencimientoLoteSwitch2"><i class="bi bi-calendar-event me-1"></i>Controla Vencimiento</label>
+                      </div>
+                      @if (editando.ControlaVencimiento)
+                      {
                       <div class="row g-2 mt-2">
                         <div class="col-6">
                           <label class="form-label small">Días Alerta</label>
@@ -660,8 +899,9 @@
                         <i class="bi bi-list-ul me-1"></i>Ver Lotes (@lotesProducto.Count)
                       </button>
                     }
+                    </div>
                   </div>
-                </div>
+                } @* Fin if ModoFarmaciaActivo para Control Lotes *@
                 
                 @* ========== CARD: VENCIMIENTO SIMPLE ========== *@
                 @if (!editando.ControlaLote && editando.ControlarVencimiento)
@@ -675,6 +915,32 @@
                     </div>
                   </div>
                 }
+                
+                @* ========== CARD: CONTROL STOCK MÍNIMO ========== *@
+                <div class="card mb-3 border-warning">
+                  <div class="card-header bg-warning bg-opacity-10 py-2">
+                    <h6 class="mb-0 text-warning"><i class="bi bi-exclamation-triangle me-2"></i>Control Stock Mínimo</h6>
+                  </div>
+                  <div class="card-body">
+                    <div class="row g-2">
+                      <div class="col-12">
+                        <label class="form-label small"><i class="bi bi-box-seam me-1"></i>Stock Mínimo</label>
+                        <div class="input-group input-group-sm">
+                          <input type="number" class="form-control" @bind="editando.StockMinimo" min="0" step="0.01" placeholder="0" />
+                          <span class="input-group-text">unidades</span>
+                        </div>
+                        <small class="text-muted">Si el stock llega a este valor, se mostrará una alerta.</small>
+                      </div>
+                    </div>
+                    @if (editando.IdProducto > 0 && editando.Stock <= editando.StockMinimo && editando.StockMinimo > 0)
+                    {
+                      <div class="alert alert-warning mt-2 mb-0 py-2 small">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        <strong>Stock bajo:</strong> Actualmente @editando.Stock.ToString("N2") unidades (mínimo: @editando.StockMinimo.ToString("N2"))
+                      </div>
+                    }
+                  </div>
+                </div>
                 
               </div><!-- Fin columna derecha -->
             </div><!-- Fin row principal -->
@@ -918,9 +1184,13 @@
                               <button type="button" class="btn btn-outline-primary" @onclick="() => EditarLote(lote)" title="Editar">
                                 <i class="bi bi-pencil"></i>
                               </button>
-                              <button type="button" class="btn btn-outline-danger" @onclick="() => EliminarLote(lote)" title="Eliminar" disabled="@(lote.Stock > 0)">
-                                <i class="bi bi-trash"></i>
-                              </button>
+                              @if (_puedeEliminarLote)
+                              {
+                                <button type="button" class="btn btn-outline-danger" @onclick="() => EliminarLote(lote)" 
+                                        title="Eliminar lote">
+                                  <i class="bi bi-trash"></i>
+                                </button>
+                              }
                             </div>
                           </td>
                         </tr>
@@ -961,7 +1231,7 @@
                     </InputSelect>
                   </div>
                   <div class="col-6">
-                    <label class="form-label small">Fecha Vencimiento</label>
+                    <label class="form-label small">Fecha Vencimiento <span class="text-danger">*</span></label>
                     <InputDate class="form-control form-control-sm" @bind-Value="nuevoLote.FechaVencimiento" />
                   </div>
                   <div class="col-6">
@@ -969,9 +1239,19 @@
                     <InputDate class="form-control form-control-sm" @bind-Value="nuevoLote.FechaFabricacion" />
                   </div>
                   <div class="col-6">
-                    <label class="form-label small">Stock</label>
-                    <InputNumber class="form-control form-control-sm" @bind-Value="nuevoLote.Stock" />
-                    <div class="form-text">Solo para ajustes manuales.</div>
+                    <label class="form-label small">Stock @(editandoLote ? "(Bloqueado)" : "Inicial")</label>
+                    @if (editandoLote)
+                    {
+                      <input type="number" class="form-control form-control-sm bg-light" value="@nuevoLote.Stock" disabled title="El stock solo se modifica mediante Ajustes de Stock o Compras" />
+                      <div class="alert alert-warning py-1 px-2 mt-1 mb-0 small">
+                        <i class="bi bi-lock-fill me-1"></i><strong>Protegido:</strong> El stock solo puede modificarse desde el módulo <a href="/ajustes-stock" class="alert-link">Ajustes de Stock</a> o mediante Compras/Ventas.
+                      </div>
+                    }
+                    else
+                    {
+                      <InputNumber class="form-control form-control-sm" @bind-Value="nuevoLote.Stock" />
+                      <div class="form-text">Stock inicial del lote nuevo.</div>
+                    }
                   </div>
                   <div class="col-6">
                     <label class="form-label small">Costo Unitario</label>
@@ -1017,6 +1297,123 @@
   {
     <div class="modal-backdrop fade show"></div>
   }
+  
+  @* ========== MODAL VISUALIZACIÓN LOTES (SOLO LECTURA) ========== *@
+  <div class="modal fade @(mostrarModalLotesVisualizacion ? "show d-block" : "")" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-collection me-2"></i>Lotes - @(productoVisualizandoLotes?.Descripcion ?? "")</h5>
+          <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalLotesVisualizacion"></button>
+        </div>
+        <div class="modal-body">
+          @if (!lotesVisualizacion.Any())
+          {
+            <div class="text-muted text-center py-4">
+              <i class="bi bi-inbox display-4"></i>
+              <p>No hay lotes registrados para este producto.</p>
+            </div>
+          }
+          else
+          {
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Lote</th>
+                    <th>Depósito</th>
+                    <th class="text-center">Vencimiento</th>
+                    <th class="text-end">Stock</th>
+                    <th class="text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var lote in lotesVisualizacion)
+                  {
+                    <tr class="@(lote.EstaVencido ? "table-danger" : (lote.EstaProximoAVencer ? "table-warning" : ""))">
+                      <td>
+                        <strong>@lote.NumeroLote</strong>
+                        @if (lote.EsLoteInicial)
+                        {
+                          <span class="badge bg-info ms-1">Inicial</span>
+                        }
+                      </td>
+                      <td><small>@(lote.Deposito?.Nombre ?? "-")</small></td>
+                      <td class="text-center">
+                        @if (lote.FechaVencimiento.HasValue)
+                        {
+                          var diasVenc = (lote.FechaVencimiento.Value - DateTime.Today).Days;
+                          var claseVenc = diasVenc < 0 ? "text-danger fw-bold" : (diasVenc <= 30 ? "text-warning" : "text-muted");
+                          <span class="@claseVenc">
+                            @lote.FechaVencimiento.Value.ToString("dd/MM/yyyy")
+                            <br><small>@(diasVenc < 0 ? $"Vencido hace {-diasVenc} días" : $"{diasVenc} días")</small>
+                          </span>
+                        }
+                        else
+                        {
+                          <span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Sin fecha</span>
+                        }
+                      </td>
+                      <td class="text-end fw-bold">@lote.Stock.ToString("N2")</td>
+                      <td class="text-center">
+                        <span class="@GetEstadoLoteBadge(lote)">@GetEstadoLoteTexto(lote)</span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+                <tfoot class="table-light">
+                  <tr class="fw-bold">
+                    <td colspan="3">Total</td>
+                    <td class="text-end">@lotesVisualizacion.Sum(l => l.Stock).ToString("N2")</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            
+            @if (lotesVisualizacion.Any(l => !l.FechaVencimiento.HasValue) || lotesVisualizacion.Any(l => l.EstaVencido) || lotesVisualizacion.Any(l => l.EstaProximoAVencer && !l.EstaVencido))
+            {
+              <div class="mt-3">
+                @if (lotesVisualizacion.Any(l => !l.FechaVencimiento.HasValue))
+                {
+                  <div class="alert alert-warning py-2 mb-2">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    <strong>@lotesVisualizacion.Count(l => !l.FechaVencimiento.HasValue)</strong> lote(s) sin fecha de vencimiento
+                  </div>
+                }
+                @if (lotesVisualizacion.Any(l => l.EstaVencido))
+                {
+                  <div class="alert alert-danger py-2 mb-2">
+                    <i class="bi bi-x-circle me-1"></i>
+                    <strong>@lotesVisualizacion.Count(l => l.EstaVencido)</strong> lote(s) vencido(s) - Stock: @lotesVisualizacion.Where(l => l.EstaVencido).Sum(l => l.Stock).ToString("N2")
+                  </div>
+                }
+                @if (lotesVisualizacion.Any(l => l.EstaProximoAVencer && !l.EstaVencido))
+                {
+                  <div class="alert alert-info py-2 mb-2">
+                    <i class="bi bi-clock me-1"></i>
+                    <strong>@lotesVisualizacion.Count(l => l.EstaProximoAVencer && !l.EstaVencido)</strong> lote(s) próximo(s) a vencer (30 días)
+                  </div>
+                }
+              </div>
+            }
+          }
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-warning" @onclick="() => EditarProductoDesdeVisualizacion()">
+            <i class="bi bi-pencil me-1"></i>Editar Lotes
+          </button>
+          <button type="button" class="btn btn-secondary" @onclick="CerrarModalLotesVisualizacion">
+            <i class="bi bi-x-lg me-1"></i>Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  @if (mostrarModalLotesVisualizacion)
+  {
+    <div class="modal-backdrop fade show"></div>
+  }
 </div>
 
 @code {
@@ -1032,10 +1429,19 @@
   private List<Models.ProductoComponente> componentesCombo = new();
   private int selectedComponenteId = 0;
   private decimal cantidadComponente = 1m;
+  private decimal? costoCalculadoComponentes = null; // Costo calculado sumando componentes
   private string filtro = string.Empty;
   private string filtroIva = string.Empty;
   private string filtroDeposito = string.Empty;
+  private string filtroTipoItem = string.Empty;
   private bool soloActivos = true;
+  private bool soloStockBajo = false;
+  
+  // Paginación
+  private int paginaActual = 1;
+  private int registrosPorPagina = 100;
+  private int TotalPaginas => (int)Math.Ceiling(filtrados.Count / (double)registrosPorPagina);
+  private IEnumerable<Models.Producto> ProductosPagina => filtrados.Skip((paginaActual - 1) * registrosPorPagina).Take(registrosPorPagina);
   private bool mostrarModal = false;
   private bool _guardando = false;  // Protección contra doble guardado
   private Models.Producto editando = new Models.Producto();
@@ -1082,6 +1488,8 @@
   
   // Configuración de farmacia (Precio Ministerio)
   private Models.ConfiguracionSistema? _config;
+  private bool ModoFarmaciaActivo => _config?.FarmaciaModoActivo == true;
+  private bool ModoGimnasioActivo => _config?.GimnasioModoActivo == true;
   private bool MostrarPrecioMinisterio => _config?.FarmaciaModoActivo == true && _config?.FarmaciaMostrarPrecioMinisterio == true;
   private bool ValidarPrecioMinisterio => _config?.FarmaciaModoActivo == true && _config?.FarmaciaValidarPrecioMinisterio == true;
 
@@ -1092,9 +1500,32 @@
   private bool editandoLote = false;
   private string? mensajeErrorLote;
   private string? mensajeExitoLote;
+  private bool _puedeEliminarLote = false; // Permiso DELETE en inventario
+  
+  // Modal de visualización de lotes (solo lectura desde explorador)
+  private bool mostrarModalLotesVisualizacion = false;
+  private Models.Producto? productoVisualizandoLotes = null;
+  private List<Models.ProductoLote> lotesVisualizacion = new();
 
   protected override async Task OnInitializedAsync()
   {
+    // Cargar permisos del usuario
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var user = auth.User;
+      if (user?.Identity?.IsAuthenticated == true)
+      {
+        var idStr = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idStr, out var idUsu))
+        {
+          // Verificar permiso DELETE en /productos (módulo específico de esta página)
+          _puedeEliminarLote = await PermisosService.TienePermisoAsync(idUsu, "/productos", "DELETE");
+        }
+      }
+    }
+    catch { /* Permisos por defecto: false */ }
+    
     await Cargar();
   }
 
@@ -1145,13 +1576,32 @@ END");
       .OrderBy(p => p.Descripcion)
       .ToListAsync();
     
-    // Cargar stocks por producto y depósito (incluir todos los registros, no solo stock > 0)
+    // Cargar stocks por producto y depósito
+    // Combinar ProductosDepositos + ProductosLotes para mostrar stock real
     var productosDeposito = await db.ProductosDepositos
       .Include(pd => pd.Deposito)
       .ToListAsync();
     
+    // Cargar también stocks de lotes agrupados por producto y depósito
+    var stocksLotes = await db.ProductosLotes
+      .Where(l => l.Estado == "Activo" && l.Stock > 0)
+      .Include(l => l.Deposito)
+      .GroupBy(l => new { l.IdProducto, l.IdDeposito })
+      .Select(g => new { 
+        g.Key.IdProducto, 
+        g.Key.IdDeposito,
+        NombreDeposito = g.First().Deposito != null ? g.First().Deposito.Nombre : "Sin nombre",
+        StockTotal = g.Sum(l => l.Stock) 
+      })
+      .ToListAsync();
+    
+    // Obtener IDs de productos que controlan lote
+    var productosConLote = productos.Where(p => p.ControlaLote).Select(p => p.IdProducto).ToHashSet();
+    
     stocksPorProductoDeposito.Clear();
-    foreach (var pd in productosDeposito)
+    
+    // Para productos SIN control de lotes: usar ProductosDepositos
+    foreach (var pd in productosDeposito.Where(pd => !productosConLote.Contains(pd.IdProducto)))
     {
       if (!stocksPorProductoDeposito.ContainsKey(pd.IdProducto))
       {
@@ -1161,17 +1611,31 @@ END");
       stocksPorProductoDeposito[pd.IdProducto].Add((nombreDeposito, pd.Stock));
     }
     
+    // Para productos CON control de lotes: usar suma de ProductosLotes
+    foreach (var sl in stocksLotes.Where(sl => productosConLote.Contains(sl.IdProducto)))
+    {
+      if (!stocksPorProductoDeposito.ContainsKey(sl.IdProducto))
+      {
+        stocksPorProductoDeposito[sl.IdProducto] = new List<(string, decimal)>();
+      }
+      stocksPorProductoDeposito[sl.IdProducto].Add((sl.NombreDeposito, sl.StockTotal));
+    }
+    
     Filtrar();
   }
 
   private void Filtrar()
   {
+    paginaActual = 1;  // Resetear página al filtrar
     filtrados = productos.Where(p =>
       (string.IsNullOrWhiteSpace(filtro) ||
         p.Descripcion.Contains(filtro, StringComparison.OrdinalIgnoreCase) ||
-        p.CodigoInterno.Contains(filtro, StringComparison.OrdinalIgnoreCase)) &&
+        p.CodigoInterno.Contains(filtro, StringComparison.OrdinalIgnoreCase) ||
+        (p.CodigoBarras ?? string.Empty).Contains(filtro, StringComparison.OrdinalIgnoreCase)) &&
       (string.IsNullOrEmpty(filtroIva) || p.IdTipoIva.ToString() == filtroIva) &&
-      (!soloActivos || p.Activo)
+      (string.IsNullOrEmpty(filtroTipoItem) || p.TipoItem.ToString() == filtroTipoItem) &&
+      (!soloActivos || p.Activo) &&
+      (!soloStockBajo || (p.StockMinimo > 0 && p.Stock <= p.StockMinimo))
     ).ToList();
     
     // Aplicar filtro por depósito: mostrar productos que tienen registro en ese depósito
@@ -1185,6 +1649,14 @@ END");
           stocksPorProductoDeposito[p.IdProducto].Any(s => s.Deposito == depositoSeleccionado.Nombre)
         ).ToList();
       }
+    }
+  }
+  
+  private void IrPagina(int pagina)
+  {
+    if (pagina >= 1 && pagina <= TotalPaginas)
+    {
+      paginaActual = pagina;
     }
   }
 
@@ -1213,6 +1685,7 @@ END");
     factorPrecioPaquete = null;
     porcentajePrecioPaquete = null;
   componentesCombo = new();
+  costoCalculadoComponentes = null; // Limpiar costo calculado de componentes
   selectedComponenteId = 0;
   cantidadComponente = 1m;
   componenteSearch = string.Empty;
@@ -1354,6 +1827,8 @@ END");
       {
         editando.CantidadPorPaquete = 1; // Valor por defecto
       }
+      // Por defecto, permitir venta por unidad cuando es paquete/caja
+      editando.PermiteVentaPorUnidad = true;
     }
     else
     {
@@ -1723,6 +2198,13 @@ END");
         await JS.InvokeVoidAsync("alert", "Ingrese la cantidad de unidades por " + (editando.UnidadMedidaCodigo == "006" ? "paquete" : "caja"));
         return;
       }
+      
+      // Si es paquete o caja, asegurar que PermiteVentaPorUnidad esté en true por defecto
+      if (editando.UnidadMedidaCodigo == "006" || editando.UnidadMedidaCodigo == "005")
+      {
+        // Solo forzar true si el usuario no lo desactivó manualmente (dejarlo como está si ya tiene valor)
+        // Nota: En productos nuevos, el valor por defecto es true gracias a OnUnidadMedidaChanged
+      }
     
     // Validar Precio Ministerio (solo si está activa la validación en configuración)
     if (ValidarPrecioMinisterio && editando.PrecioMinisterio.HasValue && editando.PrecioUnitarioGs > editando.PrecioMinisterio.Value)
@@ -1793,6 +2275,32 @@ END");
       // Recargar los lotes después de crearlos
       await CargarLotesProducto();
     }
+    
+    // ========== VALIDAR LOTES SIN FECHA DE VENCIMIENTO ==========
+    // Si el producto controla lotes, verificar que todos tengan fecha de vencimiento
+    if (editando.ControlaLote && editando.IdProducto > 0)
+    {
+      // Recargar lotes para tener la lista actualizada
+      await CargarLotesProducto();
+      
+      var lotesSinVencimiento = lotesProducto.Where(l => !l.FechaVencimiento.HasValue).ToList();
+      if (lotesSinVencimiento.Any())
+      {
+        var nombresLotes = string.Join(", ", lotesSinVencimiento.Select(l => l.NumeroLote));
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+          $"⚠️ LOTES SIN FECHA DE VENCIMIENTO\n\n" +
+          $"Los siguientes lotes no tienen fecha de vencimiento:\n{nombresLotes}\n\n" +
+          $"Se recomienda editar cada lote y agregar la fecha de vencimiento para el correcto control de stock.\n\n" +
+          $"¿Desea continuar de todas formas?");
+        
+        if (!confirmar)
+        {
+          // Abrir el modal de lotes para que el usuario pueda editarlos
+          mostrarModalLotes = true;
+          return;
+        }
+      }
+    }
 
   // Limpiar estado de imagen temporal
   pendingImage = null;
@@ -1819,6 +2327,10 @@ END");
       .Where(pc => pc.IdProducto == idProducto && pc.Activo)
       .OrderBy(pc => pc.Componente!.Descripcion)
       .ToListAsync();
+    
+    // Calcular costo total de componentes
+    CalcularCostoComponentes();
+    
     StateHasChanged();
   }
 
@@ -1860,6 +2372,55 @@ END");
     db.ProductosComponentes.Remove(pc);
     await db.SaveChangesAsync();
     await CargarComponentesAsync(editando.IdProducto);
+  }
+
+  /// <summary>
+  /// Calcula el costo total del combo sumando (costo componente × cantidad) de cada componente
+  /// </summary>
+  private void CalcularCostoComponentes()
+  {
+    if (componentesCombo.Count == 0)
+    {
+      costoCalculadoComponentes = null;
+      return;
+    }
+    
+    decimal total = 0m;
+    foreach (var pc in componentesCombo)
+    {
+      var costoComp = pc.Componente?.CostoUnitarioGs ?? 0m;
+      total += costoComp * pc.Cantidad;
+    }
+    costoCalculadoComponentes = total;
+  }
+
+  /// <summary>
+  /// Aplica el costo calculado de componentes al precio de costo del producto combo
+  /// </summary>
+  private async Task AplicarCostoCalculado()
+  {
+    if (!costoCalculadoComponentes.HasValue || costoCalculadoComponentes.Value <= 0)
+    {
+      await JS.InvokeVoidAsync("alert", "No hay costo calculado para aplicar. Verifique que los componentes tengan costo asignado.");
+      return;
+    }
+    
+    editando.CostoUnitarioGs = costoCalculadoComponentes.Value;
+    
+    // También actualizar en BD si ya existe
+    if (editando.IdProducto > 0)
+    {
+      await using var db = await DbFactory.CreateDbContextAsync();
+      var prod = await db.Productos.FindAsync(editando.IdProducto);
+      if (prod != null)
+      {
+        prod.CostoUnitarioGs = costoCalculadoComponentes.Value;
+        prod.FechaModificacion = DateTime.Now;
+        await db.SaveChangesAsync();
+      }
+    }
+    
+    StateHasChanged();
   }
 
   private void ShowComponenteOpciones()
@@ -2297,16 +2858,177 @@ END");
   
   private async Task OnControlaLoteChanged()
   {
-    // Si se activa el control de lotes y el producto ya existe, cargar lotes
+    // Si se DESACTIVA el control de lotes y el producto ya existe
+    if (!editando.ControlaLote && editando.IdProducto > 0)
+    {
+      await using var db = await DbFactory.CreateDbContextAsync();
+      
+      // Verificar si tiene lotes con stock > 0
+      var lotesConStock = await db.ProductosLotes
+        .Where(l => l.IdProducto == editando.IdProducto && l.Stock > 0)
+        .Select(l => new { l.NumeroLote, l.Stock })
+        .ToListAsync();
+      
+      if (lotesConStock.Any())
+      {
+        // ❌ NO PERMITIR desactivar si hay lotes con stock
+        var totalStock = lotesConStock.Sum(l => l.Stock);
+        var detalleLotes = string.Join("\n", lotesConStock.Take(5).Select(l => $"  • {l.NumeroLote}: {l.Stock:N2} unidades"));
+        if (lotesConStock.Count > 5)
+          detalleLotes += $"\n  ... y {lotesConStock.Count - 5} lote(s) más";
+        
+        var mensaje = $"❌ NO SE PUEDE DESACTIVAR\n\n" +
+          $"Este producto tiene {lotesConStock.Count} lote(s) con stock activo:\n\n" +
+          $"{detalleLotes}\n\n" +
+          $"Stock total en lotes: {totalStock:N2} unidades\n\n" +
+          $"Para desactivar el control de lotes debe:\n\n" +
+          $"1. Ir a Inventario → Ajustes de Stock\n" +
+          $"2. Ajustar a CERO el stock de cada lote\n" +
+          $"3. Luego podrá desactivar el control de lotes\n\n" +
+          $"💡 Los lotes históricos (con stock 0) permanecerán como registro.";
+        
+        await JS.InvokeVoidAsync("alert", mensaje);
+        
+        // Reactivar ControlaLote - NO se permite desactivar
+        editando.ControlaLote = true;
+        StateHasChanged();
+        return;
+      }
+      
+      // Si no hay lotes con stock, preguntar confirmación
+      var lotesHistoricos = await db.ProductosLotes
+        .Where(l => l.IdProducto == editando.IdProducto && l.Stock == 0)
+        .CountAsync();
+      
+      if (lotesHistoricos > 0)
+      {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+          $"Este producto tiene {lotesHistoricos} lote(s) histórico(s) (sin stock).\n\n" +
+          $"Al desactivar el control de lotes:\n" +
+          $"• Los lotes históricos permanecerán como registro\n" +
+          $"• Se ocultarán de las pantallas de operación\n" +
+          $"• El sistema dejará de controlar vencimientos\n\n" +
+          $"¿Desea continuar?");
+        
+        if (!confirmar)
+        {
+          editando.ControlaLote = true;
+          StateHasChanged();
+          return;
+        }
+      }
+      
+      // Si desactiva lotes, también desactivar vencimiento
+      editando.ControlaVencimiento = false;
+    }
+    
+    // Si se ACTIVA el control de lotes y el producto ya existe
     if (editando.ControlaLote && editando.IdProducto > 0)
     {
-      await CargarLotesProducto();
+      await using var db = await DbFactory.CreateDbContextAsync();
+      
+      // Verificar si ya tiene lotes creados
+      var lotesExistentes = await db.ProductosLotes
+        .Where(l => l.IdProducto == editando.IdProducto)
+        .CountAsync();
+      
+      if (lotesExistentes > 0)
+      {
+        // Ya tiene lotes, simplemente cargarlos
+        await CargarLotesProducto();
+        // Marcar como creado para evitar duplicados al guardar
+        editando.LoteInicialCreado = true;
+      }
+      else
+      {
+        // No tiene lotes - Verificar si tiene stock en depósitos
+        var stocksDepositos = await db.ProductosDepositos
+          .Include(pd => pd.Deposito)
+          .Where(pd => pd.IdProducto == editando.IdProducto && pd.Stock > 0)
+          .Select(pd => new { pd.IdDeposito, pd.Deposito.Nombre, pd.Stock })
+          .ToListAsync();
+        
+        if (stocksDepositos.Any())
+        {
+          // Tiene stock - preguntar si quiere crear lotes
+          var totalStock = stocksDepositos.Sum(s => s.Stock);
+          var detalleDepositos = string.Join("\n", stocksDepositos.Select(s => $"  • {s.Nombre}: {s.Stock:N2}"));
+          
+          var mensaje = $"Este producto tiene stock existente en los depósitos:\n\n{detalleDepositos}\n\nTotal: {totalStock:N2} unidades\n\n¿Desea crear lotes iniciales con este stock?\n\nSi acepta, se creará un lote 'STOCK-INICIAL' por cada depósito con su stock actual.";
+          
+          var aceptar = await JS.InvokeAsync<bool>("confirm", mensaje);
+          
+          if (aceptar)
+          {
+            // Crear lotes iniciales
+            var usuario = await ObtenerUsuarioActualAsync();
+            var fechaHoy = DateTime.Now;
+            
+            foreach (var stockDep in stocksDepositos)
+            {
+              var loteInicial = new Models.ProductoLote
+              {
+                IdProducto = editando.IdProducto,
+                IdDeposito = stockDep.IdDeposito,
+                NumeroLote = "STOCK-INICIAL",
+                Stock = stockDep.Stock,
+                StockInicial = stockDep.Stock,
+                FechaIngreso = fechaHoy,
+                Estado = "Activo",
+                EsLoteInicial = true,
+                Observacion = $"Lote inicial creado automáticamente al activar control de lotes. Stock existente: {stockDep.Stock:N2}",
+                FechaCreacion = fechaHoy,
+                UsuarioCreacion = usuario,
+                // FechaVencimiento = null - El usuario deberá completarla después
+              };
+              
+              db.ProductosLotes.Add(loteInicial);
+            }
+            
+            await db.SaveChangesAsync();
+            
+            // IMPORTANTE: Marcar LoteInicialCreado en la BD para evitar duplicados al guardar
+            var productoDb = await db.Productos.FindAsync(editando.IdProducto);
+            if (productoDb != null)
+            {
+              productoDb.LoteInicialCreado = true;
+              await db.SaveChangesAsync();
+            }
+            editando.LoteInicialCreado = true;
+            
+            await CargarLotesProducto();
+            
+            await JS.InvokeVoidAsync("alert", $"✅ Se crearon {stocksDepositos.Count} lote(s) inicial(es).\n\n⚠️ IMPORTANTE: Debe editar cada lote para agregar la fecha de vencimiento.");
+          }
+          else
+          {
+            // No aceptó - desmarcar ControlaLote
+            editando.ControlaLote = false;
+            editando.ControlaVencimiento = false;
+            StateHasChanged();
+            return;
+          }
+        }
+      }
     }
     
     // Si se activa control de lote, también activar control de vencimiento por defecto
     if (editando.ControlaLote && !editando.ControlaVencimiento)
     {
       editando.ControlaVencimiento = true;
+    }
+  }
+  
+  private async Task<string?> ObtenerUsuarioActualAsync()
+  {
+    try
+    {
+      var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      return authState?.User?.Identity?.Name;
+    }
+    catch
+    {
+      return "Sistema";
     }
   }
 
@@ -2331,6 +3053,49 @@ END");
     mensajeErrorLote = null;
     mensajeExitoLote = null;
     mostrarModalLotes = true;
+  }
+  
+  /// <summary>
+  /// Abre el modal de lotes directamente desde el explorador de productos
+  /// </summary>
+  private async Task AbrirLotesDesdeExplorador(Models.Producto producto)
+  {
+    // Abrir modal de visualización (solo lectura)
+    productoVisualizandoLotes = producto;
+    
+    // Cargar los lotes del producto
+    using var context = await DbFactory.CreateDbContextAsync();
+    lotesVisualizacion = await context.ProductosLotes
+      .Where(l => l.IdProducto == producto.IdProducto)
+      .Include(l => l.Deposito)
+      .OrderBy(l => l.FechaVencimiento)
+      .ThenBy(l => l.NumeroLote)
+      .ToListAsync();
+    
+    mostrarModalLotesVisualizacion = true;
+  }
+
+  private void CerrarModalLotesVisualizacion()
+  {
+    mostrarModalLotesVisualizacion = false;
+    productoVisualizandoLotes = null;
+    lotesVisualizacion.Clear();
+  }
+
+  private async Task EditarProductoDesdeVisualizacion()
+  {
+    if (productoVisualizandoLotes == null) return;
+    
+    // Cerrar modal de visualización
+    mostrarModalLotesVisualizacion = false;
+    
+    // Abrir el producto en modo edición con el modal de lotes
+    editando = productoVisualizandoLotes;
+    productoVisualizandoLotes = null;
+    lotesVisualizacion.Clear();
+    
+    // Abrir modal de lotes editable
+    await AbrirModalLotes();
   }
 
   private void CerrarModalLotes()
@@ -2400,6 +3165,14 @@ END");
       mensajeErrorLote = "Debe seleccionar un depósito.";
       return;
     }
+    
+    // Validación de fecha de vencimiento OBLIGATORIA
+    if (!nuevoLote.FechaVencimiento.HasValue)
+    {
+      await JS.InvokeVoidAsync("alert", "⚠️ FECHA DE VENCIMIENTO OBLIGATORIA\n\nDebe ingresar la fecha de vencimiento del lote para evitar inconvenientes en el control de stock y despacho de productos.");
+      mensajeErrorLote = "La fecha de vencimiento es obligatoria.";
+      return;
+    }
 
     await using var db = await DbFactory.CreateDbContextAsync();
 
@@ -2452,8 +3225,6 @@ END");
         var loteDb = await db.ProductosLotes.FindAsync(nuevoLote.IdProductoLote);
         if (loteDb != null)
         {
-          var stockAnterior = loteDb.Stock;
-          
           loteDb.NumeroLote = nuevoLote.NumeroLote;
           loteDb.FechaVencimiento = nuevoLote.FechaVencimiento;
           loteDb.FechaFabricacion = nuevoLote.FechaFabricacion;
@@ -2463,25 +3234,12 @@ END");
           loteDb.FechaModificacion = DateTime.Now;
           loteDb.UsuarioModificacion = "Sistema";
 
-          // Si cambió el stock, registrar ajuste
-          if (loteDb.Stock != nuevoLote.Stock)
-          {
-            var diferencia = nuevoLote.Stock - loteDb.Stock;
-            loteDb.Stock = nuevoLote.Stock;
-            
-            var movimiento = new Models.MovimientoLote
-            {
-              IdProductoLote = loteDb.IdProductoLote,
-              TipoMovimiento = TipoMovimientoLote.Ajuste,
-              Cantidad = diferencia,
-              StockAnterior = stockAnterior,
-              StockPosterior = nuevoLote.Stock,
-              Motivo = "Ajuste manual desde administración de lotes",
-              FechaMovimiento = DateTime.Now,
-              Usuario = "Sistema"
-            };
-            db.MovimientosLotes.Add(movimiento);
-          }
+          // NOTA: El stock ya NO se modifica desde este modal.
+          // Los cambios de stock deben hacerse exclusivamente mediante:
+          // - Compras (incrementa stock)
+          // - Ventas (decrementa stock)
+          // - Ajustes de Stock (módulo dedicado)
+          // - Transferencias entre depósitos
 
           await db.SaveChangesAsync();
           mensajeExitoLote = $"Lote '{nuevoLote.NumeroLote}' actualizado correctamente.";
@@ -2499,11 +3257,24 @@ END");
 
   private async Task EliminarLote(Models.ProductoLote lote)
   {
-    if (lote.Stock > 0)
+    // Verificar permiso DELETE
+    if (!_puedeEliminarLote)
     {
-      mensajeErrorLote = $"No se puede eliminar el lote '{lote.NumeroLote}' porque tiene stock ({lote.Stock:N2}).";
+      mensajeErrorLote = "No tiene permiso para eliminar lotes. Contacte al administrador.";
       return;
     }
+    
+    // Si tiene stock, indicar que debe hacer ajuste primero
+    if (lote.Stock > 0)
+    {
+      mensajeErrorLote = $"No se puede eliminar el lote '{lote.NumeroLote}' porque tiene stock ({lote.Stock:N2}).\n" +
+                         $"Primero debe realizar un Ajuste de Stock en el menú Inventario → Ajustes de Stock para dejar el stock en 0.";
+      return;
+    }
+
+    // Confirmar eliminación
+    var confirmar = await JS.InvokeAsync<bool>("confirm", $"¿Está seguro de eliminar el lote '{lote.NumeroLote}'?");
+    if (!confirmar) return;
 
     await using var db = await DbFactory.CreateDbContextAsync();
     
@@ -2512,7 +3283,7 @@ END");
     {
       db.ProductosLotes.Remove(loteDb);
       await db.SaveChangesAsync();
-      mensajeExitoLote = $"Lote '{lote.NumeroLote}' eliminado.";
+      mensajeExitoLote = $"Lote '{lote.NumeroLote}' eliminado exitosamente.";
       await CargarLotesProducto();
     }
   }
@@ -2599,4 +3370,3 @@ END");
 }
 
 </PageProtection>
-}

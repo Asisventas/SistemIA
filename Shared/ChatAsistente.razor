@@ -687,12 +687,16 @@
     // Captura de pantalla (múltiples con comentarios)
     private bool capturandoPantalla = false;
     private List<CapturaConComentario> capturas = new();
+    #pragma warning disable CS0414 // Campos para comentarios de capturas/videos - UI en desarrollo
     private string comentarioCapturaNueva = "";
+    #pragma warning restore CS0414
 
     // Grabación de video (múltiples con comentarios)
     private bool grabandoVideo = false;
     private List<VideoConComentario> videos = new();
+    #pragma warning disable CS0414 // Campo para comentarios de video - UI en desarrollo
     private string comentarioVideoNuevo = "";
+    #pragma warning restore CS0414
 
     // Clases auxiliares para capturas y videos con comentarios
     private class CapturaConComentario
@@ -711,7 +715,9 @@
     }
 
     // Variables temporales para compatibilidad
+    #pragma warning disable CS0169 // Campo para video temporal - funcionalidad en desarrollo
     private string? videoBase64Temp;
+    #pragma warning restore CS0169
     private int segundosGrabacion = 0;
     private System.Timers.Timer? timerGrabacion;
     

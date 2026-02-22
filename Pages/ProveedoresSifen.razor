@@ -152,7 +152,9 @@
     private ProveedorSifenMejorado proveedorEditando = new();
     private Dictionary<int, (string nombre, string codigoDep, string descripcionDep)> ciudadesDisponibles = new();
     
+    #pragma warning disable CS0414 // Variable para control de UI futuro
     private bool mostrarFormulario = false;
+    #pragma warning restore CS0414
     private string errorMessage = "";
     private string successMessage = "";
 

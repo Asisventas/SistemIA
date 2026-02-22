@@ -1,0 +1,1518 @@
+@page "/manual-sistema"
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Manual del Sistema - SistemIA</PageTitle>
+
+<PageProtection Modulo="/manual-sistema" Permiso="VIEW">
+
+<div class="manual-container">
+    <!-- ==================== HEADER DEL MANUAL ==================== -->
+    <header class="manual-hero">
+        <div class="hero-content">
+            <div class="hero-icon">
+                <i class="bi bi-book-half"></i>
+            </div>
+            <div class="hero-text">
+                <h1>Manual del Sistema</h1>
+                <p>Guía completa para dominar SistemIA ERP</p>
+            </div>
+        </div>
+        
+        <!-- Barra de Búsqueda -->
+        <div class="search-box">
+            <i class="bi bi-search"></i>
+            <input type="text" placeholder="¿Qué necesitas aprender?" 
+                   @bind="textoBusqueda" 
+                   @bind:event="oninput" 
+                   @onkeyup="BuscarEnManual" />
+            @if (!string.IsNullOrEmpty(textoBusqueda))
+            {
+                <button class="clear-search" @onclick="LimpiarBusqueda">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            }
+        </div>
+        
+        <!-- Resultados de Búsqueda -->
+        @if (mostrarResultados && resultadosBusqueda.Any())
+        {
+            <div class="search-results">
+                @foreach (var r in resultadosBusqueda.Take(6))
+                {
+                    <button class="result-item" @onclick="() => IrASeccion(r.SeccionId)">
+                        <i class="@r.Icono"></i>
+                        <div class="result-info">
+                            <strong>@r.Titulo</strong>
+                            <small>@r.Descripcion</small>
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+    </header>
+
+    <div class="manual-body">
+        <!-- ==================== SIDEBAR ==================== -->
+        <aside class="manual-sidebar @(sidebarColapsado ? "collapsed" : "")">
+            <button class="sidebar-toggle" @onclick="ToggleSidebar">
+                <i class="bi @(sidebarColapsado ? "bi-chevron-right" : "bi-chevron-left")"></i>
+            </button>
+            
+            <nav class="sidebar-nav">
+                @foreach (var seccion in secciones)
+                {
+                    <button class="nav-item @(seccionActiva == seccion.Id ? "active" : "") @(seccion.SubSecciones?.Any() == true ? "has-children" : "")"
+                            @onclick="() => CambiarSeccion(seccion.Id)">
+                        <div class="nav-icon">
+                            <i class="@seccion.Icono"></i>
+                        </div>
+                        <span class="nav-text">@seccion.Nombre</span>
+                        @if (seccion.EsNuevo)
+                        {
+                            <span class="badge-nuevo">Nuevo</span>
+                        }
+                        @if (seccionesVisitadas.Contains(seccion.Id))
+                        {
+                            <i class="bi bi-check-circle-fill text-success check-mark"></i>
+                        }
+                    </button>
+                }
+            </nav>
+            
+            <!-- Progreso -->
+            <div class="progress-section">
+                <div class="progress-header">
+                    <i class="bi bi-trophy"></i>
+                    <span>Tu Progreso</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-fill" style="width: @CalcularProgreso()%"></div>
+                </div>
+                <small>@seccionesVisitadas.Count de @secciones.Count completadas</small>
+            </div>
+        </aside>
+
+        <!-- ==================== CONTENIDO PRINCIPAL ==================== -->
+        <main class="manual-content">
+            @switch (seccionActiva)
+            {
+                case "inicio":
+                    @RenderInicio()
+                    break;
+                case "ventas":
+                    @RenderVentas()
+                    break;
+                case "productos":
+                    @RenderProductos()
+                    break;
+                case "compras":
+                    @RenderCompras()
+                    break;
+                case "descuentos":
+                    @RenderDescuentos()
+                    break;
+                case "farmacia":
+                    @RenderFarmacia()
+                    break;
+                case "sifen":
+                    @RenderSifen()
+                    break;
+                case "permisos":
+                    @RenderPermisos()
+                    break;
+                case "correo":
+                    @RenderCorreo()
+                    break;
+                case "caja":
+                    @RenderCaja()
+                    break;
+                case "clientes":
+                    @RenderClientes()
+                    break;
+                case "asistente":
+                    @RenderAsistente()
+                    break;
+            }
+            
+            <!-- Navegación entre secciones -->
+            <div class="section-navigation">
+                @if (GetSeccionAnterior() != null)
+                {
+                    <button class="nav-prev" @onclick="() => CambiarSeccion(GetSeccionAnterior()!.Id)">
+                        <i class="bi bi-arrow-left"></i>
+                        <span>@GetSeccionAnterior()!.Nombre</span>
+                    </button>
+                }
+                @if (GetSeccionSiguiente() != null)
+                {
+                    <button class="nav-next" @onclick="() => CambiarSeccion(GetSeccionSiguiente()!.Id)">
+                        <span>@GetSeccionSiguiente()!.Nombre</span>
+                        <i class="bi bi-arrow-right"></i>
+                    </button>
+                }
+            </div>
+        </main>
+    </div>
+</div>
+
+@code {
+    private string seccionActiva = "inicio";
+    private string textoBusqueda = "";
+    private bool mostrarResultados = false;
+    private bool sidebarColapsado = false;
+    private HashSet<string> seccionesVisitadas = new() { "inicio" };
+    private List<ResultadoBusqueda> resultadosBusqueda = new();
+    
+    private List<SeccionManual> secciones = new()
+    {
+        new("inicio", "Inicio", "bi bi-house-door-fill", false),
+        new("ventas", "Ventas", "bi bi-cart-fill", false),
+        new("productos", "Productos", "bi bi-box-seam-fill", false),
+        new("compras", "Compras", "bi bi-bag-fill", false),
+        new("clientes", "Clientes", "bi bi-people-fill", false),
+        new("caja", "Caja y Turnos", "bi bi-cash-stack", false),
+        new("descuentos", "Descuentos", "bi bi-percent", false),
+        new("farmacia", "Modo Farmacia", "bi bi-capsule", false),
+        new("sifen", "SIFEN", "bi bi-file-earmark-code-fill", false),
+        new("correo", "Correo", "bi bi-envelope-at-fill", false),
+        new("permisos", "Permisos", "bi bi-shield-lock-fill", false),
+        new("asistente", "Asistente IA", "bi bi-robot", true)
+    };
+    
+    private List<ItemBusqueda> itemsBusqueda = new()
+    {
+        new("ventas", "Crear una venta", "Aprende a crear facturas y tickets", "bi bi-cart-plus"),
+        new("ventas", "Atajos de teclado", "Acelera tu trabajo con atajos", "bi bi-keyboard"),
+        new("ventas", "Formas de pago", "Efectivo, tarjeta, transferencia", "bi bi-credit-card"),
+        new("productos", "Gestión de productos", "Catálogo, precios y stock", "bi bi-box-seam"),
+        new("productos", "Listas de precios", "Precios por cliente", "bi bi-tags"),
+        new("compras", "Registrar compras", "Ingreso de mercadería", "bi bi-bag-plus"),
+        new("descuentos", "Sistema de descuentos", "Descuentos automáticos", "bi bi-percent"),
+        new("farmacia", "Modo farmacia", "Control de lotes FEFO", "bi bi-capsule"),
+        new("sifen", "Factura electrónica", "Configuración SIFEN", "bi bi-file-earmark-code"),
+        new("sifen", "Enviar a SIFEN", "Envío de documentos", "bi bi-send"),
+        new("correo", "Configurar correo", "SMTP y notificaciones", "bi bi-envelope"),
+        new("permisos", "Usuarios y roles", "Control de acceso", "bi bi-shield-lock"),
+        new("caja", "Cierre de caja", "Arqueo y turnos", "bi bi-cash-stack"),
+        new("clientes", "Gestión de clientes", "Créditos y cobros", "bi bi-people")
+    };
+    
+    private void CambiarSeccion(string id)
+    {
+        seccionActiva = id;
+        seccionesVisitadas.Add(id);
+        mostrarResultados = false;
+        textoBusqueda = "";
+    }
+    
+    private void ToggleSidebar() => sidebarColapsado = !sidebarColapsado;
+    
+    private double CalcularProgreso() => secciones.Count > 0 ? (double)seccionesVisitadas.Count / secciones.Count * 100 : 0;
+    
+    private SeccionManual? GetSeccionAnterior()
+    {
+        var idx = secciones.FindIndex(s => s.Id == seccionActiva);
+        return idx > 0 ? secciones[idx - 1] : null;
+    }
+    
+    private SeccionManual? GetSeccionSiguiente()
+    {
+        var idx = secciones.FindIndex(s => s.Id == seccionActiva);
+        return idx < secciones.Count - 1 ? secciones[idx + 1] : null;
+    }
+    
+    private void BuscarEnManual()
+    {
+        if (string.IsNullOrWhiteSpace(textoBusqueda))
+        {
+            resultadosBusqueda.Clear();
+            mostrarResultados = false;
+            return;
+        }
+        
+        var termino = textoBusqueda.ToLower();
+        resultadosBusqueda = itemsBusqueda
+            .Where(i => i.Titulo.ToLower().Contains(termino) || i.Descripcion.ToLower().Contains(termino))
+            .Select(i => new ResultadoBusqueda(i.SeccionId, i.Titulo, i.Descripcion, i.Icono))
+            .ToList();
+        mostrarResultados = resultadosBusqueda.Any();
+    }
+    
+    private void LimpiarBusqueda()
+    {
+        textoBusqueda = "";
+        resultadosBusqueda.Clear();
+        mostrarResultados = false;
+    }
+    
+    private void IrASeccion(string seccionId)
+    {
+        CambiarSeccion(seccionId);
+    }
+    
+    // ==================== CLASES DE DATOS ====================
+    private record SeccionManual(string Id, string Nombre, string Icono, bool EsNuevo, List<string>? SubSecciones = null);
+    private record ItemBusqueda(string SeccionId, string Titulo, string Descripcion, string Icono);
+    private record ResultadoBusqueda(string SeccionId, string Titulo, string Descripcion, string Icono);
+    
+    // ==================== SECCIÓN: INICIO ====================
+    private RenderFragment RenderInicio() => __builder =>
+    {
+        <div class="section-content">
+            <!-- Banner de Bienvenida -->
+            <div class="welcome-banner">
+                <div class="welcome-icon">
+                    <i class="bi bi-stars"></i>
+                </div>
+                <div class="welcome-text">
+                    <h2>¡Bienvenido a SistemIA!</h2>
+                    <p>Tu sistema integral de gestión empresarial. Explora las secciones para aprender todo lo que necesitas.</p>
+                </div>
+            </div>
+
+            <!-- Estadísticas Rápidas -->
+            <div class="quick-stats">
+                <div class="stat-card">
+                    <i class="bi bi-book"></i>
+                    <div class="stat-info">
+                        <span class="stat-number">@secciones.Count</span>
+                        <span class="stat-label">Secciones</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <i class="bi bi-lightbulb"></i>
+                    <div class="stat-info">
+                        <span class="stat-number">50+</span>
+                        <span class="stat-label">Tips</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <i class="bi bi-keyboard"></i>
+                    <div class="stat-info">
+                        <span class="stat-number">20+</span>
+                        <span class="stat-label">Atajos</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Módulos Principales -->
+            <h3 class="section-title">
+                <i class="bi bi-grid-3x3-gap-fill"></i>
+                Módulos Principales
+            </h3>
+            
+            <div class="feature-grid">
+                <div class="feature-card feature-ventas" @onclick='() => CambiarSeccion("ventas")'>
+                    <div class="feature-icon">
+                        <i class="bi bi-cart-fill"></i>
+                    </div>
+                    <h4>Ventas</h4>
+                    <p>Facturación, tickets, cobros y gestión de ventas al contado y crédito</p>
+                    <div class="feature-tags">
+                        <span class="tag">Facturas</span>
+                        <span class="tag">Tickets</span>
+                        <span class="tag">SIFEN</span>
+                    </div>
+                </div>
+                
+                <div class="feature-card feature-productos" @onclick='() => CambiarSeccion("productos")'>
+                    <div class="feature-icon">
+                        <i class="bi bi-box-seam-fill"></i>
+                    </div>
+                    <h4>Inventario</h4>
+                    <p>Productos, stock, precios, categorías y control de inventario</p>
+                    <div class="feature-tags">
+                        <span class="tag">Stock</span>
+                        <span class="tag">Precios</span>
+                        <span class="tag">Lotes</span>
+                    </div>
+                </div>
+                
+                <div class="feature-card feature-sifen" @onclick='() => CambiarSeccion("sifen")'>
+                    <div class="feature-icon">
+                        <i class="bi bi-file-earmark-code-fill"></i>
+                    </div>
+                    <h4>SIFEN</h4>
+                    <p>Facturación electrónica, envío al SET y gestión de documentos</p>
+                    <div class="feature-tags">
+                        <span class="tag">Electrónico</span>
+                        <span class="tag">SET</span>
+                        <span class="tag">CDC</span>
+                    </div>
+                </div>
+                
+                <div class="feature-card feature-farmacia" @onclick='() => CambiarSeccion("farmacia")'>
+                    <div class="feature-icon">
+                        <i class="bi bi-capsule"></i>
+                    </div>
+                    <h4>Modo Farmacia</h4>
+                    <p>Control de lotes FEFO, vencimientos y precios ministerio</p>
+                    <div class="feature-tags">
+                        <span class="tag">FEFO</span>
+                        <span class="tag">Lotes</span>
+                        <span class="tag">Recetas</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guía de Inicio Rápido -->
+            <h3 class="section-title">
+                <i class="bi bi-rocket-takeoff-fill"></i>
+                Inicio Rápido
+            </h3>
+            
+            <div class="quick-start">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h5>Configura tu Empresa</h5>
+                        <p>Ingresa los datos de tu empresa, logo y configuración fiscal</p>
+                        <a href="/configuracion-sistema" class="step-link">
+                            <i class="bi bi-arrow-right"></i> Ir a Configuración
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h5>Carga tus Productos</h5>
+                        <p>Agrega tu catálogo de productos con precios y stock inicial</p>
+                        <a href="/productos" class="step-link">
+                            <i class="bi bi-arrow-right"></i> Ir a Productos
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h5>Registra Clientes</h5>
+                        <p>Agrega tus clientes con sus datos fiscales para facturación</p>
+                        <a href="/clientes/explorar" class="step-link">
+                            <i class="bi bi-arrow-right"></i> Ir a Clientes
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="step-card">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h5>¡Comienza a Vender!</h5>
+                        <p>Ya puedes crear tu primera venta y emitir facturas</p>
+                        <a href="/ventas" class="step-link">
+                            <i class="bi bi-arrow-right"></i> Nueva Venta
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tips Destacados -->
+            <div class="tips-section">
+                <h3 class="section-title">
+                    <i class="bi bi-lightbulb-fill"></i>
+                    Tips Destacados
+                </h3>
+                
+                <div class="tips-grid">
+                    <div class="tip-card tip-keyboard">
+                        <i class="bi bi-keyboard"></i>
+                        <div class="tip-content">
+                            <strong>Atajo Rápido</strong>
+                            <p>Presiona <kbd>F2</kbd> en ventas para buscar productos rápidamente</p>
+                        </div>
+                    </div>
+                    
+                    <div class="tip-card tip-search">
+                        <i class="bi bi-search"></i>
+                        <div class="tip-content">
+                            <strong>Búsqueda Inteligente</strong>
+                            <p>Busca productos por código de barras, nombre o código interno</p>
+                        </div>
+                    </div>
+                    
+                    <div class="tip-card tip-backup">
+                        <i class="bi bi-cloud-arrow-up"></i>
+                        <div class="tip-content">
+                            <strong>Respaldos</strong>
+                            <p>El sistema realiza respaldos automáticos diarios de tu información</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: VENTAS ====================
+    private RenderFragment RenderVentas() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-success">
+                    <i class="bi bi-cart-fill"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Módulo de Ventas</h2>
+                    <p>Aprende a crear facturas, gestionar cobros y dominar el proceso de ventas</p>
+                </div>
+            </div>
+
+            <!-- Tabs de contenido -->
+            <div class="content-tabs">
+                <button class="tab-btn @(tabActivo == "crear" ? "active" : "")" @onclick='() => tabActivo = "crear"'>
+                    <i class="bi bi-plus-circle"></i> Crear Venta
+                </button>
+                <button class="tab-btn @(tabActivo == "flujo" ? "active" : "")" @onclick='() => tabActivo = "flujo"'>
+                    <i class="bi bi-diagram-3"></i> Flujo de Trabajo
+                </button>
+                <button class="tab-btn @(tabActivo == "atajos" ? "active" : "")" @onclick='() => tabActivo = "atajos"'>
+                    <i class="bi bi-keyboard"></i> Atajos
+                </button>
+                <button class="tab-btn @(tabActivo == "pagos" ? "active" : "")" @onclick='() => tabActivo = "pagos"'>
+                    <i class="bi bi-credit-card"></i> Formas de Pago
+                </button>
+            </div>
+
+            <div class="tab-content">
+                @if (tabActivo == "crear")
+                {
+                    <div class="tutorial-steps">
+                        <div class="tutorial-step">
+                            <div class="step-indicator">
+                                <span class="step-num">1</span>
+                                <div class="step-line"></div>
+                            </div>
+                            <div class="step-body">
+                                <h5>Seleccionar Cliente</h5>
+                                <p>Busca el cliente por nombre, RUC o CI. Para ventas sin factura, usa "CONSUMIDOR FINAL".</p>
+                                <div class="step-tip">
+                                    <i class="bi bi-lightbulb"></i>
+                                    <span>Tip: Presiona <kbd>F3</kbd> para abrir el buscador de clientes</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tutorial-step">
+                            <div class="step-indicator">
+                                <span class="step-num">2</span>
+                                <div class="step-line"></div>
+                            </div>
+                            <div class="step-body">
+                                <h5>Agregar Productos</h5>
+                                <p>Escanea el código de barras o busca por nombre. Puedes modificar cantidad y precio si tienes permisos.</p>
+                                <div class="step-tip">
+                                    <i class="bi bi-lightbulb"></i>
+                                    <span>Tip: Usa <kbd>F2</kbd> para buscar productos rápidamente</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tutorial-step">
+                            <div class="step-indicator">
+                                <span class="step-num">3</span>
+                                <div class="step-line"></div>
+                            </div>
+                            <div class="step-body">
+                                <h5>Aplicar Descuentos</h5>
+                                <p>Los descuentos se aplican automáticamente según la configuración. Puedes agregar descuentos adicionales si tienes permiso.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="tutorial-step">
+                            <div class="step-indicator">
+                                <span class="step-num">4</span>
+                            </div>
+                            <div class="step-body">
+                                <h5>Confirmar y Cobrar</h5>
+                                <p>Selecciona la forma de pago, imprime el comprobante y ¡listo!</p>
+                                <div class="step-tip">
+                                    <i class="bi bi-lightbulb"></i>
+                                    <span>Tip: <kbd>F12</kbd> confirma la venta directamente</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (tabActivo == "flujo")
+                {
+                    <div class="workflow-diagram">
+                        <div class="workflow-step">
+                            <div class="workflow-icon bg-primary">
+                                <i class="bi bi-pencil-square"></i>
+                            </div>
+                            <div class="workflow-label">Borrador</div>
+                            <div class="workflow-desc">Venta en edición</div>
+                        </div>
+                        <div class="workflow-arrow">
+                            <i class="bi bi-arrow-right"></i>
+                        </div>
+                        <div class="workflow-step">
+                            <div class="workflow-icon bg-warning">
+                                <i class="bi bi-check-circle"></i>
+                            </div>
+                            <div class="workflow-label">Confirmada</div>
+                            <div class="workflow-desc">Lista para cobrar</div>
+                        </div>
+                        <div class="workflow-arrow">
+                            <i class="bi bi-arrow-right"></i>
+                        </div>
+                        <div class="workflow-step">
+                            <div class="workflow-icon bg-info">
+                                <i class="bi bi-send"></i>
+                            </div>
+                            <div class="workflow-label">Enviada SIFEN</div>
+                            <div class="workflow-desc">En proceso SET</div>
+                        </div>
+                        <div class="workflow-arrow">
+                            <i class="bi bi-arrow-right"></i>
+                        </div>
+                        <div class="workflow-step">
+                            <div class="workflow-icon bg-success">
+                                <i class="bi bi-patch-check"></i>
+                            </div>
+                            <div class="workflow-label">Aprobada</div>
+                            <div class="workflow-desc">CDC válido</div>
+                        </div>
+                    </div>
+                    
+                    <div class="info-callout info-callout-warning mt-4">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <div>
+                            <strong>Importante:</strong> Una vez confirmada la venta, no puede editarse. 
+                            Para correcciones, utiliza una Nota de Crédito.
+                        </div>
+                    </div>
+                }
+                else if (tabActivo == "atajos")
+                {
+                    <div class="shortcuts-grid">
+                        <div class="shortcut-card">
+                            <kbd>F2</kbd>
+                            <span>Buscar producto</span>
+                        </div>
+                        <div class="shortcut-card">
+                            <kbd>F3</kbd>
+                            <span>Buscar cliente</span>
+                        </div>
+                        <div class="shortcut-card">
+                            <kbd>F4</kbd>
+                            <span>Aplicar descuento</span>
+                        </div>
+                        <div class="shortcut-card">
+                            <kbd>F5</kbd>
+                            <span>Actualizar lista</span>
+                        </div>
+                        <div class="shortcut-card">
+                            <kbd>F8</kbd>
+                            <span>Cambiar forma pago</span>
+                        </div>
+                        <div class="shortcut-card">
+                            <kbd>F12</kbd>
+                            <span>Confirmar venta</span>
+                        </div>
+                        <div class="shortcut-card">
+                            <kbd>Esc</kbd>
+                            <span>Cancelar / Cerrar</span>
+                        </div>
+                        <div class="shortcut-card">
+                            <kbd>Enter</kbd>
+                            <span>Agregar producto</span>
+                        </div>
+                    </div>
+                }
+                else if (tabActivo == "pagos")
+                {
+                    <div class="payment-methods">
+                        <div class="payment-card">
+                            <i class="bi bi-cash-coin text-success"></i>
+                            <h5>Efectivo</h5>
+                            <p>Pago en efectivo con cálculo automático de vuelto</p>
+                        </div>
+                        <div class="payment-card">
+                            <i class="bi bi-credit-card text-primary"></i>
+                            <h5>Tarjeta</h5>
+                            <p>Débito o crédito con opción de cuotas</p>
+                        </div>
+                        <div class="payment-card">
+                            <i class="bi bi-bank text-info"></i>
+                            <h5>Transferencia</h5>
+                            <p>Transferencia bancaria o QR</p>
+                        </div>
+                        <div class="payment-card">
+                            <i class="bi bi-clock-history text-warning"></i>
+                            <h5>Crédito</h5>
+                            <p>Venta a crédito con cuotas configurables</p>
+                        </div>
+                        <div class="payment-card">
+                            <i class="bi bi-layers text-secondary"></i>
+                            <h5>Mixto</h5>
+                            <p>Combinación de múltiples formas de pago</p>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Acciones Rápidas -->
+            <div class="quick-actions">
+                <a href="/ventas" class="action-btn action-primary">
+                    <i class="bi bi-plus-lg"></i>
+                    Nueva Venta
+                </a>
+                <a href="/ventas/explorar" class="action-btn action-secondary">
+                    <i class="bi bi-search"></i>
+                    Explorar Ventas
+                </a>
+                <a href="/notas-credito/explorar" class="action-btn action-outline">
+                    <i class="bi bi-receipt"></i>
+                    Notas de Crédito
+                </a>
+            </div>
+        </div>
+    };
+    
+    private string tabActivo = "crear";
+    
+    // ==================== SECCIÓN: PRODUCTOS ====================
+    private RenderFragment RenderProductos() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-info">
+                    <i class="bi bi-box-seam-fill"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Gestión de Productos</h2>
+                    <p>Catálogo, precios, stock y configuración de productos</p>
+                </div>
+            </div>
+
+            <!-- Características en Grid -->
+            <div class="features-showcase">
+                <div class="showcase-card">
+                    <div class="showcase-icon">
+                        <i class="bi bi-tags-fill text-primary"></i>
+                    </div>
+                    <h5>Múltiples Precios</h5>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-check2"></i> Precio de costo</li>
+                        <li><i class="bi bi-check2"></i> Precio de venta</li>
+                        <li><i class="bi bi-check2"></i> Precio mayorista</li>
+                        <li><i class="bi bi-check2"></i> Precio distribuidor</li>
+                        <li><i class="bi bi-check2"></i> Precio ministerio</li>
+                    </ul>
+                </div>
+                
+                <div class="showcase-card">
+                    <div class="showcase-icon">
+                        <i class="bi bi-boxes text-success"></i>
+                    </div>
+                    <h5>Control de Stock</h5>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-check2"></i> Stock por depósito</li>
+                        <li><i class="bi bi-check2"></i> Stock mínimo</li>
+                        <li><i class="bi bi-check2"></i> Alertas automáticas</li>
+                        <li><i class="bi bi-check2"></i> Inventario en tiempo real</li>
+                        <li><i class="bi bi-check2"></i> Trazabilidad por lotes</li>
+                    </ul>
+                </div>
+                
+                <div class="showcase-card">
+                    <div class="showcase-icon">
+                        <i class="bi bi-sliders text-warning"></i>
+                    </div>
+                    <h5>Configuraciones</h5>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-check2"></i> Permite decimal</li>
+                        <li><i class="bi bi-check2"></i> Permite descuento</li>
+                        <li><i class="bi bi-check2"></i> Es servicio</li>
+                        <li><i class="bi bi-check2"></i> Requiere receta</li>
+                        <li><i class="bi bi-check2"></i> Control de lotes</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Sistema de Precios -->
+            <h3 class="section-title mt-5">
+                <i class="bi bi-currency-dollar"></i>
+                Sistema de Precios
+            </h3>
+            
+            <div class="price-system">
+                <div class="price-tier">
+                    <div class="tier-header tier-cost">
+                        <i class="bi bi-box-seam"></i>
+                        <span>Costo</span>
+                    </div>
+                    <div class="tier-body">
+                        <p>Precio de adquisición</p>
+                        <small>Base para cálculo de rentabilidad</small>
+                    </div>
+                </div>
+                
+                <div class="price-arrow">
+                    <i class="bi bi-arrow-right"></i>
+                </div>
+                
+                <div class="price-tier">
+                    <div class="tier-header tier-retail">
+                        <i class="bi bi-shop"></i>
+                        <span>Venta</span>
+                    </div>
+                    <div class="tier-body">
+                        <p>Precio al público</p>
+                        <small>Clientes minoristas</small>
+                    </div>
+                </div>
+                
+                <div class="price-arrow">
+                    <i class="bi bi-arrow-right"></i>
+                </div>
+                
+                <div class="price-tier">
+                    <div class="tier-header tier-wholesale">
+                        <i class="bi bi-building"></i>
+                        <span>Mayorista</span>
+                    </div>
+                    <div class="tier-body">
+                        <p>Compras en cantidad</p>
+                        <small>Clientes mayoristas</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-callout info-callout-info mt-4">
+                <i class="bi bi-lightbulb"></i>
+                <div>
+                    <strong>Listas de Precios:</strong> Puedes crear listas personalizadas con un factor de ajuste 
+                    y asignarlas a clientes específicos. Por ejemplo, una lista "VIP" con factor 0.90 
+                    aplica 10% de descuento automático.
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/productos" class="action-btn action-primary">
+                    <i class="bi bi-plus-lg"></i>
+                    Nuevo Producto
+                </a>
+                <a href="/productos" class="action-btn action-secondary">
+                    <i class="bi bi-search"></i>
+                    Explorar Productos
+                </a>
+                <a href="/configuracion/listas-precios" class="action-btn action-outline">
+                    <i class="bi bi-tag"></i>
+                    Listas de Precios
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: COMPRAS ====================
+    private RenderFragment RenderCompras() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-secondary">
+                    <i class="bi bi-bag-fill"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Módulo de Compras</h2>
+                    <p>Registro de compras, actualización de costos y entrada de mercadería</p>
+                </div>
+            </div>
+
+            <!-- Flujo de Compras Visual -->
+            <div class="workflow-diagram">
+                <div class="workflow-step">
+                    <div class="workflow-icon bg-secondary">
+                        <i class="bi bi-file-earmark-plus"></i>
+                    </div>
+                    <div class="workflow-label">Crear</div>
+                    <div class="workflow-desc">Nueva compra</div>
+                </div>
+                <div class="workflow-arrow"><i class="bi bi-arrow-right"></i></div>
+                <div class="workflow-step">
+                    <div class="workflow-icon bg-primary">
+                        <i class="bi bi-person-badge"></i>
+                    </div>
+                    <div class="workflow-label">Proveedor</div>
+                    <div class="workflow-desc">Seleccionar</div>
+                </div>
+                <div class="workflow-arrow"><i class="bi bi-arrow-right"></i></div>
+                <div class="workflow-step">
+                    <div class="workflow-icon bg-info">
+                        <i class="bi bi-cart-plus"></i>
+                    </div>
+                    <div class="workflow-label">Productos</div>
+                    <div class="workflow-desc">Agregar items</div>
+                </div>
+                <div class="workflow-arrow"><i class="bi bi-arrow-right"></i></div>
+                <div class="workflow-step">
+                    <div class="workflow-icon bg-success">
+                        <i class="bi bi-check-circle"></i>
+                    </div>
+                    <div class="workflow-label">Confirmar</div>
+                    <div class="workflow-desc">Stock +</div>
+                </div>
+            </div>
+
+            <!-- Características -->
+            <div class="features-grid mt-5">
+                <div class="feature-item">
+                    <i class="bi bi-arrow-repeat text-primary"></i>
+                    <div>
+                        <h5>Actualización de Costos</h5>
+                        <p>Actualiza automáticamente el precio de costo al confirmar la compra</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-boxes text-success"></i>
+                    <div>
+                        <h5>Entrada de Stock</h5>
+                        <p>El stock se incrementa en el depósito seleccionado</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-receipt text-info"></i>
+                    <div>
+                        <h5>Notas de Crédito</h5>
+                        <p>Genera NC para devoluciones a proveedores</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-calendar3 text-warning"></i>
+                    <div>
+                        <h5>Control de Lotes</h5>
+                        <p>Registra lotes y fechas de vencimiento</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-callout info-callout-warning mt-4">
+                <i class="bi bi-exclamation-triangle"></i>
+                <div>
+                    <strong>Importante:</strong> Una vez confirmada la compra, no puede modificarse. 
+                    Para correcciones, utiliza una Nota de Crédito de Compra.
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/compras" class="action-btn action-primary">
+                    <i class="bi bi-plus-lg"></i>
+                    Nueva Compra
+                </a>
+                <a href="/compras/explorar" class="action-btn action-secondary">
+                    <i class="bi bi-search"></i>
+                    Explorar Compras
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: DESCUENTOS ====================
+    private RenderFragment RenderDescuentos() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-danger">
+                    <i class="bi bi-percent"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Sistema de Descuentos</h2>
+                    <p>Descuentos automáticos con jerarquía de prioridades inteligente</p>
+                </div>
+            </div>
+
+            <!-- Jerarquía de Prioridades -->
+            <h3 class="section-title">
+                <i class="bi bi-sort-numeric-down"></i>
+                Jerarquía de Prioridades
+            </h3>
+            
+            <div class="priority-pyramid">
+                <div class="priority-level priority-1">
+                    <span class="priority-badge">1°</span>
+                    <div class="priority-content">
+                        <h5>Descuento por Producto</h5>
+                        <p>Descuento específico configurado en el producto</p>
+                    </div>
+                    <span class="priority-tag">Máxima Prioridad</span>
+                </div>
+                
+                <div class="priority-level priority-2">
+                    <span class="priority-badge">2°</span>
+                    <div class="priority-content">
+                        <h5>Descuento por Marca</h5>
+                        <p>Aplica a todos los productos de una marca</p>
+                    </div>
+                </div>
+                
+                <div class="priority-level priority-3">
+                    <span class="priority-badge">3°</span>
+                    <div class="priority-content">
+                        <h5>Descuento por Categoría</h5>
+                        <p>Aplica a toda una categoría de productos</p>
+                    </div>
+                </div>
+                
+                <div class="priority-level priority-4">
+                    <span class="priority-badge">4°</span>
+                    <div class="priority-content">
+                        <h5>Descuento por Cliente</h5>
+                        <p>Descuento general asignado al cliente</p>
+                    </div>
+                    <span class="priority-tag">Mínima Prioridad</span>
+                </div>
+            </div>
+
+            <div class="info-callout info-callout-info mt-4">
+                <i class="bi bi-info-circle"></i>
+                <div>
+                    <strong>¿Cómo funciona?</strong> El sistema busca descuentos desde la prioridad más alta (Producto) 
+                    hasta la más baja (Cliente). El primer descuento encontrado es el que se aplica.
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/configuracion/precios-descuentos" class="action-btn action-primary">
+                    <i class="bi bi-tag"></i>
+                    Configurar Descuentos
+                </a>
+                <a href="/configuracion/marcas-clasificaciones" class="action-btn action-secondary">
+                    <i class="bi bi-folder"></i>
+                    Categorías y Marcas
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: FARMACIA ====================
+    private RenderFragment RenderFarmacia() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-teal">
+                    <i class="bi bi-capsule"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Modo Farmacia</h2>
+                    <p>Control especializado de lotes, vencimientos y recetas médicas</p>
+                </div>
+            </div>
+
+            <div class="alert-banner alert-info">
+                <i class="bi bi-info-circle"></i>
+                <span>El modo farmacia activa funciones especiales para el control de medicamentos según normativas sanitarias</span>
+            </div>
+
+            <!-- Características Farmacia -->
+            <div class="pharmacy-features">
+                <div class="pharmacy-card">
+                    <div class="pharmacy-icon">
+                        <i class="bi bi-calendar2-check"></i>
+                    </div>
+                    <h5>Control FEFO</h5>
+                    <p>First Expired, First Out. El sistema selecciona automáticamente el lote con vencimiento más próximo.</p>
+                </div>
+                
+                <div class="pharmacy-card">
+                    <div class="pharmacy-icon">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <h5>Alertas de Vencimiento</h5>
+                    <p>Notificaciones automáticas de productos próximos a vencer (30, 60, 90 días).</p>
+                </div>
+                
+                <div class="pharmacy-card">
+                    <div class="pharmacy-icon">
+                        <i class="bi bi-file-medical"></i>
+                    </div>
+                    <h5>Control de Recetas</h5>
+                    <p>Registro de recetas médicas para medicamentos controlados.</p>
+                </div>
+                
+                <div class="pharmacy-card">
+                    <div class="pharmacy-icon">
+                        <i class="bi bi-currency-dollar"></i>
+                    </div>
+                    <h5>Precio Ministerio</h5>
+                    <p>Impresión del precio regulado por el Ministerio de Salud en tickets.</p>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/configuracion-sistema" class="action-btn action-primary">
+                    <i class="bi bi-gear"></i>
+                    Activar Modo Farmacia
+                </a>
+                <a href="/inventario/alertas-vencimiento" class="action-btn action-secondary">
+                    <i class="bi bi-calendar-x"></i>
+                    Ver Vencimientos
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: SIFEN ====================
+    private RenderFragment RenderSifen() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-warning">
+                    <i class="bi bi-file-earmark-code-fill"></i>
+                </div>
+                <div class="header-text">
+                    <h2>SIFEN - Facturación Electrónica</h2>
+                    <p>Sistema Integrado de Facturación Electrónica Nacional - Paraguay</p>
+                </div>
+            </div>
+
+            <!-- Tipos de Documentos -->
+            <h3 class="section-title">
+                <i class="bi bi-files"></i>
+                Tipos de Documentos Electrónicos
+            </h3>
+            
+            <div class="document-types">
+                <div class="doc-type">
+                    <span class="doc-code">01</span>
+                    <span class="doc-name">Factura Electrónica</span>
+                    <span class="doc-abbr">FE</span>
+                </div>
+                <div class="doc-type">
+                    <span class="doc-code">05</span>
+                    <span class="doc-name">Nota de Crédito</span>
+                    <span class="doc-abbr">NCE</span>
+                </div>
+                <div class="doc-type">
+                    <span class="doc-code">06</span>
+                    <span class="doc-name">Nota de Débito</span>
+                    <span class="doc-abbr">NDE</span>
+                </div>
+                <div class="doc-type">
+                    <span class="doc-code">04</span>
+                    <span class="doc-name">Autofactura</span>
+                    <span class="doc-abbr">AFE</span>
+                </div>
+            </div>
+
+            <!-- Estados SIFEN -->
+            <h3 class="section-title mt-5">
+                <i class="bi bi-diagram-2"></i>
+                Estados de Documentos
+            </h3>
+            
+            <div class="status-flow">
+                <div class="status-item status-pending">
+                    <i class="bi bi-hourglass-split"></i>
+                    <span>PENDIENTE</span>
+                </div>
+                <i class="bi bi-arrow-right text-muted"></i>
+                <div class="status-item status-sent">
+                    <i class="bi bi-send"></i>
+                    <span>ENVIADO</span>
+                </div>
+                <i class="bi bi-arrow-right text-muted"></i>
+                <div class="status-item status-approved">
+                    <i class="bi bi-patch-check"></i>
+                    <span>ACEPTADO</span>
+                </div>
+            </div>
+            
+            <div class="status-flow mt-2">
+                <div class="status-item status-rejected">
+                    <i class="bi bi-x-circle"></i>
+                    <span>RECHAZADO</span>
+                </div>
+                <div class="status-item status-cancelled">
+                    <i class="bi bi-slash-circle"></i>
+                    <span>CANCELADO</span>
+                </div>
+            </div>
+
+            <div class="info-callout info-callout-warning mt-4">
+                <i class="bi bi-exclamation-triangle"></i>
+                <div>
+                    <strong>Cancelación:</strong> Las facturas aceptadas solo pueden cancelarse dentro de las 
+                    <strong>48 horas</strong> siguientes a su aprobación.
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/monitor-sifen" class="action-btn action-primary">
+                    <i class="bi bi-speedometer2"></i>
+                    Monitor SIFEN
+                </a>
+                <a href="/admin/sifen/diagnostico" class="action-btn action-secondary">
+                    <i class="bi bi-tools"></i>
+                    Diagnóstico
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: PERMISOS ====================
+    private RenderFragment RenderPermisos() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-purple">
+                    <i class="bi bi-shield-lock-fill"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Sistema de Permisos</h2>
+                    <p>Control de acceso basado en roles y permisos granulares</p>
+                </div>
+            </div>
+
+            <!-- Modelo de Seguridad -->
+            <div class="security-model">
+                <div class="security-card">
+                    <div class="security-icon">
+                        <i class="bi bi-person-badge"></i>
+                    </div>
+                    <h5>Usuarios</h5>
+                    <p>Cuentas individuales con credenciales únicas</p>
+                </div>
+                <div class="security-arrow">
+                    <i class="bi bi-arrow-right"></i>
+                </div>
+                <div class="security-card">
+                    <div class="security-icon">
+                        <i class="bi bi-people"></i>
+                    </div>
+                    <h5>Roles</h5>
+                    <p>Agrupación de permisos (Admin, Vendedor, etc.)</p>
+                </div>
+                <div class="security-arrow">
+                    <i class="bi bi-arrow-right"></i>
+                </div>
+                <div class="security-card">
+                    <div class="security-icon">
+                        <i class="bi bi-key"></i>
+                    </div>
+                    <h5>Permisos</h5>
+                    <p>Acciones específicas por módulo</p>
+                </div>
+            </div>
+
+            <!-- Tipos de Permisos -->
+            <h3 class="section-title mt-5">
+                <i class="bi bi-lock"></i>
+                Tipos de Permisos
+            </h3>
+            
+            <div class="permissions-grid">
+                <div class="permission-card">
+                    <code class="permission-code">VIEW</code>
+                    <span>Ver y consultar información</span>
+                </div>
+                <div class="permission-card">
+                    <code class="permission-code">CREATE</code>
+                    <span>Crear nuevos registros</span>
+                </div>
+                <div class="permission-card">
+                    <code class="permission-code">EDIT</code>
+                    <span>Modificar registros existentes</span>
+                </div>
+                <div class="permission-card">
+                    <code class="permission-code">DELETE</code>
+                    <span>Eliminar registros</span>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/menu-usuarios" class="action-btn action-primary">
+                    <i class="bi bi-people"></i>
+                    Gestionar Usuarios
+                </a>
+                <a href="/personal/permisos-usuarios" class="action-btn action-secondary">
+                    <i class="bi bi-person-gear"></i>
+                    Permisos por Usuario
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: CORREO ====================
+    private RenderFragment RenderCorreo() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-purple-gradient">
+                    <i class="bi bi-envelope-at-fill"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Configuración de Correo</h2>
+                    <p>Envío automático de informes, notificaciones y facturas</p>
+                </div>
+            </div>
+
+            <!-- Configuración SMTP -->
+            <h3 class="section-title">
+                <i class="bi bi-server"></i>
+                Configuración del Servidor SMTP
+            </h3>
+            
+            <div class="config-table">
+                <div class="config-row">
+                    <span class="config-label">Servidor SMTP</span>
+                    <span class="config-value">smtp.gmail.com, smtp.office365.com</span>
+                </div>
+                <div class="config-row">
+                    <span class="config-label">Puerto</span>
+                    <span class="config-value">587 (TLS), 465 (SSL)</span>
+                </div>
+                <div class="config-row">
+                    <span class="config-label">Usar SSL/TLS</span>
+                    <span class="config-value">Recomendado: Activado</span>
+                </div>
+                <div class="config-row">
+                    <span class="config-label">Usuario</span>
+                    <span class="config-value">sistema@miempresa.com</span>
+                </div>
+            </div>
+
+            <div class="info-callout info-callout-warning mt-4">
+                <i class="bi bi-exclamation-triangle"></i>
+                <div>
+                    <strong>Gmail:</strong> Si usa Gmail, debe crear una "Contraseña de aplicación" en 
+                    Seguridad de Google → Verificación en 2 pasos → Contraseñas de aplicaciones.
+                </div>
+            </div>
+
+            <!-- Tipos de Informes -->
+            <h3 class="section-title mt-5">
+                <i class="bi bi-file-earmark-bar-graph"></i>
+                Informes Disponibles
+            </h3>
+            
+            <div class="reports-grid">
+                <div class="report-category">
+                    <h6><i class="bi bi-cart text-success"></i> Ventas</h6>
+                    <ul>
+                        <li>Resumen de Cierre</li>
+                        <li>Ventas Detallado</li>
+                        <li>Ventas Agrupado</li>
+                    </ul>
+                </div>
+                <div class="report-category">
+                    <h6><i class="bi bi-bag text-primary"></i> Compras</h6>
+                    <ul>
+                        <li>Compras Detallado</li>
+                        <li>Notas de Crédito</li>
+                    </ul>
+                </div>
+                <div class="report-category">
+                    <h6><i class="bi bi-box-seam text-warning"></i> Inventario</h6>
+                    <ul>
+                        <li>Stock Valorizado</li>
+                        <li>Movimientos</li>
+                        <li>Alertas Stock Bajo</li>
+                    </ul>
+                </div>
+                <div class="report-category">
+                    <h6><i class="bi bi-cash-coin text-info"></i> Financieros</h6>
+                    <ul>
+                        <li>Resumen de Caja</li>
+                        <li>Cuentas por Cobrar</li>
+                        <li>Cuentas por Pagar</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/configuracion/correo" class="action-btn action-primary">
+                    <i class="bi bi-envelope-at"></i>
+                    Configurar Correo
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: CAJA ====================
+    private RenderFragment RenderCaja() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-teal">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Caja y Turnos</h2>
+                    <p>Gestión de turnos, arqueos y cierres de caja</p>
+                </div>
+            </div>
+
+            <!-- Flujo de Caja -->
+            <div class="workflow-diagram">
+                <div class="workflow-step">
+                    <div class="workflow-icon bg-success">
+                        <i class="bi bi-door-open"></i>
+                    </div>
+                    <div class="workflow-label">Abrir Turno</div>
+                    <div class="workflow-desc">Fondo inicial</div>
+                </div>
+                <div class="workflow-arrow"><i class="bi bi-arrow-right"></i></div>
+                <div class="workflow-step">
+                    <div class="workflow-icon bg-primary">
+                        <i class="bi bi-cart-check"></i>
+                    </div>
+                    <div class="workflow-label">Operaciones</div>
+                    <div class="workflow-desc">Ventas y cobros</div>
+                </div>
+                <div class="workflow-arrow"><i class="bi bi-arrow-right"></i></div>
+                <div class="workflow-step">
+                    <div class="workflow-icon bg-warning">
+                        <i class="bi bi-calculator"></i>
+                    </div>
+                    <div class="workflow-label">Arqueo</div>
+                    <div class="workflow-desc">Contar efectivo</div>
+                </div>
+                <div class="workflow-arrow"><i class="bi bi-arrow-right"></i></div>
+                <div class="workflow-step">
+                    <div class="workflow-icon bg-danger">
+                        <i class="bi bi-door-closed"></i>
+                    </div>
+                    <div class="workflow-label">Cerrar Turno</div>
+                    <div class="workflow-desc">Generar reporte</div>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/caja/cierre" class="action-btn action-primary">
+                    <i class="bi bi-cash-stack"></i>
+                    Cierre de Caja
+                </a>
+                <a href="/caja/historial-cierres" class="action-btn action-secondary">
+                    <i class="bi bi-clock-history"></i>
+                    Historial de Cierres
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: CLIENTES ====================
+    private RenderFragment RenderClientes() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-primary">
+                    <i class="bi bi-people-fill"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Gestión de Clientes</h2>
+                    <p>Registro de clientes, créditos y cuentas por cobrar</p>
+                </div>
+            </div>
+
+            <!-- Características -->
+            <div class="features-grid">
+                <div class="feature-item">
+                    <i class="bi bi-person-vcard text-primary"></i>
+                    <div>
+                        <h5>Datos Fiscales</h5>
+                        <p>RUC, razón social y datos para facturación electrónica</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-credit-card text-success"></i>
+                    <div>
+                        <h5>Línea de Crédito</h5>
+                        <p>Asigna límites de crédito y controla el saldo</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-tags text-warning"></i>
+                    <div>
+                        <h5>Lista de Precios</h5>
+                        <p>Precios especiales por cliente o categoría</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-envelope text-info"></i>
+                    <div>
+                        <h5>Envío de Facturas</h5>
+                        <p>Envío automático de facturas por correo</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <a href="/clientes/crear" class="action-btn action-primary">
+                    <i class="bi bi-person-plus"></i>
+                    Nuevo Cliente
+                </a>
+                <a href="/clientes/explorar" class="action-btn action-secondary">
+                    <i class="bi bi-search"></i>
+                    Explorar Clientes
+                </a>
+                <a href="/cobros/listado" class="action-btn action-outline">
+                    <i class="bi bi-cash-coin"></i>
+                    Cuentas por Cobrar
+                </a>
+            </div>
+        </div>
+    };
+    
+    // ==================== SECCIÓN: ASISTENTE IA ====================
+    private RenderFragment RenderAsistente() => __builder =>
+    {
+        <div class="section-content">
+            <div class="section-header">
+                <div class="header-icon bg-ai-gradient">
+                    <i class="bi bi-robot"></i>
+                </div>
+                <div class="header-text">
+                    <h2>Asistente IA</h2>
+                    <p>Tu asistente inteligente para resolver dudas del sistema</p>
+                </div>
+            </div>
+
+            <div class="ai-preview">
+                <div class="ai-animation">
+                    <i class="bi bi-robot"></i>
+                    <div class="ai-pulse"></div>
+                </div>
+                <h4>¿Tienes alguna pregunta?</h4>
+                <p>El asistente puede ayudarte con cualquier duda sobre el uso del sistema</p>
+            </div>
+
+            <!-- Ejemplos de Preguntas -->
+            <h3 class="section-title">
+                <i class="bi bi-chat-dots"></i>
+                Ejemplos de Preguntas
+            </h3>
+            
+            <div class="example-questions">
+                <div class="question-item">
+                    <i class="bi bi-chat-left-quote"></i>
+                    <span>"¿Cómo configuro un descuento del 10% para una marca?"</span>
+                </div>
+                <div class="question-item">
+                    <i class="bi bi-chat-left-quote"></i>
+                    <span>"¿Cómo envío la factura por correo al cliente?"</span>
+                </div>
+                <div class="question-item">
+                    <i class="bi bi-chat-left-quote"></i>
+                    <span>"¿Por qué me sale error al enviar a SIFEN?"</span>
+                </div>
+                <div class="question-item">
+                    <i class="bi bi-chat-left-quote"></i>
+                    <span>"¿Cómo hago una transferencia entre depósitos?"</span>
+                </div>
+            </div>
+
+            <div class="info-callout info-callout-info mt-4">
+                <i class="bi bi-lightbulb"></i>
+                <div>
+                    <strong>Tip:</strong> Haz clic en el icono <i class="bi bi-robot"></i> en la esquina inferior 
+                    derecha de cualquier página para abrir el chat del asistente.
+                </div>
+            </div>
+        </div>
+    };
+}
+
+</PageProtection>

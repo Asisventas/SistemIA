@@ -47,17 +47,17 @@
                                         <img src="@GetLogoBase64()" alt="Logo" />
                                     </div>
                                 }
-                                <div class="ticket-empresa">@(_sucursal?.NombreEmpresa ?? _sociedad?.Nombre)</div>
-                                <div class="ticket-ruc">RUC: @FormatearRucConDv(_sociedad?.RUC, _sociedad?.DV)</div>
+                                <div class="ticket-empresa">@NombreEmisorTicket</div>
+                                <div class="ticket-ruc">RUC: @RucEmisorTicket</div>
 
-                                @if (!string.IsNullOrEmpty(_sucursal?.Direccion ?? _sociedad?.Direccion))
+                                @if (!string.IsNullOrEmpty(DireccionEmisorTicket))
                                 {
-                                    <div class="ticket-direccion">@(_sucursal?.Direccion ?? _sociedad?.Direccion)</div>
+                                    <div class="ticket-direccion">@DireccionEmisorTicket</div>
                                 }
 
-                                @if (!string.IsNullOrEmpty(_sucursal?.Telefono ?? _sociedad?.Telefono))
+                                @if (!string.IsNullOrEmpty(TelefonoEmisorTicket))
                                 {
-                                    <div class="ticket-telefono">Tel: @(_sucursal?.Telefono ?? _sociedad?.Telefono)</div>
+                                    <div class="ticket-telefono">Tel: @TelefonoEmisorTicket</div>
                                 }
 
                                 @if (!string.IsNullOrEmpty(_sucursal?.RubroEmpresa))
@@ -70,9 +70,22 @@
 
                             @* ═══════════════════ TIPO DOCUMENTO ═══════════════════ *@
                             <div class="ticket-tipo-doc">
-                                @(_caja?.TipoFacturacion == "ELECTRONICA"
-                                    ? "FACTURA ELECTRÓNICA"
-                                    : (_venta.TipoDocumento?.ToUpper() ?? "FACTURA"))
+                                @{
+                                    var condicionVenta = _tipoPago?.Nombre?.ToUpper() ?? "";
+                                    var esRemision = condicionVenta.Contains("REMISIÓN") || condicionVenta.Contains("REMISION");
+                                }
+                                @if (esRemision)
+                                {
+                                    @condicionVenta
+                                }
+                                else if (_caja?.TipoFacturacion == "ELECTRONICA")
+                                {
+                                    @("FACTURA ELECTRÓNICA")
+                                }
+                                else
+                                {
+                                    @(_venta.TipoDocumento?.ToUpper() ?? "FACTURA")
+                                }
                             </div>
 
                             <div class="ticket-separator-double"></div>
@@ -146,13 +159,10 @@
                                 @if (_modoFarmaciaActivo)
                                 {
                                     <span class="col-descuento">%Desc</span>
-                                }
-                                <span class="col-precio">P.UNIT.</span>
-                                @if (_modoFarmaciaActivo)
-                                {
                                     <span class="col-pmin">P.MIN.</span>
                                 }
                                 <span class="col-importe">IMPORTE</span>
+                                <span class="col-tiva">IVA</span>
                             </div>
 
                             <div class="ticket-separator"></div>
@@ -167,13 +177,10 @@
                                         @if (_modoFarmaciaActivo)
                                         {
                                             <span class="col-descuento">@(det.PorcentajeDescuento.HasValue && det.PorcentajeDescuento.Value > 0 ? det.PorcentajeDescuento.Value.ToString("N2") : "-")</span>
-                                        }
-                                        <span class="col-precio">@FormatearImporte(det.PrecioUnitario)</span>
-                                        @if (_modoFarmaciaActivo)
-                                        {
                                             <span class="col-pmin">@(det.PrecioMinisterio.HasValue ? FormatearImporte(det.PrecioMinisterio.Value) : "-")</span>
                                         }
                                         <span class="col-importe">@FormatearImporte(det.Importe)</span>
+                                        <span class="col-tiva">@ObtenerCodigoIva(det)</span>
                                     </div>
                                 }
                             </div>
@@ -205,34 +212,30 @@
                             @* ═══════════════════ LIQUIDACIÓN IVA ═══════════════════ *@
                             <div class="ticket-liquidacion">
                                 <div class="ticket-row ticket-liquidacion-header">
-                                    <span>LIQUIDACIÓN DEL IVA:</span>
+                                    <span>SUB TOTALES</span>
+                                    <span class="liq-header-right">LIQUIDACION</span>
+                                    <span class="liq-header-iva">IVA</span>
                                 </div>
-                                <div class="ticket-liquidacion-grid">
-                                    <div class="liquidacion-col">
-                                        <span class="liq-label">EXENTA:</span>
+                                <div class="ticket-liquidacion-rows">
+                                    <div class="liquidacion-row">
+                                        <span class="liq-label">Exentas:</span>
                                         <span class="liq-value">@(_totalExentas > 0 ? FormatearImporte(_totalExentas) : "-")</span>
+                                        <span class="liq-iva">0</span>
                                     </div>
-                                    <div class="liquidacion-col">
-                                        <span class="liq-label">5%:</span>
-                                        <span class="liq-value">@(_liquidacionIva5 > 0 ? FormatearImporte(_liquidacionIva5) : "-")</span>
+                                    <div class="liquidacion-row">
+                                        <span class="liq-label">Gravado 5%:</span>
+                                        <span class="liq-value">@(_totalConIva5 > 0 ? FormatearImporte(_totalConIva5) : "-")</span>
+                                        <span class="liq-iva">@(_totalIva5 > 0 ? FormatearImporte(_totalIva5) : "-")</span>
                                     </div>
-                                    <div class="liquidacion-col">
-                                        <span class="liq-label">10%:</span>
-                                        <span class="liq-value">@(_liquidacionIva10 > 0 ? FormatearImporte(_liquidacionIva10) : "-")</span>
+                                    <div class="liquidacion-row">
+                                        <span class="liq-label">Gravado 10%:</span>
+                                        <span class="liq-value">@(_totalConIva10 > 0 ? FormatearImporte(_totalConIva10) : "-")</span>
+                                        <span class="liq-iva">@(_totalIva10 > 0 ? FormatearImporte(_totalIva10) : "-")</span>
                                     </div>
-                                    <div class="liquidacion-col">
+                                    <div class="liquidacion-row liquidacion-total">
                                         <span class="liq-label">TOTAL:</span>
-                                        <span class="liq-value">@FormatearImporte(_totalIva5 + _totalIva10)</span>
-                                    </div>
-                                </div>
-                                <div class="ticket-liquidacion-gravado">
-                                    <div class="liquidacion-col">
-                                        <span class="liq-label">Grav. 5%:</span>
-                                        <span class="liq-value">@(_subtotalGravadas5 > 0 ? FormatearImporte(_subtotalGravadas5) : "-")</span>
-                                    </div>
-                                    <div class="liquidacion-col">
-                                        <span class="liq-label">Grav. 10%:</span>
-                                        <span class="liq-value">@(_subtotalGravadas10 > 0 ? FormatearImporte(_subtotalGravadas10) : "-")</span>
+                                        <span class="liq-value"></span>
+                                        <span class="liq-iva">@FormatearImporte(_totalIva5 + _totalIva10)</span>
                                     </div>
                                 </div>
                             </div>
@@ -378,11 +381,23 @@
     }
 
     .ticket-preview-container .ticket-direccion,
-    .ticket-preview-container .ticket-telefono,
-    .ticket-preview-container .ticket-actividad {
+    .ticket-preview-container .ticket-telefono {
         font-size: 12px;
         margin: 2px 0;
         word-wrap: break-word;
+    }
+    
+    .ticket-preview-container .ticket-actividad {
+        font-size: 10px;
+        margin: 4px 0;
+        word-wrap: break-word;
+        word-break: break-word;
+        white-space: normal;
+        line-height: 1.2;
+        padding: 2px 4px;
+        background: #f8f8f8;
+        border-radius: 2px;
+        text-align: center;
     }
 
     /* ═══════════════════ TIPO DOCUMENTO ═══════════════════ */
@@ -440,13 +455,14 @@
         background: #f5f5f5;
     }
 
-    .ticket-preview-container .ticket-detalle-header .col-cant { width: 32px; text-align: center; }
-    .ticket-preview-container .ticket-detalle-header .col-desc { flex: 1; text-align: left; padding-left: 4px; min-width: 60px; }
+    .ticket-preview-container .ticket-detalle-header .col-cant { width: 28px; text-align: center; font-size: 10px; }
+    .ticket-preview-container .ticket-detalle-header .col-desc { flex: 1; text-align: left; padding-left: 3px; min-width: 100px; font-size: 10px; }
     .ticket-preview-container .ticket-detalle-header .col-lote { width: 55px; text-align: center; color: #17a2b8; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ticket-preview-container .ticket-detalle-header .col-descuento { width: 32px; text-align: right; color: #17a2b8; font-size: 10px; }
     .ticket-preview-container .ticket-detalle-header .col-precio { width: 50px; text-align: right; font-size: 11px; }
     .ticket-preview-container .ticket-detalle-header .col-pmin { width: 50px; text-align: right; color: #0d6efd; font-size: 11px; }
-    .ticket-preview-container .ticket-detalle-header .col-importe { width: 55px; text-align: right; font-weight: bold; }
+    .ticket-preview-container .ticket-detalle-header .col-importe { width: 50px; text-align: right; font-weight: bold; font-size: 10px; }
+    .ticket-preview-container .ticket-detalle-header .col-tiva { width: 24px; text-align: right; font-size: 10px; }
 
     /* ═══════════════════ DETALLE DE PRODUCTOS ═══════════════════ */
     .ticket-preview-container .ticket-detalle {
@@ -465,22 +481,26 @@
         border-bottom: none;
     }
 
-    .ticket-preview-container .ticket-detalle-item .col-cant { width: 32px; text-align: center; flex-shrink: 0; }
+    .ticket-preview-container .ticket-detalle-item .col-cant { width: 28px; text-align: center; flex-shrink: 0; font-size: 11px; }
     .ticket-preview-container .ticket-detalle-item .col-desc { 
         flex: 1; 
         text-align: left; 
-        padding-left: 4px;
+        padding-left: 3px;
+        padding-right: 2px;
         word-wrap: break-word;
         word-break: break-word;
+        overflow-wrap: break-word;
         white-space: normal;
-        line-height: 1.2;
-        min-width: 60px;
+        line-height: 1.1;
+        min-width: 100px;
+        font-size: 10px;
     }
     .ticket-preview-container .ticket-detalle-item .col-lote { width: 55px; text-align: center; flex-shrink: 0; color: #17a2b8; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ticket-preview-container .ticket-detalle-item .col-descuento { width: 32px; text-align: right; flex-shrink: 0; color: #17a2b8; font-size: 10px; }
     .ticket-preview-container .ticket-detalle-item .col-precio { width: 50px; text-align: right; flex-shrink: 0; font-size: 11px; }
-    .ticket-preview-container .ticket-detalle-item .col-pmin { width: 50px; text-align: right; flex-shrink: 0; color: #0d6efd; font-size: 11px; }
-    .ticket-preview-container .ticket-detalle-item .col-importe { width: 55px; text-align: right; flex-shrink: 0; font-weight: 600; }
+    .ticket-preview-container .ticket-detalle-item .col-pmin { width: 45px; text-align: right; flex-shrink: 0; color: #0d6efd; font-size: 10px; }
+    .ticket-preview-container .ticket-detalle-item .col-importe { width: 50px; text-align: right; flex-shrink: 0; font-weight: 600; font-size: 11px; }
+    .ticket-preview-container .ticket-detalle-item .col-tiva { width: 24px; text-align: right; flex-shrink: 0; font-size: 10px; color: #333; }
 
     /* ═══════════════════ SUBTOTALES ═══════════════════ */
     .ticket-preview-container .ticket-subtotales {
@@ -524,43 +544,60 @@
     /* ═══════════════════ LIQUIDACIÓN IVA ═══════════════════ */
     .ticket-preview-container .ticket-liquidacion {
         padding: 4px 0;
+        font-size: 11px;
     }
 
     .ticket-preview-container .ticket-liquidacion-header {
-        font-weight: bold;
-        font-size: 13px;
-        margin-bottom: 6px;
-        text-align: center;
-    }
-
-    .ticket-preview-container .ticket-liquidacion-grid {
         display: flex;
         justify-content: space-between;
-        font-size: 12px;
-    }
-    
-    .ticket-preview-container .ticket-liquidacion-gravado {
-        display: flex;
-        justify-content: center;
-        gap: 20px;
-        font-size: 11px;
-        margin-top: 4px;
-        padding-top: 4px;
-        border-top: 1px dashed #ccc;
-    }
-
-    .ticket-preview-container .liquidacion-col {
-        text-align: center;
-        flex: 1;
-    }
-
-    .ticket-preview-container .liq-label {
         font-weight: bold;
-        display: block;
+        font-size: 11px;
+        margin-bottom: 4px;
+        padding-bottom: 2px;
+        border-bottom: 1px solid #333;
     }
 
-    .ticket-preview-container .liq-value {
-        display: block;
+    .ticket-preview-container .ticket-liquidacion-header .liq-header-right {
+        text-align: center;
+    }
+
+    .ticket-preview-container .ticket-liquidacion-header .liq-header-iva {
+        text-align: right;
+        width: 55px;
+    }
+
+    .ticket-preview-container .ticket-liquidacion-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .ticket-preview-container .liquidacion-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .ticket-preview-container .liquidacion-row .liq-label {
+        flex: 1;
+        text-align: left;
+    }
+
+    .ticket-preview-container .liquidacion-row .liq-value {
+        width: 60px;
+        text-align: right;
+    }
+
+    .ticket-preview-container .liquidacion-row .liq-iva {
+        width: 55px;
+        text-align: right;
+    }
+
+    .ticket-preview-container .liquidacion-row.liquidacion-total {
+        font-weight: bold;
+        border-top: 1px dashed #ccc;
+        padding-top: 3px;
+        margin-top: 2px;
     }
 
     /* ═══════════════════ PIE ═══════════════════ */
@@ -738,6 +775,21 @@
     
     // SIFEN / Factura Electrónica
     private bool _esFacturaElectronica = false;
+    
+    // ========== DATOS DEL EMISOR (según modo) ==========
+    // Autoimpresor: usar Sucursal | Factura Electrónica: usar Sociedad
+    private string NombreEmisorTicket => _esFacturaElectronica 
+        ? (_sociedad?.Nombre ?? _sucursal?.NombreEmpresa ?? "EMPRESA") 
+        : (_sucursal?.NombreEmpresa ?? "EMPRESA");
+    private string RucEmisorTicket => _esFacturaElectronica 
+        ? FormatearRucConDv(_sociedad?.RUC, _sociedad?.DV) 
+        : FormatearRucConDv(_sucursal?.RUC, _sucursal?.DV);
+    private string DireccionEmisorTicket => _esFacturaElectronica 
+        ? (_sociedad?.Direccion ?? _sucursal?.Direccion ?? "") 
+        : (_sucursal?.Direccion ?? "");
+    private string TelefonoEmisorTicket => _esFacturaElectronica 
+        ? (_sociedad?.Telefono ?? _sucursal?.Telefono ?? "") 
+        : (_sucursal?.Telefono ?? "");
     private string? _qrDataUrl;
 
     protected override async Task OnInitializedAsync()
@@ -809,9 +861,12 @@
                 _liquidacionIva5 = _totalConIva5 > 0 ? Math.Round(_totalConIva5 / 21m, 0) : 0;
                 
                 // ═══════════════════ SIFEN / FACTURA ELECTRÓNICA ═══════════════════
-                _esFacturaElectronica = (_caja?.TipoFacturacion ?? "").ToUpper().Contains("ELECTR");
+                // Remisiones (interna o normal) NO son factura electrónica - no generan QR ni CDC
+                var condVenta = _tipoPago?.Nombre?.ToUpper() ?? "";
+                var esRemisionDoc = condVenta.Contains("REMISIÓN") || condVenta.Contains("REMISION");
+                _esFacturaElectronica = !esRemisionDoc && (_caja?.TipoFacturacion ?? "").ToUpper().Contains("ELECTR");
                 
-                // Generar QR si es factura electrónica
+                // Generar QR si es factura electrónica (no remisión)
                 if (_esFacturaElectronica)
                 {
                     _qrDataUrl = GenerarQrDataUrl();
@@ -850,13 +905,46 @@
     private string FormatearCantidad(decimal cantidad) =>
         cantidad == Math.Truncate(cantidad) ? cantidad.ToString("N0") : cantidad.ToString("N2");
 
+    /// <summary>
+    /// Obtiene el código de IVA para mostrar en el ticket (10, 5, E)
+    /// </summary>
+    private string ObtenerCodigoIva(VentaDetalle det)
+    {
+        // Usar TipoIva del producto que ya viene incluido
+        var tipoIva = det.Producto?.TipoIva;
+        if (tipoIva == null) 
+        {
+            // Si no hay TipoIva del producto, inferir desde IdTipoIva del detalle
+            // IdTipoIva: 1=10%, 2=5%, 3=Exenta típicamente
+            return det.IdTipoIva switch
+            {
+                1 => "10",
+                2 => "5",
+                3 => "0",
+                _ => "10"
+            };
+        }
+        
+        return tipoIva.Porcentaje switch
+        {
+            10 => "10",
+            5 => "5",
+            0 => "0",  // Exenta = 0
+            _ => tipoIva.Porcentaje.ToString("N0")
+        };
+    }
+
     private string GetLogoBase64() => 
         _sucursal?.Logo != null ? $"data:image/png;base64,{Convert.ToBase64String(_sucursal.Logo)}" : "";
 
     private string FormatearRucConDv(string? ruc, int? dv)
     {
         if (string.IsNullOrEmpty(ruc)) return "-";
-        return dv.HasValue ? $"{ruc}-{dv}" : ruc;
+        
+        // Si el RUC ya tiene guión, extraer solo la parte numérica
+        var rucLimpio = ruc.Contains('-') ? ruc.Split('-')[0] : ruc;
+        
+        return dv.HasValue ? $"{rucLimpio}-{dv}" : rucLimpio;
     }
 
     private string FormatearNumeroFactura()
@@ -1045,11 +1133,11 @@
                 ? _sucursal.Logo 
                 : null,
             
-            // Datos empresa
-            NombreEmpresa = _sucursal?.NombreEmpresa ?? _sociedad?.Nombre ?? "EMPRESA",
-            RucEmpresa = FormatearRucConDv(_sociedad?.RUC, _sociedad?.DV),
-            DireccionEmpresa = _sucursal?.Direccion ?? _sociedad?.Direccion ?? "",
-            TelefonoEmpresa = _sucursal?.Telefono ?? _sociedad?.Telefono ?? "",
+            // Datos empresa - Autoimpresor: Sucursal | Electrónica: Sociedad
+            NombreEmpresa = NombreEmisorTicket,
+            RucEmpresa = RucEmisorTicket,
+            DireccionEmpresa = DireccionEmisorTicket,
+            TelefonoEmpresa = TelefonoEmisorTicket,
             ActividadEconomica = _sucursal?.RubroEmpresa ?? "",
             
             // Datos factura
@@ -1059,6 +1147,7 @@
             VigenciaDel = _caja?.VigenciaDel,
             VigenciaAl = _caja?.VigenciaAl,
             CDC = _venta?.CDC ?? "",
+            UrlQrSifen = _venta?.UrlQrSifen,  // URL oficial del QR con cHashQR
             CondicionVenta = _tipoPago?.Nombre?.ToUpper() ?? "CONTADO",
             TipoDocumento = _venta?.TipoDocumento?.ToUpper() ?? "FACTURA",
             EsElectronica = _caja?.TipoFacturacion == "ELECTRONICA",
@@ -1069,7 +1158,10 @@
             DvCliente = _cliente?.DV.ToString(),
             DireccionCliente = _cliente?.Direccion ?? "",
             
-            // Items con desglose de IVA
+            // Modo farmacia
+            ModoFarmacia = _modoFarmaciaActivo,
+            
+            // Items con desglose de IVA y datos farmacia
             Items = _detalles.Select(d => new ItemTicket
             {
                 Descripcion = d.Producto?.Descripcion ?? "",
@@ -1078,7 +1170,10 @@
                 Subtotal = d.Importe,
                 Exenta = d.Exenta,
                 Gravado5 = d.Grabado5,
-                Gravado10 = d.Grabado10
+                Gravado10 = d.Grabado10,
+                // Campos farmacia
+                PorcentajeDescuento = d.PorcentajeDescuento ?? 0,
+                PrecioMinisterio = d.PrecioMinisterio ?? 0
             }).ToList(),
             
             // Totales

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Fondo circular rojo PedidosYa -->
+  <circle cx="50" cy="50" r="48" fill="#d4001a" stroke="#fff" stroke-width="2"/>
+  
+  <!-- Mochila con logo -->
+  <g fill="#ffffff">
+    <!-- Cuerpo mochila cuadrado -->
+    <rect x="25" y="22" width="50" height="56" rx="8" fill="#fff"/>
+    
+    <!-- Tapa -->
+    <rect x="25" y="22" width="50" height="18" rx="8" fill="#fff"/>
+    <line x1="25" y1="36" x2="75" y2="36" stroke="#d4001a" stroke-width="2"/>
+    
+    <!-- Logo "PY" -->
+    <text x="50" y="62" text-anchor="middle" fill="#d4001a" font-size="20" font-weight="bold">PY</text>
+    
+    <!-- Cierre -->
+    <rect x="45" y="22" width="10" height="6" rx="2" fill="#d4001a"/>
+  </g>
+</svg>

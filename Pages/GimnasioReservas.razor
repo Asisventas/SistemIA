@@ -1,0 +1,806 @@
+@page "/gimnasio/reservas"
+@using SistemIA.Models
+@using SistemIA.Models.Gimnasio
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext _db
+@inject NavigationManager Nav
+
+<PageTitle>Reservas de Clases - Gimnasio</PageTitle>
+
+<div class="container-fluid py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-bookmark-check text-primary me-2"></i>
+            Reservas de Clases
+        </h3>
+        <div class="d-flex gap-2">
+            <input type="date" class="form-control" style="width: 160px" @bind="_fechaFiltro" @bind:after="FiltrarReservas" />
+            <select class="form-select" style="width: 180px" @bind="_filtroEstado" @bind:after="FiltrarReservas">
+                <option value="">Todos los estados</option>
+                <option value="Reservada">Reservada</option>
+                <option value="Confirmada">Confirmada</option>
+                <option value="Asistió">Asistió</option>
+                <option value="NoAsistió">No Asistió</option>
+                <option value="Cancelada">Cancelada</option>
+            </select>
+            <button class="btn btn-primary" @onclick="NuevaReserva">
+                <i class="bi bi-plus-lg me-1"></i>Nueva Reserva
+            </button>
+        </div>
+    </div>
+
+    <!-- Estadísticas del día -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 bg-primary bg-gradient text-white">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">Reservas Hoy</h6>
+                            <h3 class="mb-0">@_reservasHoy</h3>
+                        </div>
+                        <i class="bi bi-bookmark fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 bg-success bg-gradient text-white">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">Asistencias</h6>
+                            <h3 class="mb-0">@_asistenciasHoy</h3>
+                        </div>
+                        <i class="bi bi-check-circle fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 bg-warning bg-gradient text-dark">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">Pendientes</h6>
+                            <h3 class="mb-0">@_pendientesHoy</h3>
+                        </div>
+                        <i class="bi bi-hourglass-split fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 bg-danger bg-gradient text-white">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">No Asistieron</h6>
+                            <h3 class="mb-0">@_noAsistieronHoy</h3>
+                        </div>
+                        <i class="bi bi-x-circle fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clases del día con reservas -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h5><i class="bi bi-calendar3 me-2"></i>Clases de @_fechaFiltro.ToString("dddd, dd 'de' MMMM")</h5>
+        </div>
+        @foreach (var horario in _horariosDelDia)
+        {
+            var reservasClase = _reservasFiltradas.Where(r => r.IdHorario == horario.IdHorario).ToList();
+            var capacidad = horario.CapacidadEfectiva;
+            var porcentaje = capacidad > 0 ? (reservasClase.Count * 100 / capacidad) : 0;
+            
+            <div class="col-lg-4 col-md-6 mb-3">
+                <div class="card h-100" style="border-left: 4px solid @(horario.Clase?.ColorHex ?? "#3498db")">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center py-2">
+                        <div>
+                            <i class="@(horario.Clase?.Icono ?? "bi-calendar2-event") me-1" style="color: @(horario.Clase?.ColorHex ?? "#3498db")"></i>
+                            <strong>@horario.Clase?.Nombre</strong>
+                        </div>
+                        <span class="badge bg-secondary">@horario.HorarioFormateado</span>
+                    </div>
+                    <div class="card-body py-2">
+                        <!-- Barra de ocupación -->
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span>Ocupación</span>
+                                <span>@reservasClase.Count / @capacidad</span>
+                            </div>
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar @(porcentaje >= 90 ? "bg-danger" : porcentaje >= 70 ? "bg-warning" : "bg-success")" 
+                                     style="width: @porcentaje%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Lista rápida de asistentes -->
+                        @if (reservasClase.Any())
+                        {
+                            <div class="small">
+                                @foreach (var r in reservasClase.Take(3))
+                                {
+                                    <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                                        <span>@r.Cliente?.RazonSocial</span>
+                                        @if (r.Estado == "Asistió")
+                                        {
+                                            <span class="badge bg-success">✓</span>
+                                        }
+                                        else if (r.Estado == "NoAsistió")
+                                        {
+                                            <span class="badge bg-danger">✗</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-success py-0" @onclick="() => MarcarAsistencia(r, true)">
+                                                <i class="bi bi-check"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                @if (reservasClase.Count > 3)
+                                {
+                                    <div class="text-muted">+@(reservasClase.Count - 3) más</div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-muted small text-center py-2">Sin reservas</div>
+                        }
+                    </div>
+                    <div class="card-footer bg-white py-2">
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-primary flex-fill" @onclick="() => VerDetalleClase(horario)">
+                                <i class="bi bi-list me-1"></i>Detalle
+                            </button>
+                            <button class="btn btn-sm btn-success flex-fill" @onclick="() => AgregarReservaAClase(horario)">
+                                <i class="bi bi-plus me-1"></i>Reservar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        @if (!_horariosDelDia.Any())
+        {
+            <div class="col-12 text-center text-muted py-4">
+                <i class="bi bi-calendar-x display-4"></i>
+                <p>No hay clases programadas para este día</p>
+            </div>
+        }
+    </div>
+
+    <!-- Tabla de todas las reservas -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-list-ul me-2"></i>Todas las Reservas</h6>
+            <span class="badge bg-primary">@_reservasFiltradas.Count reservas</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Clase</th>
+                        <th>Horario</th>
+                        <th>Estado</th>
+                        <th>Check-in</th>
+                        <th>Membresía</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _reservasFiltradas)
+                    {
+                        <tr>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center" 
+                                         style="width: 32px; height: 32px; font-size: 12px;">
+                                        @(r.Cliente?.RazonSocial?.Substring(0, 1).ToUpper() ?? "?")
+                                    </div>
+                                    <span>@r.Cliente?.RazonSocial</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center gap-1">
+                                    <div class="rounded-circle" style="width: 8px; height: 8px; background-color: @(r.Horario?.Clase?.ColorHex ?? "#ccc")"></div>
+                                    @r.Horario?.Clase?.Nombre
+                                </div>
+                            </td>
+                            <td>@r.Horario?.HorarioFormateado</td>
+                            <td>
+                                @switch (r.Estado)
+                                {
+                                    case "Reservada":
+                                        <span class="badge bg-primary">Reservada</span>
+                                        break;
+                                    case "Confirmada":
+                                        <span class="badge bg-info">Confirmada</span>
+                                        break;
+                                    case "Asistió":
+                                        <span class="badge bg-success">Asistió</span>
+                                        break;
+                                    case "NoAsistió":
+                                        <span class="badge bg-danger">No Asistió</span>
+                                        break;
+                                    case "Cancelada":
+                                        <span class="badge bg-secondary">Cancelada</span>
+                                        break;
+                                    case "ListaEspera":
+                                        <span class="badge bg-warning text-dark">Lista Espera #@r.PosicionListaEspera</span>
+                                        break;
+                                }
+                            </td>
+                            <td>
+                                @if (r.HoraCheckIn.HasValue)
+                                {
+                                    <span class="text-success">
+                                        <i class="bi bi-check-circle-fill me-1"></i>
+                                        @r.HoraCheckIn.Value.ToString("HH:mm")
+                                        @if (r.LlegoTarde)
+                                        {
+                                            <span class="badge bg-warning text-dark ms-1">Tarde</span>
+                                        }
+                                    </span>
+                                }
+                                else if (r.Estado != "Cancelada" && r.Estado != "NoAsistió")
+                                {
+                                    <span class="text-muted">Pendiente</span>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                            <td>
+                                @if (r.Membresia != null)
+                                {
+                                    <span>@r.Membresia.Producto?.Descripcion</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Sin membresía</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm">
+                                    @if (r.Estado == "Reservada" || r.Estado == "Confirmada")
+                                    {
+                                        <button class="btn btn-success" title="Check-in" @onclick="() => MarcarAsistencia(r, true)">
+                                            <i class="bi bi-check-lg"></i>
+                                        </button>
+                                        <button class="btn btn-danger" title="No asistió" @onclick="() => MarcarAsistencia(r, false)">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" title="Cancelar reserva" @onclick="() => CancelarReserva(r)">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
+                                    }
+                                    <button class="btn btn-outline-danger" title="Eliminar" @onclick="() => ConfirmarEliminar(r)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (!_reservasFiltradas.Any())
+        {
+            <div class="text-center py-4 text-muted">
+                <i class="bi bi-bookmark-x display-4"></i>
+                <p>No hay reservas para mostrar</p>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Modal Nueva Reserva -->
+@if (_mostrarModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-bookmark-plus me-2"></i>Nueva Reserva
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <!-- Fecha -->
+                        <div class="col-md-4">
+                            <label class="form-label">Fecha *</label>
+                            <input type="date" class="form-control" @bind="_reservaEdit.FechaClase" @bind:after="CargarHorariosFecha" />
+                        </div>
+
+                        <!-- Clase/Horario -->
+                        <div class="col-md-8">
+                            <label class="form-label">Clase y Horario *</label>
+                            <select class="form-select" @bind="_reservaEdit.IdHorario">
+                                <option value="0">Seleccionar horario...</option>
+                                @foreach (var h in _horariosDisponibles)
+                                {
+                                    var ocupados = _reservas.Count(r => r.IdHorario == h.IdHorario && r.FechaClase.Date == _reservaEdit.FechaClase.Date);
+                                    var disponibles = h.CapacidadEfectiva - ocupados;
+                                    <option value="@h.IdHorario" disabled="@(disponibles <= 0)">
+                                        @h.Clase?.Nombre - @h.HorarioFormateado (@disponibles lugares)
+                                    </option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Cliente -->
+                        <div class="col-md-6">
+                            <label class="form-label">Cliente *</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" @bind="_busquedaCliente" @bind:after="BuscarClientes" 
+                                       placeholder="Buscar por nombre o teléfono..." />
+                                <button class="btn btn-outline-secondary" @onclick="BuscarClientes">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                            </div>
+                            @if (_clientesBusqueda.Any())
+                            {
+                                <div class="list-group mt-1 position-absolute" style="z-index: 100; max-height: 200px; overflow-y: auto;">
+                                    @foreach (var c in _clientesBusqueda)
+                                    {
+                                        <button class="list-group-item list-group-item-action py-1" @onclick="() => SeleccionarCliente(c)">
+                                            <div class="d-flex justify-content-between">
+                                                <span>@c.RazonSocial</span>
+                                                <small class="text-muted">@c.Telefono</small>
+                                            </div>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                            @if (_clienteSeleccionado != null)
+                            {
+                                <div class="alert alert-info py-2 mt-2 mb-0">
+                                    <i class="bi bi-person-check me-1"></i>
+                                    <strong>@_clienteSeleccionado.RazonSocial</strong>
+                                    @if (_membresiaCliente != null)
+                                    {
+                                        <span class="badge bg-success ms-2">@_membresiaCliente.Producto?.Descripcion</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Membresía -->
+                        <div class="col-md-6">
+                            <label class="form-label">Membresía</label>
+                            <select class="form-select" @bind="_reservaEdit.IdMembresia" disabled="@(_clienteSeleccionado == null)">
+                                <option value="">Sin membresía (pago por sesión)</option>
+                                @if (_membresiaCliente != null)
+                                {
+                                    <option value="@_membresiaCliente.IdMembresia">@_membresiaCliente.Producto?.Descripcion (Vigente)</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Notas -->
+                        <div class="col-12">
+                            <label class="form-label">Notas</label>
+                            <textarea class="form-control" rows="2" @bind="_notasReserva" placeholder="Observaciones opcionales..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="GuardarReserva" disabled="@(_clienteSeleccionado == null || _reservaEdit.IdHorario == 0)">
+                        <i class="bi bi-check-lg me-1"></i>Reservar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Detalle Clase -->
+@if (_mostrarDetalleClase)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, @(_horarioDetalle?.Clase?.ColorHex ?? "#3498db"), #2c3e50)">
+                    <h5 class="modal-title text-white">
+                        <i class="@(_horarioDetalle?.Clase?.Icono ?? "bi-calendar2-event") me-2"></i>
+                        @_horarioDetalle?.Clase?.Nombre - @_horarioDetalle?.HorarioFormateado
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarDetalleClase = false"></button>
+                </div>
+                <div class="modal-body">
+                    @{
+                        var reservasDetalle = _reservasFiltradas.Where(r => r.IdHorario == _horarioDetalle?.IdHorario).OrderBy(r => r.FechaReserva).ToList();
+                    }
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Cliente</th>
+                                    <th>Hora Reserva</th>
+                                    <th>Estado</th>
+                                    <th>Check-in</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{int num = 1;}
+                                @foreach (var r in reservasDetalle)
+                                {
+                                    <tr>
+                                        <td>@num</td>
+                                        <td>@r.Cliente?.RazonSocial</td>
+                                        <td>@r.FechaReserva.ToString("HH:mm")</td>
+                                        <td>
+                                            <span class="badge @(r.Estado == "Asistió" ? "bg-success" : r.Estado == "NoAsistió" ? "bg-danger" : "bg-primary")">
+                                                @r.Estado
+                                            </span>
+                                        </td>
+                                        <td>@(r.HoraCheckIn?.ToString("HH:mm") ?? "-")</td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                @if (r.Estado == "Reservada" || r.Estado == "Confirmada")
+                                                {
+                                                    <button class="btn btn-success" @onclick="() => MarcarAsistencia(r, true)">
+                                                        <i class="bi bi-check"></i>
+                                                    </button>
+                                                    <button class="btn btn-danger" @onclick="() => MarcarAsistencia(r, false)">
+                                                        <i class="bi bi-x"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    num++;
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (!reservasDetalle.Any())
+                    {
+                        <div class="text-center text-muted py-3">
+                            No hay reservas para esta clase
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="() => _mostrarDetalleClase = false">Cerrar</button>
+                    <button class="btn btn-success" @onclick="() => MarcarTodosPresentes(_horarioDetalle)">
+                        <i class="bi bi-check-all me-1"></i>Marcar Todos Presentes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Confirmar Eliminar -->
+@if (_mostrarConfirmarEliminar)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Confirmar Eliminación</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarConfirmarEliminar = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Está seguro de eliminar esta reserva?</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="() => _mostrarConfirmarEliminar = false">Cancelar</button>
+                    <button class="btn btn-danger" @onclick="EliminarReserva">
+                        <i class="bi bi-trash me-1"></i>Eliminar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ReservaClase> _reservas = new();
+    private List<ReservaClase> _reservasFiltradas = new();
+    private List<HorarioClase> _horarios = new();
+    private List<HorarioClase> _horariosDelDia = new();
+    private List<HorarioClase> _horariosDisponibles = new();
+    private int _idSucursal = 1;
+    private DateTime _fechaFiltro = DateTime.Today;
+    private string _filtroEstado = "";
+
+    // Estadísticas
+    private int _reservasHoy, _asistenciasHoy, _pendientesHoy, _noAsistieronHoy;
+
+    // Modal Reserva
+    private bool _mostrarModal = false;
+    private ReservaClase _reservaEdit = new();
+    private string _busquedaCliente = "";
+    private List<Cliente> _clientesBusqueda = new();
+    private Cliente? _clienteSeleccionado;
+    private MembresiaCliente? _membresiaCliente;
+    private string _notasReserva = "";
+
+    // Modal Detalle
+    private bool _mostrarDetalleClase = false;
+    private HorarioClase? _horarioDetalle;
+
+    // Eliminar
+    private bool _mostrarConfirmarEliminar = false;
+    private ReservaClase? _reservaEliminar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _horarios = await _db.HorariosClases
+            .Include(h => h.Clase)
+            .Include(h => h.Instructor)
+            .Where(h => (h.Clase!.IdSucursal == _idSucursal || h.Clase.IdSucursal == null) && h.Activo && !h.Cancelado)
+            .ToListAsync();
+
+        _reservas = await _db.ReservasClases
+            .Include(r => r.Cliente)
+            .Include(r => r.Horario).ThenInclude(h => h!.Clase)
+            .Include(r => r.Membresia).ThenInclude(m => m!.Producto)
+            .Where(r => r.IdSucursal == _idSucursal)
+            .OrderByDescending(r => r.FechaClase).ThenBy(r => r.Horario!.HoraInicio)
+            .ToListAsync();
+
+        FiltrarReservas();
+        CargarHorariosDelDia();
+        CalcularEstadisticas();
+    }
+
+    private void FiltrarReservas()
+    {
+        var query = _reservas.Where(r => r.FechaClase.Date == _fechaFiltro.Date);
+        if (!string.IsNullOrEmpty(_filtroEstado))
+        {
+            query = query.Where(r => r.Estado == _filtroEstado);
+        }
+        _reservasFiltradas = query.ToList();
+        CargarHorariosDelDia();
+    }
+
+    private void CargarHorariosDelDia()
+    {
+        var diaSemana = (int)_fechaFiltro.DayOfWeek;
+        _horariosDelDia = _horarios.Where(h =>
+        {
+            if (h.TipoHorario == "Recurrente")
+            {
+                if (h.DiaSemana != diaSemana) return false;
+                if (h.FechaInicioRecurrencia.HasValue && _fechaFiltro < h.FechaInicioRecurrencia.Value) return false;
+                if (h.FechaFinRecurrencia.HasValue && _fechaFiltro > h.FechaFinRecurrencia.Value) return false;
+                return true;
+            }
+            else
+            {
+                return h.FechaEspecifica?.Date == _fechaFiltro.Date;
+            }
+        }).OrderBy(h => h.HoraInicio).ToList();
+    }
+
+    private void CalcularEstadisticas()
+    {
+        var hoy = _reservas.Where(r => r.FechaClase.Date == DateTime.Today);
+        _reservasHoy = hoy.Count();
+        _asistenciasHoy = hoy.Count(r => r.Estado == "Asistió");
+        _pendientesHoy = hoy.Count(r => r.Estado == "Reservada" || r.Estado == "Confirmada");
+        _noAsistieronHoy = hoy.Count(r => r.Estado == "NoAsistió");
+    }
+
+    private void NuevaReserva()
+    {
+        _reservaEdit = new ReservaClase
+        {
+            IdSucursal = _idSucursal,
+            FechaClase = _fechaFiltro,
+            Estado = "Reservada",
+            FechaReserva = DateTime.Now
+        };
+        _clienteSeleccionado = null;
+        _membresiaCliente = null;
+        _busquedaCliente = "";
+        _clientesBusqueda = new();
+        _notasReserva = "";
+        CargarHorariosFecha();
+        _mostrarModal = true;
+    }
+
+    private void AgregarReservaAClase(HorarioClase horario)
+    {
+        _reservaEdit = new ReservaClase
+        {
+            IdSucursal = _idSucursal,
+            FechaClase = _fechaFiltro,
+            IdHorario = horario.IdHorario,
+            Estado = "Reservada",
+            FechaReserva = DateTime.Now
+        };
+        _clienteSeleccionado = null;
+        _membresiaCliente = null;
+        _busquedaCliente = "";
+        _clientesBusqueda = new();
+        _notasReserva = "";
+        CargarHorariosFecha();
+        _mostrarModal = true;
+    }
+
+    private void CargarHorariosFecha()
+    {
+        var diaSemana = (int)_reservaEdit.FechaClase.DayOfWeek;
+        _horariosDisponibles = _horarios.Where(h =>
+        {
+            if (h.TipoHorario == "Recurrente")
+            {
+                if (h.DiaSemana != diaSemana) return false;
+                if (h.FechaInicioRecurrencia.HasValue && _reservaEdit.FechaClase < h.FechaInicioRecurrencia.Value) return false;
+                if (h.FechaFinRecurrencia.HasValue && _reservaEdit.FechaClase > h.FechaFinRecurrencia.Value) return false;
+                return true;
+            }
+            else
+            {
+                return h.FechaEspecifica?.Date == _reservaEdit.FechaClase.Date;
+            }
+        }).OrderBy(h => h.HoraInicio).ToList();
+    }
+
+    private async Task BuscarClientes()
+    {
+        if (string.IsNullOrWhiteSpace(_busquedaCliente) || _busquedaCliente.Length < 2)
+        {
+            _clientesBusqueda = new();
+            return;
+        }
+
+        _clientesBusqueda = await _db.Clientes
+            .Where(c => c.RazonSocial.Contains(_busquedaCliente) || (c.Telefono != null && c.Telefono.Contains(_busquedaCliente)))
+            .Take(10)
+            .ToListAsync();
+    }
+
+    private async Task SeleccionarCliente(Cliente c)
+    {
+        _clienteSeleccionado = c;
+        _reservaEdit.IdCliente = c.IdCliente;
+        _busquedaCliente = c.RazonSocial;
+        _clientesBusqueda = new();
+
+        // Buscar membresía vigente
+        _membresiaCliente = await _db.MembresiasClientes
+            .Include(m => m.Producto)
+            .Where(m => m.IdCliente == c.IdCliente && m.Estado == "Activa" && m.FechaFin >= DateTime.Today)
+            .FirstOrDefaultAsync();
+
+        if (_membresiaCliente != null)
+        {
+            _reservaEdit.IdMembresia = _membresiaCliente.IdMembresia;
+        }
+    }
+
+    private async Task GuardarReserva()
+    {
+        if (_clienteSeleccionado == null || _reservaEdit.IdHorario == 0) return;
+
+        // Verificar capacidad disponible
+        var horario = _horarios.FirstOrDefault(h => h.IdHorario == _reservaEdit.IdHorario);
+        if (horario != null)
+        {
+            var ocupados = _reservas.Count(r => r.IdHorario == horario.IdHorario && r.FechaClase.Date == _reservaEdit.FechaClase.Date && r.Estado != "Cancelada");
+            if (ocupados >= horario.CapacidadEfectiva)
+            {
+                // Lista de espera
+                _reservaEdit.Estado = "ListaEspera";
+                _reservaEdit.PosicionListaEspera = ocupados - horario.CapacidadEfectiva + 1;
+            }
+        }
+
+        _reservaEdit.FechaReserva = DateTime.Now;
+        _db.ReservasClases.Add(_reservaEdit);
+        await _db.SaveChangesAsync();
+        await CargarDatos();
+        CerrarModal();
+    }
+
+    private async Task MarcarAsistencia(ReservaClase r, bool asistio)
+    {
+        var reserva = await _db.ReservasClases.FindAsync(r.IdReserva);
+        if (reserva != null)
+        {
+            reserva.Estado = asistio ? "Asistió" : "NoAsistió";
+            if (asistio)
+            {
+                reserva.HoraCheckIn = DateTime.Now;
+                // Verificar si llegó tarde (más de 10 minutos después del inicio)
+                var horario = _horarios.FirstOrDefault(h => h.IdHorario == reserva.IdHorario);
+                if (horario != null)
+                {
+                    var horaInicio = reserva.FechaClase.Date.Add(horario.HoraInicio);
+                    reserva.LlegoTarde = DateTime.Now > horaInicio.AddMinutes(10);
+                }
+                reserva.MetodoCheckIn = "Manual";
+            }
+            await _db.SaveChangesAsync();
+            await CargarDatos();
+        }
+    }
+
+    private async Task MarcarTodosPresentes(HorarioClase? horario)
+    {
+        if (horario == null) return;
+
+        var reservasClase = await _db.ReservasClases
+            .Where(r => r.IdHorario == horario.IdHorario && r.FechaClase.Date == _fechaFiltro.Date && (r.Estado == "Reservada" || r.Estado == "Confirmada"))
+            .ToListAsync();
+
+        foreach (var r in reservasClase)
+        {
+            r.Estado = "Asistió";
+            r.HoraCheckIn = DateTime.Now;
+            r.MetodoCheckIn = "Manual";
+        }
+
+        await _db.SaveChangesAsync();
+        await CargarDatos();
+        _mostrarDetalleClase = false;
+    }
+
+    private async Task CancelarReserva(ReservaClase r)
+    {
+        var reserva = await _db.ReservasClases.FindAsync(r.IdReserva);
+        if (reserva != null)
+        {
+            reserva.Estado = "Cancelada";
+            reserva.FechaCancelacion = DateTime.Now;
+            await _db.SaveChangesAsync();
+            await CargarDatos();
+        }
+    }
+
+    private void VerDetalleClase(HorarioClase horario)
+    {
+        _horarioDetalle = horario;
+        _mostrarDetalleClase = true;
+    }
+
+    private void ConfirmarEliminar(ReservaClase r)
+    {
+        _reservaEliminar = r;
+        _mostrarConfirmarEliminar = true;
+    }
+
+    private async Task EliminarReserva()
+    {
+        if (_reservaEliminar != null)
+        {
+            _db.ReservasClases.Remove(_reservaEliminar);
+            await _db.SaveChangesAsync();
+            await CargarDatos();
+        }
+        _mostrarConfirmarEliminar = false;
+    }
+
+    private void CerrarModal()
+    {
+        _mostrarModal = false;
+        _reservaEdit = new();
+        _clienteSeleccionado = null;
+        _membresiaCliente = null;
+    }
+}

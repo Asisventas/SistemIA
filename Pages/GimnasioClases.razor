@@ -1,0 +1,604 @@
+@page "/gimnasio/clases"
+@using SistemIA.Models
+@using SistemIA.Models.Gimnasio
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext _db
+@inject NavigationManager Nav
+
+<PageTitle>Clases Grupales - Gimnasio</PageTitle>
+
+<div class="container-fluid py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-calendar2-event text-primary me-2"></i>
+            Clases Grupales
+        </h3>
+        <div class="d-flex gap-2">
+            <select class="form-select" style="width: 180px" @bind="_filtroCategoria">
+                <option value="">Todas las categorías</option>
+                @foreach (var cat in _categorias)
+                {
+                    <option value="@cat">@cat</option>
+                }
+            </select>
+            <button class="btn btn-primary" @onclick="NuevaClase">
+                <i class="bi bi-plus-lg me-1"></i>Nueva Clase
+            </button>
+        </div>
+    </div>
+
+    <!-- Estadísticas rápidas -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 bg-primary bg-gradient text-white">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">Total Clases</h6>
+                            <h3 class="mb-0">@_clases.Count</h3>
+                        </div>
+                        <i class="bi bi-calendar2-event fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 bg-success bg-gradient text-white">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">Clases Activas</h6>
+                            <h3 class="mb-0">@_clases.Count(c => c.Activa)</h3>
+                        </div>
+                        <i class="bi bi-check-circle fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 bg-info bg-gradient text-white">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">Con Reserva</h6>
+                            <h3 class="mb-0">@_clases.Count(c => c.PermiteReservas)</h3>
+                        </div>
+                        <i class="bi bi-bookmark-check fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 bg-warning bg-gradient text-dark">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">Categorías</h6>
+                            <h3 class="mb-0">@_categorias.Count</h3>
+                        </div>
+                        <i class="bi bi-grid fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lista de Clases -->
+    <div class="row g-4">
+        @foreach (var clase in ClasesFiltradas)
+        {
+            <div class="col-lg-4 col-md-6">
+                <div class="card h-100 shadow-sm" style="border-top: 4px solid @(clase.ColorHex ?? "#3498db")">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="@(clase.Icono ?? "bi-calendar2-event") fs-4" style="color: @(clase.ColorHex ?? "#3498db")"></i>
+                            <h5 class="mb-0">@clase.Nombre</h5>
+                        </div>
+                        <div class="d-flex gap-1">
+                            @if (!clase.Activa)
+                            {
+                                <span class="badge bg-secondary">Inactiva</span>
+                            }
+                            <span class="badge" style="background-color: @(clase.ColorHex ?? "#3498db")">@clase.Categoria</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        @if (!string.IsNullOrWhiteSpace(clase.Descripcion))
+                        {
+                            <p class="text-muted small mb-3">@clase.Descripcion</p>
+                        }
+
+                        <ul class="list-unstyled mb-3">
+                            <li class="mb-1">
+                                <i class="bi bi-clock text-primary me-2"></i>
+                                Duración: <strong>@clase.DuracionMinutos min</strong>
+                            </li>
+                            <li class="mb-1">
+                                <i class="bi bi-people text-primary me-2"></i>
+                                Capacidad: <strong>@clase.CapacidadMaxima</strong> personas
+                                @if (clase.MinimoAlumnos > 1)
+                                {
+                                    <text> (mín: @clase.MinimoAlumnos)</text>
+                                }
+                            </li>
+                            @if (!string.IsNullOrWhiteSpace(clase.Nivel))
+                            {
+                                <li class="mb-1">
+                                    <i class="bi bi-bar-chart text-primary me-2"></i>
+                                    Nivel: <strong>@clase.Nivel</strong>
+                                </li>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(clase.Sala))
+                            {
+                                <li class="mb-1">
+                                    <i class="bi bi-door-open text-primary me-2"></i>
+                                    Sala: <strong>@clase.Sala</strong>
+                                </li>
+                            }
+                            @if (clase.CaloriasAproximadas.HasValue)
+                            {
+                                <li class="mb-1">
+                                    <i class="bi bi-fire text-danger me-2"></i>
+                                    ~<strong>@clase.CaloriasAproximadas</strong> calorías
+                                </li>
+                            }
+                            @if (clase.Instructor != null)
+                            {
+                                <li class="mb-1">
+                                    <i class="bi bi-person-badge text-success me-2"></i>
+                                    Instructor: <strong>@clase.Instructor.NombreCompleto</strong>
+                                </li>
+                            }
+                        </ul>
+
+                        <div class="d-flex flex-wrap gap-1 mb-2">
+                            @if (clase.PermiteReservas)
+                            {
+                                <span class="badge bg-success-subtle text-success">
+                                    <i class="bi bi-bookmark-check me-1"></i>Permite reservas
+                                </span>
+                            }
+                            @if (clase.TieneCostoAdicional && clase.PrecioPorSesion > 0)
+                            {
+                                <span class="badge bg-warning-subtle text-warning">
+                                    <i class="bi bi-cash me-1"></i>@clase.PrecioPorSesion?.ToString("N0") Gs/sesión
+                                </span>
+                            }
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white">
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-primary btn-sm flex-fill" @onclick="() => EditarClase(clase)">
+                                <i class="bi bi-pencil me-1"></i>Editar
+                            </button>
+                            <button class="btn btn-outline-info btn-sm flex-fill" @onclick="() => VerHorarios(clase)">
+                                <i class="bi bi-calendar-week me-1"></i>Horarios
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" @onclick="() => ConfirmarEliminar(clase)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (!ClasesFiltradas.Any())
+    {
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-calendar-x display-4"></i>
+            <p class="mt-2">No hay clases registradas</p>
+            <button class="btn btn-primary" @onclick="NuevaClase">
+                <i class="bi bi-plus-lg me-1"></i>Crear primera clase
+            </button>
+        </div>
+    }
+</div>
+
+<!-- Modal Edición -->
+@if (_mostrarModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, @(_claseEdit.ColorHex ?? "#3498db"), #2c3e50)">
+                    <h5 class="modal-title text-white">
+                        <i class="@(_claseEdit.Icono ?? "bi-calendar2-event") me-2"></i>
+                        @(_claseEdit.IdClase == 0 ? "Nueva Clase" : "Editar Clase")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <!-- Datos Básicos -->
+                        <div class="col-12">
+                            <h6 class="text-primary border-bottom pb-2">
+                                <i class="bi bi-info-circle me-1"></i>Datos Básicos
+                            </h6>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre de la Clase *</label>
+                            <input type="text" class="form-control" @bind="_claseEdit.Nombre" placeholder="Ej: Spinning, Yoga, CrossFit" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Categoría *</label>
+                            <select class="form-select" @bind="_claseEdit.Categoria">
+                                <option value="">Seleccionar...</option>
+                                <option value="Cardio">Cardio</option>
+                                <option value="Fuerza">Fuerza</option>
+                                <option value="Flexibilidad">Flexibilidad</option>
+                                <option value="Baile">Baile</option>
+                                <option value="Artes Marciales">Artes Marciales</option>
+                                <option value="Acuático">Acuático</option>
+                                <option value="Funcional">Funcional</option>
+                                <option value="Relajación">Relajación</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Nivel</label>
+                            <select class="form-select" @bind="_claseEdit.Nivel">
+                                <option value="">Todos</option>
+                                <option value="Principiante">Principiante</option>
+                                <option value="Intermedio">Intermedio</option>
+                                <option value="Avanzado">Avanzado</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Descripción</label>
+                            <textarea class="form-control" rows="2" @bind="_claseEdit.Descripcion" 
+                                      placeholder="Descripción de la clase, beneficios, qué traer, etc."></textarea>
+                        </div>
+
+                        <!-- Apariencia -->
+                        <div class="col-12 mt-3">
+                            <h6 class="text-primary border-bottom pb-2">
+                                <i class="bi bi-palette me-1"></i>Apariencia
+                            </h6>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Color</label>
+                            <input type="color" class="form-control form-control-color w-100" 
+                                   @bind="_claseEdit.ColorHex" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Icono</label>
+                            <select class="form-select" @bind="_claseEdit.Icono">
+                                <option value="bi-bicycle">🚴 Spinning</option>
+                                <option value="bi-person-arms-up">🧘 Yoga</option>
+                                <option value="bi-lightning-charge">⚡ CrossFit</option>
+                                <option value="bi-heart-pulse">❤️ Cardio</option>
+                                <option value="bi-trophy">🏆 Funcional</option>
+                                <option value="bi-music-note-beamed">🎵 Baile</option>
+                                <option value="bi-water">💧 Acuático</option>
+                                <option value="bi-peace">☮️ Relajación</option>
+                                <option value="bi-lightning">🥊 Artes Marciales</option>
+                                <option value="bi-gear">⚙️ General</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Orden en lista</label>
+                            <input type="number" class="form-control" @bind="_claseEdit.Orden" min="0" />
+                        </div>
+
+                        <!-- Duración y Capacidad -->
+                        <div class="col-12 mt-3">
+                            <h6 class="text-primary border-bottom pb-2">
+                                <i class="bi bi-clock me-1"></i>Duración y Capacidad
+                            </h6>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Duración (minutos) *</label>
+                            <input type="number" class="form-control" @bind="_claseEdit.DuracionMinutos" min="15" step="5" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Capacidad Máxima *</label>
+                            <input type="number" class="form-control" @bind="_claseEdit.CapacidadMaxima" min="1" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Mínimo Alumnos</label>
+                            <input type="number" class="form-control" @bind="_claseEdit.MinimoAlumnos" min="1" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sala</label>
+                            <input type="text" class="form-control" @bind="_claseEdit.Sala" placeholder="Ej: Sala A, Piscina, Terraza" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Calorías Aproximadas</label>
+                            <input type="number" class="form-control" @bind="_claseEdit.CaloriasAproximadas" min="0" placeholder="Opcional" />
+                        </div>
+
+                        <!-- Instructor -->
+                        <div class="col-12 mt-3">
+                            <h6 class="text-primary border-bottom pb-2">
+                                <i class="bi bi-person-badge me-1"></i>Instructor
+                            </h6>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Instructor Asignado</label>
+                            <select class="form-select" @bind="_claseEdit.IdInstructor">
+                                <option value="">Sin instructor fijo</option>
+                                @foreach (var inst in _instructores)
+                                {
+                                    <option value="@inst.IdInstructor">
+                                        @inst.NombreCompleto
+                                        @if (!string.IsNullOrWhiteSpace(inst.Especialidades))
+                                        {
+                                            <text> - @inst.Especialidades</text>
+                                        }
+                                    </option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Reservas -->
+                        <div class="col-12 mt-3">
+                            <h6 class="text-primary border-bottom pb-2">
+                                <i class="bi bi-bookmark me-1"></i>Configuración de Reservas
+                            </h6>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" @bind="_claseEdit.PermiteReservas" id="chkReservas" />
+                                <label class="form-check-label" for="chkReservas">Permite reservas</label>
+                            </div>
+                        </div>
+                        @if (_claseEdit.PermiteReservas)
+                        {
+                            <div class="col-md-4">
+                                <label class="form-label">Horas anticipación</label>
+                                <input type="number" class="form-control" @bind="_claseEdit.HorasAnticipacionReserva" min="0" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Límite cancelación (hrs)</label>
+                                <input type="number" class="form-control" @bind="_claseEdit.HorasLimiteCancelacion" min="0" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Máx. Inasistencias/mes</label>
+                                <input type="number" class="form-control" @bind="_claseEdit.MaxInasistencias" min="0" />
+                            </div>
+                        }
+
+                        <!-- Costo Adicional -->
+                        <div class="col-12 mt-3">
+                            <h6 class="text-primary border-bottom pb-2">
+                                <i class="bi bi-cash me-1"></i>Costo
+                            </h6>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" @bind="_claseEdit.TieneCostoAdicional" id="chkCosto" />
+                                <label class="form-check-label" for="chkCosto">Tiene costo adicional</label>
+                            </div>
+                        </div>
+                        @if (_claseEdit.TieneCostoAdicional)
+                        {
+                            <div class="col-md-4">
+                                <label class="form-label">Precio por Sesión (Gs)</label>
+                                <input type="number" class="form-control" @bind="_claseEdit.PrecioPorSesion" min="0" step="1000" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Planes que incluyen esta clase</label>
+                                <input type="text" class="form-control" @bind="_claseEdit.PlanesIncluidos" 
+                                       placeholder="IDs separados por coma" />
+                            </div>
+                        }
+
+                        <!-- Estado -->
+                        <div class="col-12 mt-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" @bind="_claseEdit.Activa" id="chkActiva" />
+                                <label class="form-check-label" for="chkActiva">Clase activa</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="GuardarClase">
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Confirmar Eliminar -->
+@if (_mostrarConfirmarEliminar)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Confirmar Eliminación</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarConfirmarEliminar = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Está seguro de eliminar la clase <strong>@_claseEliminar?.Nombre</strong>?</p>
+                    <p class="text-muted small">Esta acción no se puede deshacer. Los horarios asociados también serán eliminados.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="() => _mostrarConfirmarEliminar = false">Cancelar</button>
+                    <button class="btn btn-danger" @onclick="EliminarClase">
+                        <i class="bi bi-trash me-1"></i>Eliminar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ClaseGimnasio> _clases = new();
+    private List<Instructor> _instructores = new();
+    private List<string> _categorias = new();
+    private string _filtroCategoria = "";
+    private int _idSucursal = 1;
+
+    // Modal
+    private bool _mostrarModal = false;
+    private ClaseGimnasio _claseEdit = new();
+
+    // Confirmar eliminar
+    private bool _mostrarConfirmarEliminar = false;
+    private ClaseGimnasio? _claseEliminar;
+
+    private IEnumerable<ClaseGimnasio> ClasesFiltradas => string.IsNullOrEmpty(_filtroCategoria)
+        ? _clases.OrderBy(c => c.Orden).ThenBy(c => c.Nombre)
+        : _clases.Where(c => c.Categoria == _filtroCategoria).OrderBy(c => c.Orden).ThenBy(c => c.Nombre);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _clases = await _db.ClasesGimnasio
+            .Include(c => c.Instructor)
+            .Where(c => c.IdSucursal == _idSucursal || c.IdSucursal == null)
+            .OrderBy(c => c.Orden).ThenBy(c => c.Nombre)
+            .ToListAsync();
+
+        _instructores = await _db.Instructores
+            .Where(i => (i.IdSucursal == _idSucursal || i.IdSucursal == null) && i.Activo && i.DictaClasesGrupales)
+            .OrderBy(i => i.NombreCompleto)
+            .ToListAsync();
+
+        _categorias = _clases.Select(c => c.Categoria).Distinct().OrderBy(c => c).ToList();
+    }
+
+    private void NuevaClase()
+    {
+        _claseEdit = new ClaseGimnasio
+        {
+            IdSucursal = _idSucursal,
+            ColorHex = "#3498db",
+            Icono = "bi-calendar2-event",
+            DuracionMinutos = 60,
+            CapacidadMaxima = 20,
+            MinimoAlumnos = 3,
+            HorasAnticipacionReserva = 2,
+            HorasLimiteCancelacion = 2,
+            MaxInasistencias = 3,
+            Activa = true,
+            Categoria = "Cardio"
+        };
+        _mostrarModal = true;
+    }
+
+    private void EditarClase(ClaseGimnasio clase)
+    {
+        // Clonar para edición
+        _claseEdit = new ClaseGimnasio
+        {
+            IdClase = clase.IdClase,
+            IdSucursal = clase.IdSucursal,
+            Nombre = clase.Nombre,
+            Descripcion = clase.Descripcion,
+            Categoria = clase.Categoria,
+            Nivel = clase.Nivel,
+            Icono = clase.Icono,
+            ColorHex = clase.ColorHex,
+            DuracionMinutos = clase.DuracionMinutos,
+            CapacidadMaxima = clase.CapacidadMaxima,
+            MinimoAlumnos = clase.MinimoAlumnos,
+            Sala = clase.Sala,
+            CaloriasAproximadas = clase.CaloriasAproximadas,
+            IdInstructor = clase.IdInstructor,
+            TieneCostoAdicional = clase.TieneCostoAdicional,
+            PrecioPorSesion = clase.PrecioPorSesion,
+            PlanesIncluidos = clase.PlanesIncluidos,
+            PermiteReservas = clase.PermiteReservas,
+            HorasAnticipacionReserva = clase.HorasAnticipacionReserva,
+            HorasLimiteCancelacion = clase.HorasLimiteCancelacion,
+            MaxInasistencias = clase.MaxInasistencias,
+            Activa = clase.Activa,
+            Orden = clase.Orden,
+            FechaCreacion = clase.FechaCreacion
+        };
+        _mostrarModal = true;
+    }
+
+    private async Task GuardarClase()
+    {
+        if (string.IsNullOrWhiteSpace(_claseEdit.Nombre))
+        {
+            return;
+        }
+
+        if (_claseEdit.IdClase == 0)
+        {
+            _claseEdit.FechaCreacion = DateTime.Now;
+            _db.ClasesGimnasio.Add(_claseEdit);
+        }
+        else
+        {
+            var existente = await _db.ClasesGimnasio.FindAsync(_claseEdit.IdClase);
+            if (existente != null)
+            {
+                existente.Nombre = _claseEdit.Nombre;
+                existente.Descripcion = _claseEdit.Descripcion;
+                existente.Categoria = _claseEdit.Categoria;
+                existente.Nivel = _claseEdit.Nivel;
+                existente.Icono = _claseEdit.Icono;
+                existente.ColorHex = _claseEdit.ColorHex;
+                existente.DuracionMinutos = _claseEdit.DuracionMinutos;
+                existente.CapacidadMaxima = _claseEdit.CapacidadMaxima;
+                existente.MinimoAlumnos = _claseEdit.MinimoAlumnos;
+                existente.Sala = _claseEdit.Sala;
+                existente.CaloriasAproximadas = _claseEdit.CaloriasAproximadas;
+                existente.IdInstructor = _claseEdit.IdInstructor;
+                existente.TieneCostoAdicional = _claseEdit.TieneCostoAdicional;
+                existente.PrecioPorSesion = _claseEdit.PrecioPorSesion;
+                existente.PlanesIncluidos = _claseEdit.PlanesIncluidos;
+                existente.PermiteReservas = _claseEdit.PermiteReservas;
+                existente.HorasAnticipacionReserva = _claseEdit.HorasAnticipacionReserva;
+                existente.HorasLimiteCancelacion = _claseEdit.HorasLimiteCancelacion;
+                existente.MaxInasistencias = _claseEdit.MaxInasistencias;
+                existente.Activa = _claseEdit.Activa;
+                existente.Orden = _claseEdit.Orden;
+                existente.FechaModificacion = DateTime.Now;
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        await CargarDatos();
+        CerrarModal();
+    }
+
+    private void ConfirmarEliminar(ClaseGimnasio clase)
+    {
+        _claseEliminar = clase;
+        _mostrarConfirmarEliminar = true;
+    }
+
+    private async Task EliminarClase()
+    {
+        if (_claseEliminar != null)
+        {
+            // Eliminar horarios asociados
+            var horarios = await _db.HorariosClases.Where(h => h.IdClase == _claseEliminar.IdClase).ToListAsync();
+            _db.HorariosClases.RemoveRange(horarios);
+
+            _db.ClasesGimnasio.Remove(_claseEliminar);
+            await _db.SaveChangesAsync();
+            await CargarDatos();
+        }
+        _mostrarConfirmarEliminar = false;
+        _claseEliminar = null;
+    }
+
+    private void VerHorarios(ClaseGimnasio clase)
+    {
+        Nav.NavigateTo($"/gimnasio/horarios?clase={clase.IdClase}");
+    }
+
+    private void CerrarModal()
+    {
+        _mostrarModal = false;
+        _claseEdit = new();
+    }
+}

@@ -1,0 +1,886 @@
+@page "/cocina"
+@page "/cocina/{IdSucursal:int}"
+@using Microsoft.EntityFrameworkCore
+@using System.Timers
+@using SistemIA.Services
+@implements IDisposable
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ICajaProvider CajaProvider
+
+<PageTitle>Pantalla Cocina - SistemIA</PageTitle>
+
+<div class="cocina-container">
+    @* ========== HEADER ========== *@
+    <div class="cocina-header">
+        <div class="d-flex align-items-center gap-3">
+            <h2 class="mb-0">
+                <i class="bi bi-fire text-danger me-2"></i>COCINA
+            </h2>
+            <span class="badge bg-light text-dark fs-5">
+                <i class="bi bi-clock me-1"></i>@DateTime.Now.ToString("HH:mm:ss")
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            @if (_sonidoActivo)
+            {
+                <button class="btn btn-outline-light" @onclick="ToggleSonido" title="Sonido activado">
+                    <i class="bi bi-volume-up-fill"></i>
+                </button>
+            }
+            else
+            {
+                <button class="btn btn-outline-secondary" @onclick="ToggleSonido" title="Sonido desactivado">
+                    <i class="bi bi-volume-mute-fill"></i>
+                </button>
+            }
+            <select class="form-select form-select-sm bg-dark text-white border-secondary" style="width: 150px;"
+                    @bind="_filtroDestino">
+                <option value="">Todo</option>
+                <option value="COCINA">Solo Cocina</option>
+                <option value="BARRA">Solo Barra</option>
+            </select>
+            <span class="text-white-50">
+                Pendientes: <span class="badge bg-warning text-dark fs-6">@_pedidosPendientes.Count</span>
+                En Prep: <span class="badge bg-danger fs-6">@_pedidosEnPreparacion.Count</span>
+                Listos: <span class="badge bg-success fs-6">@_pedidosListos.Count</span>
+            </span>
+        </div>
+    </div>
+
+    @* ========== CONTENIDO PRINCIPAL ========== *@
+    <div class="cocina-body">
+        @* COLUMNA PENDIENTES *@
+        <div class="cocina-columna pendientes">
+            <div class="columna-header bg-warning text-dark">
+                <i class="bi bi-hourglass-split me-2"></i>PENDIENTES
+                <span class="badge bg-dark">@_pedidosPendientes.Count</span>
+            </div>
+            <div class="columna-body">
+                @foreach (var grupo in _pedidosPendientes)
+                {
+                    <div class="comanda-card @(EsUrgente(grupo.Key) ? "urgente" : "")">
+                        <div class="comanda-header">
+                            <span class="mesa-nombre">
+                                <i class="bi bi-geo-alt-fill me-1"></i>@grupo.Key.NombreMesa
+                            </span>
+                            <span class="tiempo @GetClaseTiempo(grupo.Key.TiempoEspera)">
+                                @FormatearTiempo(grupo.Key.TiempoEspera)
+                            </span>
+                        </div>
+                        <div class="comanda-info">
+                            <small>
+                                Pedido #@grupo.Key.NumeroPedido | 
+                                Comanda #@grupo.First().NumeroComanda |
+                                @grupo.Key.HoraEnvio.ToString("HH:mm")
+                            </small>
+                        </div>
+                        <div class="comanda-items">
+                            @foreach (var item in grupo)
+                            {
+                                <div class="item-comanda @(item.EsUrgente ? "urgente" : "")">
+                                    <span class="cantidad">@((int)item.Cantidad)x</span>
+                                    <span class="descripcion">@item.Descripcion</span>
+                                    @if (!string.IsNullOrEmpty(item.Modificadores))
+                                    {
+                                        <div class="modificadores">
+                                            <i class="bi bi-chevron-right"></i>@item.Modificadores
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(item.NotasCocina))
+                                    {
+                                        <div class="notas-cocina">
+                                            <i class="bi bi-exclamation-triangle-fill"></i>@item.NotasCocina
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="comanda-actions">
+                            <button class="btn btn-danger btn-lg w-100" 
+                                    @onclick="() => IniciarPreparacion(grupo.ToList())">
+                                <i class="bi bi-fire me-1"></i>PREPARAR
+                            </button>
+                        </div>
+                    </div>
+                }
+                @if (!_pedidosPendientes.Any())
+                {
+                    <div class="sin-pedidos">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                        <p>Sin pedidos pendientes</p>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* COLUMNA EN PREPARACIÓN *@
+        <div class="cocina-columna en-preparacion">
+            <div class="columna-header bg-danger text-white">
+                <i class="bi bi-fire me-2"></i>EN PREPARACIÓN
+                <span class="badge bg-light text-dark">@_pedidosEnPreparacion.Count</span>
+            </div>
+            <div class="columna-body">
+                @foreach (var grupo in _pedidosEnPreparacion)
+                {
+                    <div class="comanda-card preparando">
+                        <div class="comanda-header">
+                            <span class="mesa-nombre">
+                                <i class="bi bi-geo-alt-fill me-1"></i>@grupo.Key.NombreMesa
+                            </span>
+                            <span class="tiempo preparando @GetClaseTiempo(grupo.Key.TiempoEspera)">
+                                @FormatearTiempo(grupo.Key.TiempoEspera)
+                            </span>
+                        </div>
+                        <div class="comanda-info">
+                            <small>Comanda #@grupo.First().NumeroComanda | Prep: @grupo.Key.HoraInicioPrep?.ToString("HH:mm")</small>
+                        </div>
+                        <div class="comanda-items">
+                            @foreach (var item in grupo)
+                            {
+                                <div class="item-comanda preparando">
+                                    <span class="cantidad">@((int)item.Cantidad)x</span>
+                                    <span class="descripcion">@item.Descripcion</span>
+                                    @if (!string.IsNullOrEmpty(item.Modificadores))
+                                    {
+                                        <div class="modificadores">@item.Modificadores</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="comanda-actions">
+                            <button class="btn btn-success btn-lg w-100" 
+                                    @onclick="() => MarcarListo(grupo.ToList())">
+                                <i class="bi bi-check-lg me-1"></i>LISTO
+                            </button>
+                        </div>
+                    </div>
+                }
+                @if (!_pedidosEnPreparacion.Any())
+                {
+                    <div class="sin-pedidos">
+                        <i class="bi bi-cup-hot text-muted"></i>
+                        <p>Nada en preparación</p>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* COLUMNA LISTOS *@
+        <div class="cocina-columna listos">
+            <div class="columna-header bg-success text-white">
+                <i class="bi bi-check-circle-fill me-2"></i>LISTOS PARA SERVIR
+                <span class="badge bg-light text-dark">@_pedidosListos.Count</span>
+            </div>
+            <div class="columna-body">
+                @foreach (var grupo in _pedidosListos)
+                {
+                    <div class="comanda-card listo">
+                        <div class="comanda-header">
+                            <span class="mesa-nombre">
+                                <i class="bi bi-geo-alt-fill me-1"></i>@grupo.Key.NombreMesa
+                            </span>
+                            <span class="tiempo listo">
+                                <i class="bi bi-check-all me-1"></i>@grupo.Key.HoraListo?.ToString("HH:mm")
+                            </span>
+                        </div>
+                        <div class="comanda-items">
+                            @foreach (var item in grupo)
+                            {
+                                <div class="item-comanda listo">
+                                    <span class="cantidad">@((int)item.Cantidad)x</span>
+                                    <span class="descripcion">@item.Descripcion</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="comanda-actions">
+                            <button class="btn btn-outline-success btn-lg w-100" 
+                                    @onclick="() => MarcarEntregado(grupo.ToList())">
+                                <i class="bi bi-hand-thumbs-up me-1"></i>ENTREGADO
+                            </button>
+                        </div>
+                    </div>
+                }
+                @if (!_pedidosListos.Any())
+                {
+                    <div class="sin-pedidos">
+                        <i class="bi bi-emoji-smile text-muted"></i>
+                        <p>Nada listo aún</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ========== ESTILOS ========== *@
+<style>
+    .cocina-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background: #1a1a2e;
+        color: white;
+        overflow: hidden;
+    }
+
+    .cocina-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 20px;
+        background: #16213e;
+        border-bottom: 3px solid #e94560;
+    }
+
+    .cocina-body {
+        display: flex;
+        flex: 1;
+        gap: 10px;
+        padding: 10px;
+        overflow: hidden;
+    }
+
+    .cocina-columna {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #0f3460;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .columna-header {
+        padding: 15px;
+        font-size: 1.2rem;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .columna-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .comanda-card {
+        background: #1a1a2e;
+        border-radius: 10px;
+        padding: 15px;
+        border-left: 5px solid #ffc107;
+        transition: all 0.3s ease;
+    }
+
+    .comanda-card.urgente {
+        border-left-color: #dc3545;
+        animation: pulse 1s infinite;
+    }
+
+    .comanda-card.preparando {
+        border-left-color: #dc3545;
+        background: linear-gradient(135deg, #1a1a2e, #2d1f1f);
+    }
+
+    .comanda-card.listo {
+        border-left-color: #28a745;
+        background: linear-gradient(135deg, #1a1a2e, #1f2d1f);
+    }
+
+    @@keyframes pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+        50% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+    }
+
+    .comanda-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .mesa-nombre {
+        font-size: 1.3rem;
+        font-weight: bold;
+        color: #e94560;
+    }
+
+    .tiempo {
+        font-size: 1.1rem;
+        font-weight: bold;
+        padding: 5px 10px;
+        border-radius: 20px;
+        background: #ffc107;
+        color: #000;
+    }
+
+    .tiempo.alerta {
+        background: #fd7e14;
+        animation: blink 0.5s infinite;
+    }
+
+    .tiempo.critico {
+        background: #dc3545;
+        color: white;
+        animation: blink 0.3s infinite;
+    }
+
+    .tiempo.listo {
+        background: #28a745;
+        color: white;
+    }
+
+    @@keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .comanda-info {
+        color: #aaa;
+        margin-bottom: 10px;
+    }
+
+    .comanda-items {
+        margin-bottom: 15px;
+    }
+
+    .item-comanda {
+        padding: 8px 10px;
+        margin-bottom: 5px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 5px;
+    }
+
+    .item-comanda.urgente {
+        background: rgba(220, 53, 69, 0.2);
+        border-left: 3px solid #dc3545;
+    }
+
+    .item-comanda .cantidad {
+        display: inline-block;
+        width: 35px;
+        font-weight: bold;
+        color: #ffc107;
+        font-size: 1.1rem;
+    }
+
+    .item-comanda .descripcion {
+        font-size: 1.1rem;
+    }
+
+    .modificadores {
+        color: #17a2b8;
+        font-size: 0.9rem;
+        margin-left: 35px;
+        margin-top: 3px;
+    }
+
+    .notas-cocina {
+        color: #ffc107;
+        font-weight: bold;
+        font-size: 0.95rem;
+        margin-left: 35px;
+        margin-top: 3px;
+        background: rgba(255, 193, 7, 0.1);
+        padding: 3px 8px;
+        border-radius: 3px;
+    }
+
+    .comanda-actions {
+        margin-top: 10px;
+    }
+
+    .comanda-actions .btn {
+        font-size: 1.1rem;
+        padding: 12px;
+        font-weight: bold;
+    }
+
+    .sin-pedidos {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        color: #666;
+        font-size: 1.2rem;
+    }
+
+    .sin-pedidos i {
+        font-size: 3rem;
+        margin-bottom: 10px;
+    }
+
+    /* Scrollbar personalizada */
+    .columna-body::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .columna-body::-webkit-scrollbar-track {
+        background: #0f3460;
+    }
+
+    .columna-body::-webkit-scrollbar-thumb {
+        background: #e94560;
+        border-radius: 4px;
+    }
+
+    /* Responsive */
+    @@media (max-width: 1200px) {
+        .cocina-body {
+            flex-wrap: wrap;
+        }
+        .cocina-columna {
+            min-width: 300px;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public int IdSucursal { get; set; }
+
+    private Timer? _timer;
+    private int _cantidadAnterior = 0;
+    private bool _sonidoActivo = true;
+    private string _filtroDestino = "";
+    private Caja? _cajaActual;
+    private DateTime _fechaCaja = DateTime.Today;
+    private int _turnoActual = 1;
+    private int _idSucursal = 1;
+
+    // Agrupaciones de pedidos por mesa/comanda
+    private List<IGrouping<ComandaGrupo, ItemKDS>> _pedidosPendientes = new();
+    private List<IGrouping<ComandaGrupo, ItemKDS>> _pedidosEnPreparacion = new();
+    private List<IGrouping<ComandaGrupo, ItemKDS>> _pedidosListos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // ========== OBTENER CAJA Y SUCURSAL (MISMA LÓGICA QUE MESASPANEL) ==========
+        await using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Primero intentar obtener del CajaProvider (caja seleccionada en sesión)
+        var cajaIdProvider = CajaProvider.GetCajaId();
+        if (cajaIdProvider.HasValue)
+        {
+            _cajaActual = await db.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.IdCaja == cajaIdProvider.Value);
+        }
+        
+        // Si no hay caja en provider, buscar la marcada como actual
+        if (_cajaActual == null)
+        {
+            _cajaActual = await db.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+        }
+        
+        // Si aún no hay, tomar la primera disponible
+        if (_cajaActual == null)
+        {
+            _cajaActual = await db.Cajas.AsNoTracking().FirstOrDefaultAsync();
+        }
+        
+        // ========== USAR FECHA DE CAJA Y TURNO (IGUAL QUE MESASPANEL) ==========
+        if (_cajaActual != null)
+        {
+            _fechaCaja = _cajaActual.FechaActualCaja ?? DateTime.Today;
+            _turnoActual = _cajaActual.TurnoActual ?? 1;
+            _idSucursal = _cajaActual.IdSucursal ?? 1;
+        }
+        
+        await CargarPedidos();
+
+        // Timer para actualizar cada 5 segundos
+        _timer = new Timer(5000);
+        _timer.Elapsed += async (s, e) => await ActualizarPantalla();
+        _timer.Start();
+    }
+
+    private async Task ActualizarPantalla()
+    {
+        // Recargar la fecha de caja por si cambió
+        await RecargarFechaCaja();
+        await CargarPedidos();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RecargarFechaCaja()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            // Obtener la caja actual (misma lógica que OnInitializedAsync)
+            var cajaIdProvider = CajaProvider.GetCajaId();
+            Caja? caja = null;
+            
+            if (cajaIdProvider.HasValue)
+            {
+                caja = await db.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.IdCaja == cajaIdProvider.Value);
+            }
+            
+            if (caja == null)
+            {
+                caja = await db.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+            }
+            
+            if (caja == null)
+            {
+                caja = await db.Cajas.AsNoTracking().FirstOrDefaultAsync();
+            }
+            
+            if (caja != null)
+            {
+                _cajaActual = caja;
+                _fechaCaja = caja.FechaActualCaja ?? DateTime.Today;
+                _turnoActual = caja.TurnoActual ?? 1;
+                _idSucursal = caja.IdSucursal ?? 1;
+            }
+        }
+        catch
+        {
+            // Ignorar errores de recarga, usar fecha existente
+        }
+    }
+
+    private async Task CargarPedidos()
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            // ========== USAR EXACTAMENTE FECHA Y TURNO DE CAJA ==========
+            var fechaCaja = _fechaCaja.Date;
+            var turno = _turnoActual;
+            
+            // Obtener IDs de tipos que son servicios para excluirlos
+            var tiposServicioIds = await ctx.TiposItem
+                .Where(t => t.EsServicio)
+                .Select(t => t.IdTipoItem)
+                .ToListAsync();
+
+            // Cargar todos los detalles de pedidos del día y turno que están en cocina (excepto servicios)
+            var query = ctx.Set<SistemIA.Models.PedidoDetalle>()
+                .Include(d => d.Pedido)
+                    .ThenInclude(p => p!.Mesa)
+                .Include(d => d.Producto)
+                .Where(d => d.Pedido != null 
+                    && d.Pedido.FechaCaja.HasValue 
+                    && d.Pedido.FechaCaja.Value.Date == fechaCaja
+                    && d.Pedido.Turno == turno
+                    && d.EnviadoCocina
+                    && d.Estado != "Entregado"
+                    && d.Estado != "Cancelado"
+                    && (d.Producto == null || !tiposServicioIds.Contains(d.Producto.TipoItem))) // Excluir servicios
+                .AsNoTracking();
+
+            var detalles = await query.ToListAsync();
+
+            // Convertir a ItemKDS
+            var items = detalles.Select(d => new ItemKDS
+            {
+                IdPedidoDetalle = d.IdPedidoDetalle,
+                IdPedido = d.IdPedido,
+                NumeroPedido = d.Pedido?.NumeroPedido ?? 0,
+                NombreMesa = d.Pedido?.Mesa?.TextoMostrar ?? $"Mesa {d.Pedido?.IdMesa}",
+                NumeroComanda = d.NumeroComanda ?? 0,
+                Cantidad = d.Cantidad,
+                Descripcion = d.Descripcion,
+                Modificadores = d.Modificadores,
+                NotasCocina = d.NotasCocina,
+                Estado = d.Estado,
+                FechaEnvioCocina = d.FechaEnvioCocina,
+                FechaEntrega = d.FechaEntrega,
+                EsUrgente = false // Se puede agregar campo
+            }).ToList();
+
+            // Filtrar por destino si está seleccionado
+            // TODO: Agregar campo Destino al PedidoDetalle para filtrar COCINA vs BARRA
+
+            // Agrupar por mesa y comanda
+            var gruposPendientes = items
+                .Where(i => i.Estado == "Pendiente" || i.Estado == "EnPreparacion" && i.FechaEnvioCocina != null)
+                .GroupBy(i => new ComandaGrupo
+                {
+                    NombreMesa = i.NombreMesa,
+                    NumeroPedido = i.NumeroPedido,
+                    HoraEnvio = i.FechaEnvioCocina ?? DateTime.Now,
+                    TiempoEspera = DateTime.Now - (i.FechaEnvioCocina ?? DateTime.Now)
+                })
+                .OrderBy(g => g.Key.HoraEnvio)
+                .ToList();
+
+            // Separar pendientes de en preparación
+            _pedidosPendientes = items
+                .Where(i => i.Estado == "Pendiente")
+                .GroupBy(i => new ComandaGrupo
+                {
+                    NombreMesa = i.NombreMesa,
+                    NumeroPedido = i.NumeroPedido,
+                    HoraEnvio = i.FechaEnvioCocina ?? DateTime.Now,
+                    TiempoEspera = DateTime.Now - (i.FechaEnvioCocina ?? DateTime.Now)
+                })
+                .OrderBy(g => g.Key.HoraEnvio)
+                .ToList();
+
+            _pedidosEnPreparacion = items
+                .Where(i => i.Estado == "EnPreparacion")
+                .GroupBy(i => new ComandaGrupo
+                {
+                    NombreMesa = i.NombreMesa,
+                    NumeroPedido = i.NumeroPedido,
+                    HoraEnvio = i.FechaEnvioCocina ?? DateTime.Now,
+                    HoraInicioPrep = i.FechaEnvioCocina, // TODO: Agregar campo específico
+                    TiempoEspera = DateTime.Now - (i.FechaEnvioCocina ?? DateTime.Now)
+                })
+                .OrderBy(g => g.Key.HoraEnvio)
+                .ToList();
+
+            _pedidosListos = items
+                .Where(i => i.Estado == "Listo")
+                .GroupBy(i => new ComandaGrupo
+                {
+                    NombreMesa = i.NombreMesa,
+                    NumeroPedido = i.NumeroPedido,
+                    HoraListo = i.FechaEntrega
+                })
+                .OrderByDescending(g => g.Key.HoraListo)
+                .ToList();
+
+            // Verificar si hay nuevos pedidos para reproducir sonido
+            var totalPendientes = _pedidosPendientes.Count;
+            if (totalPendientes > _cantidadAnterior && _sonidoActivo)
+            {
+                await ReproducirSonido();
+            }
+            _cantidadAnterior = totalPendientes;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando pedidos: {ex.Message}");
+        }
+    }
+
+    private async Task IniciarPreparacion(List<ItemKDS> items)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            var ids = items.Select(i => i.IdPedidoDetalle).ToList();
+            var detalles = await ctx.Set<SistemIA.Models.PedidoDetalle>()
+                .Where(d => ids.Contains(d.IdPedidoDetalle))
+                .ToListAsync();
+
+            foreach (var detalle in detalles)
+            {
+                detalle.Estado = "EnPreparacion";
+            }
+
+            await ctx.SaveChangesAsync();
+            await CargarPedidos();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task MarcarListo(List<ItemKDS> items)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            var ids = items.Select(i => i.IdPedidoDetalle).ToList();
+            var detalles = await ctx.Set<SistemIA.Models.PedidoDetalle>()
+                .Where(d => ids.Contains(d.IdPedidoDetalle))
+                .ToListAsync();
+
+            foreach (var detalle in detalles)
+            {
+                detalle.Estado = "Listo";
+                detalle.FechaEntrega = DateTime.Now;
+            }
+
+            await ctx.SaveChangesAsync();
+            await CargarPedidos();
+
+            // Notificar al mesero (se puede agregar SignalR)
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task MarcarEntregado(List<ItemKDS> items)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            var ids = items.Select(i => i.IdPedidoDetalle).ToList();
+            var detalles = await ctx.Set<SistemIA.Models.PedidoDetalle>()
+                .Where(d => ids.Contains(d.IdPedidoDetalle))
+                .ToListAsync();
+
+            foreach (var detalle in detalles)
+            {
+                detalle.Estado = "Entregado";
+                detalle.CantidadEntregada = detalle.Cantidad;
+            }
+
+            await ctx.SaveChangesAsync();
+            await CargarPedidos();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task ReproducirSonido(string tipo = "nuevo")
+    {
+        try
+        {
+            // Sonidos más llamativos usando Web Audio API
+            var script = tipo switch
+            {
+                // Nuevo pedido: 3 beeps ascendentes (atención!)
+                "nuevo" => @"
+                    (function() {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        const frequencies = [523.25, 659.25, 783.99]; // C5, E5, G5 (acorde mayor)
+                        frequencies.forEach((freq, i) => {
+                            setTimeout(() => {
+                                const osc = ctx.createOscillator();
+                                const gain = ctx.createGain();
+                                osc.connect(gain);
+                                gain.connect(ctx.destination);
+                                osc.frequency.value = freq;
+                                osc.type = 'sine';
+                                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                                osc.start(ctx.currentTime);
+                                osc.stop(ctx.currentTime + 0.3);
+                            }, i * 150);
+                        });
+                    })();",
+                
+                // En preparación: tono sostenido medio (confirmación)
+                "preparacion" => @"
+                    (function() {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.frequency.value = 440; // A4
+                        osc.type = 'triangle';
+                        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                        osc.start(ctx.currentTime);
+                        osc.stop(ctx.currentTime + 0.5);
+                    })();",
+                
+                // Listo: fanfarria corta (celebración)
+                "listo" => @"
+                    (function() {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        const notes = [
+                            {freq: 523.25, time: 0},      // C5
+                            {freq: 659.25, time: 0.1},    // E5
+                            {freq: 783.99, time: 0.2},    // G5
+                            {freq: 1046.50, time: 0.3}    // C6
+                        ];
+                        notes.forEach(note => {
+                            setTimeout(() => {
+                                const osc = ctx.createOscillator();
+                                const gain = ctx.createGain();
+                                osc.connect(gain);
+                                gain.connect(ctx.destination);
+                                osc.frequency.value = note.freq;
+                                osc.type = 'sine';
+                                gain.gain.setValueAtTime(0.35, ctx.currentTime);
+                                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+                                osc.start(ctx.currentTime);
+                                osc.stop(ctx.currentTime + 0.25);
+                            }, note.time * 1000);
+                        });
+                    })();",
+                
+                _ => ""
+            };
+
+            if (!string.IsNullOrEmpty(script))
+            {
+                await JS.InvokeVoidAsync("eval", script);
+            }
+        }
+        catch { }
+    }
+
+    private void ToggleSonido() => _sonidoActivo = !_sonidoActivo;
+
+    private string FormatearTiempo(TimeSpan tiempo)
+    {
+        if (tiempo.TotalMinutes < 1) return "< 1 min";
+        if (tiempo.TotalMinutes < 60) return $"{(int)tiempo.TotalMinutes} min";
+        return $"{(int)tiempo.TotalHours}h {tiempo.Minutes}m";
+    }
+
+    private string GetClaseTiempo(TimeSpan tiempo)
+    {
+        if (tiempo.TotalMinutes > 15) return "critico";
+        if (tiempo.TotalMinutes > 10) return "alerta";
+        return "";
+    }
+
+    private bool EsUrgente(ComandaGrupo grupo) => grupo.TiempoEspera.TotalMinutes > 12;
+
+    public void Dispose()
+    {
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+
+    // Clases auxiliares
+    private class ItemKDS
+    {
+        public int IdPedidoDetalle { get; set; }
+        public int IdPedido { get; set; }
+        public int NumeroPedido { get; set; }
+        public string NombreMesa { get; set; } = "";
+        public int NumeroComanda { get; set; }
+        public decimal Cantidad { get; set; }
+        public string Descripcion { get; set; } = "";
+        public string? Modificadores { get; set; }
+        public string? NotasCocina { get; set; }
+        public string Estado { get; set; } = "";
+        public DateTime? FechaEnvioCocina { get; set; }
+        public DateTime? FechaEntrega { get; set; }
+        public bool EsUrgente { get; set; }
+    }
+
+    private class ComandaGrupo : IEquatable<ComandaGrupo>
+    {
+        public string NombreMesa { get; set; } = "";
+        public int NumeroPedido { get; set; }
+        public DateTime HoraEnvio { get; set; }
+        public DateTime? HoraInicioPrep { get; set; }
+        public DateTime? HoraListo { get; set; }
+        public TimeSpan TiempoEspera { get; set; }
+
+        public bool Equals(ComandaGrupo? other)
+        {
+            if (other == null) return false;
+            return NombreMesa == other.NombreMesa && NumeroPedido == other.NumeroPedido;
+        }
+
+        public override bool Equals(object? obj) => Equals(obj as ComandaGrupo);
+        public override int GetHashCode() => HashCode.Combine(NombreMesa, NumeroPedido);
+    }
+}

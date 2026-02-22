@@ -5,8 +5,11 @@
 @attribute [Authorize]
 @inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject SistemIA.Services.IInventarioService Inventario
+@inject SistemIA.Services.ILoteService LoteService
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+
+<PageProtection Modulo="/inventario/transferencias" Permiso="VIEW">
 
 <h3 class="mb-3"><i class="bi bi-arrow-left-right me-2"></i>Transferencias entre Depósitos</h3>
 
@@ -268,6 +271,41 @@ else
           }
         </div>
       </div>
+      
+      @* ========== SELECTOR DE LOTE (SI EL PRODUCTO CONTROLA LOTES) ========== *@
+      @if (productoControlaLote && idProductoSeleccionado > 0)
+      {
+        <div class="col-md-3">
+          <label class="form-label">
+            <i class="bi bi-box-seam text-primary me-1"></i>Lote
+            <span class="text-danger">*</span>
+          </label>
+          @if (!lotesOrigen.Any())
+          {
+            <div class="alert alert-warning py-2 mb-0 small">
+              <i class="bi bi-exclamation-triangle me-1"></i>No hay lotes con stock en el depósito origen
+            </div>
+          }
+          else
+          {
+            <select class="form-select" value="@selectedLoteOrigenId" @onchange="OnLoteOrigenChanged" disabled="@guardando">
+              <option value="">-- Seleccione lote --</option>
+              @foreach (var lote in lotesOrigen)
+              {
+                <option value="@lote.IdProductoLote">
+                  @lote.NumeroLote 
+                  @if (lote.FechaVencimiento.HasValue)
+                  {
+                    @:- Vence: @lote.FechaVencimiento.Value.ToString("dd/MM/yyyy")
+                  }
+                  (Stock: @lote.Stock.ToString("N0"))
+                </option>
+              }
+            </select>
+          }
+        </div>
+      }
+      
       <div class="col-md-2">
         <label class="form-label">Stock disponible</label>
         <input class="form-control" value="@stockDisponible.ToString("N2")" disabled />
@@ -317,6 +355,7 @@ else
             <th style="width:50px;">#</th>
             <th>Código</th>
             <th>Producto</th>
+            <th>Lote</th>
             <th class="text-end">Paq.</th>
             <th class="text-end">Stock origen</th>
             <th class="text-end">Cantidad</th>
@@ -328,7 +367,7 @@ else
         <tbody>
           @if (!lineas.Any())
           {
-            <tr><td colspan="9" class="text-center text-muted py-4">Sin productos agregados</td></tr>
+            <tr><td colspan="10" class="text-center text-muted py-4">Sin productos agregados</td></tr>
           }
           else
           {
@@ -346,6 +385,22 @@ else
                   @if (esPaq)
                   {
                     <small class="text-info">📦 @l.CantidadPorPaquete u/paq</small>
+                  }
+                </td>
+                <td>
+                  @if (l.ControlaLote && !string.IsNullOrEmpty(l.NumeroLote))
+                  {
+                    <div class="small">
+                      <span class="badge bg-primary">@l.NumeroLote</span>
+                      @if (l.FechaVencimiento.HasValue)
+                      {
+                        <br/><small class="text-muted">Vence: @l.FechaVencimiento.Value.ToString("dd/MM/yy")</small>
+                      }
+                    </div>
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
                   }
                 </td>
                 <td class="text-end">
@@ -376,7 +431,7 @@ else
         </tbody>
         <tfoot>
           <tr class="table-secondary">
-            <th colspan="6" class="text-end">Total</th>
+            <th colspan="7" class="text-end">Total</th>
             <th class="text-end">@lineas.Sum(x=>x.CostoTotal).ToString("N0")</th>
             <th></th>
           </tr>
@@ -409,6 +464,11 @@ else
   private int? cantidadPorPaqueteActual = null;
   private string nombreUnidadTransferencia = "Paquete";
   private bool productoEsPaquete = false;
+  
+  // ========== VARIABLES PARA LOTES ==========
+  private bool productoControlaLote = false;
+  private List<SistemIA.Models.ProductoLote> lotesOrigen = new();  // Lotes con stock en depósito origen
+  private int? selectedLoteOrigenId = null;  // Lote seleccionado del origen
   
   private string? errorMsg;
   private string? okMsg;
@@ -691,6 +751,22 @@ else
     {
       stocksPorProducto[s.IdProducto] = s.Stock;
     }
+    
+    // Si hay un producto con control de lote seleccionado, recargar lotes del nuevo depósito
+    if (productoControlaLote && idProductoSeleccionado > 0)
+    {
+      lotesOrigen = await LoteService.ObtenerLotesProductoAsync(idProductoSeleccionado, idDepositoOrigen, soloConStock: true);
+      if (lotesOrigen.Any())
+      {
+        selectedLoteOrigenId = lotesOrigen.First().IdProductoLote;
+        stockDisponible = lotesOrigen.First().Stock;
+      }
+      else
+      {
+        selectedLoteOrigenId = 0;
+        stockDisponible = 0;
+      }
+    }
   }
 
   private void AplicarFiltroProductos()
@@ -740,8 +816,69 @@ else
       cantidad = 1;
     }
     
-    await CargarStockDisponible();
+    // ========== CARGAR LOTES SI EL PRODUCTO LOS CONTROLA ==========
+    productoControlaLote = p.ControlaLote;
+    lotesOrigen = new();
+    selectedLoteOrigenId = null;
+    
+    if (productoControlaLote && idDepositoOrigen > 0)
+    {
+      try
+      {
+        // Obtener lotes con stock en el depósito ORIGEN (solo con stock para transferir)
+        lotesOrigen = await LoteService.ObtenerLotesProductoAsync(p.IdProducto, idDepositoOrigen, soloConStock: true);
+        lotesOrigen = lotesOrigen.OrderBy(l => l.FechaVencimiento ?? DateTime.MaxValue).ToList();
+        
+        if (lotesOrigen.Any())
+        {
+          // Seleccionar automáticamente el primer lote (FEFO - primero en vencer, primero en salir)
+          selectedLoteOrigenId = lotesOrigen.First().IdProductoLote;
+          stockDisponible = lotesOrigen.First().Stock;
+        }
+        else
+        {
+          stockDisponible = 0;
+        }
+      }
+      catch
+      {
+        lotesOrigen = new();
+        stockDisponible = 0;
+      }
+    }
+    else
+    {
+      await CargarStockDisponible();
+    }
+    
     StateHasChanged();
+  }
+  
+  /// <summary>
+  /// Cambio de lote seleccionado - actualiza el stock disponible
+  /// </summary>
+  private void OnLoteOrigenChanged(ChangeEventArgs e)
+  {
+    if (int.TryParse(e.Value?.ToString(), out var id))
+    {
+      selectedLoteOrigenId = id;
+      var lote = lotesOrigen.FirstOrDefault(l => l.IdProductoLote == id);
+      if (lote != null)
+      {
+        stockDisponible = lote.Stock;
+        
+        // Si está en modo paquete, recalcular cantidad
+        if (productoEsPaquete)
+        {
+          RecalcularCantidadPorModo();
+        }
+      }
+    }
+    else
+    {
+      selectedLoteOrigenId = null;
+      stockDisponible = 0;
+    }
   }
 
   private void OnProductoKeyUp(KeyboardEventArgs e)
@@ -816,7 +953,37 @@ else
     if (idProductoSeleccionado == 0) { errorMsg = "Seleccione un producto"; return; }
     if (cantidad <= 0) { errorMsg = "Ingrese cantidad mayor a 0"; return; }
     
-    await CargarStockDisponible();
+    // ========== VALIDACIÓN DE LOTE ==========
+    if (productoControlaLote)
+    {
+      if (!lotesOrigen.Any())
+      {
+        errorMsg = "Este producto requiere lote pero no hay lotes con stock en el depósito origen";
+        return;
+      }
+      if (!selectedLoteOrigenId.HasValue || selectedLoteOrigenId == 0)
+      {
+        errorMsg = "Debe seleccionar un lote para este producto";
+        return;
+      }
+    }
+    
+    // Verificar stock del lote o general
+    if (productoControlaLote && selectedLoteOrigenId.HasValue)
+    {
+      var loteSeleccionado = lotesOrigen.FirstOrDefault(l => l.IdProductoLote == selectedLoteOrigenId);
+      if (loteSeleccionado == null)
+      {
+        errorMsg = "Lote seleccionado no válido";
+        return;
+      }
+      stockDisponible = loteSeleccionado.Stock;
+    }
+    else
+    {
+      await CargarStockDisponible();
+    }
+    
     if (cantidad > stockDisponible)
     {
       errorMsg = $"Stock insuficiente. Disponible: {stockDisponible:N2}";
@@ -824,7 +991,17 @@ else
     }
     
     var p = productos!.First(x => x.IdProducto == idProductoSeleccionado);
-    var existente = lineas.FirstOrDefault(x => x.IdProducto == p.IdProducto);
+    
+    // Para productos con lote, verificar si ya existe una línea con el mismo lote
+    LineaVM? existente = null;
+    if (productoControlaLote && selectedLoteOrigenId.HasValue)
+    {
+      existente = lineas.FirstOrDefault(x => x.IdProducto == p.IdProducto && x.IdLoteOrigen == selectedLoteOrigenId);
+    }
+    else
+    {
+      existente = lineas.FirstOrDefault(x => x.IdProducto == p.IdProducto && x.IdLoteOrigen == null);
+    }
     
     if (existente != null)
     {
@@ -834,6 +1011,20 @@ else
     }
     else
     {
+      // Obtener datos del lote si corresponde
+      string? numeroLote = null;
+      DateTime? fechaVencimiento = null;
+      
+      if (productoControlaLote && selectedLoteOrigenId.HasValue)
+      {
+        var loteInfo = lotesOrigen.FirstOrDefault(l => l.IdProductoLote == selectedLoteOrigenId);
+        if (loteInfo != null)
+        {
+          numeroLote = loteInfo.NumeroLote;
+          fechaVencimiento = loteInfo.FechaVencimiento;
+        }
+      }
+      
       var l = new LineaVM
       {
         IdProducto = p.IdProducto,
@@ -843,7 +1034,12 @@ else
         Cantidad = cantidad,
         CostoUnitario = p.CostoUnitarioGs ?? 0,
         CantidadPorPaquete = (int)(p.CantidadPorPaquete ?? 1),
-        UnidadMedidaCodigo = p.UnidadMedidaCodigo
+        UnidadMedidaCodigo = p.UnidadMedidaCodigo,
+        // Datos del lote
+        ControlaLote = productoControlaLote,
+        IdLoteOrigen = selectedLoteOrigenId,
+        NumeroLote = numeroLote,
+        FechaVencimiento = fechaVencimiento
       };
       RecalcularLinea(l);
       lineas.Add(l);
@@ -860,6 +1056,10 @@ else
     cantidadPorPaqueteActual = null;
     modoIngresoTransferencia = "paquete";
     cantidadIngresada = 1;
+    // Limpiar variables de lote
+    productoControlaLote = false;
+    lotesOrigen = new();
+    selectedLoteOrigenId = null;
   }
 
   private void RecalcularLinea(LineaVM l)
@@ -963,7 +1163,11 @@ else
           IdTransferencia = transferencia.IdTransferencia,
           IdProducto = l.IdProducto,
           Cantidad = l.Cantidad,
-          CostoUnitario = l.CostoUnitario
+          CostoUnitario = l.CostoUnitario,
+          // Datos del lote
+          IdProductoLoteOrigen = l.IdLoteOrigen,
+          NumeroLote = l.NumeroLote,
+          FechaVencimientoLote = l.FechaVencimiento
         };
         ctx.TransferenciasDepositoDetalle.Add(detalle);
       }
@@ -983,16 +1187,39 @@ else
       // Ajustar stocks: salida del origen, entrada al destino
       foreach (var l in lineas)
       {
-        Console.WriteLine($"DEBUG: Ajustando stock - Producto: {l.IdProducto}, Deposito Origen: {idDepositoOrigen}, Cantidad: {l.Cantidad}");
+        Console.WriteLine($"DEBUG: Ajustando stock - Producto: {l.IdProducto}, Deposito Origen: {idDepositoOrigen}, Cantidad: {l.Cantidad}, Lote: {l.IdLoteOrigen}");
         
         // Salida del origen (tipo 2 = salida, cantidad siempre positiva)
-        await Inventario.AjustarStockAsync(l.IdProducto, idDepositoOrigen, l.Cantidad, 2, $"Transferencia #{transferencia.IdTransferencia}", usuario);
+        // Si tiene lote, descontar del lote específico
+        await Inventario.AjustarStockAsync(l.IdProducto, idDepositoOrigen, l.Cantidad, 2, $"Transferencia #{transferencia.IdTransferencia}", usuario, l.IdLoteOrigen);
         
         Console.WriteLine($"DEBUG: Stock origen actualizado. Ahora depositando en destino: {idDepositoDestino}");
         
-        // Entrada al destino (tipo 1 = entrada, cantidad siempre positiva)
-        await Inventario.AjustarStockAsync(l.IdProducto, idDepositoDestino, l.Cantidad, 1, $"Transferencia #{transferencia.IdTransferencia}", usuario);
+        // Entrada al destino (tipo 1 = entrada)
+        // Si el producto controla lotes, necesitamos crear o encontrar el lote en el depósito destino
+        if (l.ControlaLote && !string.IsNullOrEmpty(l.NumeroLote))
+        {
+          // Buscar si existe el lote en el depósito destino
+          var loteDestino = await LoteService.ObtenerOCrearLoteAsync(l.IdProducto, idDepositoDestino, l.NumeroLote, l.FechaVencimiento);
+          
+          // Actualizar el detalle con el lote destino
+          var detalleActualizar = ctx.TransferenciasDepositoDetalle.FirstOrDefault(d => 
+            d.IdTransferencia == transferencia.IdTransferencia && d.IdProducto == l.IdProducto && d.IdProductoLoteOrigen == l.IdLoteOrigen);
+          if (detalleActualizar != null)
+          {
+            detalleActualizar.IdProductoLoteDestino = loteDestino.IdProductoLote;
+          }
+          
+          await Inventario.AjustarStockAsync(l.IdProducto, idDepositoDestino, l.Cantidad, 1, $"Transferencia #{transferencia.IdTransferencia}", usuario, loteDestino.IdProductoLote);
+        }
+        else
+        {
+          // Producto sin lote - ajuste normal
+          await Inventario.AjustarStockAsync(l.IdProducto, idDepositoDestino, l.Cantidad, 1, $"Transferencia #{transferencia.IdTransferencia}", usuario);
+        }
       }
+      
+      await ctx.SaveChangesAsync();
       
       transferenciaGeneradaId = transferencia.IdTransferencia;
       okMsg = $"Transferencia #{transferencia.IdTransferencia} guardada exitosamente";
@@ -1041,6 +1268,10 @@ else
     modoIngresoTransferencia = "paquete";
     cantidadIngresada = 1;
     nombreUnidadTransferencia = null;
+    // Reset variables de lote
+    productoControlaLote = false;
+    lotesOrigen = new();
+    selectedLoteOrigenId = null;
   }
 
   private async Task Imprimir()
@@ -1064,6 +1295,8 @@ else
       
       var detalles = await ctx.TransferenciasDepositoDetalle
         .Include(d => d.Producto)
+        .Include(d => d.LoteOrigen)   // Incluir datos del lote origen
+        .Include(d => d.LoteDestino)  // Incluir datos del lote destino
         .AsNoTracking()
         .Where(d => d.IdTransferencia == idTransferencia)
         .ToListAsync();
@@ -1149,7 +1382,7 @@ else
       }
       
       sb.AppendLine("  <table class=\"table table-sm table-trans\">");
-      sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th class=\"text-end\">Paq.</th><th class=\"text-end\">Cantidad</th><th class=\"text-end\">Costo unit.</th><th class=\"text-end\">Costo total</th></tr></thead>");
+      sb.AppendLine("    <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th>Lote</th><th class=\"text-end\">Paq.</th><th class=\"text-end\">Cantidad</th><th class=\"text-end\">Costo unit.</th><th class=\"text-end\">Costo total</th></tr></thead>");
       sb.AppendLine("    <tbody>");
       var idx = 0;
       foreach (var d in dets)
@@ -1166,12 +1399,31 @@ else
         var sueltas = esPaq ? d.Cantidad % cantPaq : 0m;
         var paqDisplay = esPaq ? (paqTransf > 0 ? $"{paqTransf:N0}{(sueltas > 0 ? $" +{sueltas:N0}" : "")}" : (sueltas > 0 ? $"+{sueltas:N0}" : "0")) : "-";
         var descHtml = System.Net.WebUtility.HtmlEncode(desc) + (esPaq ? $" <small style='color:#17a2b8;'>📦x{cantPaq}</small>" : "");
-        sb.AppendLine($"      <tr><td>{idx}</td><td>{System.Net.WebUtility.HtmlEncode(codigo)}</td><td>{descHtml}</td><td class=\"text-end\" style=\"color:#17a2b8;\">{paqDisplay}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{(d.CostoUnitario ?? 0):N0}</td><td class=\"text-end\">{costoTotal:N0}</td></tr>");
+        
+        // Info de lote - Priorizar datos del lote origen, luego datos guardados en el detalle
+        var loteDisplay = "-";
+        var numeroLote = d.LoteOrigen?.NumeroLote ?? d.NumeroLote;
+        var fechaVenc = d.LoteOrigen?.FechaVencimiento ?? d.FechaVencimientoLote;
+        
+        if (!string.IsNullOrWhiteSpace(numeroLote))
+        {
+          var loteHtml = System.Net.WebUtility.HtmlEncode(numeroLote);
+          if (fechaVenc.HasValue)
+          {
+            // Determinar color según proximidad de vencimiento
+            var diasParaVencer = (fechaVenc.Value.Date - DateTime.Today).TotalDays;
+            var colorVenc = diasParaVencer <= 0 ? "#dc3545" : (diasParaVencer <= 30 ? "#ffc107" : "#6c757d");
+            loteHtml += $"<br/><small style='color:{colorVenc};'>Vence: {fechaVenc:dd/MM/yyyy}</small>";
+          }
+          loteDisplay = loteHtml;
+        }
+        
+        sb.AppendLine($"      <tr><td>{idx}</td><td>{System.Net.WebUtility.HtmlEncode(codigo)}</td><td>{descHtml}</td><td>{loteDisplay}</td><td class=\"text-end\" style=\"color:#17a2b8;\">{paqDisplay}</td><td class=\"text-end\">{d.Cantidad:N2}</td><td class=\"text-end\">{(d.CostoUnitario ?? 0):N0}</td><td class=\"text-end\">{costoTotal:N0}</td></tr>");
       }
       sb.AppendLine("    </tbody>");
       sb.AppendLine("    <tfoot>");
       var totalCosto = dets.Sum(d => d.Cantidad * (d.CostoUnitario ?? 0));
-      sb.AppendLine($"      <tr class=\"fw-bold\"><td colspan=\"6\" class=\"text-end\">Total</td><td class=\"text-end\">{totalCosto:N0}</td></tr>");
+      sb.AppendLine($"      <tr class=\"fw-bold\"><td colspan=\"7\" class=\"text-end\">Total</td><td class=\"text-end\">{totalCosto:N0}</td></tr>");
       sb.AppendLine("    </tfoot>");
       sb.AppendLine("  </table>");
       
@@ -1197,5 +1449,12 @@ else
     public decimal CostoTotal { get; set; }
     public int CantidadPorPaquete { get; set; } = 1;
     public string? UnidadMedidaCodigo { get; set; }
+    // ========== SOPORTE PARA LOTES ==========
+    public bool ControlaLote { get; set; }
+    public int? IdLoteOrigen { get; set; }  // Lote del depósito origen
+    public string? NumeroLote { get; set; }
+    public DateTime? FechaVencimiento { get; set; }
   }
 }
+
+</PageProtection>

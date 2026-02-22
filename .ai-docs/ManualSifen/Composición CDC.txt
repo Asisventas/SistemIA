@@ -1,0 +1,12 @@
+01 tipo documento (2)
+80096580 ruc  emior (8)
+9 dig verificador emisor (1)
+005 sucursal (3)
+002 caja (3)
+0000047 numero factura (7)
+2 tipo contribuyente (1)
+20241213 fecha emision formato año-mes-dia (8)
+1 tipo emisor(1)
+051892566 codigo aleatorio(9)
+6 resultado de algoritmo(1)
+

@@ -15,11 +15,13 @@ namespace SistemIA.Migrations
                 name: "FK_Clientes_TiposOperacion_TipoOperacion",
                 table: "Clientes");
 
+            // CORREGIDO: Mantener nvarchar(3) para coincidir con TiposOperacion.Codigo
+            // Originalmente cambiaba a nvarchar(1) lo cual causaba error de FK
             migrationBuilder.AlterColumn<string>(
                 name: "TipoOperacion",
                 table: "Clientes",
-                type: "nvarchar(1)",
-                maxLength: 1,
+                type: "nvarchar(3)",
+                maxLength: 3,
                 nullable: true,
                 oldClrType: typeof(string),
                 oldType: "nvarchar(3)",

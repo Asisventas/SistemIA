@@ -52,6 +52,13 @@ namespace SistemIA.Models
     [Display(Name = "Es Combo")]
     public bool EsCombo { get; set; } = false; // Si es un producto compuesto que descuenta componentes
 
+    /// <summary>
+    /// Indica si el producto es visible en el panel de mesas (restaurante).
+    /// Productos como materia prima, gastos, etc. deben tener este valor en false.
+    /// </summary>
+    [Display(Name = "Visible en Panel Mesas")]
+    public bool VisibleEnMesas { get; set; } = true;
+
         // Relacionales
         [Display(Name = "Marca")]
         public int? IdMarca { get; set; }
@@ -315,6 +322,123 @@ namespace SistemIA.Models
 
     // Componentes si es combo (líneas que se descuentan al vender el combo)
     public ICollection<ProductoComponente>? Componentes { get; set; }
+
+    // ========== MEMBRESÍA GIMNASIO ==========
+    
+    /// <summary>
+    /// Indica si este producto representa una membresía de gimnasio.
+    /// Si es true, aparecerá en la lista de planes de membresía.
+    /// </summary>
+    [Display(Name = "Es Membresía")]
+    public bool EsMembresia { get; set; } = false;
+
+    /// <summary>
+    /// Duración en días de la membresía.
+    /// Semanal=7, Quincenal=15, Mensual=30, Trimestral=90, Semestral=180, Anual=365
+    /// </summary>
+    [Display(Name = "Duración (días)")]
+    [Range(1, 730)]
+    public int? DuracionDiasMembresia { get; set; }
+
+    /// <summary>
+    /// Tipo de período: Semanal, Quincenal, Mensual, Trimestral, Semestral, Anual
+    /// </summary>
+    [StringLength(20)]
+    [Display(Name = "Tipo Período")]
+    public string? TipoPeriodoMembresia { get; set; }
+
+    /// <summary>
+    /// Precio de inscripción (pago único al inicio).
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    [Display(Name = "Precio Inscripción")]
+    [Range(0, 999999999999.9999)]
+    public decimal? PrecioInscripcionMembresia { get; set; }
+
+    /// <summary>
+    /// Indica si la membresía permite congelamiento.
+    /// </summary>
+    [Display(Name = "Permite Congelar")]
+    public bool PermiteCongelarMembresia { get; set; } = true;
+
+    /// <summary>
+    /// Máximo de días que se puede congelar la membresía.
+    /// </summary>
+    [Display(Name = "Días Máx Congelar")]
+    [Range(0, 365)]
+    public int? DiasMaxCongelarMembresia { get; set; }
+
+    /// <summary>
+    /// Días de gracia después del vencimiento para permitir acceso.
+    /// </summary>
+    [Display(Name = "Días de Gracia")]
+    [Range(0, 30)]
+    public int? DiasGraciaMembresia { get; set; }
+
+    /// <summary>
+    /// Cantidad de clases grupales incluidas por período (-1 = ilimitadas).
+    /// </summary>
+    [Display(Name = "Clases Incluidas")]
+    public int? ClasesIncluidasMembresia { get; set; }
+
+    /// <summary>
+    /// Indica si incluye acceso a Personal Trainer.
+    /// </summary>
+    [Display(Name = "Incluye Personal Trainer")]
+    public bool IncluyePTMembresia { get; set; } = false;
+
+    /// <summary>
+    /// Sesiones con Personal Trainer incluidas (si aplica).
+    /// </summary>
+    [Display(Name = "Sesiones PT Incluidas")]
+    public int? SesionesPTMembresia { get; set; }
+
+    /// <summary>
+    /// Horario de acceso permitido (ej: "06:00-22:00").
+    /// </summary>
+    [StringLength(50)]
+    [Display(Name = "Horario Acceso")]
+    public string? HorarioAccesoMembresia { get; set; }
+
+    /// <summary>
+    /// Días de la semana permitidos (ej: "L-V" o "L-D").
+    /// </summary>
+    [StringLength(20)]
+    [Display(Name = "Días Acceso")]
+    public string? DiasAccesoMembresia { get; set; }
+
+    /// <summary>
+    /// Color hexadecimal para mostrar en la UI de planes.
+    /// </summary>
+    [StringLength(7)]
+    [Display(Name = "Color")]
+    public string? ColorMembresia { get; set; }
+
+    /// <summary>
+    /// Indica si incluye acceso a todas las áreas (piscina, sauna, etc.)
+    /// </summary>
+    [Display(Name = "Acceso Todas las Áreas")]
+    public bool AccesoTodasAreasMembresia { get; set; } = true;
+
+    /// <summary>
+    /// Áreas específicas incluidas (separadas por coma si no todas)
+    /// </summary>
+    [StringLength(500)]
+    [Display(Name = "Áreas Incluidas")]
+    public string? AreasIncluidasMembresia { get; set; }
+
+    /// <summary>
+    /// Indica si la membresía se renueva automáticamente.
+    /// </summary>
+    [Display(Name = "Renovación Automática")]
+    public bool RenovacionAutomaticaMembresia { get; set; } = false;
+
+    /// <summary>
+    /// Días antes del vencimiento para enviar recordatorio.
+    /// </summary>
+    [Display(Name = "Días Recordatorio")]
+    [Range(0, 30)]
+    public int? DiasRecordatorioMembresia { get; set; }
 
         // Auditoría
         [Display(Name = "Fecha Creación")]

@@ -1,0 +1,445 @@
+@page "/gimnasio/historial/{IdCliente:int}"
+@using SistemIA.Models
+@using SistemIA.Models.Gimnasio
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext _db
+@inject NavigationManager Nav
+
+<PageTitle>Historial de Accesos - Gimnasio</PageTitle>
+
+<style>
+    .historial-container {
+        min-height: calc(100vh - 160px);
+    }
+    .acceso-item {
+        transition: all 0.2s ease;
+        border-left: 4px solid transparent;
+    }
+    .acceso-item:hover { background: var(--bg-hover); }
+    .acceso-item.entrada { border-left-color: #28a745; }
+    .acceso-item.salida { border-left-color: #6c757d; }
+    .acceso-item.denegado { border-left-color: #dc3545; }
+    
+    .stat-card {
+        background: var(--bg-surface);
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .stat-card .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .stat-card .stat-label {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+    }
+</style>
+
+<div class="container-fluid historial-container py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <button class="btn btn-outline-secondary me-3" @onclick="Volver">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+            <span class="fs-4">
+                <i class="bi bi-clock-history text-primary me-2"></i>
+                Historial de Accesos
+            </span>
+        </div>
+        @if (_cliente != null)
+        {
+            <span class="badge bg-primary fs-6">
+                <i class="bi bi-person me-1"></i>
+                @_cliente.RazonSocial
+            </span>
+        }
+    </div>
+
+    @if (_cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+        </div>
+    }
+    else if (_cliente == null)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Cliente no encontrado
+        </div>
+    }
+    else
+    {
+        <!-- Información del Cliente -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        @if (_cliente.FotoGimnasio != null && _cliente.FotoGimnasio.Length > 0)
+                        {
+                            <img src="data:image/jpeg;base64,@Convert.ToBase64String(_cliente.FotoGimnasio)" 
+                                 class="rounded-circle" style="width: 80px; height: 80px; object-fit: cover;" />
+                        }
+                        else
+                        {
+                            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center" 
+                                 style="width: 80px; height: 80px;">
+                                <i class="bi bi-person-fill text-white fs-1"></i>
+                            </div>
+                        }
+                    </div>
+                    <div class="col">
+                        <h4 class="mb-1">@_cliente.RazonSocial</h4>
+                        <div class="text-muted">
+                            <span class="me-3"><i class="bi bi-telephone me-1"></i>@(_cliente.Telefono ?? "Sin teléfono")</span>
+                            <span><i class="bi bi-envelope me-1"></i>@(_cliente.Email ?? "Sin email")</span>
+                        </div>
+                        @if (_membresiaActiva != null)
+                        {
+                            <span class="badge @(_membresiaActiva.FechaVencimiento >= DateTime.Today ? "bg-success" : "bg-danger") mt-2">
+                                <i class="bi bi-card-checklist me-1"></i>
+                                @_membresiaActiva.Producto?.Descripcion - Vence: @_membresiaActiva.FechaVencimiento.ToString("dd/MM/yyyy")
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary mt-2">
+                                <i class="bi bi-x-circle me-1"></i>
+                                Sin membresía activa
+                            </span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estadísticas -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value text-primary">@_totalAccesos</div>
+                    <div class="stat-label">Total Accesos</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value text-success">@_accesosMes</div>
+                    <div class="stat-label">Este Mes</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value text-info">@_accesosSemana</div>
+                    <div class="stat-label">Esta Semana</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value text-warning">@_tiempoPromedioMinutos min</div>
+                    <div class="stat-label">Tiempo Promedio</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="card mb-3 shadow-sm">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Desde</label>
+                        <input type="date" class="form-control" @bind="_fechaDesde" @bind:event="oninput" @onchange="CargarHistorial" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Hasta</label>
+                        <input type="date" class="form-control" @bind="_fechaHasta" @bind:event="oninput" @onchange="CargarHistorial" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Tipo</label>
+                        <select class="form-select" @bind="_filtroTipo" @bind:after="CargarHistorial">
+                            <option value="">Todos</option>
+                            <option value="Entrada">Entradas</option>
+                            <option value="Salida">Salidas</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-outline-secondary w-100" @onclick="LimpiarFiltros">
+                            <i class="bi bi-x-circle me-1"></i>Limpiar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de Accesos -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-list-ul me-2"></i>Registro de Accesos
+                </h6>
+                <small class="text-muted">@_accesos.Count registro(s)</small>
+            </div>
+            <div class="card-body p-0">
+                @if (!_accesos.Any())
+                {
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        No hay registros de acceso en el período seleccionado
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 60px;"></th>
+                                    <th>Fecha / Hora</th>
+                                    <th>Tipo</th>
+                                    <th>Método</th>
+                                    <th>Estado Membresía</th>
+                                    <th>Duración</th>
+                                    <th class="text-center">Resultado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var acceso in _accesos)
+                                {
+                                    var claseAcceso = acceso.TipoAcceso.ToLower();
+                                    if (!acceso.AccesoPermitido) claseAcceso = "denegado";
+                                    
+                                    <tr class="acceso-item @claseAcceso">
+                                        <td class="text-center">
+                                            @if (acceso.TipoAcceso == "Entrada")
+                                            {
+                                                <i class="bi bi-box-arrow-in-right text-success fs-5"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-box-arrow-left text-secondary fs-5"></i>
+                                            }
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold">@acceso.FechaHora.ToString("dd/MM/yyyy")</div>
+                                            <small class="text-muted">@acceso.FechaHora.ToString("HH:mm:ss")</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge @(acceso.TipoAcceso == "Entrada" ? "bg-success" : "bg-secondary")">
+                                                @acceso.TipoAcceso
+                                            </span>
+                                        </td>
+                                        <td>
+                                            @switch (acceso.MetodoVerificacion)
+                                            {
+                                                case "ReconocimientoFacial":
+                                                    <span><i class="bi bi-emoji-smile me-1 text-info"></i>Facial</span>
+                                                    if (acceso.PorcentajeCoincidencia.HasValue)
+                                                    {
+                                                        <small class="text-muted ms-1">(@acceso.PorcentajeCoincidencia.Value.ToString("0")%)</small>
+                                                    }
+                                                    break;
+                                                case "Codigo":
+                                                    <span><i class="bi bi-upc-scan me-1 text-primary"></i>Código</span>
+                                                    break;
+                                                case "Documento":
+                                                    <span><i class="bi bi-credit-card me-1 text-warning"></i>Documento</span>
+                                                    break;
+                                                default:
+                                                    <span><i class="bi bi-person-check me-1 text-secondary"></i>Manual</span>
+                                                    break;
+                                            }
+                                        </td>
+                                        <td>
+                                            @switch (acceso.EstadoMembresiaAlAcceso)
+                                            {
+                                                case "Vigente":
+                                                    <span class="text-success"><i class="bi bi-check-circle me-1"></i>Vigente</span>
+                                                    if (acceso.DiasRestantes.HasValue)
+                                                    {
+                                                        <small class="text-muted ms-1">(@acceso.DiasRestantes días)</small>
+                                                    }
+                                                    break;
+                                                case "Vencida":
+                                                    <span class="text-danger"><i class="bi bi-x-circle me-1"></i>Vencida</span>
+                                                    break;
+                                                case "DiasGracia":
+                                                    <span class="text-warning"><i class="bi bi-exclamation-circle me-1"></i>Días de gracia</span>
+                                                    break;
+                                                default:
+                                                    <span class="text-secondary"><i class="bi bi-dash-circle me-1"></i>@acceso.EstadoMembresiaAlAcceso</span>
+                                                    break;
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (acceso.TipoAcceso == "Entrada" && acceso.IdAccesoEntrada == null)
+                                            {
+                                                @* Buscar la salida correspondiente *@
+                                                var salida = _accesos.FirstOrDefault(a => a.IdAccesoEntrada == acceso.IdAcceso);
+                                                if (salida != null)
+                                                {
+                                                    var duracion = salida.FechaHora - acceso.FechaHora;
+                                                    <span>@duracion.Hours h @duracion.Minutes min</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">-</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
+                                        <td class="text-center">
+                                            @if (acceso.AccesoPermitido)
+                                            {
+                                                <span class="badge bg-success-subtle text-success">
+                                                    <i class="bi bi-check-lg"></i> Permitido
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-danger-subtle text-danger" title="@acceso.MotivoDenegacion">
+                                                    <i class="bi bi-x-lg"></i> Denegado
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int IdCliente { get; set; }
+
+    private Cliente? _cliente;
+    private MembresiaCliente? _membresiaActiva;
+    private List<AccesoGimnasio> _accesos = new();
+    private bool _cargando = true;
+
+    // Filtros
+    private DateTime _fechaDesde = DateTime.Today.AddMonths(-1);
+    private DateTime _fechaHasta = DateTime.Today;
+    private string _filtroTipo = "";
+
+    // Estadísticas
+    private int _totalAccesos;
+    private int _accesosMes;
+    private int _accesosSemana;
+    private int _tiempoPromedioMinutos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _cargando = true;
+        try
+        {
+            // Cargar cliente
+            _cliente = await _db.Clientes.FirstOrDefaultAsync(c => c.IdCliente == IdCliente);
+
+            if (_cliente != null)
+            {
+                // Cargar membresía activa
+                _membresiaActiva = await _db.MembresiasClientes
+                    .Include(m => m.Producto)
+                    .Where(m => m.IdCliente == IdCliente && m.Estado == "Activa")
+                    .OrderByDescending(m => m.FechaVencimiento)
+                    .FirstOrDefaultAsync();
+
+                // Cargar estadísticas
+                await CargarEstadisticas();
+
+                // Cargar historial
+                await CargarHistorial();
+            }
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task CargarEstadisticas()
+    {
+        var hoy = DateTime.Today;
+        var inicioMes = new DateTime(hoy.Year, hoy.Month, 1);
+        var inicioSemana = hoy.AddDays(-(int)hoy.DayOfWeek);
+
+        _totalAccesos = await _db.AccesosGimnasio
+            .CountAsync(a => a.IdCliente == IdCliente && a.TipoAcceso == "Entrada");
+
+        _accesosMes = await _db.AccesosGimnasio
+            .CountAsync(a => a.IdCliente == IdCliente && a.TipoAcceso == "Entrada" && a.FechaHora >= inicioMes);
+
+        _accesosSemana = await _db.AccesosGimnasio
+            .CountAsync(a => a.IdCliente == IdCliente && a.TipoAcceso == "Entrada" && a.FechaHora >= inicioSemana);
+
+        // Calcular tiempo promedio
+        var entradas = await _db.AccesosGimnasio
+            .Where(a => a.IdCliente == IdCliente && a.TipoAcceso == "Entrada" && a.IdAccesoEntrada == null)
+            .OrderByDescending(a => a.FechaHora)
+            .Take(30)
+            .ToListAsync();
+
+        var salidas = await _db.AccesosGimnasio
+            .Where(a => a.IdCliente == IdCliente && a.TipoAcceso == "Salida")
+            .ToListAsync();
+
+        var duraciones = new List<double>();
+        foreach (var entrada in entradas)
+        {
+            var salida = salidas.FirstOrDefault(s => s.IdAccesoEntrada == entrada.IdAcceso);
+            if (salida != null)
+            {
+                duraciones.Add((salida.FechaHora - entrada.FechaHora).TotalMinutes);
+            }
+        }
+
+        _tiempoPromedioMinutos = duraciones.Any() ? (int)duraciones.Average() : 0;
+    }
+
+    private async Task CargarHistorial()
+    {
+        var query = _db.AccesosGimnasio
+            .Where(a => a.IdCliente == IdCliente)
+            .Where(a => a.FechaHora.Date >= _fechaDesde.Date && a.FechaHora.Date <= _fechaHasta.Date);
+
+        if (!string.IsNullOrEmpty(_filtroTipo))
+        {
+            query = query.Where(a => a.TipoAcceso == _filtroTipo);
+        }
+
+        _accesos = await query
+            .OrderByDescending(a => a.FechaHora)
+            .Take(200)
+            .ToListAsync();
+    }
+
+    private async Task LimpiarFiltros()
+    {
+        _fechaDesde = DateTime.Today.AddMonths(-1);
+        _fechaHasta = DateTime.Today;
+        _filtroTipo = "";
+        await CargarHistorial();
+    }
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/gimnasio/miembros");
+    }
+}

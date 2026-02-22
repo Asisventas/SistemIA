@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Instalador de SistemIA - Sistema de Gestión Empresarial
 .DESCRIPTION
@@ -9,6 +9,7 @@
 
 param(
     [string]$ConfigFile,
+    [string]$ServiceName,
     [switch]$Uninstall,
     [switch]$LimpiarDatos,
     [switch]$SoloConfigurar
@@ -79,23 +80,27 @@ function Show-Banner {
 
 # Menú principal
 function Show-Menu {
-    Write-Host "`n┌──────────────────────────────────────┐" -ForegroundColor White
-    Write-Host "│          MENÚ DE INSTALACIÓN         │" -ForegroundColor White
-    Write-Host "├──────────────────────────────────────┤" -ForegroundColor White
-    Write-Host "│  1. Instalación completa             │" -ForegroundColor White
-    Write-Host "│  2. Solo configurar servidor/BD      │" -ForegroundColor White
-    Write-Host "│  3. Instalar servicio Windows        │" -ForegroundColor White
-    Write-Host "│  4. Desinstalar servicio             │" -ForegroundColor White
-    Write-Host "│  5. Crear/Restaurar base de datos    │" -ForegroundColor White
-    Write-Host "│  6. Limpiar datos del sistema        │" -ForegroundColor White
-    Write-Host "│  7. Ver configuración actual         │" -ForegroundColor White
-    Write-Host "│  8. Probar conexión a BD             │" -ForegroundColor White
-    Write-Host "│  9. Diagnosticar servicio            │" -ForegroundColor White
-    Write-Host "│ 10. Instalar certificado HTTPS       │" -ForegroundColor White
-    Write-Host "│ 11. Configurar Firewall (red)        │" -ForegroundColor White
-    Write-Host "│ 12. Ver acceso en red                │" -ForegroundColor White
-    Write-Host "│  0. Salir                            │" -ForegroundColor White
-    Write-Host "└──────────────────────────────────────┘" -ForegroundColor White
+    Write-Host "`n┌───────────────────────────────────────────┐" -ForegroundColor White
+    Write-Host "│            MENÚ DE INSTALACIÓN            │" -ForegroundColor White
+    Write-Host "├───────────────────────────────────────────┤" -ForegroundColor White
+    Write-Host "│  1. Instalación completa (Servidor)       │" -ForegroundColor White
+    Write-Host "│  2. Instalación Cliente (acceso remoto)   │" -ForegroundColor Cyan
+    Write-Host "│  3. Solo configurar servidor/BD           │" -ForegroundColor White
+    Write-Host "│  4. Instalar servicio Windows             │" -ForegroundColor White
+    Write-Host "│  5. Desinstalar servicio                  │" -ForegroundColor White
+    Write-Host "│  6. Crear/Restaurar base de datos         │" -ForegroundColor White
+    Write-Host "│  7. Limpiar datos del sistema             │" -ForegroundColor White
+    Write-Host "│  8. Ver configuración actual              │" -ForegroundColor White
+    Write-Host "│  9. Probar conexión a BD                  │" -ForegroundColor White
+    Write-Host "│ 10. Diagnosticar servicio                 │" -ForegroundColor White
+    Write-Host "├───────────────────────────────────────────┤" -ForegroundColor White
+    Write-Host "│ 11. Instalar certificado HTTPS (mkcert)   │" -ForegroundColor Green
+    Write-Host "│ 12. Configurar Firewall (red)             │" -ForegroundColor White
+    Write-Host "│ 13. Ver acceso en red                     │" -ForegroundColor White
+    Write-Host "│ 14. Crear acceso directo en escritorio    │" -ForegroundColor Cyan
+    Write-Host "├───────────────────────────────────────────┤" -ForegroundColor White
+    Write-Host "│  0. Salir                                 │" -ForegroundColor White
+    Write-Host "└───────────────────────────────────────────┘" -ForegroundColor White
     Write-Host ""
 }
 
@@ -110,6 +115,99 @@ function Get-InstallerConfig {
     
     try {
         $config = Get-Content $Path -Raw | ConvertFrom-Json
+        
+        # === ASEGURAR PROPIEDADES POR DEFECTO ===
+        
+        # Instalacion
+        if (-not $config.PSObject.Properties['Instalacion']) {
+            $config | Add-Member -NotePropertyName 'Instalacion' -NotePropertyValue (New-Object PSObject) -Force
+        }
+        if (-not $config.Instalacion.PSObject.Properties['ModoInstalacion']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'ModoInstalacion' -NotePropertyValue 'Servidor' -Force
+        }
+        if (-not $config.Instalacion.PSObject.Properties['RutaInstalacion']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'RutaInstalacion' -NotePropertyValue 'C:\SistemIA' -Force
+        }
+        if (-not $config.Instalacion.PSObject.Properties['PuertoHttp']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'PuertoHttp' -NotePropertyValue 5095 -Force
+        }
+        if (-not $config.Instalacion.PSObject.Properties['PuertoHttps']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'PuertoHttps' -NotePropertyValue 7060 -Force
+        }
+        if (-not $config.Instalacion.PSObject.Properties['NombreServicio']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'NombreServicio' -NotePropertyValue 'SistemIA' -Force
+        }
+        # Override con parametro -ServiceName si fue proporcionado
+        if ($ServiceName -and $ServiceName -ne '') {
+            $config.Instalacion.NombreServicio = $ServiceName
+            Write-Host "   Nombre de servicio personalizado: $ServiceName" -ForegroundColor Cyan
+        }
+        if (-not $config.Instalacion.PSObject.Properties['DescripcionServicio']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'DescripcionServicio' -NotePropertyValue 'SistemIA - Sistema de Gestión Empresarial' -Force
+        }
+        if (-not $config.Instalacion.PSObject.Properties['InicioAutomatico']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'InicioAutomatico' -NotePropertyValue $true -Force
+        }
+        if (-not $config.Instalacion.PSObject.Properties['UsarMkcert']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'UsarMkcert' -NotePropertyValue $true -Force
+        }
+        if (-not $config.Instalacion.PSObject.Properties['CrearAccesoDirecto']) {
+            $config.Instalacion | Add-Member -NotePropertyName 'CrearAccesoDirecto' -NotePropertyValue $true -Force
+        }
+        
+        # BaseDatos
+        if (-not $config.PSObject.Properties['BaseDatos']) {
+            $config | Add-Member -NotePropertyName 'BaseDatos' -NotePropertyValue (New-Object PSObject) -Force
+        }
+        if (-not $config.BaseDatos.PSObject.Properties['Servidor']) {
+            $config.BaseDatos | Add-Member -NotePropertyName 'Servidor' -NotePropertyValue 'localhost\SQLEXPRESS' -Force
+        }
+        if (-not $config.BaseDatos.PSObject.Properties['BaseDatos']) {
+            $dbName = if ($config.BaseDatos.NombreBD) { $config.BaseDatos.NombreBD } else { 'SistemIA' }
+            $config.BaseDatos | Add-Member -NotePropertyName 'BaseDatos' -NotePropertyValue $dbName -Force
+        }
+        if (-not $config.BaseDatos.PSObject.Properties['Usuario']) {
+            $config.BaseDatos | Add-Member -NotePropertyName 'Usuario' -NotePropertyValue 'sa' -Force
+        }
+        if (-not $config.BaseDatos.PSObject.Properties['Password']) {
+            $pass = if ($config.BaseDatos.Contrasena) { $config.BaseDatos.Contrasena } else { '%L4V1CT0R14' }
+            $config.BaseDatos | Add-Member -NotePropertyName 'Password' -NotePropertyValue $pass -Force
+        }
+        if (-not $config.BaseDatos.PSObject.Properties['AutenticacionWindows']) {
+            $config.BaseDatos | Add-Member -NotePropertyName 'AutenticacionWindows' -NotePropertyValue $false -Force
+        }
+        if (-not $config.BaseDatos.PSObject.Properties['TrustServerCertificate']) {
+            $config.BaseDatos | Add-Member -NotePropertyName 'TrustServerCertificate' -NotePropertyValue 'True' -Force
+        }
+        
+        # Sociedad
+        if (-not $config.PSObject.Properties['Sociedad']) {
+            $config | Add-Member -NotePropertyName 'Sociedad' -NotePropertyValue (New-Object PSObject) -Force
+        }
+        if (-not $config.Sociedad.PSObject.Properties['Nombre']) {
+            $config.Sociedad | Add-Member -NotePropertyName 'Nombre' -NotePropertyValue 'Mi Empresa' -Force
+        }
+        if (-not $config.Sociedad.PSObject.Properties['RUC']) {
+            $config.Sociedad | Add-Member -NotePropertyName 'RUC' -NotePropertyValue '80000000-0' -Force
+        }
+        if (-not $config.Sociedad.PSObject.Properties['Direccion']) {
+            $config.Sociedad | Add-Member -NotePropertyName 'Direccion' -NotePropertyValue '' -Force
+        }
+        
+        # Cliente (para instalación remota)
+        if (-not $config.PSObject.Properties['Cliente']) {
+            $config | Add-Member -NotePropertyName 'Cliente' -NotePropertyValue (New-Object PSObject) -Force
+        }
+        if (-not $config.Cliente.PSObject.Properties['ServidorRemoto']) {
+            $config.Cliente | Add-Member -NotePropertyName 'ServidorRemoto' -NotePropertyValue '192.168.1.100' -Force
+        }
+        if (-not $config.Cliente.PSObject.Properties['PuertoRemoto']) {
+            $config.Cliente | Add-Member -NotePropertyName 'PuertoRemoto' -NotePropertyValue 5095 -Force
+        }
+        if (-not $config.Cliente.PSObject.Properties['UsarHttps']) {
+            $config.Cliente | Add-Member -NotePropertyName 'UsarHttps' -NotePropertyValue $false -Force
+        }
+        
         return $config
     }
     catch {
@@ -135,65 +233,108 @@ function Save-InstallerConfig {
 function Set-InteractiveConfig {
     param($Config)
     
+    Write-Title "TIPO DE INSTALACIÓN"
+    Write-Host ""
+    Write-Host "  1. SERVIDOR - Instalación completa con base de datos local" -ForegroundColor White
+    Write-Host "  2. CLIENTE  - Conectar a un servidor SistemIA existente" -ForegroundColor White
+    Write-Host ""
+    
+    $modoInstalacion = Read-Host "Seleccione el modo de instalación [1]"
+    if ([string]::IsNullOrWhiteSpace($modoInstalacion) -or $modoInstalacion -eq "1") {
+        $Config.Instalacion.ModoInstalacion = "Servidor"
+    }
+    else {
+        $Config.Instalacion.ModoInstalacion = "Cliente"
+        
+        Write-Title "CONFIGURACIÓN DEL SERVIDOR REMOTO"
+        
+        $defaultRemoto = if ($Config.Cliente.ServidorRemoto) { $Config.Cliente.ServidorRemoto } else { "192.168.1.100" }
+        $servidorRemoto = Read-Host "IP o nombre del servidor SistemIA [$defaultRemoto]"
+        if ([string]::IsNullOrWhiteSpace($servidorRemoto)) { $servidorRemoto = $defaultRemoto }
+        $Config.Cliente.ServidorRemoto = $servidorRemoto
+        
+        $defaultPuerto = if ($Config.Cliente.PuertoRemoto) { $Config.Cliente.PuertoRemoto } else { 5095 }
+        $puertoRemoto = Read-Host "Puerto del servidor [$defaultPuerto]"
+        if ([string]::IsNullOrWhiteSpace($puertoRemoto)) { $puertoRemoto = $defaultPuerto }
+        $Config.Cliente.PuertoRemoto = [int]$puertoRemoto
+        
+        $usarHttps = Read-Host "¿Usar HTTPS? (S/N) [N]"
+        $Config.Cliente.UsarHttps = ($usarHttps -eq 'S' -or $usarHttps -eq 's')
+        
+        # Preguntar por acceso directo
+        $crearAcceso = Read-Host "¿Crear acceso directo en el escritorio? (S/N) [S]"
+        $Config.Instalacion.CrearAccesoDirecto = ($crearAcceso -ne 'N' -and $crearAcceso -ne 'n')
+        
+        return $Config
+    }
+    
     Write-Title "CONFIGURACIÓN DEL SERVIDOR"
     
-    $defaultPath = $Config.Instalacion.RutaInstalacion
+    # Usar valores predefinidos del config.json
+    $defaultPath = if ($Config.Instalacion.RutaInstalacion) { $Config.Instalacion.RutaInstalacion } else { "C:\SistemIA" }
     $rutaInstalacion = Read-Host "Ruta de instalación [$defaultPath]"
     if ([string]::IsNullOrWhiteSpace($rutaInstalacion)) { $rutaInstalacion = $defaultPath }
     $Config.Instalacion.RutaInstalacion = $rutaInstalacion
     
-    $defaultHttp = $Config.Instalacion.PuertoHttp
-    $puertoHttp = Read-Host "Puerto HTTP [$defaultHttp]"
-    if ([string]::IsNullOrWhiteSpace($puertoHttp)) { $puertoHttp = $defaultHttp }
-    $Config.Instalacion.PuertoHttp = [int]$puertoHttp
-    
-    $defaultHttps = $Config.Instalacion.PuertoHttps
-    $puertoHttps = Read-Host "Puerto HTTPS [$defaultHttps]"
-    if ([string]::IsNullOrWhiteSpace($puertoHttps)) { $puertoHttps = $defaultHttps }
-    $Config.Instalacion.PuertoHttps = [int]$puertoHttps
+    # Puertos - usar valores predefinidos sin preguntar
+    if (-not $Config.Instalacion.PuertoHttp) { $Config.Instalacion.PuertoHttp = 5095 }
+    if (-not $Config.Instalacion.PuertoHttps) { $Config.Instalacion.PuertoHttps = 7060 }
+    Write-Info "Puertos configurados: HTTP=$($Config.Instalacion.PuertoHttp), HTTPS=$($Config.Instalacion.PuertoHttps)"
     
     Write-Title "CONFIGURACIÓN DE BASE DE DATOS"
     
-    $defaultServer = $Config.BaseDatos.Servidor
+    # Servidor SQL - preguntar solo si se quiere cambiar
+    $defaultServer = if ($Config.BaseDatos.Servidor) { $Config.BaseDatos.Servidor } else { "localhost\SQLEXPRESS" }
     $servidor = Read-Host "Servidor SQL [$defaultServer]"
     if ([string]::IsNullOrWhiteSpace($servidor)) { $servidor = $defaultServer }
     $Config.BaseDatos.Servidor = $servidor
     
-    $defaultDb = $Config.BaseDatos.BaseDatos
-    $baseDatos = Read-Host "Nombre de la base de datos [$defaultDb]"
-    if ([string]::IsNullOrWhiteSpace($baseDatos)) { $baseDatos = $defaultDb }
-    $Config.BaseDatos.BaseDatos = $baseDatos
+    # Nombre de BD - usar predefinido
+    $defaultDb = if ($Config.BaseDatos.NombreBD) { $Config.BaseDatos.NombreBD } elseif ($Config.BaseDatos.BaseDatos) { $Config.BaseDatos.BaseDatos } else { "SistemIA" }
+    Write-Info "Base de datos: $defaultDb"
+    $Config.BaseDatos.BaseDatos = $defaultDb
+    $Config.BaseDatos.NombreBD = $defaultDb
     
-    $authWindows = Read-Host "¿Usar autenticación de Windows? (S/N) [N]"
-    $Config.BaseDatos.AutenticacionWindows = ($authWindows -eq 'S' -or $authWindows -eq 's')
+    # Autenticación - usar SQL Server con valores predefinidos
+    if (-not $Config.BaseDatos.PSObject.Properties['AutenticacionWindows']) {
+        $Config.BaseDatos | Add-Member -NotePropertyName 'AutenticacionWindows' -NotePropertyValue $false -Force
+    }
+    $Config.BaseDatos.AutenticacionWindows = $false
     
-    if (-not $Config.BaseDatos.AutenticacionWindows) {
-        $defaultUser = $Config.BaseDatos.Usuario
-        $usuario = Read-Host "Usuario SQL [$defaultUser]"
-        if ([string]::IsNullOrWhiteSpace($usuario)) { $usuario = $defaultUser }
-        $Config.BaseDatos.Usuario = $usuario
-        
-        $password = Read-Host "Contraseña SQL" -AsSecureString
-        $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($password)
-        $Config.BaseDatos.Password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+    # Usuario y contraseña - usar valores predefinidos del config.json
+    $defaultUser = if ($Config.BaseDatos.Usuario) { $Config.BaseDatos.Usuario } else { "sa" }
+    $defaultPass = if ($Config.BaseDatos.Password) { $Config.BaseDatos.Password } elseif ($Config.BaseDatos.Contrasena) { $Config.BaseDatos.Contrasena } else { "" }
+    
+    $Config.BaseDatos.Usuario = $defaultUser
+    $Config.BaseDatos.Password = $defaultPass
+    Write-Info "Usuario SQL: $defaultUser (contraseña predefinida)"
+    
+    # OMITIR configuración de empresa - se hace después en el sistema
+    Write-Info "Los datos de la empresa se configurarán dentro del sistema"
+    
+    # Asegurar que existe la sección Sociedad
+    if (-not $Config.PSObject.Properties['Sociedad']) {
+        $Config | Add-Member -NotePropertyName 'Sociedad' -NotePropertyValue @{
+            Nombre = "Mi Empresa"
+            RUC = "80000000-0"
+            Direccion = ""
+        } -Force
     }
     
-    Write-Title "CONFIGURACIÓN DE LA EMPRESA"
+    Write-Title "OPCIONES ADICIONALES"
     
-    $defaultNombre = $Config.Sociedad.Nombre
-    $nombre = Read-Host "Nombre de la empresa [$defaultNombre]"
-    if ([string]::IsNullOrWhiteSpace($nombre)) { $nombre = $defaultNombre }
-    $Config.Sociedad.Nombre = $nombre
+    # Usar certificado predefinido sin preguntar
+    if (-not $Config.Instalacion.PSObject.Properties['UsarMkcert']) {
+        $Config.Instalacion | Add-Member -NotePropertyName 'UsarMkcert' -NotePropertyValue $true -Force
+    }
+    Write-Info "Certificado HTTPS: $( if ($Config.Instalacion.UsarMkcert) { 'mkcert (confianza local)' } else { 'Autofirmado' } )"
     
-    $defaultRuc = $Config.Sociedad.RUC
-    $ruc = Read-Host "RUC [$defaultRuc]"
-    if ([string]::IsNullOrWhiteSpace($ruc)) { $ruc = $defaultRuc }
-    $Config.Sociedad.RUC = $ruc
-    
-    $defaultDir = $Config.Sociedad.Direccion
-    $direccion = Read-Host "Dirección [$defaultDir]"
-    if ([string]::IsNullOrWhiteSpace($direccion)) { $direccion = $defaultDir }
-    $Config.Sociedad.Direccion = $direccion
+    # Preguntar solo por acceso directo
+    $crearAcceso = Read-Host "¿Crear acceso directo en el escritorio? (S/N) [S]"
+    if (-not $Config.Instalacion.PSObject.Properties['CrearAccesoDirecto']) {
+        $Config.Instalacion | Add-Member -NotePropertyName 'CrearAccesoDirecto' -NotePropertyValue $true -Force
+    }
+    $Config.Instalacion.CrearAccesoDirecto = ($crearAcceso -ne 'N' -and $crearAcceso -ne 'n')
     
     return $Config
 }
@@ -202,11 +343,14 @@ function Set-InteractiveConfig {
 function Build-ConnectionString {
     param($DbConfig)
     
+    $dbName = if ($DbConfig.BaseDatos) { $DbConfig.BaseDatos } elseif ($DbConfig.NombreBD) { $DbConfig.NombreBD } else { "SistemIA" }
+    $password = if ($DbConfig.Password) { $DbConfig.Password } elseif ($DbConfig.Contrasena) { $DbConfig.Contrasena } else { "" }
+    
     if ($DbConfig.AutenticacionWindows) {
-        return "Server=$($DbConfig.Servidor);Database=$($DbConfig.BaseDatos);Integrated Security=True;TrustServerCertificate=$($DbConfig.TrustServerCertificate);"
+        return "Server=$($DbConfig.Servidor);Database=$dbName;Integrated Security=True;TrustServerCertificate=True;"
     }
     else {
-        return "Server=$($DbConfig.Servidor);Database=$($DbConfig.BaseDatos);User Id=$($DbConfig.Usuario);Password=$($DbConfig.Password);TrustServerCertificate=$($DbConfig.TrustServerCertificate);"
+        return "Server=$($DbConfig.Servidor);Database=$dbName;User Id=$($DbConfig.Usuario);Password=$password;TrustServerCertificate=True;"
     }
 }
 
@@ -214,13 +358,262 @@ function Build-ConnectionString {
 function Build-MasterConnectionString {
     param($DbConfig)
     
+    $trustCert = if ($DbConfig.TrustServerCertificate) { $DbConfig.TrustServerCertificate } else { "True" }
+    $password = if ($DbConfig.Password) { $DbConfig.Password } elseif ($DbConfig.Contrasena) { $DbConfig.Contrasena } else { "" }
+    
     if ($DbConfig.AutenticacionWindows) {
-        return "Server=$($DbConfig.Servidor);Database=master;Integrated Security=True;TrustServerCertificate=$($DbConfig.TrustServerCertificate);"
+        return "Server=$($DbConfig.Servidor);Database=master;Integrated Security=True;TrustServerCertificate=$trustCert;"
     }
     else {
-        return "Server=$($DbConfig.Servidor);Database=master;User Id=$($DbConfig.Usuario);Password=$($DbConfig.Password);TrustServerCertificate=$($DbConfig.TrustServerCertificate);"
+        return "Server=$($DbConfig.Servidor);Database=master;User Id=$($DbConfig.Usuario);Password=$password;TrustServerCertificate=$trustCert;"
     }
 }
+
+# ============ SISTEMA DE ROLLBACK ============
+
+# Variable global para tracking de rollback
+$script:RollbackState = @{
+    BackupCreado = $false
+    BackupPath = ""
+    DbExistia = $false
+    DbName = ""
+    ArchivosCopiados = @()
+    ServicioCreado = $false
+    FirewallCreado = $false
+}
+
+# Crear backup previo para rollback
+function New-PreInstallBackup {
+    param($DbConfig)
+    
+    $dbName = if ($DbConfig.BaseDatos) { $DbConfig.BaseDatos } elseif ($DbConfig.NombreBD) { $DbConfig.NombreBD } else { "SistemIA" }
+    $script:RollbackState.DbName = $dbName
+    
+    Write-Info "Verificando si existe base de datos previa..."
+    
+    try {
+        $masterConn = Build-MasterConnectionString -DbConfig $DbConfig
+        $connection = New-Object System.Data.SqlClient.SqlConnection
+        $connection.ConnectionString = $masterConn
+        $connection.Open()
+        
+        $cmd = $connection.CreateCommand()
+        $cmd.CommandTimeout = 300
+        
+        # Verificar si la BD existe
+        $cmd.CommandText = "SELECT COUNT(*) FROM sys.databases WHERE name = '$dbName'"
+        $exists = $cmd.ExecuteScalar()
+        
+        if ($exists -gt 0) {
+            $script:RollbackState.DbExistia = $true
+            
+            Write-Info "Base de datos existente encontrada. Creando backup de seguridad..."
+            
+            # Obtener ruta de backup
+            $cmd.CommandText = "SELECT SERVERPROPERTY('InstanceDefaultBackupPath') AS BackupPath"
+            $backupPath = $cmd.ExecuteScalar()
+            if (-not $backupPath) {
+                $backupPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.SQL2022\MSSQL\Backup"
+            }
+            
+            $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+            $backupFile = Join-Path $backupPath "SistemIA_PreInstall_$timestamp.bak"
+            
+            # Crear backup
+            $cmd.CommandText = "BACKUP DATABASE [$dbName] TO DISK = '$backupFile' WITH INIT, COMPRESSION"
+            $cmd.ExecuteNonQuery() | Out-Null
+            
+            $script:RollbackState.BackupCreado = $true
+            $script:RollbackState.BackupPath = $backupFile
+            
+            Write-Success "Backup de seguridad creado: $backupFile"
+        }
+        else {
+            Write-Info "No existe base de datos previa (instalación nueva)"
+            $script:RollbackState.DbExistia = $false
+        }
+        
+        $connection.Close()
+        return $true
+    }
+    catch {
+        Write-Warning "No se pudo crear backup previo: $_"
+        return $false
+    }
+}
+
+# Restaurar desde backup de rollback
+function Invoke-Rollback {
+    param($DbConfig, $Config)
+    
+    Write-Title "EJECUTANDO ROLLBACK - Revirtiendo cambios"
+    Write-Warning "Ocurrió un error durante la instalación. Revirtiendo..."
+    
+    $erroresRollback = @()
+    
+    # 1. Detener y eliminar servicio si fue creado
+    if ($script:RollbackState.ServicioCreado) {
+        try {
+            $serviceName = $Config.Instalacion.NombreServicio
+            Write-Info "Eliminando servicio: $serviceName"
+            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+            sc.exe delete $serviceName | Out-Null
+            Write-Success "Servicio eliminado"
+        }
+        catch {
+            $erroresRollback += "Error eliminando servicio: $_"
+        }
+    }
+    
+    # 2. Restaurar base de datos si existía previamente
+    if ($script:RollbackState.BackupCreado -and $script:RollbackState.BackupPath) {
+        try {
+            Write-Info "Restaurando base de datos desde backup..."
+            
+            $masterConn = Build-MasterConnectionString -DbConfig $DbConfig
+            $connection = New-Object System.Data.SqlClient.SqlConnection
+            $connection.ConnectionString = $masterConn
+            $connection.Open()
+            
+            $cmd = $connection.CreateCommand()
+            $cmd.CommandTimeout = 600
+            
+            $dbName = $script:RollbackState.DbName
+            $backupFile = $script:RollbackState.BackupPath
+            
+            # Cerrar conexiones y restaurar
+            try {
+                $cmd.CommandText = "ALTER DATABASE [$dbName] SET SINGLE_USER WITH ROLLBACK IMMEDIATE"
+                $cmd.ExecuteNonQuery() | Out-Null
+            } catch { }
+            
+            # Obtener rutas
+            $cmd.CommandText = "SELECT SERVERPROPERTY('InstanceDefaultDataPath') AS DataPath"
+            $dataPath = $cmd.ExecuteScalar()
+            if (-not $dataPath) { $dataPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.SQL2022\MSSQL\DATA\" }
+            
+            $mdfPath = Join-Path $dataPath "$dbName.mdf"
+            $ldfPath = Join-Path $dataPath "${dbName}_log.ldf"
+            
+            # Obtener nombres lógicos
+            $cmd.CommandText = "RESTORE FILELISTONLY FROM DISK = '$backupFile'"
+            $reader = $cmd.ExecuteReader()
+            $logicalDataName = ""
+            $logicalLogName = ""
+            while ($reader.Read()) {
+                if ($reader["Type"].ToString() -eq "D") { $logicalDataName = $reader["LogicalName"].ToString() }
+                elseif ($reader["Type"].ToString() -eq "L") { $logicalLogName = $reader["LogicalName"].ToString() }
+            }
+            $reader.Close()
+            
+            # Restaurar
+            $restoreQuery = "RESTORE DATABASE [$dbName] FROM DISK = '$backupFile' WITH MOVE '$logicalDataName' TO '$mdfPath', MOVE '$logicalLogName' TO '$ldfPath', REPLACE"
+            $cmd.CommandText = $restoreQuery
+            $cmd.ExecuteNonQuery() | Out-Null
+            
+            $connection.Close()
+            Write-Success "Base de datos restaurada al estado anterior"
+        }
+        catch {
+            $erroresRollback += "Error restaurando BD: $_"
+        }
+    }
+    elseif (-not $script:RollbackState.DbExistia) {
+        # Si la BD no existía antes, eliminarla
+        try {
+            Write-Info "Eliminando base de datos creada..."
+            $masterConn = Build-MasterConnectionString -DbConfig $DbConfig
+            $connection = New-Object System.Data.SqlClient.SqlConnection
+            $connection.ConnectionString = $masterConn
+            $connection.Open()
+            
+            $cmd = $connection.CreateCommand()
+            $dbName = $script:RollbackState.DbName
+            
+            try {
+                $cmd.CommandText = "ALTER DATABASE [$dbName] SET SINGLE_USER WITH ROLLBACK IMMEDIATE"
+                $cmd.ExecuteNonQuery() | Out-Null
+            } catch { }
+            
+            $cmd.CommandText = "DROP DATABASE [$dbName]"
+            $cmd.ExecuteNonQuery() | Out-Null
+            
+            $connection.Close()
+            Write-Success "Base de datos eliminada"
+        }
+        catch {
+            $erroresRollback += "Error eliminando BD: $_"
+        }
+    }
+    
+    # 3. Eliminar archivos copiados
+    if ($script:RollbackState.ArchivosCopiados.Count -gt 0) {
+        try {
+            Write-Info "Eliminando archivos copiados..."
+            foreach ($archivo in $script:RollbackState.ArchivosCopiados) {
+                if (Test-Path $archivo) {
+                    Remove-Item $archivo -Force -Recurse -ErrorAction SilentlyContinue
+                }
+            }
+            Write-Success "Archivos eliminados"
+        }
+        catch {
+            $erroresRollback += "Error eliminando archivos: $_"
+        }
+    }
+    
+    # 4. Eliminar reglas de firewall
+    if ($script:RollbackState.FirewallCreado) {
+        try {
+            Write-Info "Eliminando reglas de firewall..."
+            netsh advfirewall firewall delete rule name="SistemIA HTTP" | Out-Null
+            netsh advfirewall firewall delete rule name="SistemIA HTTPS" | Out-Null
+            Write-Success "Reglas de firewall eliminadas"
+        }
+        catch {
+            $erroresRollback += "Error eliminando reglas firewall: $_"
+        }
+    }
+    
+    if ($erroresRollback.Count -gt 0) {
+        Write-Error "Se encontraron errores durante el rollback:"
+        foreach ($err in $erroresRollback) {
+            Write-Host "  - $err" -ForegroundColor Red
+        }
+    }
+    else {
+        Write-Success "Rollback completado exitosamente"
+    }
+    
+    Write-Host ""
+    Write-Info "El sistema ha sido revertido al estado anterior a la instalación"
+}
+
+# Limpiar backup de rollback (cuando instalación es exitosa)
+function Remove-RollbackBackup {
+    if ($script:RollbackState.BackupCreado -and $script:RollbackState.BackupPath) {
+        try {
+            if (Test-Path $script:RollbackState.BackupPath) {
+                Remove-Item $script:RollbackState.BackupPath -Force -ErrorAction SilentlyContinue
+                Write-Info "Backup de rollback eliminado"
+            }
+        }
+        catch { }
+    }
+    
+    # Resetear estado
+    $script:RollbackState = @{
+        BackupCreado = $false
+        BackupPath = ""
+        DbExistia = $false
+        DbName = ""
+        ArchivosCopiados = @()
+        ServicioCreado = $false
+        FirewallCreado = $false
+    }
+}
+
+# ============ FIN SISTEMA DE ROLLBACK ============
 
 # Probar conexión al servidor SQL (sin BD específica)
 function Test-ServerConnection {
@@ -276,12 +669,16 @@ function Initialize-Database {
     
     Write-Info "Verificando base de datos..."
     
+    $dbName = if ($DbConfig.BaseDatos) { $DbConfig.BaseDatos } elseif ($DbConfig.NombreBD) { $DbConfig.NombreBD } else { "SistemIA" }
+    $trustCert = if ($DbConfig.TrustServerCertificate) { $DbConfig.TrustServerCertificate } else { "True" }
+    $password = if ($DbConfig.Password) { $DbConfig.Password } elseif ($DbConfig.Contrasena) { $DbConfig.Contrasena } else { "" }
+    
     # Primero conectar al master para verificar/crear la BD
     $masterConnString = if ($DbConfig.AutenticacionWindows) {
-        "Server=$($DbConfig.Servidor);Database=master;Integrated Security=True;TrustServerCertificate=$($DbConfig.TrustServerCertificate);"
+        "Server=$($DbConfig.Servidor);Database=master;Integrated Security=True;TrustServerCertificate=$trustCert;"
     }
     else {
-        "Server=$($DbConfig.Servidor);Database=master;User Id=$($DbConfig.Usuario);Password=$($DbConfig.Password);TrustServerCertificate=$($DbConfig.TrustServerCertificate);"
+        "Server=$($DbConfig.Servidor);Database=master;User Id=$($DbConfig.Usuario);Password=$password;TrustServerCertificate=$trustCert;"
     }
     
     try {
@@ -290,12 +687,12 @@ function Initialize-Database {
         $connection.Open()
         
         $cmd = $connection.CreateCommand()
-        $cmd.CommandText = "SELECT COUNT(*) FROM sys.databases WHERE name = '$($DbConfig.BaseDatos)'"
+        $cmd.CommandText = "SELECT COUNT(*) FROM sys.databases WHERE name = '$dbName'"
         $exists = $cmd.ExecuteScalar()
         
         if ($exists -eq 0) {
-            Write-Info "Creando base de datos $($DbConfig.BaseDatos)..."
-            $cmd.CommandText = "CREATE DATABASE [$($DbConfig.BaseDatos)]"
+            Write-Info "Creando base de datos $dbName..."
+            $cmd.CommandText = "CREATE DATABASE [$dbName]"
             $cmd.ExecuteNonQuery()
             Write-Success "Base de datos creada"
         }
@@ -569,48 +966,38 @@ WITH
     }
 }
 
-# Crear estructura completa de BD (tablas + datos iniciales) - método alternativo
+# Crear estructura completa de BD - SOLO desde backup (método más confiable)
 function Initialize-DatabaseStructure {
     param(
         $DbConfig,
         [string]$InstallerPath
     )
     
-    Write-Title "INICIALIZANDO ESTRUCTURA DE BASE DE DATOS"
+    Write-Title "INICIALIZANDO BASE DE DATOS"
     Write-Host ""
-    Write-Host "Seleccione el método de inicialización:" -ForegroundColor Yellow
-    Write-Host "  1. Restaurar desde backup (recomendado)" -ForegroundColor White
-    Write-Host "  2. Crear desde scripts SQL" -ForegroundColor White
+    Write-Info "La base de datos se creará restaurando desde un backup limpio."
+    Write-Info "Este método garantiza la integridad de la estructura."
     Write-Host ""
-    $metodo = Read-Host "Opción"
     
-    if ($metodo -eq "1") {
-        return Restore-DatabaseFromBackup -DbConfig $DbConfig -InstallerPath $InstallerPath
+    # Verificar que existe el archivo de backup
+    $backupFile = Join-Path $InstallerPath "SistemIA_Base.bak"
+    if (-not (Test-Path $backupFile)) {
+        Write-Error "No se encontró el archivo de backup: $backupFile"
+        Write-Error "El instalador requiere el archivo SistemIA_Base.bak para funcionar."
+        Write-Info "Genere el backup ejecutando: .\GenerarBackupLimpio.ps1"
+        return $false
     }
-    else {
-        # Método alternativo con scripts SQL
-        # 1. Crear tablas (desde migraciones EF)
-        $createScript = Join-Path $InstallerPath "CrearBaseDatos.sql"
-        if (Test-Path $createScript) {
-            Invoke-SqlScript -DbConfig $DbConfig -ScriptPath $createScript -Description "Creación de tablas"
-        }
-        else {
-            Write-Warning "Script de creación de tablas no encontrado"
-            Write-Info "Si la BD está vacía, ejecute las migraciones de EF Core manualmente:"
-            Write-Info "  dotnet ef database update"
-        }
-        
-        # 2. Insertar datos iniciales
-        $initScript = Join-Path $InstallerPath "InicializarDatos.sql"
-        if (Test-Path $initScript) {
-            Invoke-SqlScript -DbConfig $DbConfig -ScriptPath $initScript -Description "Datos iniciales"
-        }
-        else {
-            Write-Warning "Script de datos iniciales no encontrado"
-        }
-        
-        return $true
+    
+    $result = Restore-DatabaseFromBackup -DbConfig $DbConfig -InstallerPath $InstallerPath
+    
+    if (-not $result) {
+        Write-Error "Error al restaurar la base de datos"
+        Write-Info "Verifique los permisos de SQL Server y el archivo de backup"
+        return $false
     }
+    
+    Write-Success "Base de datos inicializada correctamente"
+    return $true
 }
 
 # Crear appsettings.json
@@ -889,10 +1276,279 @@ function Install-DotNetSdk {
     }
 }
 
+# ============================================
+# MKCERT - Certificados de Confianza Local
+# ============================================
+
+# Instalar mkcert si no está instalado
+function Install-Mkcert {
+    Write-Title "INSTALANDO MKCERT"
+    
+    try {
+        # Verificar si ya está instalado
+        $mkcertPath = (Get-Command mkcert -ErrorAction SilentlyContinue).Path
+        if ($mkcertPath) {
+            Write-Success "mkcert ya está instalado en: $mkcertPath"
+            return $true
+        }
+        
+        Write-Info "Descargando mkcert..."
+        
+        # Directorio de instalación
+        $installDir = "C:\Program Files\mkcert"
+        if (-not (Test-Path $installDir)) {
+            New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+        }
+        
+        $mkcertExe = Join-Path $installDir "mkcert.exe"
+        
+        # Descargar última versión de mkcert
+        $mkcertUrl = "https://dl.filippo.io/mkcert/latest?for=windows/amd64"
+        
+        # Usar WebClient para descargar
+        $webClient = New-Object System.Net.WebClient
+        $webClient.Headers.Add("User-Agent", "PowerShell")
+        $webClient.DownloadFile($mkcertUrl, $mkcertExe)
+        
+        Write-Success "mkcert descargado a: $mkcertExe"
+        
+        # Agregar al PATH del sistema si no está
+        $currentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+        if ($currentPath -notlike "*$installDir*") {
+            [Environment]::SetEnvironmentVariable("Path", "$currentPath;$installDir", "Machine")
+            $env:Path = "$env:Path;$installDir"
+            Write-Info "mkcert agregado al PATH del sistema"
+        }
+        
+        # Instalar CA raíz de mkcert
+        Write-Info "Instalando Autoridad Certificadora local de mkcert..."
+        Write-Info "(Esto hace que los certificados sean confiables para Windows y navegadores)"
+        
+        & $mkcertExe -install
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "CA de mkcert instalada correctamente"
+            Write-Success "Los certificados generados serán confiables en Chrome, Edge y Firefox"
+            return $true
+        }
+        else {
+            Write-Warning "mkcert instalado pero la CA puede requerir configuración manual"
+            return $true
+        }
+    }
+    catch {
+        Write-Error "Error al instalar mkcert: $_"
+        Write-Info ""
+        Write-Info "Puede instalar manualmente:"
+        Write-Info "  winget install FiloSottile.mkcert"
+        Write-Info "  o descargarlo de: https://github.com/FiloSottile/mkcert/releases"
+        return $false
+    }
+}
+
+# Generar certificado con mkcert
+function New-MkcertCertificate {
+    param(
+        [string]$InstallPath = "C:\SistemIA",
+        [string[]]$Domains = @("localhost", "sistemía.local")
+    )
+    
+    Write-Title "GENERANDO CERTIFICADO CON MKCERT"
+    
+    try {
+        # Verificar que mkcert está instalado
+        $mkcertExe = (Get-Command mkcert -ErrorAction SilentlyContinue).Path
+        if (-not $mkcertExe) {
+            $mkcertExe = "C:\Program Files\mkcert\mkcert.exe"
+            if (-not (Test-Path $mkcertExe)) {
+                Write-Error "mkcert no está instalado. Ejecute primero Install-Mkcert"
+                return $null
+            }
+        }
+        
+        # Obtener nombre del equipo e IPs locales
+        $hostname = $env:COMPUTERNAME
+        $localIps = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.*" }).IPAddress
+        
+        # Construir lista de dominios
+        $allDomains = @("localhost", "127.0.0.1", $hostname, "$hostname.local") + $Domains + $localIps
+        $allDomains = $allDomains | Select-Object -Unique
+        
+        Write-Info "Generando certificado para:"
+        $allDomains | ForEach-Object { Write-Host "  - $_" -ForegroundColor Gray }
+        
+        # Crear directorio de certificados si no existe
+        $certDir = Join-Path $InstallPath "Certificados"
+        if (-not (Test-Path $certDir)) {
+            New-Item -ItemType Directory -Path $certDir -Force | Out-Null
+        }
+        
+        # Generar certificado
+        $certName = "sistemía"
+        $certPath = Join-Path $certDir "$certName.pem"
+        $keyPath = Join-Path $certDir "$certName-key.pem"
+        
+        Push-Location $certDir
+        & $mkcertExe -cert-file "$certName.pem" -key-file "$certName-key.pem" $allDomains
+        Pop-Location
+        
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $certPath)) {
+            Write-Error "Error al generar certificado con mkcert"
+            return $null
+        }
+        
+        Write-Success "Certificado generado:"
+        Write-Info "  Certificado: $certPath"
+        Write-Info "  Clave:       $keyPath"
+        
+        # Convertir PEM a PFX para Kestrel (opcional, Kestrel soporta PEM)
+        $pfxPath = Join-Path $certDir "sistemía.pfx"
+        $pfxPassword = "SistemIA2024!"
+        
+        # Usar OpenSSL si está disponible, o generar PFX con .NET
+        Write-Info "Convirtiendo a formato PFX..."
+        
+        try {
+            # Leer certificado y clave PEM
+            $certPem = Get-Content $certPath -Raw
+            $keyPem = Get-Content $keyPath -Raw
+            
+            # Usar .NET para crear PFX
+            $certBytes = [System.Text.Encoding]::UTF8.GetBytes($certPem)
+            $keyBytes = [System.Text.Encoding]::UTF8.GetBytes($keyPem)
+            
+            # Crear certificado X509 con clave privada
+            $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPemFile($certPath, $keyPath)
+            
+            # Exportar a PFX
+            $pfxBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $pfxPassword)
+            [System.IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+            
+            Write-Success "PFX generado: $pfxPath"
+            
+            return @{
+                CertPath = $certPath
+                KeyPath = $keyPath
+                PfxPath = $pfxPath
+                PfxPassword = $pfxPassword
+                Domains = $allDomains
+            }
+        }
+        catch {
+            Write-Warning "No se pudo crear PFX, usando certificado PEM directamente"
+            return @{
+                CertPath = $certPath
+                KeyPath = $keyPath
+                PfxPath = $null
+                PfxPassword = $null
+                Domains = $allDomains
+            }
+        }
+    }
+    catch {
+        Write-Error "Error al generar certificado: $_"
+        return $null
+    }
+}
+
+# ============================================
+# ACCESO DIRECTO EN ESCRITORIO
+# ============================================
+
+function New-DesktopShortcut {
+    param(
+        [string]$Name = "SistemIA",
+        [string]$TargetUrl,
+        [string]$IconPath,
+        [string]$Description = "Sistema de Gestión Empresarial"
+    )
+    
+    Write-Title "CREANDO ACCESO DIRECTO EN ESCRITORIO"
+    
+    try {
+        # Obtener ruta del escritorio (para todos los usuarios o usuario actual)
+        $desktopPath = [Environment]::GetFolderPath("Desktop")
+        $publicDesktopPath = [Environment]::GetFolderPath("CommonDesktopDirectory")
+        
+        # Usar escritorio público si es posible
+        $targetDesktop = if (Test-Path $publicDesktopPath) { $publicDesktopPath } else { $desktopPath }
+        
+        $shortcutPath = Join-Path $targetDesktop "$Name.url"
+        
+        # Crear acceso directo URL (más compatible que .lnk para URLs)
+        $shortcutContent = @"
+[InternetShortcut]
+URL=$TargetUrl
+IconIndex=0
+"@
+        
+        # Si hay icono personalizado
+        if ($IconPath -and (Test-Path $IconPath)) {
+            $shortcutContent += "`r`nIconFile=$IconPath"
+        }
+        
+        Set-Content -Path $shortcutPath -Value $shortcutContent -Encoding ASCII
+        
+        Write-Success "Acceso directo creado: $shortcutPath"
+        Write-Info "URL: $TargetUrl"
+        
+        # También crear un acceso directo .lnk si es posible (para mejor integración con Windows)
+        try {
+            $lnkPath = Join-Path $targetDesktop "$Name.lnk"
+            $WScriptShell = New-Object -ComObject WScript.Shell
+            $shortcut = $WScriptShell.CreateShortcut($lnkPath)
+            
+            # Usar el navegador predeterminado
+            $shortcut.TargetPath = $TargetUrl
+            $shortcut.Description = $Description
+            $shortcut.Save()
+            
+            # Eliminar el .url si el .lnk funcionó
+            Remove-Item $shortcutPath -Force -ErrorAction SilentlyContinue
+            Write-Success "Acceso directo mejorado creado: $lnkPath"
+        }
+        catch {
+            # Si falla el .lnk, el .url sigue funcionando
+            Write-Info "Usando acceso directo URL estándar"
+        }
+        
+        return $true
+    }
+    catch {
+        Write-Error "Error al crear acceso directo: $_"
+        return $false
+    }
+}
+
+# Crear acceso directo para modo cliente
+function New-ClientShortcut {
+    param($Config)
+    
+    $protocol = if ($Config.Cliente.UsarHttps) { "https" } else { "http" }
+    $url = "$protocol`://$($Config.Cliente.ServidorRemoto):$($Config.Cliente.PuertoRemoto)"
+    
+    New-DesktopShortcut -Name "SistemIA" -TargetUrl $url -Description "SistemIA - Conectar a $($Config.Cliente.ServidorRemoto)"
+}
+
+# Crear acceso directo para modo servidor
+function New-ServerShortcut {
+    param($Config)
+    
+    $httpUrl = "http://localhost:$($Config.Instalacion.PuertoHttp)"
+    $httpsUrl = "https://localhost:$($Config.Instalacion.PuertoHttps)"
+    
+    # Crear acceso HTTP (principal)
+    New-DesktopShortcut -Name "SistemIA" -TargetUrl $httpUrl -Description "SistemIA - Sistema de Gestión Empresarial"
+    
+    # Crear acceso HTTPS (adicional)
+    New-DesktopShortcut -Name "SistemIA (HTTPS)" -TargetUrl $httpsUrl -Description "SistemIA - Conexión Segura"
+}
+
 # Instalar certificado HTTPS de desarrollo
 function Install-HttpsCertificate {
     param(
-        [string]$InstallPath = "C:\SistemIA"
+        [string]$InstallPath = "C:\SistemIA",
+        [bool]$UsarMkcert = $true
     )
     
     Write-Title "CONFIGURANDO CERTIFICADO HTTPS"
@@ -911,11 +1567,50 @@ function Install-HttpsCertificate {
             }
         }
         
+        # Decidir método de generación
+        if ($UsarMkcert) {
+            Write-Info "Usando mkcert para generar certificado de confianza..."
+            
+            # Instalar mkcert si no está disponible
+            $mkcertInstalled = Install-Mkcert
+            if (-not $mkcertInstalled) {
+                Write-Warning "mkcert no disponible. Usando certificado autofirmado como alternativa..."
+                $UsarMkcert = $false
+            }
+            else {
+                # Generar certificado con mkcert
+                $mkcertResult = New-MkcertCertificate -InstallPath $InstallPath
+                if ($mkcertResult -and $mkcertResult.PfxPath) {
+                    $certPath = $mkcertResult.PfxPath
+                    
+                    # Actualizar appsettings.json
+                    Update-AppSettingsCertificate -InstallPath $InstallPath -CertPath $certPath -CertPassword $certPassword
+                    
+                    Write-Host ""
+                    Write-Success "Certificado HTTPS configurado con mkcert"
+                    Write-Info "HTTP:  http://localhost:5095"
+                    Write-Info "HTTPS: https://localhost:7060"
+                    Write-Host ""
+                    Write-Host "[INFO] Este certificado es de CONFIANZA para Chrome, Edge y Firefox" -ForegroundColor Green
+                    Write-Host "       No verá advertencias de seguridad en este equipo." -ForegroundColor Green
+                    Write-Host ""
+                    Write-Host "[ANDROID] Para usar en dispositivos Android:" -ForegroundColor Yellow
+                    Write-Host "  1. Copie el archivo rootCA.pem del directorio:" -ForegroundColor White
+                    Write-Host "     $env:LOCALAPPDATA\mkcert" -ForegroundColor Gray
+                    Write-Host "  2. Instálelo en Android: Configuración > Seguridad > Instalar certificado CA" -ForegroundColor White
+                    
+                    return $true
+                }
+            }
+        }
+        
+        # Método tradicional: certificado autofirmado
         Write-Info "Generando certificado autofirmado para HTTPS..."
         
         # Obtener el nombre del equipo para el certificado
         $hostname = $env:COMPUTERNAME
-        $dnsNames = @("localhost", $hostname, "$hostname.local", "127.0.0.1")
+        $localIps = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.*" }).IPAddress
+        $dnsNames = @("localhost", $hostname, "$hostname.local", "127.0.0.1") + $localIps
         
         # Crear certificado autofirmado
         $cert = New-SelfSignedCertificate `
@@ -945,35 +1640,8 @@ function Install-HttpsCertificate {
         
         Write-Success "Certificado instalado en almacén de confianza"
         
-        # Actualizar appsettings.json con la configuración del certificado
-        $appSettingsPath = Join-Path $InstallPath "appsettings.json"
-        if (Test-Path $appSettingsPath) {
-            Write-Info "Actualizando configuración de Kestrel..."
-            $appSettings = Get-Content $appSettingsPath -Raw | ConvertFrom-Json
-            
-            # Agregar configuración de Kestrel si no existe
-            if (-not $appSettings.Kestrel) {
-                $appSettings | Add-Member -NotePropertyName "Kestrel" -NotePropertyValue @{} -Force
-            }
-            
-            $appSettings.Kestrel = @{
-                Endpoints = @{
-                    Http = @{
-                        Url = "http://0.0.0.0:5095"
-                    }
-                    Https = @{
-                        Url = "https://0.0.0.0:7060"
-                        Certificate = @{
-                            Path = $certPath
-                            Password = $certPassword
-                        }
-                    }
-                }
-            }
-            
-            $appSettings | ConvertTo-Json -Depth 10 | Set-Content $appSettingsPath -Encoding UTF8
-            Write-Success "Configuración de Kestrel actualizada"
-        }
+        # Actualizar appsettings.json
+        Update-AppSettingsCertificate -InstallPath $InstallPath -CertPath $certPath -CertPassword $certPassword
         
         Write-Host ""
         Write-Success "Certificado HTTPS configurado correctamente"
@@ -988,6 +1656,44 @@ function Install-HttpsCertificate {
     catch {
         Write-Error "Error al configurar certificado HTTPS: $_"
         return $false
+    }
+}
+
+# Función auxiliar para actualizar appsettings.json con certificado
+function Update-AppSettingsCertificate {
+    param(
+        [string]$InstallPath,
+        [string]$CertPath,
+        [string]$CertPassword
+    )
+    
+    $appSettingsPath = Join-Path $InstallPath "appsettings.json"
+    if (Test-Path $appSettingsPath) {
+        Write-Info "Actualizando configuración de Kestrel..."
+        $appSettings = Get-Content $appSettingsPath -Raw | ConvertFrom-Json
+        
+        # Agregar configuración de Kestrel si no existe
+        if (-not $appSettings.Kestrel) {
+            $appSettings | Add-Member -NotePropertyName "Kestrel" -NotePropertyValue @{} -Force
+        }
+        
+        $appSettings.Kestrel = @{
+            Endpoints = @{
+                Http = @{
+                    Url = "http://0.0.0.0:5095"
+                }
+                Https = @{
+                    Url = "https://0.0.0.0:7060"
+                    Certificate = @{
+                        Path = $CertPath
+                        Password = $CertPassword
+                    }
+                }
+            }
+        }
+        
+        $appSettings | ConvertTo-Json -Depth 10 | Set-Content $appSettingsPath -Encoding UTF8
+        Write-Success "Configuración de Kestrel actualizada"
     }
 }
 
@@ -1405,11 +2111,13 @@ function Show-CurrentConfig {
     Write-Host ""
 }
 
-# Instalación completa
+# Instalación completa (con rollback automático)
 function Install-Complete {
     param($Config, [string]$SourcePath)
     
     Write-Title "INSTALACIÓN COMPLETA DE SISTEMÍA"
+    Write-Info "Esta instalación incluye rollback automático en caso de error"
+    Write-Host ""
     
     # 1. Configuración interactiva
     $Config = Set-InteractiveConfig -Config $Config
@@ -1428,90 +2136,128 @@ function Install-Complete {
         return
     }
     
-    # Preguntar cómo quiere inicializar la BD
-    Write-Title "INICIALIZACIÓN DE BASE DE DATOS"
-    Write-Host ""
-    Write-Host "Seleccione cómo desea configurar la base de datos:" -ForegroundColor Yellow
-    Write-Host "  1. Restaurar desde backup (RECOMENDADO - incluye estructura y datos)" -ForegroundColor White
-    Write-Host "  2. Crear BD vacía y estructura desde scripts SQL" -ForegroundColor White
-    Write-Host "  3. Usar BD existente (ya tiene estructura)" -ForegroundColor White
-    Write-Host ""
-    $opcionBD = Read-Host "Opción"
+    # === CREAR BACKUP PARA ROLLBACK ===
+    Write-Title "PREPARANDO SISTEMA DE ROLLBACK"
+    New-PreInstallBackup -DbConfig $Config.BaseDatos
     
-    switch ($opcionBD) {
-        "1" {
-            # Restaurar desde backup - esto crea la BD completa
-            if (-not (Restore-DatabaseFromBackup -DbConfig $Config.BaseDatos -InstallerPath $ScriptDir)) {
-                Write-Error "No se pudo restaurar la base de datos"
-                return
+    try {
+        # Preguntar cómo quiere inicializar la BD
+        Write-Title "INICIALIZACIÓN DE BASE DE DATOS"
+        Write-Host ""
+        Write-Host "Seleccione cómo desea configurar la base de datos:" -ForegroundColor Yellow
+        Write-Host "  1. Restaurar desde backup (RECOMENDADO - incluye estructura y datos)" -ForegroundColor White
+        Write-Host "  2. Crear BD vacía y estructura desde scripts SQL" -ForegroundColor White
+        Write-Host "  3. Usar BD existente (ya tiene estructura)" -ForegroundColor White
+        Write-Host ""
+        $opcionBD = Read-Host "Opción"
+        
+        switch ($opcionBD) {
+            "1" {
+                # Restaurar desde backup - esto crea la BD completa
+                if (-not (Restore-DatabaseFromBackup -DbConfig $Config.BaseDatos -InstallerPath $ScriptDir)) {
+                    throw "No se pudo restaurar la base de datos"
+                }
+            }
+            "2" {
+                # Crear BD vacía y luego estructura
+                if (-not (Test-DatabaseConnection -DbConfig $Config.BaseDatos)) {
+                    Initialize-Database -DbConfig $Config.BaseDatos
+                }
+                if (-not (Initialize-DatabaseStructure -DbConfig $Config.BaseDatos -InstallerPath $ScriptDir)) {
+                    throw "No se pudo crear la estructura de la base de datos"
+                }
+            }
+            "3" {
+                # Verificar que la BD existe
+                if (-not (Test-DatabaseConnection -DbConfig $Config.BaseDatos)) {
+                    throw "La base de datos no existe"
+                }
+                Write-Success "Usando base de datos existente"
+            }
+            default {
+                Write-Warning "Opción no válida, usando restauración desde backup"
+                if (-not (Restore-DatabaseFromBackup -DbConfig $Config.BaseDatos -InstallerPath $ScriptDir)) {
+                    throw "No se pudo restaurar la base de datos"
+                }
             }
         }
-        "2" {
-            # Crear BD vacía y luego estructura
-            if (-not (Test-DatabaseConnection -DbConfig $Config.BaseDatos)) {
-                Initialize-Database -DbConfig $Config.BaseDatos
-            }
-            Initialize-DatabaseStructure -DbConfig $Config.BaseDatos -InstallerPath $ScriptDir
+        
+        # 4. Publicar aplicación (o verificar binarios pre-compilados)
+        Write-Title "PREPARANDO APLICACIÓN"
+        if (-not (Publish-Application -ProjectPath $SourcePath -InstallerPath $ScriptDir)) {
+            throw "No se pudo preparar la aplicación"
         }
-        "3" {
-            # Verificar que la BD existe
-            if (-not (Test-DatabaseConnection -DbConfig $Config.BaseDatos)) {
-                Write-Error "La base de datos no existe"
-                return
-            }
-            Write-Success "Usando base de datos existente"
+        
+        # 5. Copiar archivos
+        Write-Title "COPIANDO ARCHIVOS"
+        if (-not (Copy-ApplicationFiles -Config $Config -SourcePath $SourcePath -InstallerPath $ScriptDir)) {
+            throw "No se pudieron copiar los archivos"
         }
-        default {
-            Write-Warning "Opción no válida, usando restauración desde backup"
-            if (-not (Restore-DatabaseFromBackup -DbConfig $Config.BaseDatos -InstallerPath $ScriptDir)) {
-                Write-Error "No se pudo restaurar la base de datos"
-                return
-            }
+        # Registrar para rollback
+        $script:RollbackState.ArchivosCopiados += $Config.Instalacion.RutaInstalacion
+        
+        # 6. Generar appsettings
+        New-AppSettings -Config $Config -DestPath $Config.Instalacion.RutaInstalacion
+        
+        # 7. Instalar certificado HTTPS
+        Write-Title "CONFIGURANDO CERTIFICADO HTTPS"
+        $usarMkcert = if ($Config.Instalacion.UsarMkcert -eq $false) { $false } else { $true }
+        Install-HttpsCertificate -InstallPath $Config.Instalacion.RutaInstalacion -UsarMkcert $usarMkcert
+        
+        # 8. Configurar firewall para acceso en red
+        Write-Title "CONFIGURANDO FIREWALL"
+        if (Set-FirewallRules -Config $Config) {
+            $script:RollbackState.FirewallCreado = $true
+        }
+        
+        # 9. Instalar servicio
+        Write-Title "INSTALANDO SERVICIO WINDOWS"
+        if (Install-SistemIAService -Config $Config) {
+            $script:RollbackState.ServicioCreado = $true
+        }
+        
+        # 10. Crear acceso directo en escritorio (si está habilitado)
+        if ($Config.Instalacion.CrearAccesoDirecto -ne $false) {
+            Write-Title "CREANDO ACCESO DIRECTO"
+            New-ServerShortcut -Config $Config
+        }
+        
+        # === INSTALACIÓN EXITOSA - LIMPIAR BACKUP DE ROLLBACK ===
+        Remove-RollbackBackup
+        
+        Write-Title "INSTALACIÓN COMPLETADA"
+        Write-Success "SistemIA se ha instalado correctamente"
+        Write-Host ""
+        Write-Host "Acceda al sistema en:" -ForegroundColor White
+        Write-Host "  HTTP:  http://localhost:$($Config.Instalacion.PuertoHttp)" -ForegroundColor Green
+        Write-Host "  HTTPS: https://localhost:$($Config.Instalacion.PuertoHttps)" -ForegroundColor Green
+        Write-Host ""
+        if ($Config.Instalacion.CrearAccesoDirecto -ne $false) {
+            Write-Host "Acceso directo creado en el escritorio" -ForegroundColor Cyan
+            Write-Host ""
+        }
+        Write-Host "Credenciales iniciales:" -ForegroundColor Yellow
+        Write-Host "  Usuario: admin" -ForegroundColor White
+        Write-Host "  Contraseña: admin" -ForegroundColor White
+        Write-Host ""
+        Write-Warning "IMPORTANTE: Cambie la contraseña después del primer inicio de sesión"
+        Write-Host ""
+    }
+    catch {
+        # === ERROR DETECTADO - EJECUTAR ROLLBACK ===
+        Write-Host ""
+        Write-Error "ERROR DURANTE LA INSTALACIÓN: $_"
+        Write-Host ""
+        
+        $ejecutarRollback = Read-Host "¿Desea revertir los cambios realizados? (S/N) [S]"
+        if ($ejecutarRollback -ne 'N' -and $ejecutarRollback -ne 'n') {
+            Invoke-Rollback -DbConfig $Config.BaseDatos -Config $Config
+        }
+        else {
+            Write-Warning "Rollback cancelado. El sistema puede estar en un estado inconsistente."
+            Write-Info "Backup de seguridad disponible en: $($script:RollbackState.BackupPath)"
         }
     }
-    
-    # 4. Publicar aplicación (o verificar binarios pre-compilados)
-    Write-Title "PREPARANDO APLICACIÓN"
-    if (-not (Publish-Application -ProjectPath $SourcePath -InstallerPath $ScriptDir)) {
-        Write-Error "No se pudo preparar la aplicación"
-        return
-    }
-    
-    # 5. Copiar archivos
-    Write-Title "COPIANDO ARCHIVOS"
-    if (-not (Copy-ApplicationFiles -Config $Config -SourcePath $SourcePath -InstallerPath $ScriptDir)) {
-        Write-Error "No se pudieron copiar los archivos"
-        return
-    }
-    
-    # 6. Generar appsettings
-    New-AppSettings -Config $Config -DestPath $Config.Instalacion.RutaInstalacion
-    
-    # 7. Instalar certificado HTTPS
-    Write-Title "CONFIGURANDO CERTIFICADO HTTPS"
-    Install-HttpsCertificate -InstallPath $Config.Instalacion.RutaInstalacion
-    
-    # 8. Configurar firewall para acceso en red
-    Write-Title "CONFIGURANDO FIREWALL"
-    Set-FirewallRules -Config $Config
-    
-    # 9. Instalar servicio
-    Write-Title "INSTALANDO SERVICIO WINDOWS"
-    Install-SistemIAService -Config $Config
-    
-    Write-Title "INSTALACIÓN COMPLETADA"
-    Write-Success "SistemIA se ha instalado correctamente"
-    Write-Host ""
-    Write-Host "Acceda al sistema en:" -ForegroundColor White
-    Write-Host "  HTTP:  http://localhost:$($Config.Instalacion.PuertoHttp)" -ForegroundColor Green
-    Write-Host "  HTTPS: https://localhost:$($Config.Instalacion.PuertoHttps)" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Credenciales iniciales:" -ForegroundColor Yellow
-    Write-Host "  Usuario: admin" -ForegroundColor White
-    Write-Host "  Contraseña: admin" -ForegroundColor White
-    Write-Host ""
-    Write-Warning "IMPORTANTE: Cambie la contraseña después del primer inicio de sesión"
-    Write-Host ""
 }
 
 # === MAIN ===
@@ -1545,13 +2291,44 @@ do {
     switch ($opcion) {
         "1" { Install-Complete -Config $config -SourcePath $projectPath }
         "2" { 
+            # Instalación Cliente
+            Write-Title "INSTALACIÓN MODO CLIENTE"
+            $config.Instalacion.ModoInstalacion = "Cliente"
+            
+            Write-Host ""
+            $defaultRemoto = if ($config.Cliente.ServidorRemoto) { $config.Cliente.ServidorRemoto } else { "192.168.1.100" }
+            $servidorRemoto = Read-Host "IP o nombre del servidor SistemIA [$defaultRemoto]"
+            if ([string]::IsNullOrWhiteSpace($servidorRemoto)) { $servidorRemoto = $defaultRemoto }
+            $config.Cliente.ServidorRemoto = $servidorRemoto
+            
+            $defaultPuerto = if ($config.Cliente.PuertoRemoto) { $config.Cliente.PuertoRemoto } else { 5095 }
+            $puertoRemoto = Read-Host "Puerto del servidor [$defaultPuerto]"
+            if ([string]::IsNullOrWhiteSpace($puertoRemoto)) { $puertoRemoto = $defaultPuerto }
+            $config.Cliente.PuertoRemoto = [int]$puertoRemoto
+            
+            $usarHttps = Read-Host "¿Usar HTTPS? (S/N) [N]"
+            $config.Cliente.UsarHttps = ($usarHttps -eq 'S' -or $usarHttps -eq 's')
+            
+            # Guardar configuración
+            Save-InstallerConfig -Config $config -Path $ConfigFile
+            
+            # Crear acceso directo
+            New-ClientShortcut -Config $config
+            
+            Write-Title "INSTALACIÓN CLIENTE COMPLETADA"
+            $protocol = if ($config.Cliente.UsarHttps) { "https" } else { "http" }
+            $url = "$protocol`://$($config.Cliente.ServidorRemoto):$($config.Cliente.PuertoRemoto)"
+            Write-Success "Acceso directo creado en el escritorio"
+            Write-Info "URL del servidor: $url"
+        }
+        "3" { 
             $config = Set-InteractiveConfig -Config $config
             Save-InstallerConfig -Config $config -Path $ConfigFile
             New-AppSettings -Config $config -DestPath $projectPath
         }
-        "3" { Install-SistemIAService -Config $config }
-        "4" { Uninstall-SistemIAService -Config $config }
-        "5" { 
+        "4" { Install-SistemIAService -Config $config }
+        "5" { Uninstall-SistemIAService -Config $config }
+        "6" { 
             # Crear/Restaurar base de datos
             Write-Title "CREAR/RESTAURAR BASE DE DATOS"
             Write-Host ""
@@ -1570,13 +2347,29 @@ do {
                 Initialize-DatabaseStructure -DbConfig $config.BaseDatos -InstallerPath $scriptPath
             }
         }
-        "6" { Clear-SystemData -DbConfig $config.BaseDatos }
-        "7" { Show-CurrentConfig -Config $config }
-        "8" { Test-DatabaseConnection -DbConfig $config.BaseDatos }
-        "9" { Test-ServiceStatus -Config $config }
-        "10" { Install-HttpsCertificate -InstallPath $config.Instalacion.RutaInstalacion }
-        "11" { Configure-Firewall -HttpPort $config.Instalacion.PuertoHttp -HttpsPort $config.Instalacion.PuertoHttps }
-        "12" { Show-NetworkAccess -HttpPort $config.Instalacion.PuertoHttp -HttpsPort $config.Instalacion.PuertoHttps }
+        "7" { Clear-SystemData -DbConfig $config.BaseDatos }
+        "8" { Show-CurrentConfig -Config $config }
+        "9" { Test-DatabaseConnection -DbConfig $config.BaseDatos }
+        "10" { Test-ServiceStatus -Config $config }
+        "11" { 
+            # Instalar certificado con mkcert
+            $usarMkcert = $true
+            if ($config.Instalacion.UsarMkcert -eq $false) {
+                $usarMkcert = $false
+            }
+            Install-HttpsCertificate -InstallPath $config.Instalacion.RutaInstalacion -UsarMkcert $usarMkcert
+        }
+        "12" { Configure-Firewall -HttpPort $config.Instalacion.PuertoHttp -HttpsPort $config.Instalacion.PuertoHttps }
+        "13" { Show-NetworkAccess -HttpPort $config.Instalacion.PuertoHttp -HttpsPort $config.Instalacion.PuertoHttps }
+        "14" { 
+            # Crear acceso directo manualmente
+            if ($config.Instalacion.ModoInstalacion -eq "Cliente") {
+                New-ClientShortcut -Config $config
+            }
+            else {
+                New-ServerShortcut -Config $config
+            }
+        }
         "0" { Write-Host "`nSaliendo..." -ForegroundColor Yellow }
         default { Write-Warning "Opción no válida" }
     }
@@ -1589,3 +2382,4 @@ do {
 } while ($opcion -ne "0")
 
 Write-Host "`nGracias por usar SistemIA" -ForegroundColor Cyan
+

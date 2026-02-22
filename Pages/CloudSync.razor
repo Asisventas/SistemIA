@@ -836,7 +836,10 @@
     private string _mensajeBackup = "";
     private bool _backupExitoso = false;
     private CloudSyncFileInfo? _backupEnNube = null;
-    private const string BACKUP_FILENAME = "SistemIA_CloudSync_Backup.bak";
+    // El backup ahora se comprime a .zip para reducir tamaño de subida
+    private const string BACKUP_FILENAME = "SistemIA_CloudSync_Backup.zip";
+    // También buscar el .bak por compatibilidad con backups anteriores
+    private const string BACKUP_FILENAME_OLD = "SistemIA_CloudSync_Backup.bak";
 
     private int? _idUsuarioActual;
 
@@ -1403,7 +1406,7 @@
     // ========== BACKUP DE BASE DE DATOS ==========
 
     /// <summary>
-    /// Busca si existe un backup previo en la nube
+    /// Busca si existe un backup previo en la nube (busca .zip primero, luego .bak por compatibilidad)
     /// </summary>
     private async Task BuscarBackupEnNube()
     {
@@ -1413,8 +1416,17 @@
             StateHasChanged();
 
             var archivosRemotos = await CloudSyncService.ListarArchivosRemotosAsync();
+            
+            // Buscar primero el nuevo formato .zip
             _backupEnNube = archivosRemotos.FirstOrDefault(f => 
                 f.Name?.Equals(BACKUP_FILENAME, StringComparison.OrdinalIgnoreCase) == true);
+            
+            // Si no hay .zip, buscar el formato antiguo .bak
+            if (_backupEnNube == null)
+            {
+                _backupEnNube = archivosRemotos.FirstOrDefault(f => 
+                    f.Name?.Equals(BACKUP_FILENAME_OLD, StringComparison.OrdinalIgnoreCase) == true);
+            }
         }
         catch (Exception ex)
         {
@@ -1455,29 +1467,46 @@
                 return;
             }
 
-            _estadoBackup = "Backup creado, verificando nube...";
+            _estadoBackup = "Backup comprimido, verificando nube...";
             _progresoBackup = 30;
             StateHasChanged();
 
-            // Paso 2: Verificar si existe backup anterior en la nube y eliminarlo
-            await BuscarBackupEnNube();
+            // Paso 2: Eliminar TODOS los backups existentes en la nube (evitar duplicados)
+            var archivosRemotos = await CloudSyncService.ListarArchivosRemotosAsync();
             
-            if (_backupEnNube != null && !string.IsNullOrEmpty(_backupEnNube.Id))
+            // Buscar TODOS los archivos que coincidan con el nombre del backup (pueden haber duplicados)
+            var backupsExistentes = archivosRemotos?
+                .Where(f => f.Name?.Equals(BACKUP_FILENAME, StringComparison.OrdinalIgnoreCase) == true ||
+                           f.Name?.Equals(BACKUP_FILENAME_OLD, StringComparison.OrdinalIgnoreCase) == true)
+                .ToList() ?? new List<CloudSyncFileInfo>();
+            
+            if (backupsExistentes.Any())
             {
-                _estadoBackup = "Eliminando backup anterior...";
-                _progresoBackup = 40;
+                _estadoBackup = $"Eliminando {backupsExistentes.Count} backup(s) anterior(es)...";
+                _progresoBackup = 35;
                 StateHasChanged();
-
-                var eliminado = await CloudSyncService.EliminarArchivoRemotoAsync(_backupEnNube.Id);
-                if (!eliminado)
+                
+                foreach (var backup in backupsExistentes)
                 {
-                    Console.WriteLine("No se pudo eliminar el backup anterior, continuando con la subida...");
+                    if (!string.IsNullOrEmpty(backup.Id))
+                    {
+                        Console.WriteLine($"Eliminando backup: {backup.Name} (ID: {backup.Id})");
+                        var eliminado = await CloudSyncService.EliminarArchivoRemotoAsync(backup.Id);
+                        if (!eliminado)
+                        {
+                            Console.WriteLine($"⚠️ No se pudo eliminar: {backup.Name}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"✅ Eliminado: {backup.Name}");
+                        }
+                    }
                 }
             }
 
-            // Paso 3: Subir el nuevo backup a la nube
-            _estadoBackup = "Subiendo a la nube...";
-            _progresoBackup = 50;
+            // Paso 3: Subir el nuevo backup comprimido a la nube
+            _estadoBackup = "Subiendo backup comprimido...";
+            _progresoBackup = 45;
             StateHasChanged();
 
             // Usar subida paralela para mejor rendimiento
@@ -1485,8 +1514,8 @@
                 resultado.BackupPath,
                 onProgress: (progreso) =>
                 {
-                    // Mapear progreso 0-100 a 50-95
-                    _progresoBackup = 50 + (int)(progreso.PorcentajeCompletado * 0.45);
+                    // Mapear progreso 0-100 a 45-95
+                    _progresoBackup = 45 + (int)(progreso.PorcentajeCompletado * 0.50);
                     _estadoBackup = $"Subiendo... {progreso.PorcentajeCompletado}%";
                     InvokeAsync(StateHasChanged);
                 }
@@ -1499,6 +1528,22 @@
             {
                 _mensajeBackup = $"✅ Backup creado y sincronizado exitosamente. Tamaño: {FormatearTamano(new FileInfo(resultado.BackupPath).Length)}";
                 _backupExitoso = true;
+                
+                // Actualizar configuración en BD
+                await using var ctx = await DbFactory.CreateDbContextAsync();
+                var config = await ctx.ConfiguracionesCloudSync.FirstOrDefaultAsync(c => c.Activo);
+                if (config != null)
+                {
+                    config.UltimoBackupExitoso = DateTime.Now;
+                    config.UltimaSincronizacion = DateTime.Now;
+                    config.EstadoUltimaSincronizacion = "Exitoso";
+                    config.MensajeUltimaSincronizacion = $"Backup manual: {BACKUP_FILENAME}";
+                    config.FechaModificacion = DateTime.Now;
+                    await ctx.SaveChangesAsync();
+                }
+                
+                // Actualizar cache para el indicador del menú (NavMenu)
+                BackupStatusCache.Actualizar(DateTime.Now, "Exitoso", true);
                 
                 // Actualizar referencia al backup en nube
                 await BuscarBackupEnNube();

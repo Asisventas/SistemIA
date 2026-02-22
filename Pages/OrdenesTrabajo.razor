@@ -1,0 +1,615 @@
+@page "/ordenes-trabajo"
+@page "/ordenes-trabajo/{IdOrden:int}"
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>@(_idOrden > 0 ? "Editar" : "Nueva") Orden de Trabajo - SistemIA</PageTitle>
+
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-clipboard-check text-info me-2"></i>
+            @(_idOrden > 0 ? $"Orden de Trabajo #{_orden?.NumeroOrden}" : "Nueva Orden de Trabajo")
+            @if (_orden != null)
+            {
+                <span class="badge bg-@_orden.ColorEstado ms-2">@_orden.EstadoTexto</span>
+            }
+        </h3>
+        <div class="d-flex gap-2">
+            @if (_orden?.Estado == "Terminado")
+            {
+                <button class="btn btn-success" @onclick="GenerarVenta">
+                    <i class="bi bi-receipt me-1"></i>Facturar
+                </button>
+            }
+            <button class="btn btn-outline-secondary" @onclick="Volver">
+                <i class="bi bi-arrow-left me-1"></i>Volver
+            </button>
+        </div>
+    </div>
+
+    @if (_cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+        </div>
+    }
+    else if (_orden == null)
+    {
+        <div class="alert alert-danger">Orden de trabajo no encontrada</div>
+    }
+    else
+    {
+        <div class="row g-3">
+            <!-- Panel Izquierdo: Vehículo y Cliente -->
+            <div class="col-lg-4">
+                <!-- Vehículo -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0"><i class="bi bi-car-front-fill me-2"></i>Vehículo</h6>
+                    </div>
+                    <div class="card-body">
+                        @if (_vehiculo != null)
+                        {
+                            <div class="text-center mb-3">
+                                <span class="badge bg-dark fs-4">@_vehiculo.Matricula</span>
+                            </div>
+                            <dl class="row mb-0 small">
+                                <dt class="col-5 text-muted">Marca/Modelo:</dt>
+                                <dd class="col-7">@_vehiculo.Marca @_vehiculo.Modelo</dd>
+                                <dt class="col-5 text-muted">Año:</dt>
+                                <dd class="col-7">@(_vehiculo.Anio?.ToString() ?? "-")</dd>
+                                <dt class="col-5 text-muted">Color:</dt>
+                                <dd class="col-7">@(_vehiculo.Color ?? "-")</dd>
+                            </dl>
+                            <hr />
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Km ingreso</label>
+                                    <input type="number" class="form-control form-control-sm" 
+                                           @bind="_orden.KilometrajeIngreso" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Combustible %</label>
+                                    <input type="number" class="form-control form-control-sm" 
+                                           min="0" max="100" @bind="_orden.NivelCombustible" />
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">Buscar vehículo</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" placeholder="Matrícula..." 
+                                           @bind="_busquedaMatricula" @onkeyup="BuscarVehiculo" />
+                                    <button class="btn btn-outline-secondary" @onclick="BuscarVehiculo">
+                                        <i class="bi bi-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            @if (_vehiculosEncontrados.Any())
+                            {
+                                <div class="list-group">
+                                    @foreach (var v in _vehiculosEncontrados)
+                                    {
+                                        <button class="list-group-item list-group-item-action" 
+                                                @onclick="() => SeleccionarVehiculo(v)">
+                                            <strong>@v.Matricula</strong> - @v.Marca @v.Modelo
+                                            <small class="d-block text-muted">@(v.Cliente?.RazonSocial ?? "Sin cliente")</small>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                            <hr />
+                            <button class="btn btn-outline-primary w-100" @onclick="NuevoVehiculo">
+                                <i class="bi bi-plus-lg me-1"></i>Crear Nuevo Vehículo
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <!-- Cliente -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-person me-2"></i>Cliente</h6>
+                    </div>
+                    <div class="card-body">
+                        @if (_cliente != null)
+                        {
+                            <div class="fw-bold">@_cliente.RazonSocial</div>
+                            <small class="text-muted">RUC: @_cliente.RUC</small>
+                            @if (!string.IsNullOrEmpty(_cliente.Celular))
+                            {
+                                <div class="mt-2">
+                                    <i class="bi bi-phone me-1"></i>@_cliente.Celular
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <span class="text-muted">Seleccione un vehículo</span>
+                        }
+                    </div>
+                </div>
+
+                <!-- Mecánico Asignado -->
+                <div class="card shadow-sm">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-person-gear me-2"></i>Mecánico Asignado</h6>
+                    </div>
+                    <div class="card-body">
+                        <select class="form-select" @bind="_orden.IdMecanico" @bind:after="ActualizarNombreMecanico">
+                            <option value="">-- Sin asignar --</option>
+                            @foreach (var m in _mecanicos)
+                            {
+                                <option value="@m.Id_Usu">@m.Nombres @m.Apellidos</option>
+                            }
+                        </select>
+                        <div class="mt-2">
+                            <label class="form-label small text-muted">Prioridad</label>
+                            <select class="form-select" @bind="_orden.Prioridad">
+                                <option value="Normal">Normal</option>
+                                <option value="Alta">Alta</option>
+                                <option value="Urgente">🚨 Urgente</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Derecho: Descripción y Detalles -->
+            <div class="col-lg-8">
+                <!-- Descripción del Trabajo -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-chat-text me-2"></i>Descripción del Trabajo</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Motivo de Consulta / Síntomas</label>
+                                <textarea class="form-control" rows="2" @bind="_orden.MotivoConsulta" 
+                                          placeholder="Ej: Motor hace ruido, frenos no funcionan bien..."></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Diagnóstico</label>
+                                <textarea class="form-control" rows="2" @bind="_orden.Diagnostico" 
+                                          placeholder="Diagnóstico del mecánico..."></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Trabajos a Realizar</label>
+                                <textarea class="form-control" rows="2" @bind="_orden.TrabajosARealizar" 
+                                          placeholder="Detalle de trabajos..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detalles (Repuestos, Mano de Obra, Servicios) -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-list-check me-2"></i>Detalle de Trabajos y Repuestos</h6>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" @onclick="@(() => AgregarLinea("Repuesto"))">
+                                <i class="bi bi-box-seam me-1"></i>Repuesto
+                            </button>
+                            <button class="btn btn-outline-warning" @onclick="@(() => AgregarLinea("ManoObra"))">
+                                <i class="bi bi-wrench me-1"></i>Mano de Obra
+                            </button>
+                            <button class="btn btn-outline-info" @onclick="@(() => AgregarLinea("Servicio"))">
+                                <i class="bi bi-gear me-1"></i>Servicio
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 30px"></th>
+                                    <th>Descripción</th>
+                                    <th style="width: 80px">Cant.</th>
+                                    <th style="width: 120px" class="text-end">P.Unit.</th>
+                                    <th style="width: 120px" class="text-end">Total</th>
+                                    <th style="width: 50px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var det in _detalles)
+                                {
+                                    <tr>
+                                        <td>
+                                            <i class="bi @det.IconoTipo text-@det.ColorTipo"></i>
+                                        </td>
+                                        <td>
+                                            @if (det.TipoLinea == "Repuesto")
+                                            {
+                                                <input type="text" class="form-control form-control-sm" 
+                                                       @bind="det.Descripcion" list="productosDatalist"
+                                                       @onfocusout="() => BuscarProducto(det)" />
+                                            }
+                                            else
+                                            {
+                                                <input type="text" class="form-control form-control-sm" 
+                                                       @bind="det.Descripcion" 
+                                                       placeholder="@(det.TipoLinea == "ManoObra" ? "Ej: Cambio de aceite, 2 horas..." : "Servicio externo...")" />
+                                            }
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm text-end" 
+                                                   @bind="det.Cantidad" min="0.01" step="0.01"
+                                                   @bind:after="() => RecalcularLinea(det)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm text-end" 
+                                                   @bind="det.PrecioUnitario" min="0"
+                                                   @bind:after="() => RecalcularLinea(det)" />
+                                        </td>
+                                        <td class="text-end fw-bold">
+                                            @det.Total.ToString("N0")
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-outline-danger btn-sm" @onclick="() => EliminarLinea(det)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                                @if (!_detalles.Any())
+                                {
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-3">
+                                            Agregue repuestos, mano de obra o servicios
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Totales -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-2">
+                                    <label class="form-label small text-muted">Fecha prometida entrega</label>
+                                    <input type="date" class="form-control" 
+                                           @bind="_orden.FechaPrometida" />
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small text-muted">Garantía (días)</label>
+                                    <input type="number" class="form-control" 
+                                           @bind="_orden.DiasGarantia" min="0" />
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-sm mb-0">
+                                    <tr>
+                                        <td>Mano de Obra:</td>
+                                        <td class="text-end">Gs @_orden.TotalManoObra.ToString("N0")</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Repuestos:</td>
+                                        <td class="text-end">Gs @_orden.TotalRepuestos.ToString("N0")</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Subtotal:</td>
+                                        <td class="text-end">Gs @_orden.Subtotal.ToString("N0")</td>
+                                    </tr>
+                                    <tr class="table-warning">
+                                        <td><strong>TOTAL:</strong></td>
+                                        <td class="text-end"><strong class="fs-5">Gs @_orden.Total.ToString("N0")</strong></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botones de Acción -->
+                <div class="d-flex justify-content-end gap-2">
+                    @if (_orden.Estado == "Recepcion")
+                    {
+                        <button class="btn btn-info" @onclick="IniciarDiagnostico">
+                            <i class="bi bi-search me-1"></i>Iniciar Diagnóstico
+                        </button>
+                    }
+                    @if (_orden.Estado == "Diagnostico")
+                    {
+                        <button class="btn btn-warning" @onclick="EnviarPresupuesto">
+                            <i class="bi bi-send me-1"></i>Enviar Presupuesto
+                        </button>
+                    }
+                    <button type="button" class="btn btn-outline-secondary" @onclick="Volver">
+                        <i class="bi bi-x-lg me-1"></i>Cancelar
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarAsync">
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* Datalist de productos *@
+<datalist id="productosDatalist">
+    @foreach (var p in _productosCache)
+    {
+        <option value="@p.Descripcion">@p.CodigoInterno - @p.Descripcion</option>
+    }
+</datalist>
+
+@code {
+    [Parameter]
+    public int IdOrden { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int Vehiculo { get; set; }
+
+    private int _idOrden => IdOrden;
+    private OrdenTrabajo? _orden;
+    private Vehiculo? _vehiculo;
+    private Cliente? _cliente;
+    private List<OrdenTrabajoDetalle> _detalles = new();
+    private bool _cargando = true;
+
+    // Listas auxiliares
+    private List<Usuario> _mecanicos = new();
+    private List<Producto> _productosCache = new();
+    private List<Vehiculo> _vehiculosEncontrados = new();
+
+    // Búsqueda
+    private string _busquedaMatricula = "";
+
+    private int _idSucursal = 1; // TODO: Obtener de sesión
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarMecanicosAsync();
+        await CargarProductosAsync();
+
+        if (_idOrden > 0)
+        {
+            await CargarOrdenAsync();
+        }
+        else
+        {
+            _orden = new OrdenTrabajo
+            {
+                IdSucursal = _idSucursal,
+                FechaCreacion = DateTime.Now,
+                FechaIngreso = DateTime.Now,
+                AnioOrden = DateTime.Now.Year,
+                Estado = "Recepcion",
+                Prioridad = "Normal"
+            };
+
+            // Si viene con vehículo preseleccionado
+            if (Vehiculo > 0)
+            {
+                await CargarVehiculoPorIdAsync(Vehiculo);
+            }
+        }
+        _cargando = false;
+    }
+
+    private async Task CargarOrdenAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _orden = await ctx.OrdenesTrabajo
+            .Include(o => o.Vehiculo)
+            .Include(o => o.Cliente)
+            .Include(o => o.Detalles)
+            .FirstOrDefaultAsync(o => o.IdOrdenTrabajo == _idOrden);
+
+        if (_orden != null)
+        {
+            _vehiculo = _orden.Vehiculo;
+            _cliente = _orden.Cliente;
+            _detalles = _orden.Detalles?.ToList() ?? new();
+        }
+    }
+
+    private async Task CargarMecanicosAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _mecanicos = await ctx.Usuarios
+            .Include(u => u.Rol)
+            .Where(u => u.Estado_Usu && u.Rol != null && 
+                        (u.Rol.NombreRol == "Mecánico" || u.Rol.NombreRol == "Técnico" || u.Rol.NombreRol == "Administrador"))
+            .OrderBy(u => u.Nombres)
+            .ToListAsync();
+    }
+
+    private async Task CargarProductosAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _productosCache = await ctx.Productos
+            .Where(p => p.Activo == true)
+            .OrderBy(p => p.Descripcion)
+            .Take(500)
+            .ToListAsync();
+    }
+
+    private async Task BuscarVehiculo()
+    {
+        if (string.IsNullOrWhiteSpace(_busquedaMatricula)) return;
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _vehiculosEncontrados = await ctx.Vehiculos
+            .Include(v => v.Cliente)
+            .Where(v => v.Matricula != null && v.Matricula.ToUpper().Contains(_busquedaMatricula.ToUpper()))
+            .Take(10)
+            .ToListAsync();
+    }
+
+    private void SeleccionarVehiculo(Vehiculo v)
+    {
+        _vehiculo = v;
+        _cliente = v.Cliente;
+        if (_orden != null)
+        {
+            _orden.IdVehiculo = v.IdVehiculo;
+            _orden.IdCliente = v.IdCliente;
+            _orden.KilometrajeIngreso = v.KilometrajeActual;
+        }
+        _vehiculosEncontrados.Clear();
+    }
+
+    private async Task CargarVehiculoPorIdAsync(int idVehiculo)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var v = await ctx.Vehiculos.Include(x => x.Cliente).FirstOrDefaultAsync(x => x.IdVehiculo == idVehiculo);
+        if (v != null)
+        {
+            SeleccionarVehiculo(v);
+        }
+    }
+
+    private void NuevoVehiculo()
+    {
+        Nav.NavigateTo("/vehiculos");
+    }
+
+    private void ActualizarNombreMecanico()
+    {
+        if (_orden == null) return;
+        var mec = _mecanicos.FirstOrDefault(m => m.Id_Usu == _orden.IdMecanico);
+        _orden.NombreMecanico = mec != null ? $"{mec.Nombres} {mec.Apellidos}" : null;
+    }
+
+    private void AgregarLinea(string tipo)
+    {
+        _detalles.Add(new OrdenTrabajoDetalle
+        {
+            TipoLinea = tipo,
+            Cantidad = tipo == "ManoObra" ? 1 : 1,
+            Estado = "Pendiente",
+            FechaCreacion = DateTime.Now
+        });
+    }
+
+    private void EliminarLinea(OrdenTrabajoDetalle det)
+    {
+        _detalles.Remove(det);
+        RecalcularTotales();
+    }
+
+    private void RecalcularLinea(OrdenTrabajoDetalle det)
+    {
+        det.Total = det.Cantidad * det.PrecioUnitario - det.MontoDescuento;
+        RecalcularTotales();
+    }
+
+    private async Task BuscarProducto(OrdenTrabajoDetalle det)
+    {
+        if (string.IsNullOrEmpty(det.Descripcion)) return;
+        
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var prod = await ctx.Productos
+            .FirstOrDefaultAsync(p => p.Descripcion == det.Descripcion || p.CodigoInterno == det.Descripcion);
+        
+        if (prod != null)
+        {
+            det.IdProducto = prod.IdProducto;
+            det.CodigoProducto = prod.CodigoInterno;
+            det.Descripcion = prod.Descripcion;
+            det.PrecioUnitario = prod.PrecioUnitarioGs;
+            det.CostoUnitario = prod.CostoUnitarioGs ?? 0m;
+            RecalcularLinea(det);
+        }
+    }
+
+    private void RecalcularTotales()
+    {
+        if (_orden == null) return;
+
+        _orden.TotalManoObra = _detalles.Where(d => d.TipoLinea == "ManoObra").Sum(d => d.Total);
+        _orden.TotalRepuestos = _detalles.Where(d => d.TipoLinea == "Repuesto").Sum(d => d.Total);
+        _orden.Subtotal = _detalles.Sum(d => d.Total);
+        _orden.Total = _orden.Subtotal - _orden.TotalDescuento;
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (_orden == null || _vehiculo == null) return;
+
+        RecalcularTotales();
+        
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+
+        if (_orden.IdOrdenTrabajo == 0)
+        {
+            // Obtener siguiente número
+            var maxNumero = await ctx.OrdenesTrabajo
+                .Where(o => o.AnioOrden == _orden.AnioOrden)
+                .MaxAsync(o => (int?)o.NumeroOrden) ?? 0;
+            _orden.NumeroOrden = maxNumero + 1;
+            _orden.CodigoOrden = $"OT-{_orden.AnioOrden}-{_orden.NumeroOrden:D4}";
+
+            ctx.OrdenesTrabajo.Add(_orden);
+            await ctx.SaveChangesAsync();
+
+            // Guardar detalles
+            foreach (var det in _detalles)
+            {
+                det.IdOrdenTrabajo = _orden.IdOrdenTrabajo;
+                ctx.OrdenesTrabajoDetalles.Add(det);
+            }
+        }
+        else
+        {
+            _orden.FechaModificacion = DateTime.Now;
+            ctx.OrdenesTrabajo.Update(_orden);
+
+            // Sincronizar detalles
+            var existentes = await ctx.OrdenesTrabajoDetalles
+                .Where(d => d.IdOrdenTrabajo == _orden.IdOrdenTrabajo)
+                .ToListAsync();
+            ctx.OrdenesTrabajoDetalles.RemoveRange(existentes);
+
+            foreach (var det in _detalles)
+            {
+                det.IdOrdenTrabajo = _orden.IdOrdenTrabajo;
+                det.IdOrdenTrabajoDetalle = 0; // Reset para insertar nuevo
+                ctx.OrdenesTrabajoDetalles.Add(det);
+            }
+        }
+
+        await ctx.SaveChangesAsync();
+        Nav.NavigateTo("/ordenes-trabajo/explorar");
+    }
+
+    private async Task IniciarDiagnostico()
+    {
+        if (_orden == null) return;
+        _orden.Estado = "Diagnostico";
+        await GuardarAsync();
+    }
+
+    private async Task EnviarPresupuesto()
+    {
+        if (_orden == null) return;
+        _orden.Estado = "Presupuestado";
+        await GuardarAsync();
+    }
+
+    private void GenerarVenta()
+    {
+        if (_orden == null) return;
+        Nav.NavigateTo($"/ventas?ordenTrabajo={_orden.IdOrdenTrabajo}");
+    }
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/ordenes-trabajo/explorar");
+    }
+}

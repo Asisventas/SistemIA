@@ -406,3 +406,13 @@ DatosRUC/
 
 # Actualizador DLLs
 Actualizador/*.dll
+# Instalador compilado (demasiado grande para GitHub, >50MB)
+Installer/SistemIA-Instalador.exe
+
+# PDFs del manual SIFEN (opcionales, se pueden descargar)
+.ai-docs/SIFEN/Manual_Extraido/*.pdf
+
+# Archivos XML grandes del Manual SIFEN
+.ai-docs/ManualSifen/*.xml
+.ai-docs/ManualSifen/Guía+de+Mejores+Prácticas+para+la+Gestión+del+Envío+de+DE.xml
+.ai-docs/ManualSifen/Manual+Técnico+Versión+150.xml

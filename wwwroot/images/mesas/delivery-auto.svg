@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Fondo circular -->
+  <circle cx="50" cy="50" r="48" fill="#2196f3" stroke="#fff" stroke-width="2"/>
+  
+  <!-- Auto simplificado -->
+  <g fill="#ffffff">
+    <!-- Carrocería -->
+    <path d="M15 55 L20 40 L35 35 L65 35 L80 40 L85 55 L85 65 L15 65 Z" fill="#fff"/>
+    
+    <!-- Ventanas -->
+    <path d="M25 42 L33 38 L50 38 L50 52 L25 52 Z" fill="#2196f3"/>
+    <path d="M52 38 L67 38 L75 42 L75 52 L52 52 Z" fill="#2196f3"/>
+    
+    <!-- Ruedas -->
+    <circle cx="28" cy="68" r="10" fill="#fff" stroke="#2196f3" stroke-width="3"/>
+    <circle cx="72" cy="68" r="10" fill="#fff" stroke="#2196f3" stroke-width="3"/>
+    
+    <!-- Letrero DELIVERY -->
+    <rect x="30" y="22" width="40" height="12" rx="2" fill="#fff"/>
+    <text x="50" y="31" text-anchor="middle" fill="#2196f3" font-size="7" font-weight="bold">DELIVERY</text>
+  </g>
+</svg>

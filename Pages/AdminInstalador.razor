@@ -3,6 +3,7 @@
 @using SistemIA.Models
 @using SistemIA.Controllers
 @using System.Text
+@using System.Text.Json
 @using System.IO.Compression
 @using Microsoft.Data.SqlClient
 @inject IDbContextFactory<AppDbContext> DbFactory
@@ -14,29 +15,208 @@
 <PageTitle>Generador de Instalador - SistemIA</PageTitle>
 
 <SaProtection TituloPagina="Generador de Instalador" UrlRetorno="/">
-<div class="container py-5">
+<div class="container py-4">
     <div class="row justify-content-center">
-        <div class="col-lg-8 col-xl-6">
+        <div class="col-lg-10 col-xl-10">
             <!-- Header -->
-            <div class="text-center mb-5">
-                <div class="mb-4">
-                    <i class="bi bi-box-seam display-1 text-primary"></i>
+            <div class="text-center mb-4">
+                <div class="mb-3">
+                    <i class="bi bi-box-seam display-3 text-primary"></i>
                 </div>
                 <h2 class="fw-bold">Generador de Instalador</h2>
-                <p class="text-muted">Genere el paquete de instalación de SistemIA</p>
+                <p class="text-muted">Genere el paquete de instalación de SistemIA con configuración personalizada</p>
             </div>
 
             <!-- Card principal -->
             <div class="card shadow-lg border-0">
-                <div class="card-body p-4 p-lg-5">
-                    <!-- Versión -->
-                    <div class="mb-4">
-                        <label class="form-label fw-bold">
-                            <i class="bi bi-tag me-2"></i>Versión del Paquete
-                        </label>
-                        <input type="text" class="form-control form-control-lg text-center" 
-                               @bind="_version" disabled="@_generando" />
+                <div class="card-body p-4">
+                    <div class="row g-4">
+                        <!-- Columna izquierda - Versión y opciones de BD -->
+                        <div class="col-md-6">
+                            <!-- Versión -->
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-tag me-2"></i>Versión del Paquete
+                                </label>
+                                <input type="text" class="form-control form-control-lg text-center" 
+                                       @bind="_version" disabled="@_generando" 
+                                       style="font-size: 1.3rem; letter-spacing: 2px;" />
+                            </div>
+                            
+                            <!-- Opciones de Base de Datos -->
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-database me-2"></i>Opciones de Base de Datos
+                                </label>
+                                <div class="border rounded p-3 bg-light">
+                                    <div class="form-check mb-2">
+                                        <input type="checkbox" class="form-check-input" id="chkIncluirBackup"
+                                               @bind="_incluirBackupBD" disabled="@_generando" />
+                                        <label class="form-check-label" for="chkIncluirBackup">
+                                            <i class="bi bi-archive me-1 text-primary"></i>
+                                            Incluir backup de base de datos
+                                        </label>
+                                        <div class="form-text small">
+                                            Copia la BD actual para restaurar en el destino
+                                        </div>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="chkLimpiarDatos"
+                                               @bind="_limpiarDatosAntes" disabled="@(_generando || !_incluirBackupBD)" />
+                                        <label class="form-check-label" for="chkLimpiarDatos">
+                                            <i class="bi bi-eraser me-1 text-warning"></i>
+                                            Limpiar datos antes del backup
+                                        </label>
+                                        <div class="form-text small">
+                                            Ejecuta LimpiarDatos.sql antes del backup
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Modo de instalación -->
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-pc-display me-2"></i>Modo de Instalación
+                                </label>
+                                <select class="form-select" @bind="_modoInstalacion" disabled="@_generando">
+                                    <option value="Servidor">🖥️ Servidor (BD local + aplicación)</option>
+                                    <option value="Cliente">💻 Cliente (conecta a servidor remoto)</option>
+                                    <option value="Seleccionar">⚙️ Permitir seleccionar al instalar</option>
+                                </select>
+                                <div class="form-text small">
+                                    Define el modo por defecto del instalador generado
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Columna derecha - Configuración del servidor destino -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-gear me-2"></i>Configuración del Destino
+                            </label>
+                            <div class="border rounded p-3 bg-light">
+                                @if (_modoInstalacion == "Cliente")
+                                {
+                                    <!-- Configuración cliente -->
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">Servidor Remoto (IP o Hostname)</label>
+                                        <input type="text" class="form-control" @bind="_servidorRemoto" 
+                                               placeholder="ej: 192.168.1.100" disabled="@_generando" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">Puerto Remoto</label>
+                                        <input type="number" class="form-control" @bind="_puertoRemoto" 
+                                               placeholder="5095" disabled="@_generando" />
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="chkUsarHttpsCliente"
+                                               @bind="_usarHttpsCliente" disabled="@_generando" />
+                                        <label class="form-check-label" for="chkUsarHttpsCliente">
+                                            <i class="bi bi-shield-lock me-1"></i>
+                                            Usar HTTPS (puerto 7060)
+                                        </label>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <!-- Configuración servidor -->
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">
+                                            Servidor SQL (instancia)
+                                        </label>
+                                        <input type="text" class="form-control" @bind="_sqlServerDestino" 
+                                               placeholder="ej: localhost\SQLEXPRESS" disabled="@_generando" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">
+                                            Nombre de la Base de Datos
+                                        </label>
+                                        <input type="text" class="form-control" @bind="_nombreBDDestino" 
+                                               placeholder="ej: SistemIA" disabled="@_generando" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">
+                                            Contraseña SA (SQL Server)
+                                        </label>
+                                        <div class="input-group">
+                                            <input type="@(_mostrarPassword ? "text" : "password")" 
+                                                   class="form-control" @bind="_sqlPasswordDestino" 
+                                                   placeholder="Contraseña del usuario sa" disabled="@_generando" />
+                                            <button type="button" class="btn btn-outline-secondary"
+                                                    @onclick="() => _mostrarPassword = !_mostrarPassword">
+                                                <i class="bi @(_mostrarPassword ? "bi-eye-slash" : "bi-eye")"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <hr class="my-2" />
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">
+                                            <i class="bi bi-hdd me-1"></i>Nombre del Servicio Windows
+                                        </label>
+                                        <input type="text" class="form-control" @bind="_nombreServicio" 
+                                               placeholder="ej: SistemIA" disabled="@_generando" />
+                                        <div class="form-text small">
+                                            Nombre único del servicio (sin espacios)
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">
+                                            <i class="bi bi-folder me-1"></i>Carpeta de Instalación
+                                        </label>
+                                        <input type="text" class="form-control" @bind="_rutaInstalacion" 
+                                               placeholder="ej: C:\\SistemIA" disabled="@_generando" />
+                                        <div class="form-text small">
+                                            Ruta completa donde se instalará el sistema
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <div class="mb-3">
+                                                <label class="form-label small text-muted">
+                                                    <i class="bi bi-globe me-1"></i>Puerto HTTP
+                                                </label>
+                                                <input type="number" class="form-control" @bind="_puertoHttp" 
+                                                       placeholder="5095" disabled="@_generando" min="1024" max="65535" />
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="mb-3">
+                                                <label class="form-label small text-muted">
+                                                    <i class="bi bi-shield-lock me-1 text-success"></i>Puerto HTTPS
+                                                </label>
+                                                <input type="number" class="form-control" @bind="_puertoHttps" 
+                                                       placeholder="7060" disabled="@_generando" min="1024" max="65535" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-text small text-warning mb-2">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        Usa puertos diferentes para cada instalación (ej: 5096/7061, 5097/7062...)
+                                    </div>
+                                    <hr class="my-2" />
+                                    <div class="form-check mb-2">
+                                        <input type="checkbox" class="form-check-input" id="chkCrearAcceso"
+                                               @bind="_crearAccesoDirecto" disabled="@_generando" />
+                                        <label class="form-check-label" for="chkCrearAcceso">
+                                            <i class="bi bi-desktop me-1"></i>
+                                            Crear acceso directo en escritorio
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="chkUsarMkcert"
+                                               @bind="_usarMkcert" disabled="@_generando" />
+                                        <label class="form-check-label" for="chkUsarMkcert">
+                                            <i class="bi bi-shield-lock me-1 text-success"></i>
+                                            Instalar certificado HTTPS (mkcert)
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+                        </div>
                     </div>
+                    
+                    <hr class="my-4" />
 
                     <!-- Barra de progreso -->
                     @if (_generando)
@@ -77,10 +257,17 @@
                     </div>
 
                     <!-- Info -->
-                    <div class="alert alert-info border-0 small mb-0">
-                        <i class="bi bi-info-circle me-2"></i>
-                        <strong>Nota:</strong> La configuración (empresa, servidor SQL, puertos) se ingresará 
-                        al ejecutar el instalador en el equipo destino.
+                    <div class="alert alert-success border-0 small mb-0">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <strong>Listo:</strong> El instalador generado incluirá la configuración preestablecida arriba.
+                        @if (_modoInstalacion == "Seleccionar")
+                        {
+                            <span>El usuario podrá elegir el modo de instalación.</span>
+                        }
+                        else
+                        {
+                            <span>Modo: <strong>@_modoInstalacion</strong></span>
+                        }
                     </div>
                 </div>
             </div>
@@ -204,6 +391,33 @@
     // Lock para sincronizar logs
     private readonly object _logLock = new();
     
+    // ========== NUEVAS OPCIONES DE CONFIGURACIÓN ==========
+    // Opciones de Base de Datos
+    private bool _incluirBackupBD = true;
+    private bool _limpiarDatosAntes = false;
+    
+    // Modo de instalación
+    private string _modoInstalacion = "Servidor"; // Servidor, Cliente, Seleccionar
+    
+    // Configuración Servidor destino
+    private string _sqlServerDestino = "localhost\\SQLEXPRESS";
+    private string _nombreBDDestino = "SistemIA";
+    private string _sqlPasswordDestino = "";
+    private bool _mostrarPassword = false;
+    private bool _crearAccesoDirecto = true;
+    private bool _usarMkcert = true;
+    
+    // Configuración de instalación
+    private string _nombreServicio = "SistemIA";
+    private string _rutaInstalacion = "C:\\SistemIA";
+    private int _puertoHttp = 5095;
+    private int _puertoHttps = 7060;
+    
+    // Configuración Cliente destino
+    private string _servidorRemoto = "";
+    private int _puertoRemoto = 5095;
+    private bool _usarHttpsCliente = false;
+    
     protected override void OnInitialized()
     {
         // Obtener versión actual del sistema si existe
@@ -212,6 +426,61 @@
         {
             _version = File.ReadAllText(versionFile).Trim();
         }
+        
+        // Cargar config.json actual para precargar valores
+        CargarConfiguracionActual();
+    }
+    
+    private void CargarConfiguracionActual()
+    {
+        try
+        {
+            var configPath = Path.Combine(Env.ContentRootPath, "Installer", "config.json");
+            if (File.Exists(configPath))
+            {
+                var json = File.ReadAllText(configPath);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                
+                // Cargar valores actuales
+                if (root.TryGetProperty("ModoInstalacion", out var modo))
+                    _modoInstalacion = modo.GetString() ?? "Servidor";
+                if (root.TryGetProperty("CrearAccesoDirecto", out var acceso))
+                    _crearAccesoDirecto = acceso.GetBoolean();
+                if (root.TryGetProperty("UsarMkcert", out var mkcert))
+                    _usarMkcert = mkcert.GetBoolean();
+                if (root.TryGetProperty("BaseDatos", out var bd))
+                {
+                    if (bd.TryGetProperty("Servidor", out var srv))
+                        _sqlServerDestino = srv.GetString() ?? "localhost\\SQLEXPRESS";
+                    if (bd.TryGetProperty("NombreBD", out var nombreBd))
+                        _nombreBDDestino = nombreBd.GetString() ?? "SistemIA";
+                }
+                if (root.TryGetProperty("Cliente", out var cliente))
+                {
+                    if (cliente.TryGetProperty("ServidorRemoto", out var srvRem))
+                        _servidorRemoto = srvRem.GetString() ?? "";
+                    if (cliente.TryGetProperty("PuertoRemoto", out var puerto))
+                        _puertoRemoto = puerto.GetInt32();
+                    if (cliente.TryGetProperty("UsarHttps", out var https))
+                        _usarHttpsCliente = https.GetBoolean();
+                }
+                
+                // Cargar configuración de instalación
+                if (root.TryGetProperty("Instalacion", out var instalacion))
+                {
+                    if (instalacion.TryGetProperty("NombreServicio", out var nombreSrv))
+                        _nombreServicio = nombreSrv.GetString() ?? "SistemIA";
+                    if (instalacion.TryGetProperty("RutaInstalacion", out var ruta))
+                        _rutaInstalacion = ruta.GetString() ?? "C:\\SistemIA";
+                    if (instalacion.TryGetProperty("PuertoHttp", out var pHttp))
+                        _puertoHttp = pHttp.GetInt32();
+                    if (instalacion.TryGetProperty("PuertoHttps", out var pHttps))
+                        _puertoHttps = pHttps.GetInt32();
+                }
+            }
+        }
+        catch { /* Ignorar errores de carga */ }
     }
     
     private void CerrarModalExito()
@@ -245,6 +514,7 @@
         {
             await ActualizarProgreso(5, "Iniciando generación...");
             AgregarLog("Iniciando generación del paquete de instalación...", "info");
+            AgregarLog($"📋 Modo: {_modoInstalacion} | Incluir BD: {_incluirBackupBD} | Limpiar: {_limpiarDatosAntes}", "info");
             
             ct.ThrowIfCancellationRequested();
             
@@ -252,18 +522,52 @@
             var backupFile = Path.Combine(installerPath, "SistemIA_Base.bak");
             
             // Paso 1: Backup de BD (15%)
-            await ActualizarProgreso(10, "Generando backup de base de datos...");
-            AgregarLog("Generando backup de la base de datos...", "info");
-            
-            var backupResult = await GenerarBackupBD(backupFile);
-            if (!backupResult.exito)
+            if (_incluirBackupBD)
             {
-                AgregarLog($"⚠️ No se pudo generar backup: {backupResult.error}", "warning");
+                await ActualizarProgreso(10, "Generando backup de base de datos...");
+                
+                if (_limpiarDatosAntes)
+                {
+                    // === FLUJO SEGURO: Restaurar a BD temporal, limpiar, y generar backup ===
+                    AgregarLog("🔒 Generando backup limpio de forma SEGURA (sin modificar BD actual)...", "info");
+                    var backupResult = await GenerarBackupLimpio(backupFile);
+                    if (!backupResult.exito)
+                    {
+                        AgregarLog($"⚠️ No se pudo generar backup limpio: {backupResult.error}", "warning");
+                    }
+                    else
+                    {
+                        AgregarLog($"✅ Backup limpio generado (BD original intacta)", "success");
+                    }
+                }
+                else
+                {
+                    // === FLUJO NORMAL: Backup directo sin limpiar ===
+                    AgregarLog("Generando backup de la base de datos...", "info");
+                    var backupResult = await GenerarBackupBD(backupFile);
+                    if (!backupResult.exito)
+                    {
+                        AgregarLog($"⚠️ No se pudo generar backup: {backupResult.error}", "warning");
+                    }
+                    else
+                    {
+                        AgregarLog($"✅ Backup de BD [{backupResult.dbName}] generado", "success");
+                    }
+                }
             }
             else
             {
-                AgregarLog($"✅ Backup de BD [{backupResult.dbName}] generado", "success");
+                AgregarLog("ℹ️ Backup de BD omitido según configuración", "info");
+                // Eliminar backup anterior si existe
+                if (File.Exists(backupFile))
+                    File.Delete(backupFile);
             }
+            
+            // Paso 1.5: Generar config.json personalizado
+            await ActualizarProgreso(15, "Generando configuración personalizada...");
+            AgregarLog("📝 Generando config.json con parámetros personalizados...", "info");
+            await GenerarConfigJsonPersonalizado(installerPath);
+            AgregarLog("✅ Configuración generada", "success");
             
             // Paso 2: Compilar instalador gráfico (30%)
             await ActualizarProgreso(20, "Compilando instalador gráfico...");
@@ -299,7 +603,18 @@
                 await ActualizarProgreso(45, "Agregando scripts de instalación...");
                 if (Directory.Exists(installerPath))
                 {
-                    var scriptFiles = new[] { "Install-SistemIA.ps1", "CrearBaseDatos.sql", "InicializarDatos.sql", "README.md" };
+                    // Scripts y archivos de texto (se copian como UTF-8)
+                    var scriptFiles = new[] { 
+                        "Install-SistemIA.ps1", 
+                        "Actualizar-SistemIA.ps1",
+                        "CrearBaseDatos.sql", 
+                        "InicializarDatos.sql", 
+                        "LimpiarDatos.sql",
+                        "Instalar.bat",
+                        "Diagnostico-SistemIA.bat",
+                        "config.json",
+                        "README.md" 
+                    };
                     foreach (var file in scriptFiles)
                     {
                         var filePath = Path.Combine(installerPath, file);
@@ -310,6 +625,21 @@
                             var entry = archive.CreateEntry(file);
                             using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
                             await writer.WriteAsync(content);
+                        }
+                    }
+                    
+                    // Carpeta Certificados (vacía pero necesaria para mkcert)
+                    var certsDir = Path.Combine(installerPath, "Certificados");
+                    if (Directory.Exists(certsDir))
+                    {
+                        foreach (var certFile in Directory.GetFiles(certsDir))
+                        {
+                            var certFileName = Path.GetFileName(certFile);
+                            AgregarLog($"Agregando Certificados/{certFileName}...", "info");
+                            var entry = archive.CreateEntry($"Certificados/{certFileName}");
+                            using var entryStream = entry.Open();
+                            using var fileStream = File.OpenRead(certFile);
+                            await fileStream.CopyToAsync(entryStream);
                         }
                     }
                 }
@@ -599,6 +929,316 @@
         {
             return (false, ex.Message, null);
         }
+    }
+    
+    /// <summary>
+    /// Genera un backup LIMPIO de forma SEGURA:
+    /// 1. Hace backup de la BD actual
+    /// 2. Restaura a una BD temporal (SistemIA_Temp_Limpieza)
+    /// 3. Ejecuta limpieza en la BD temporal
+    /// 4. Genera backup de la BD temporal limpia
+    /// 5. Elimina la BD temporal
+    /// Así la BD original NUNCA se modifica.
+    /// </summary>
+    private async Task<(bool exito, string? error)> GenerarBackupLimpio(string backupPath)
+    {
+        const string tempDbName = "SistemIA_Temp_Limpieza";
+        string? backupTempPath = null;
+        
+        try
+        {
+            var connectionString = Configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(connectionString))
+                return (false, "No se encontró la cadena de conexión");
+            
+            var builder = new SqlConnectionStringBuilder(connectionString);
+            var dbName = builder.InitialCatalog;
+            
+            if (string.IsNullOrEmpty(dbName))
+                return (false, "No se pudo determinar el nombre de la BD");
+            
+            // Conectar al master para operaciones de BD
+            builder.InitialCatalog = "master";
+            var masterConnString = builder.ConnectionString;
+            
+            using var masterConn = new SqlConnection(masterConnString);
+            await masterConn.OpenAsync();
+            
+            // Obtener ruta de datos de SQL Server
+            using var cmdPath = new SqlCommand("SELECT SERVERPROPERTY('InstanceDefaultDataPath') AS DataPath", masterConn);
+            var dataPath = (string?)await cmdPath.ExecuteScalarAsync() ?? @"C:\Program Files\Microsoft SQL Server\MSSQL16.SQL2022\MSSQL\DATA\";
+            
+            // Obtener ruta de backup de SQL Server
+            using var cmdBackup = new SqlCommand("SELECT SERVERPROPERTY('InstanceDefaultBackupPath') AS BackupPath", masterConn);
+            var backupPathSql = (string?)await cmdBackup.ExecuteScalarAsync() ?? @"C:\Program Files\Microsoft SQL Server\MSSQL16.SQL2022\MSSQL\Backup\";
+            
+            backupTempPath = Path.Combine(backupPathSql, $"{dbName}_Temp_{DateTime.Now:yyyyMMdd_HHmmss}.bak");
+            
+            AgregarLog("📦 Paso 1/5: Generando backup temporal de BD actual...", "info");
+            
+            // 1. Backup de la BD actual a archivo temporal
+            using var cmdBackupOrig = new SqlCommand($@"
+                BACKUP DATABASE [{dbName}] 
+                TO DISK = '{backupTempPath}' 
+                WITH FORMAT, INIT, COMPRESSION", masterConn);
+            cmdBackupOrig.CommandTimeout = 300;
+            await cmdBackupOrig.ExecuteNonQueryAsync();
+            
+            AgregarLog("🔄 Paso 2/5: Restaurando a BD temporal...", "info");
+            
+            // 2. Eliminar BD temporal si existe
+            using var cmdDropTemp = new SqlCommand($@"
+                IF EXISTS (SELECT name FROM sys.databases WHERE name = '{tempDbName}')
+                BEGIN
+                    ALTER DATABASE [{tempDbName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                    DROP DATABASE [{tempDbName}];
+                END", masterConn);
+            cmdDropTemp.CommandTimeout = 60;
+            await cmdDropTemp.ExecuteNonQueryAsync();
+            
+            // 3. Restaurar backup a BD temporal con nuevos nombres de archivo
+            var mdfPath = Path.Combine(dataPath, $"{tempDbName}.mdf");
+            var ldfPath = Path.Combine(dataPath, $"{tempDbName}_log.ldf");
+            
+            // Obtener nombres lógicos del backup
+            using var cmdFileList = new SqlCommand($"RESTORE FILELISTONLY FROM DISK = '{backupTempPath}'", masterConn);
+            cmdFileList.CommandTimeout = 60;
+            string? logicalDataName = null;
+            string? logicalLogName = null;
+            
+            using (var reader = await cmdFileList.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    var type = reader["Type"].ToString();
+                    var logicalName = reader["LogicalName"].ToString();
+                    if (type == "D") logicalDataName = logicalName;
+                    else if (type == "L") logicalLogName = logicalName;
+                }
+            }
+            
+            if (string.IsNullOrEmpty(logicalDataName) || string.IsNullOrEmpty(logicalLogName))
+                return (false, "No se pudieron obtener los nombres lógicos del backup");
+            
+            using var cmdRestore = new SqlCommand($@"
+                RESTORE DATABASE [{tempDbName}] 
+                FROM DISK = '{backupTempPath}'
+                WITH MOVE '{logicalDataName}' TO '{mdfPath}',
+                     MOVE '{logicalLogName}' TO '{ldfPath}',
+                     REPLACE", masterConn);
+            cmdRestore.CommandTimeout = 300;
+            await cmdRestore.ExecuteNonQueryAsync();
+            
+            AgregarLog("🧹 Paso 3/5: Limpiando datos de la BD temporal...", "info");
+            
+            // 4. Ejecutar limpieza en la BD temporal
+            builder.InitialCatalog = tempDbName;
+            var tempConnString = builder.ConnectionString;
+            
+            var limpiarScript = Path.Combine(Env.ContentRootPath, "Installer", "LimpiarDatos.sql");
+            if (!File.Exists(limpiarScript))
+                return (false, "No se encontró LimpiarDatos.sql");
+            
+            var script = await File.ReadAllTextAsync(limpiarScript);
+            
+            using var tempConn = new SqlConnection(tempConnString);
+            await tempConn.OpenAsync();
+            
+            var batches = script.Split(new[] { "\nGO\n", "\nGO\r\n", "\r\nGO\r\n", "\r\nGO\n" }, 
+                                        StringSplitOptions.RemoveEmptyEntries);
+            
+            foreach (var batch in batches)
+            {
+                if (string.IsNullOrWhiteSpace(batch)) continue;
+                using var cmd = new SqlCommand(batch, tempConn);
+                cmd.CommandTimeout = 120;
+                try { await cmd.ExecuteNonQueryAsync(); } catch { /* Ignorar errores individuales */ }
+            }
+            
+            tempConn.Close();
+            
+            AgregarLog("💾 Paso 4/5: Generando backup limpio final...", "info");
+            
+            // 5. Generar backup de la BD temporal limpia
+            var dir = Path.GetDirectoryName(backupPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            
+            using var cmdFinalBackup = new SqlCommand($@"
+                BACKUP DATABASE [{tempDbName}] 
+                TO DISK = '{backupPath}' 
+                WITH FORMAT, INIT, COMPRESSION, 
+                NAME = 'SistemIA Base Limpia - {DateTime.Now:yyyy-MM-dd HH:mm}'", masterConn);
+            cmdFinalBackup.CommandTimeout = 300;
+            await cmdFinalBackup.ExecuteNonQueryAsync();
+            
+            AgregarLog("🗑️ Paso 5/5: Eliminando BD temporal...", "info");
+            
+            // 6. Eliminar BD temporal
+            using var cmdDropFinal = new SqlCommand($@"
+                ALTER DATABASE [{tempDbName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                DROP DATABASE [{tempDbName}];", masterConn);
+            cmdDropFinal.CommandTimeout = 60;
+            await cmdDropFinal.ExecuteNonQueryAsync();
+            
+            // 7. Eliminar backup temporal
+            if (!string.IsNullOrEmpty(backupTempPath) && File.Exists(backupTempPath))
+            {
+                try { File.Delete(backupTempPath); } catch { }
+            }
+            
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            // Intentar limpiar en caso de error
+            try
+            {
+                var connectionString = Configuration.GetConnectionString("DefaultConnection");
+                if (!string.IsNullOrEmpty(connectionString))
+                {
+                    var builder = new SqlConnectionStringBuilder(connectionString);
+                    builder.InitialCatalog = "master";
+                    using var masterConn = new SqlConnection(builder.ConnectionString);
+                    await masterConn.OpenAsync();
+                    
+                    using var cmdDrop = new SqlCommand($@"
+                        IF EXISTS (SELECT name FROM sys.databases WHERE name = '{tempDbName}')
+                        BEGIN
+                            ALTER DATABASE [{tempDbName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                            DROP DATABASE [{tempDbName}];
+                        END", masterConn);
+                    await cmdDrop.ExecuteNonQueryAsync();
+                }
+            }
+            catch { }
+            
+            // Eliminar backup temporal
+            if (!string.IsNullOrEmpty(backupTempPath) && File.Exists(backupTempPath))
+            {
+                try { File.Delete(backupTempPath); } catch { }
+            }
+            
+            return (false, ex.Message);
+        }
+    }
+    
+    /// <summary>
+    /// Ejecuta el script LimpiarDatos.sql antes de generar el backup
+    /// </summary>
+    private async Task<(bool exito, string? error)> EjecutarLimpiezaDatos()
+    {
+        try
+        {
+            var connectionString = Configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(connectionString))
+                return (false, "No se encontró la cadena de conexión");
+            
+            var limpiarScript = Path.Combine(Env.ContentRootPath, "Installer", "LimpiarDatos.sql");
+            if (!File.Exists(limpiarScript))
+                return (false, "No se encontró LimpiarDatos.sql");
+            
+            var script = await File.ReadAllTextAsync(limpiarScript);
+            
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            
+            // Dividir script por GO (separador de batch de SQL Server)
+            var batches = script.Split(new[] { "\nGO\n", "\nGO\r\n", "\r\nGO\r\n", "\r\nGO\n" }, 
+                                        StringSplitOptions.RemoveEmptyEntries);
+            
+            foreach (var batch in batches)
+            {
+                if (string.IsNullOrWhiteSpace(batch)) continue;
+                using var cmd = new SqlCommand(batch, connection);
+                cmd.CommandTimeout = 120;
+                await cmd.ExecuteNonQueryAsync();
+            }
+            
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+    
+    /// <summary>
+    /// Genera el config.json personalizado con los parámetros de la UI
+    /// </summary>
+    private async Task GenerarConfigJsonPersonalizado(string installerPath)
+    {
+        var config = new
+        {
+            Version = _version,
+            FechaGeneracion = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            
+            // ========== SECCIÓN INSTALACIÓN ==========
+            Instalacion = new
+            {
+                ModoInstalacion = _modoInstalacion,
+                CrearAccesoDirecto = _crearAccesoDirecto,
+                UsarMkcert = _usarMkcert,
+                RutaInstalacion = _rutaInstalacion,
+                NombreServicio = _nombreServicio,
+                DescripcionServicio = $"{_nombreServicio} - Sistema de Gestión Empresarial",
+                InicioAutomatico = true,
+                Autostart = true,
+                PuertoHttp = _puertoHttp,
+                PuertoHttps = _puertoHttps
+            },
+            
+            BaseDatos = new
+            {
+                Servidor = _sqlServerDestino,
+                NombreBD = _nombreBDDestino,
+                BaseDatos = _nombreBDDestino,  // Duplicado para compatibilidad con script
+                Usuario = "sa",
+                Contrasena = _sqlPasswordDestino,
+                Password = _sqlPasswordDestino,  // Duplicado para compatibilidad con script
+                RestaurarBackup = _incluirBackupBD,
+                AutenticacionWindows = false,
+                TrustServerCertificate = true
+            },
+            
+            Cliente = new
+            {
+                ServidorRemoto = _servidorRemoto,
+                PuertoRemoto = _puertoRemoto,
+                UsarHttps = _usarHttpsCliente
+            },
+            
+            Puertos = new
+            {
+                HTTP = _puertoHttp,
+                HTTPS = _puertoHttps
+            },
+            
+            Certificado = new
+            {
+                TipoCertificado = _usarMkcert ? "mkcert" : "self-signed",
+                Dominios = new[] { "localhost", "sistemialocal" },
+                ValidezAnios = 10
+            },
+            
+            // ========== DATOS DE EMPRESA (se configuran después) ==========
+            Sociedad = new
+            {
+                Nombre = "Mi Empresa",
+                RUC = "80000000-0",
+                Direccion = ""
+            }
+        };
+        
+        var options = new JsonSerializerOptions 
+        { 
+            WriteIndented = true,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+        
+        var json = JsonSerializer.Serialize(config, options);
+        var configPath = Path.Combine(installerPath, "config.json");
+        await File.WriteAllTextAsync(configPath, json, Encoding.UTF8);
     }
     
     private async Task<(bool exito, string? error, string? publishPath)> PublicarAplicacion(CancellationToken ct)

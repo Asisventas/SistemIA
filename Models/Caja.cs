@@ -101,5 +101,79 @@ namespace SistemIA.Models
         /// Ancho del papel en caracteres para ticket (default: 42 para 80mm)
         /// </summary>
         public int? AnchoTicket { get; set; }
+
+        // ========== CONFIGURACIÓN RESTAURANTE/COMANDAS ==========
+        
+        /// <summary>
+        /// Impresora de comandas para cocina (nombre local o IP de red).
+        /// Formato para red: "\\192.168.1.100\NombreCompartido" o directo por IP/puerto.
+        /// </summary>
+        [StringLength(100)]
+        public string? ImpresoraComandaCocina { get; set; }
+
+        /// <summary>
+        /// Impresora de comandas para barra (nombre local o IP de red).
+        /// </summary>
+        [StringLength(100)]
+        public string? ImpresoraComandaBarra { get; set; }
+
+        /// <summary>
+        /// Puerto TCP para impresora de red cocina (default: 9100 para RAW printing).
+        /// </summary>
+        public int? PuertoImpresoraCocina { get; set; }
+
+        /// <summary>
+        /// Puerto TCP para impresora de red barra.
+        /// </summary>
+        public int? PuertoImpresoraBarra { get; set; }
+
+        /// <summary>
+        /// Si la impresora de cocina es de red (IP directo) vs compartida Windows.
+        /// </summary>
+        public bool? ComandaCocinaEsRed { get; set; }
+
+        /// <summary>
+        /// Si la impresora de barra es de red (IP directo) vs compartida Windows.
+        /// </summary>
+        public bool? ComandaBarraEsRed { get; set; }
+
+        /// <summary>
+        /// Imprimir comanda automáticamente al agregar items al pedido.
+        /// </summary>
+        public bool? ImprimirComandaAutomatica { get; set; }
+
+        /// <summary>
+        /// Número de copias de comanda para cocina.
+        /// </summary>
+        public int? CopiasComandaCocina { get; set; }
+
+        /// <summary>
+        /// Número de copias de comanda para barra.
+        /// </summary>
+        public int? CopiasComandaBarra { get; set; }
+
+        // ========== IMPRESORA COMPROBANTE PEDIDO (CAJA) ==========
+
+        /// <summary>
+        /// Nombre o IP de la impresora para comprobante de pedido al cliente.
+        /// Si está configurada, imprime ticket de pedido para el cliente.
+        /// </summary>
+        [MaxLength(100)]
+        public string? ImpresoraComprobantePedido { get; set; }
+
+        /// <summary>
+        /// Puerto TCP para impresora de comprobante (default: 9100).
+        /// </summary>
+        public int? PuertoImpresoraComprobante { get; set; }
+
+        /// <summary>
+        /// Si la impresora de comprobante es de red (IP directo) vs compartida Windows.
+        /// </summary>
+        public bool? ComprobanteEsRed { get; set; }
+
+        /// <summary>
+        /// Imprimir comprobante de pedido automáticamente al confirmar pedido.
+        /// </summary>
+        public bool? ImprimirComprobantePedidoAuto { get; set; }
     }
 }

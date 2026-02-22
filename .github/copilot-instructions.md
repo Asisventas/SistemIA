@@ -1788,7 +1788,7 @@ Ejemplo de mensaje al usuario al finalizar:
 
 ---
 
-## 📜 Historial de Cambios Recientes (Enero 2026)
+## 📜 Historial de Cambios Recientes (Enero-Febrero 2026)
 
 ### Sesión 7 de Enero 2026 - Correcciones SIFEN
 
@@ -2488,3 +2488,168 @@ replacements = {
 - `Pages/MonitorSifen.razor` - 40+ correcciones de encoding
 
 > **📖 Ver documentación completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md` sección "Sesión 28-Ene-2026"
+
+---
+
+## 📋 RESUMEN EJECUTIVO - Estado del Sistema (20 Febrero 2026)
+
+### ✅ Funcionalidades SIFEN Completadas
+
+| Funcionalidad | Estado | Última Actualización |
+|---------------|--------|---------------------|
+| Generación CDC (44 dígitos) | ✅ Funcional | Enero 2026 |
+| Construcción XML DE v150 | ✅ Funcional | Enero 2026 |
+| Firma Digital con certificado .p12 | ✅ Funcional | Enero 2026 |
+| Envío a SIFEN (Lote Asíncrono) | ✅ Funcional | 19-Ene-2026 |
+| Envío a SIFEN (Sync) | ✅ Funcional | 19-Ene-2026 |
+| Consulta de Lote/CDC | ✅ Funcional | 22-Ene-2026 |
+| Generación QR con cHashQR | ✅ Funcional | 28-Ene-2026 |
+| Cancelación de Facturas (Eventos) | ✅ Funcional | 20-Ene-2026 |
+| Notas de Crédito Electrónicas | ✅ Funcional | 22-Ene-2026 |
+| Regeneración de QR desde SIFEN | ✅ Funcional | 28-Ene-2026 |
+| KuDE Facturas/NC (PDF A4) | ✅ Funcional | 22-Ene-2026 |
+| Impresión Tickets (Térmica) | ✅ Funcional | Enero 2026 |
+
+### 🔧 Errores Críticos Resueltos
+
+| Error | Causa | Solución | Fecha |
+|-------|-------|----------|-------|
+| 0160 XML Mal Formado | GZip vs ZIP | Usar `ZipArchive` | 7-Ene |
+| 0160 XML Mal Formado | Signature dentro de DE | Mover FUERA de `</DE>` | 16-Ene |
+| 0160 XML Mal Formado | dId 16 dígitos | Formato DDMMYYYYHHMM (12) | 19-Ene |
+| 1303 Tipo Contribuyente | iTiContRec en no contribuyentes | Omitir campo si iNatRec=2 | 21-Ene |
+| 1313 Tipo Documento | Código 5 mal mapeado | "Innominado" no "Cédula ext" | 21-Ene |
+| QR Inválido | Hash incorrecto en UrlQrSifen | Endpoint regenerar-qr | 28-Ene |
+| Encoding UTF-8 Triple | Corrupción de bytes | Python byte manipulation | 28-Ene |
+
+### 📁 Archivos Clave del Sistema
+
+| Archivo | Función |
+|---------|---------|
+| `Models/Sifen.cs` | Firma XML, envío SOAP, comunicación SET |
+| `Services/DEXmlBuilder.cs` | Construcción XML Factura (iTiDE=1) |
+| `Services/NCEXmlBuilder.cs` | Construcción XML Nota Crédito (iTiDE=5) |
+| `Services/EventoSifenService.cs` | Cancelación de documentos |
+| `Utils/CdcGenerator.cs` | Generación CDC 44 dígitos |
+| `Program.cs` | Endpoints API SIFEN |
+
+### 🌐 URLs de Webservices (Confirmadas)
+
+| Servicio | URL Test |
+|----------|----------|
+| Envío Lote | `https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl` |
+| Consulta Lote | `https://sifen-test.set.gov.py/de/ws/consultas/consulta-lote.wsdl` |
+| Consulta DE | `https://sifen-test.set.gov.py/de/ws/consultas/consulta.wsdl` |
+| Eventos | `https://sifen-test.set.gov.py/de/ws/eventos/evento.wsdl` |
+
+### 📌 Reglas Críticas para Desarrollo
+
+1. **Servidor:** Usar `Start-Process` para iniciar servidor independiente antes de pruebas HTTP
+2. **UTF-8:** No confiar en terminal PowerShell para analizar JSON con tildes - guardar a archivo
+3. **Migraciones:** NUNCA usar `--no-build` al CREAR migraciones EF Core
+4. **CSS:** Siempre usar variables de tema (`var(--bg-surface)`)
+5. **SIFEN dId:** Formato obligatorio `DDMMYYYYHHMM` (12 dígitos)
+6. **QR SIFEN:** Usar `UrlQrSifen` del XML firmado, no generar URL manual
+
+> **📖 Documentación técnica completa:** `.ai-docs/SIFEN_DOCUMENTACION_COMPLETA.md`
+
+---
+
+## 📜 Historial de Cambios (Febrero 2026)
+
+### Sesión 19-20 Febrero 2026 - Unificación Membresías y Correcciones Gimnasio
+
+#### 🏋️ Unificación del Sistema de Membresías
+
+**Objetivo:** Eliminar `PlanMembresia` y usar solo `Producto` con `EsMembresia=true`.
+
+**Cambios Realizados:**
+
+1. **Modelo MembresiaCliente** - FK cambiada de `IdPlan→PlanMembresia` a `IdProducto→Producto`
+2. **Eliminado `DbSet<PlanMembresia>`** de AppDbContext.cs
+3. **Eliminado archivo** `Models/Gimnasio/PlanMembresia.cs`
+4. **Página GimnasioPlanes.razor eliminada** - Ya no necesaria
+5. **NavMenu.razor** - Removido link a `/gimnasio/planes`
+6. **Migración:** `20260219203444_Eliminar_PlanMembresia_Usar_Producto`
+
+**Páginas Actualizadas:**
+- `GimnasioMiembros.razor` - Usa productos con `EsMembresia=true`
+- `GimnasioPortalCliente.razor` - Modal de membresías disponibles
+- `GimnasioHistorial.razor` - Referencias a Producto
+- `GimnasioReservas.razor` - Referencias actualizadas
+- `GimnasioAcceso.razor` - Control de acceso actualizado
+- `InformePdfService.cs` - Reportes con producto
+
+#### 🔒 Bloqueo de Modificación de Stock en Lotes
+
+**Objetivo:** El stock de lotes solo debe modificarse mediante Ajustes de Stock.
+
+**Cambios en Productos.razor:**
+- Campo stock **deshabilitado** para lotes existentes
+- **Alerta amarilla** con candado explicando la restricción
+- Link directo a módulo de Ajustes de Stock
+- Lógica de backend actualizada para no modificar stock en `GuardarLote()`
+
+#### 🔧 Corrección de Columnas Faltantes en BD
+
+**Error:** `El nombre de columna 'AccesoTodasAreasMembresia' no es válido`
+
+**Causa:** Migración `20260219012322_Agregar_Campos_Membresia_Producto` no incluía 4 columnas.
+
+**Solución:** Migración manual `20260220155002_Agregar_Campos_Membresia_Faltantes` con SQL idempotente:
+
+```sql
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Productos') AND name = 'AccesoTodasAreasMembresia')
+    ALTER TABLE [Productos] ADD [AccesoTodasAreasMembresia] bit NOT NULL DEFAULT 1;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Productos') AND name = 'AreasIncluidasMembresia')
+    ALTER TABLE [Productos] ADD [AreasIncluidasMembresia] nvarchar(200) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Productos') AND name = 'DiasRecordatorioMembresia')
+    ALTER TABLE [Productos] ADD [DiasRecordatorioMembresia] int NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Productos') AND name = 'RenovacionAutomaticaMembresia')
+    ALTER TABLE [Productos] ADD [RenovacionAutomaticaMembresia] bit NOT NULL DEFAULT 0;
+```
+
+#### 🖥️ Corrección Portal Cliente Gimnasio
+
+**Problemas Corregidos:**
+
+1. **Consulta membresía activa** - Usaba `FechaFin` (siempre nulo) → Cambiado a `FechaVencimiento`
+2. **Botón "Ver Planes"** - No hacía nada → Ahora abre modal de membresías
+3. **Modal de membresías** - Nuevo modal que muestra productos con `EsMembresia=true`
+
+**Nuevo Modal Incluye:**
+- Nombre y precio de cada membresía
+- Duración en días
+- Lista de beneficios (clases, PT, congelamiento, áreas)
+- Colores personalizados por membresía
+- Mensaje para contactar recepción
+
+#### 📦 Archivos Modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `Models/Gimnasio/MembresiaCliente.cs` | FK IdProducto→Producto |
+| `Data/AppDbContext.cs` | Removido DbSet PlanMembresia |
+| `Pages/GimnasioMiembros.razor` | Usa Producto.EsMembresia |
+| `Pages/GimnasioPortalCliente.razor` | Modal membresías, fix consulta |
+| `Pages/Productos.razor` | Stock lotes bloqueado |
+| `Shared/NavMenu.razor` | Removido link planes |
+| `Migrations/20260220155002_*.cs` | 4 columnas faltantes |
+
+#### 🗄️ Migraciones Aplicadas
+
+| Migración | Descripción |
+|-----------|-------------|
+| `20260219203444_Eliminar_PlanMembresia_Usar_Producto` | FK MembresiaCliente→Producto |
+| `20260220155002_Agregar_Campos_Membresia_Faltantes` | 4 columnas membresía en Productos |
+
+#### ✅ Estado Final
+
+- Sistema de membresías unificado usando Productos
+- Portal cliente funcional con modal de membresías
+- Stock de lotes protegido (solo editable via Ajustes)
+- Publicación self-contained generada en `publish_selfcontained/`
+- Script BD idempotente actualizado en `Installer/CrearBaseDatos.sql`

@@ -90,11 +90,15 @@ namespace SistemIA.Models
         public int? IdTipoDocumentoOperacion { get; set; }
         public TipoDocumentoOperacion? TipoDocumentoOperacion { get; set; }
     [MaxLength(20)] public string? NroPedido { get; set; } // Número de pedido/presupuesto de referencia
+    public int? IdPedido { get; set; } // FK al pedido de mesa/cancha
 
     // Clasificación general
     [MaxLength(13)] public string TipoIngreso { get; set; } = "VENTAS";
     
     // Referencia al presupuesto origen (si fue convertido desde un presupuesto)
     public int? IdPresupuestoOrigen { get; set; }
+
+    // Referencia a suscripción (para facturación recurrente)
+    public int? IdSuscripcion { get; set; }
     }
 }

@@ -6,6 +6,7 @@
 @inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject SistemIA.Services.IAjusteStockService Ajustes
 @inject SistemIA.Services.IInventarioService Inventario
+@inject SistemIA.Services.ILoteService LoteService
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject SistemIA.Services.ICajaProvider CajaProvider
@@ -13,7 +14,7 @@
 @inject SistemIA.Services.ITrackingService TrackingService
 @implements IAsyncDisposable
 
-<PageProtection Modulo="/inventario" Permiso="VIEW">
+<PageProtection Modulo="/inventario/ajustes" Permiso="VIEW">
 
 <h3 class="mb-3">Ajuste de Stock</h3>
 
@@ -112,27 +113,86 @@
                         @onpointerdown="() => OnProductoSuggestionMouseDownAsync(p)" @onpointerdown:preventDefault @onpointerdown:stopPropagation
                         @onmousedown="() => OnProductoSuggestionMouseDownAsync(p)" @onmousedown:preventDefault @onmousedown:stopPropagation
                         @onclick="() => OnProductoSuggestionMouseDownAsync(p)" @onclick:preventDefault @onclick:stopPropagation>
-                  @p.Descripcion
+                  @p.Descripcion @if(p.ControlaLote){<span class="badge bg-info ms-1">Lotes</span>}
                 </button>
               }
             </div>
           }
         </div>
       </div>
-      <div class="col-md-2">
+      
+      @* Selector de Lote - Solo visible si el producto controla lotes *@
+      @if (productoControlaLote)
+      {
+        <div class="col-md-2">
+          <label class="form-label"><i class="bi bi-box-seam me-1"></i>Lote</label>
+         <select class="form-select form-select-sm" 
+        value="@selectedLoteId" 
+        @onchange="OnLoteChanged" 
+        disabled="@(!lotesDisponibles.Any())">
+    @if (!lotesDisponibles.Any())
+    {
+        <option value="">-- Sin lotes --</option>
+    }
+    else
+    {
+        @foreach (var lote in lotesDisponibles)
+        {
+            var venc = lote.FechaVencimiento.HasValue ? $" - Venc: {lote.FechaVencimiento:dd/MM/yy}" : "";
+            // Usamos N2 para que coincida con lo que ves en pantalla
+            <option value="@lote.IdProductoLote">
+                @lote.NumeroLote (@lote.Stock.ToString("N2"))@venc
+            </option>
+        }
+    }
+</select>
+        </div>
+      }
+      
+      @* Selector de modo Paquete/Unidad - Solo visible si el producto tiene paquetes *@
+      @if (productoEsPaquete)
+      {
+        <div class="col-md-2">
+          <label class="form-label"><i class="bi bi-box me-1"></i>Ajustar por</label>
+          <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="modoAjuste" id="modoUnidad" @onchange="@(() => OnModoAjusteChanged(false))" checked="@(!ajustePorPaquete)" />
+            <label class="btn btn-outline-secondary btn-sm" for="modoUnidad">Unidad</label>
+            <input type="radio" class="btn-check" name="modoAjuste" id="modoPaquete" @onchange="@(() => OnModoAjusteChanged(true))" checked="@ajustePorPaquete" />
+            <label class="btn btn-outline-primary btn-sm" for="modoPaquete">Paquete (@productoCantidadPorPaquete u.)</label>
+          </div>
+        </div>
+      }
+      
+      <div class="@(productoControlaLote || productoEsPaquete ? "col-md-1" : "col-md-2")">
         <label class="form-label">Stock sistema</label>
-        <input class="form-control" value="@stockSistema.ToString("N2")" disabled />
+        @if (productoEsPaquete && ajustePorPaquete)
+        {
+          var paqSist = Math.Floor(stockSistema / productoCantidadPorPaquete);
+          var sueltaSist = stockSistema % productoCantidadPorPaquete;
+          <input class="form-control form-control-sm" value="@paqSist.ToString("N0") paq @(sueltaSist > 0 ? $"+{sueltaSist:N0}u" : "")" disabled title="@stockSistema.ToString("N2") unidades totales" />
+        }
+        else
+        {
+          <input class="form-control form-control-sm" value="@stockSistema.ToString("N2")" disabled />
+        }
       </div>
       <div class="col-md-1">
-        <label class="form-label">Stock ajuste</label>
-        <input class="form-control" type="number" step="@(productoPermiteDecimal ? "0.01" : "1")" min="@(productoPermiteDecimal ? "0.01" : "1")" @bind-value="stockAjuste" @bind-value:event="oninput" @onfocusout="ValidarStockAjustePrincipal" />
+        <label class="form-label">@(ajustePorPaquete ? "Paquetes" : "Stock") ajuste</label>
+        @if (productoEsPaquete && ajustePorPaquete)
+        {
+          <input class="form-control form-control-sm" type="number" step="1" min="0" @bind-value="paquetesAjuste" @bind-value:event="oninput" @onfocusout="ValidarAjustePaquete" title="Cantidad de paquetes de @productoCantidadPorPaquete unidades" />
+        }
+        else
+        {
+          <input class="form-control form-control-sm" type="number" step="@(productoPermiteDecimal ? "0.01" : "1")" min="0" @bind-value="stockAjuste" @bind-value:event="oninput" @onfocusout="ValidarStockAjustePrincipal" />
+        }
       </div>
-      <div class="col-md-2">
+      <div class="@(productoControlaLote || productoEsPaquete ? "col-md-1" : "col-md-2")">
         <label class="form-label">Costo (Gs)</label>
-        <input class="form-control" value="@costo.ToString("N0")" disabled />
+        <input class="form-control form-control-sm" value="@costo.ToString("N0")" disabled />
       </div>
       <div class="col-md-1 text-end">
-        <button class="btn btn-success w-100" @onclick="AgregarLinea" disabled="@(selectedProductoId==0 || selectedDepositoId==0)">
+        <button class="btn btn-success w-100" @onclick="AgregarLinea" disabled="@(selectedProductoId==0 || selectedDepositoId==0 || (productoControlaLote && !selectedLoteId.HasValue))">
           <i class="bi bi-plus-lg"></i>
         </button>
       </div>
@@ -146,6 +206,7 @@
           <tr>
             <th style="width:50px;">#</th>
             <th>Producto</th>
+            <th>Lote</th>
             <th class="text-center" style="width:60px;">Paq.</th>
             <th>Depósito</th>
             <th class="text-end">Stock sistema</th>
@@ -160,7 +221,7 @@
         <tbody>
           @if (!lineas.Any())
           {
-            <tr><td colspan="11" class="text-center text-muted py-3">Sin líneas</td></tr>
+            <tr><td colspan="12" class="text-center text-muted py-3">Sin líneas</td></tr>
           }
           else
           {
@@ -175,6 +236,20 @@
                 <td>
                   <div class="fw-semibold">@l.Descripcion</div>
                   <div class="small text-muted">Cod: @l.CodigoInterno</div>
+                </td>
+                <td class="small">
+                  @if (l.ControlaLote && l.IdLote.HasValue)
+                  {
+                    <div class="fw-semibold">@l.NumeroLote</div>
+                    @if (l.FechaVencimiento.HasValue)
+                    {
+                      <div class="text-muted" style="font-size:0.75rem;">Venc: @l.FechaVencimiento?.ToString("dd/MM/yy")</div>
+                    }
+                  }
+                  else
+                  {
+                    <span class="text-muted">-</span>
+                  }
                 </td>
                 <td class="text-center small">
                   @if (esPaq)
@@ -205,7 +280,7 @@
         </tbody>
         <tfoot>
           <tr>
-            <th colspan="9" class="text-end">Total</th>
+            <th colspan="10" class="text-end">Total</th>
             <th class="text-end">@lineas.Sum(x=>x.Monto).ToString("N0")</th>
             <th></th>
           </tr>
@@ -302,6 +377,17 @@
   private bool guardando;
   private int? ajusteGeneradoId;
 
+  // ========== VARIABLES PARA LOTES ==========
+  private bool productoControlaLote;  // Si el producto seleccionado controla lotes
+  private List<SistemIA.Models.ProductoLote> lotesDisponibles = new();  // Lotes del producto+depósito
+  private int? selectedLoteId;  // Lote seleccionado (null = ajuste general sin lote)
+
+  // ========== VARIABLES PARA PAQUETES ==========
+  private bool productoEsPaquete;  // Si el producto se vende por paquete (unidad de medida 005 o 006)
+  private int productoCantidadPorPaquete = 1;  // Unidades por paquete
+  private bool ajustePorPaquete;  // true = el usuario quiere ajustar por paquete, false = por unidad
+  private decimal paquetesAjuste;  // Cantidad de paquetes a ajustar (cuando ajustePorPaquete = true)
+
   // Variables de caja
   private List<SistemIA.Models.Caja> CajasDisponibles = new();
   private SistemIA.Models.Caja? CajaActiva;
@@ -374,11 +460,139 @@
 
   private async Task CargarContextoProducto()
   {
+    // Limpiar estado de lotes (usar asignación en lugar de Clear para evitar NullReferenceException)
+    lotesDisponibles = new();
+    productoControlaLote = false;
+    selectedLoteId = null;
+    
+    // Limpiar estado de paquetes
+    productoEsPaquete = false;
+    productoCantidadPorPaquete = 1;
+    ajustePorPaquete = false;
+    paquetesAjuste = 0;
+    
     if (selectedProductoId==0 || selectedDepositoId==0) { stockSistema=0; costo=0; return; }
-  var p = productos!.First(x=>x.IdProducto==selectedProductoId);
-  costo = p.CostoUnitarioGs ?? 0m;
-    try { stockSistema = await Inventario.ObtenerStockAsync(selectedProductoId, selectedDepositoId); }
-    catch { stockSistema = 0; }
+    
+    var p = productos!.First(x=>x.IdProducto==selectedProductoId);
+    costo = p.CostoUnitarioGs ?? 0m;
+    productoControlaLote = p.ControlaLote;
+    
+    // Detectar si es producto por paquete (unidad de medida 005 o 006 con cantidad > 1)
+    productoEsPaquete = (p.UnidadMedidaCodigo == "005" || p.UnidadMedidaCodigo == "006") && (p.CantidadPorPaquete ?? 1) > 1;
+    productoCantidadPorPaquete = (int)(p.CantidadPorPaquete ?? 1);
+    
+    if (productoControlaLote)
+    {
+      // Cargar lotes del producto en el depósito seleccionado (todos, incluyendo stock 0 para poder ajustar)
+      try 
+      { 
+        lotesDisponibles = await LoteService.ObtenerLotesProductoAsync(selectedProductoId, selectedDepositoId, soloConStock: false);
+        // Ordenar por fecha de vencimiento (los próximos a vencer primero)
+        lotesDisponibles = lotesDisponibles.OrderBy(l => l.FechaVencimiento ?? DateTime.MaxValue).ToList();
+      }
+      catch { lotesDisponibles = new(); }
+      
+      // Si hay lotes, el stock sistema debe venir del lote seleccionado
+      if (lotesDisponibles.Any())
+      {
+        // Seleccionar automáticamente el primer lote con stock
+        var primerLoteConStock = lotesDisponibles.FirstOrDefault(l => l.Stock > 0);
+        if (primerLoteConStock != null)
+        {
+          selectedLoteId = primerLoteConStock.IdProductoLote;
+          stockSistema = primerLoteConStock.Stock;
+        }
+        else
+        {
+          // Si no hay lotes con stock, seleccionar el primero
+          selectedLoteId = lotesDisponibles.First().IdProductoLote;
+          stockSistema = lotesDisponibles.First().Stock;
+        }
+      }
+      else
+      {
+        stockSistema = 0;
+        selectedLoteId = null;
+      }
+    }
+    else
+    {
+      // Producto sin control de lotes - obtener stock general
+      try { stockSistema = await Inventario.ObtenerStockAsync(selectedProductoId, selectedDepositoId); }
+      catch { stockSistema = 0; }
+    }
+    
+    // Debug: Log del estado final
+    Console.WriteLine($"[CargarContextoProducto] Producto={selectedProductoId}, Deposito={selectedDepositoId}, ControlaLote={productoControlaLote}, LotesDisponibles={lotesDisponibles?.Count ?? 0}, LoteSeleccionado={selectedLoteId}, StockSistema={stockSistema}");
+    
+    // Forzar actualización de la UI
+    StateHasChanged();
+  }
+
+ private void OnLoteChanged(ChangeEventArgs e)
+{
+    // Limpiamos mensajes para evitar confusión
+    errorMsg = null;
+
+    if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+    {
+        selectedLoteId = id;
+        // Buscamos el lote exacto en la lista que ya cargamos
+        var lote = lotesDisponibles.FirstOrDefault(l => l.IdProductoLote == id);
+        
+        if (lote != null)
+        {
+            stockSistema = lote.Stock; // <--- Aquí es donde se arregla la visualización
+        }
+        else 
+        {
+            stockSistema = 0;
+        }
+    }
+    else
+    {
+        selectedLoteId = null;
+        stockSistema = 0;
+    }
+    
+    // Forzamos al UI a refrescar los valores de stock
+    StateHasChanged();
+}
+
+  // ========== MÉTODOS PARA MANEJO DE PAQUETES ==========
+  private void OnModoAjusteChanged(bool porPaquete)
+  {
+    ajustePorPaquete = porPaquete;
+    if (porPaquete)
+    {
+      // Convertir stock ajuste actual a paquetes
+      paquetesAjuste = productoCantidadPorPaquete > 0 ? Math.Floor(stockAjuste / productoCantidadPorPaquete) : 0;
+    }
+    else
+    {
+      // Convertir paquetes a unidades
+      stockAjuste = paquetesAjuste * productoCantidadPorPaquete;
+    }
+    StateHasChanged();
+  }
+
+  private void ValidarAjustePaquete()
+  {
+    errorMsg = null;
+    if (paquetesAjuste < 0) paquetesAjuste = 0;
+    
+    // Calcular unidades totales
+    var unidadesAjuste = paquetesAjuste * productoCantidadPorPaquete;
+    stockAjuste = unidadesAjuste;
+    
+    // Validar que el stock sistema tenga suficientes paquetes completos si se está reduciendo
+    var paquetesSistema = productoCantidadPorPaquete > 0 ? Math.Floor(stockSistema / productoCantidadPorPaquete) : 0;
+    
+    // Si el usuario está ajustando por paquete, mostrar advertencia si no hay paquetes completos suficientes
+    if (paquetesAjuste > 0 && paquetesSistema == 0 && stockSistema < productoCantidadPorPaquete)
+    {
+      errorMsg = $"⚠️ Stock insuficiente para paquetes completos. Stock actual: {stockSistema:N2} unidades (se necesitan {productoCantidadPorPaquete} u/paquete)";
+    }
   }
 
   private async Task AgregarLinea()
@@ -390,14 +604,30 @@
     var p = productos!.First(x=>x.IdProducto==selectedProductoId);
     var dep = depositos!.First(d=>d.IdDeposito==selectedDepositoId);
     
+    // Validar lote si el producto controla lotes
+    if (productoControlaLote && !selectedLoteId.HasValue)
+    {
+      errorMsg = "Seleccione un lote para este producto";
+      return;
+    }
+    
+    // Obtener información del lote seleccionado
+    var loteSeleccionado = lotesDisponibles?.FirstOrDefault(l => l.IdProductoLote == selectedLoteId);
+    
+    // Si está en modo paquete, calcular unidades a partir de paquetes
+    if (productoEsPaquete && ajustePorPaquete)
+    {
+      ValidarAjustePaquete(); // Esto calcula stockAjuste = paquetesAjuste * productoCantidadPorPaquete
+    }
+    
     // Validar cantidad según PermiteDecimal
     if (!productoPermiteDecimal)
     {
       stockAjuste = Math.Round(stockAjuste, 0);
     }
     
-    // Verificar si ya existe la misma combinación producto+depósito
-    var existente = lineas.FirstOrDefault(x=>x.IdProducto==p.IdProducto && x.IdDeposito==selectedDepositoId);
+    // Verificar si ya existe la misma combinación producto+depósito+lote
+    var existente = lineas.FirstOrDefault(x=>x.IdProducto==p.IdProducto && x.IdDeposito==selectedDepositoId && x.IdLote == selectedLoteId);
     if (existente is not null)
     {
       existente.StockSistema = stockSistema;
@@ -420,13 +650,21 @@
         PrecioVentaGs = p.PrecioUnitarioGs,
         PermiteDecimal = p.PermiteDecimal,
         CantidadPorPaquete = (int)(p.CantidadPorPaquete ?? 1),
-        UnidadMedidaCodigo = p.UnidadMedidaCodigo
+        UnidadMedidaCodigo = p.UnidadMedidaCodigo,
+        // Información del lote
+        IdLote = selectedLoteId,
+        NumeroLote = loteSeleccionado?.NumeroLote,
+        FechaVencimiento = loteSeleccionado?.FechaVencimiento,
+        ControlaLote = productoControlaLote
       };
       Recalcular(l);
       lineas.Add(l);
     }
     // limpiar editor de línea
     selectedProductoId = 0; stockSistema = 0; stockAjuste = 0; costo = 0; productoPermiteDecimal = false; BuscarProducto = string.Empty; MostrarSugProductos = false;
+    productoControlaLote = false; lotesDisponibles = new(); selectedLoteId = null;  // Usar new() en lugar de null para evitar NullReferenceException
+    // Resetear variables de paquete
+    productoEsPaquete = false; productoCantidadPorPaquete = 1; ajustePorPaquete = false; paquetesAjuste = 0;
   }
 
   private void AplicarFiltroProductos()
@@ -485,7 +723,11 @@
       if (selectedDepositoId != value)
       {
         selectedDepositoId = value;
-        _ = CargarContextoProducto();
+        // Recargar contexto del producto con el nuevo depósito
+        _ = InvokeAsync(async () => {
+          await CargarContextoProducto();
+          StateHasChanged();
+        });
       }
     }
   }
@@ -552,7 +794,7 @@
       var auth = await AuthStateProvider.GetAuthenticationStateAsync();
       var usuario = auth.User?.Identity?.Name ?? auth.User?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Sistema";
 
-      var inputs = lineas.Select(l => new SistemIA.Services.LineaAjusteInput(l.IdProducto, l.IdDeposito, l.StockSistema, l.StockAjuste, l.CostoUnitarioGs)).ToList();
+      var inputs = lineas.Select(l => new SistemIA.Services.LineaAjusteInput(l.IdProducto, l.IdDeposito, l.StockSistema, l.StockAjuste, l.CostoUnitarioGs, l.IdLote)).ToList();
       var nuevoId = await Ajustes.CrearAjusteAsync(primerDep.IdSucursal, cajaSeleccionadaId, CajaActiva?.TurnoActual, usuario, comentario, inputs, FechaAjuste);
       ajusteGeneradoId = nuevoId;
       okMsg = $"Ajuste #{nuevoId} guardado";
@@ -617,7 +859,12 @@
       logoDataUri = $"data:image/png;base64,{b64}";
     }
 
-    var rows = string.Join("", lineas.Select(l=>$"<tr><td>{Escape(l.CodigoInterno)}</td><td>{Escape(l.Descripcion)}</td><td>{Escape(l.DepositoNombre)}</td><td class='right'>{l.StockSistema:N2}</td><td class='right'>{l.StockAjuste:N2}</td><td class='right'>{l.Diferencia:N2}</td><td class='right'>{l.CostoUnitarioGs:N0}</td><td class='right'>{l.PrecioVentaGs:N0}</td><td class='right'>{l.Monto:N0}</td></tr>"));
+    var rows = string.Join("", lineas.Select(l=>{
+      var loteDisplay = !string.IsNullOrWhiteSpace(l.NumeroLote) 
+        ? $"{Escape(l.NumeroLote)}{(l.FechaVencimiento.HasValue ? $" <small style='color:#6c757d;'>({l.FechaVencimiento:dd/MM/yy})</small>" : "")}"
+        : "-";
+      return $"<tr><td>{Escape(l.CodigoInterno)}</td><td>{Escape(l.Descripcion)}</td><td>{loteDisplay}</td><td>{Escape(l.DepositoNombre)}</td><td class='right'>{l.StockSistema:N2}</td><td class='right'>{l.StockAjuste:N2}</td><td class='right'>{l.Diferencia:N2}</td><td class='right'>{l.CostoUnitarioGs:N0}</td><td class='right'>{l.PrecioVentaGs:N0}</td><td class='right'>{l.Monto:N0}</td></tr>";
+    }));
     var comentarioHtml = string.IsNullOrWhiteSpace(comentario) ? string.Empty : $"<div class='muted'>Comentario: {Escape(comentario!)}</div>";
     var sb = new System.Text.StringBuilder();
     sb.AppendLine("<div class=\"container-fluid\">");
@@ -640,9 +887,9 @@
 
     if (!string.IsNullOrEmpty(comentarioHtml)) sb.AppendLine($"  {comentarioHtml}");
     sb.AppendLine("  <table class=\"table table-sm table-ajuste\">");
-    sb.AppendLine("    <thead><tr><th>Código</th><th>Descripción</th><th>Depósito</th><th class='right'>Stock sistema</th><th class='right'>Stock ajuste</th><th class='right'>Diferencia</th><th class='right'>Costo</th><th class='right'>Precio</th><th class='right'>Monto</th></tr></thead>");
+    sb.AppendLine("    <thead><tr><th>Código</th><th>Descripción</th><th>Lote</th><th>Depósito</th><th class='right'>Stock sistema</th><th class='right'>Stock ajuste</th><th class='right'>Diferencia</th><th class='right'>Costo</th><th class='right'>Precio</th><th class='right'>Monto</th></tr></thead>");
     sb.AppendLine($"    <tbody>{rows}</tbody>");
-    sb.AppendLine($"    <tfoot><tr><th colspan='8' class='right'>Total</th><th class='right'>{total}</th></tr></tfoot>");
+    sb.AppendLine($"    <tfoot><tr><th colspan='9' class='right'>Total</th><th class='right'>{total}</th></tr></tfoot>");
     sb.AppendLine("  </table>");
     sb.AppendLine("  <div class=\"footer\">** Ajuste generado por el sistema **</div>");
     sb.AppendLine("</div>");
@@ -857,5 +1104,11 @@
     public bool PermiteDecimal { get; set; }
     public int CantidadPorPaquete { get; set; } = 1;
     public string? UnidadMedidaCodigo { get; set; }
+    
+    // ========== CAMPOS PARA LOTES ==========
+    public int? IdLote { get; set; }  // ID del lote (null = sin lote específico)
+    public string? NumeroLote { get; set; }  // Número de lote para mostrar
+    public DateTime? FechaVencimiento { get; set; }  // Vencimiento del lote
+    public bool ControlaLote { get; set; }  // Si el producto controla lotes
   }
 }

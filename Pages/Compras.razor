@@ -253,8 +253,8 @@
     <hr />
     <h5>Detalle</h5>
 
-    <div class="row g-2 align-items-end">
-        <div class="col-md-4">
+    <div class="row g-2 align-items-end mb-2">
+        <div class="col-md-5">
             <label class="form-label d-flex align-items-center justify-content-between">
                 <span>Producto</span>
                 <span class="d-flex gap-1">
@@ -309,14 +309,16 @@
                     }
                 </select>
             </div>
-            <div class="col-auto position-relative">
+            <div class="col-auto">
                 <label class="form-label text-center d-block">Cantidad</label>
-                <input id="inputCantidadCompras" type="number" step="1" min="1" class="form-control text-center" style="width: 80px;"
-                       @bind="CantidadIngresadaCompra" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
-                @if (ModoIngresoCompra == "paquete")
-                {
-                    <small class="text-muted position-absolute start-50 translate-middle-x" style="top: 100%; white-space: nowrap; font-size: 0.7rem;">= @((CantidadIngresadaCompra * cantidadPorPaq).ToString("N0")) und.</small>
-                }
+                <div class="d-flex align-items-center gap-1">
+                    <input id="inputCantidadCompras" type="number" step="1" min="1" class="form-control text-center" style="width: 80px;"
+                           @bind="CantidadIngresadaCompra" @bind:event="oninput" @onfocusout="ValidarCantidadCompra" />
+                    @if (ModoIngresoCompra == "paquete")
+                    {
+                        <small class="text-muted" style="font-size: 0.75rem; white-space: nowrap;">@((CantidadIngresadaCompra * cantidadPorPaq).ToString("N0"))u</small>
+                    }
+                </div>
             </div>
         }
         else
@@ -371,8 +373,10 @@
         }
         @{
             var productoSeleccionado = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
-            var productoRequiereLote = productoSeleccionado?.ControlaLote == true;
-            var productoRequiereVencimiento = productoSeleccionado?.ControlarVencimiento == true || productoSeleccionado?.ControlaVencimiento == true;
+            // Los productos de tipo Gasto NO permiten lote ni vencimiento
+            var esGasto = productoSeleccionado != null && _tiposGastoIds.Contains(productoSeleccionado.TipoItem);
+            var productoRequiereLote = !esGasto && productoSeleccionado?.ControlaLote == true;
+            var productoRequiereVencimiento = !esGasto && (productoSeleccionado?.ControlarVencimiento == true || productoSeleccionado?.ControlaVencimiento == true);
         }
         @if (productoRequiereLote)
         {
@@ -618,7 +622,7 @@
                                 {
                                     <i class="bi bi-exclamation-triangle-fill" title="El precio de venta supera el precio ministerio"></i>
                                 }
-                                @if (fueCompraPorPaquete)
+                                @if (fueCompraPorPaquete && precioMinBase.HasValue)
                                 {
                                     <br/><small class="opacity-75">(@FormatearPrecio(precioMinBase.Value)/u)</small>
                                 }
@@ -1300,6 +1304,8 @@
     private DateTime FechaParaNuevaCompra => CajaActiva?.FechaActualCaja?.Date ?? DateTime.Today;
 
     private List<SistemIA.Models.Producto> Productos = new();
+    // IDs de tipos que son gastos (no afectan stock, no permiten lote/vencimiento)
+    private HashSet<int> _tiposGastoIds = new();
     // Item ligero para sugerencias de proveedores (usa tabla legada Proveedores)
     private class ProvSifenItem { public int IdProveedor { get; set; } public string RazonSocial { get; set; } = string.Empty; public string RUC { get; set; } = string.Empty; public int DV { get; set; } }
     private List<ProvSifenItem> Proveedores = new();
@@ -1328,7 +1334,9 @@
     private bool MostrarSugProveedores;
     private bool MostrarSugProductos;
     private bool _mouseDownEnSugerenciaProducto;
+    #pragma warning disable CS0649 // Variable de control de foco - patrón incompleto
     private bool _mouseDownEnSugerenciaProveedor;
+    #pragma warning restore CS0649
     private DateTime? VencimientoTimbradoProveedorSel;
     private string? ProductoImagenUrl;
 
@@ -1412,9 +1420,10 @@
             // En modo paquete, mostrar el precio del paquete completo
             if (ModoIngresoCompra == "paquete" && cantPorPaq > 1)
             {
-                return NuevoDetalle.PrecioUnitario * cantPorPaq;
+                // Redondear a 2 decimales para mostrar limpio en UI
+                return Math.Round(NuevoDetalle.PrecioUnitario * cantPorPaq, 2);
             }
-            return NuevoDetalle.PrecioUnitario;
+            return Math.Round(NuevoDetalle.PrecioUnitario, 2);
         }
         set 
         {
@@ -1667,7 +1676,6 @@
     }
 
     // Control de carga por parámetro de consulta
-    private bool _compraDesdeQueryCargada = false;
     private int? _idCompraParam = null;
     
     /// <summary>
@@ -1741,6 +1749,10 @@
     await EnsureColumnaCambioDetalleAsync(ctx);
 
     Productos = await ctx.Productos.Include(p => p.TipoIva).Include(p => p.DepositoPredeterminado).AsNoTracking().OrderBy(p => p.Descripcion).ToListAsync();
+    
+    // Cargar IDs de tipos que son gastos (no afectan stock, no permiten lote/vencimiento)
+    _tiposGastoIds = (await ctx.TiposItem.AsNoTracking().Where(t => t.EsGasto).Select(t => t.IdTipoItem).ToListAsync()).ToHashSet();
+    
         // Cargar proveedores desde tabla legada Proveedores (evita conflicto de FK)
         Proveedores = await ctx.Database
             .SqlQuery<ProvSifenItem>(
@@ -1820,7 +1832,7 @@
             {
                 _idCompraParam = idParam;
                 await CargarCompraPorIdAsync(idParam);
-                _compraDesdeQueryCargada = true;
+                // Compra cargada desde query
                 ModoSoloVista = true; // Compras cargadas son solo lectura
             }
         }
@@ -2267,6 +2279,16 @@ END
         if (NuevoDetalle.IdProducto == 0 || NuevoDetalle.Cantidad <= 0) { Error = "Producto y cantidad requeridos"; return; }
         var prod = Productos.FirstOrDefault(p => p.IdProducto == NuevoDetalle.IdProducto);
         if (prod == null) { Error = "Producto no válido"; return; }
+        
+        // Validación de fecha de vencimiento OBLIGATORIA para productos que controlan lote o vencimiento
+        var esGastoValidacion = _tiposGastoIds.Contains(prod.TipoItem);
+        var requiereVencimiento = !esGastoValidacion && (prod.ControlaLote == true || prod.ControlarVencimiento == true || prod.ControlaVencimiento == true);
+        if (requiereVencimiento && !FechaVencimientoItemSeleccionada.HasValue)
+        {
+            await JS.InvokeVoidAsync("alert", $"⚠️ FECHA DE VENCIMIENTO OBLIGATORIA\n\nEl producto '{prod.Descripcion}' requiere ingresar la fecha de vencimiento antes de agregar.\n\nEsto es necesario para el correcto control de stock y despacho de productos.");
+            Error = "La fecha de vencimiento es obligatoria para este producto.";
+            return;
+        }
 
         // Determinar depósito: usuario > predeterminado del producto (si está en la lista) > depósito 1 como predeterminado
         int? depositoItem = IdDepositoItemSeleccionado;
@@ -3052,7 +3074,7 @@ END
             var productosIdsCompra = detallesNuevos.Select(d => d.IdProducto).ToList();
             var productosConLote = await ctx.Productos.AsNoTracking()
                 .Where(p => productosIdsCompra.Contains(p.IdProducto))
-                .Select(p => new { p.IdProducto, p.ControlaLote, p.ControlaVencimiento })
+                .Select(p => new { p.IdProducto, p.ControlaLote, p.ControlaVencimiento, p.TipoItem })
                 .ToListAsync();
             
             foreach (var d in detallesNuevos)
@@ -3061,6 +3083,14 @@ END
                 
                 // Verificar si el producto controla lotes
                 var prodInfo = productosConLote.FirstOrDefault(p => p.IdProducto == d.IdProducto);
+                
+                // ========== GASTO: Saltar TODA lógica de inventario para productos tipo Gasto ==========
+                var esProductoGasto = prodInfo != null && _tiposGastoIds.Contains(prodInfo.TipoItem);
+                if (esProductoGasto)
+                {
+                    Console.WriteLine($"[GASTO] Producto {d.IdProducto}: Es tipo Gasto, no afecta inventario ni lotes");
+                    continue; // Saltar a siguiente producto - NO afecta stock
+                }
                 
                 if (prodInfo != null && prodInfo.ControlaLote)
                 {
@@ -4263,9 +4293,11 @@ END
         var texto = (BuscarProducto ?? string.Empty).Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(texto)) { ProductosFiltrados = new(Productos); MostrarSugProductos = false; StateHasChanged(); return; }
 
+        // Incluir código interno y código de barras en la búsqueda
         ProductosFiltrados = Productos
             .Where(p => (p.Descripcion ?? string.Empty).ToLowerInvariant().Contains(texto)
-                     || (p.CodigoInterno ?? string.Empty).ToLowerInvariant().Contains(texto))
+                     || (p.CodigoInterno ?? string.Empty).ToLowerInvariant().Contains(texto)
+                     || (p.CodigoBarras ?? string.Empty).ToLowerInvariant().Contains(texto))
             .OrderBy(p => p.Descripcion)
             .ToList();
         MostrarSugProductos = ProductosFiltrados.Any();
@@ -4755,6 +4787,24 @@ END
                 StateHasChanged();
                 return;
             }
+            
+            // Buscar coincidencia exacta por código de barras primero
+            var productoExacto = Productos.FirstOrDefault(p => 
+                !string.IsNullOrEmpty(p.CodigoBarras) && 
+                p.CodigoBarras.Equals(texto, StringComparison.OrdinalIgnoreCase));
+            
+            if (productoExacto != null)
+            {
+                // Es un código de barras escaneado - seleccionar y mover foco a cantidad
+                await SeleccionarProductoAsync(productoExacto);
+                MostrarSugProductos = false;
+                StateHasChanged();
+                await Task.Delay(50); // Pequeña pausa para que el DOM se actualice
+                await JS.InvokeVoidAsync("eval", "document.getElementById('inputCantidadCompras')?.focus(); document.getElementById('inputCantidadCompras')?.select();");
+                return;
+            }
+            
+            // Si no es código de barras exacto, usar el primer resultado filtrado
             var p = ProductosFiltrados.FirstOrDefault();
             if (p != null) await SeleccionarProductoAsync(p);
         }

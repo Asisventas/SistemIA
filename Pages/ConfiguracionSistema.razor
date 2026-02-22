@@ -2,11 +2,71 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject IConfiguration Configuration
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
 @using Models = SistemIA.Models
 
 <PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+@* ══════════════════════════════════════════════════════════════════════════════ *@
+@* MODAL DE AUTENTICACIÓN - Requiere contraseña SA para acceder                  *@
+@* ══════════════════════════════════════════════════════════════════════════════ *@
+@if (!_accesoAutorizado)
+{
+    <div class="d-flex justify-content-center align-items-center" style="min-height: 70vh;">
+        <div class="card shadow-lg" style="max-width: 450px; width: 100%;">
+            <div class="card-header bg-warning text-dark text-center">
+                <h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Acceso Restringido</h5>
+            </div>
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <i class="bi bi-database-lock text-warning" style="font-size: 4rem;"></i>
+                    <p class="mt-3 text-muted">
+                        Esta sección contiene configuraciones críticas del sistema.
+                        Por seguridad, ingrese la contraseña del administrador de base de datos (SA).
+                    </p>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Contraseña SA</label>
+                    <div class="input-group">
+                        <input type="@(_mostrarPasswordInput ? "text" : "password")" 
+                               class="form-control form-control-lg @(_errorPassword ? "is-invalid" : "")" 
+                               @bind="_passwordIngresada" 
+                               @bind:event="oninput"
+                               @onkeypress="OnKeyPressPassword"
+                               placeholder="Ingrese la contraseña..." />
+                        <button class="btn btn-outline-secondary" type="button" @onclick="() => _mostrarPasswordInput = !_mostrarPasswordInput">
+                            <i class="bi @(_mostrarPasswordInput ? "bi-eye-slash" : "bi-eye")"></i>
+                        </button>
+                    </div>
+                    @if (_errorPassword)
+                    {
+                        <div class="invalid-feedback d-block">
+                            <i class="bi bi-x-circle me-1"></i>Contraseña incorrecta. Intente nuevamente.
+                        </div>
+                    }
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary btn-lg" @onclick="VerificarPassword" disabled="@(string.IsNullOrEmpty(_passwordIngresada))">
+                        <i class="bi bi-unlock me-2"></i>Acceder
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="VolverAlInicio">
+                        <i class="bi bi-arrow-left me-2"></i>Volver al Inicio
+                    </button>
+                </div>
+            </div>
+            <div class="card-footer text-center text-muted small">
+                <i class="bi bi-info-circle me-1"></i>
+                Si olvidó la contraseña, contacte al administrador del sistema.
+            </div>
+        </div>
+    </div>
+}
+else
+{
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -103,9 +163,167 @@
             </div>
         </div>
 
+        <!-- Sección Restaurante/Bar -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-cup-straw me-2"></i>Configuración Restaurante / Bar</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Habilita funcionalidades para restaurantes, bares y cafeterías: 
+                        gestión de mesas, pedidos, comandas y división de cuentas.
+                    </p>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="restauranteActivo" 
+                                   @bind="_config.RestauranteModoActivo" />
+                            <label class="form-check-label fw-bold" for="restauranteActivo">
+                                @(_config.TipoNegocioMesas switch {
+                                    "Taller" => "🚗",
+                                    "Complejo" => "⚽",
+                                    _ => "🍽️"
+                                }) Modo @ObtenerNombreModulo() Activo
+                            </label>
+                        </div>
+                        <div class="form-text">Habilita gestión de @ObtenerNombreEspacios().ToLower(), pedidos y reservas.</div>
+                    </div>
+
+                    @if (_config.RestauranteModoActivo)
+                    {
+                        <div class="ps-4 border-start border-warning border-3">
+                            <!-- Selector de Tipo de Negocio -->
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">
+                                    <i class="bi bi-building text-primary me-1"></i>Tipo de Negocio
+                                </label>
+                                <select class="form-select form-select-sm" @bind="_config.TipoNegocioMesas">
+                                    <option value="Restaurante">🍽️ Restaurante / Bar / Cafetería</option>
+                                    <option value="Complejo">⚽ Complejo Deportivo / Canchas</option>
+                                    <option value="Taller">🚗 Taller Mecánico / Servicio Automotriz</option>
+                                </select>
+                                <div class="form-text">Define la terminología usada en el sistema (Mesas, Canchas, Bahías).</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="permitirDivision" 
+                                           @bind="_config.RestaurantePermitirDivisionCuenta" />
+                                    <label class="form-check-label" for="permitirDivision">
+                                        <i class="bi bi-scissors text-info"></i> Permitir división de cuenta
+                                    </label>
+                                </div>
+                                <div class="form-text">Permite dividir la cuenta entre varios clientes.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="permitirParciales" 
+                                           @bind="_config.RestaurantePermitirPagosParciales" />
+                                    <label class="form-check-label" for="permitirParciales">
+                                        <i class="bi bi-cash-stack text-success"></i> Permitir pagos parciales
+                                    </label>
+                                </div>
+                                <div class="form-text">Permite que el cliente vaya pagando de a poco.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="mostrarTiempo" 
+                                           @bind="_config.RestauranteMostrarTiempo" />
+                                    <label class="form-check-label" for="mostrarTiempo">
+                                        <i class="bi bi-clock text-primary"></i> Mostrar tiempo en mesa
+                                    </label>
+                                </div>
+                                <div class="form-text">Muestra el tiempo transcurrido desde que se abrió el pedido.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="imprimirComandaAuto" 
+                                           @bind="_config.RestauranteImprimirComandaAuto" />
+                                    <label class="form-check-label" for="imprimirComandaAuto">
+                                        <i class="bi bi-printer text-secondary"></i> Imprimir comanda automáticamente
+                                    </label>
+                                </div>
+                                <div class="form-text">Imprime la comanda al agregar productos al pedido.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small">Cargo por servicio (%)</label>
+                                <input type="number" class="form-control form-control-sm" 
+                                       @bind="_config.RestauranteCargoServicio" 
+                                       min="0" max="100" step="0.5" placeholder="Ej: 10" />
+                                <div class="form-text">Porcentaje de propina/servicio sugerido (opcional).</div>
+                            </div>
+                            
+                            <div class="alert alert-info small py-2 mb-0">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Las impresoras de cocina y barra se configuran en cada <strong>Caja</strong> individual.
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <div class="row">
+        <!-- Sección Canchas/Alquileres -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-dribbble me-2"></i>Configuración Canchas / Alquileres</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Habilita funcionalidades para canchas deportivas, salas de eventos 
+                        o espacios que se alquilan por tiempo.
+                    </p>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="canchasActivo" 
+                                   @bind="_config.CanchasModoActivo" />
+                            <label class="form-check-label fw-bold" for="canchasActivo">
+                                ⚽ Modo Canchas/Alquileres Activo
+                            </label>
+                        </div>
+                        <div class="form-text">Habilita gestión de espacios con cobro por tiempo.</div>
+                    </div>
+
+                    @if (_config.CanchasModoActivo)
+                    {
+                        <div class="ps-4 border-start border-success border-3">
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="reservasHabilitadas" 
+                                           @bind="_config.ReservasHabilitadas" />
+                                    <label class="form-check-label" for="reservasHabilitadas">
+                                        <i class="bi bi-calendar-check text-primary"></i> Habilitar reservas
+                                    </label>
+                                </div>
+                                <div class="form-text">Permite realizar reservas anticipadas.</div>
+                            </div>
+
+                            @if (_config.ReservasHabilitadas)
+                            {
+                                <div class="mb-3">
+                                    <label class="form-label small">Recordatorio antes de la reserva (minutos)</label>
+                                    <input type="number" class="form-control form-control-sm" 
+                                           @bind="_config.ReservasRecordatorioMinutos" 
+                                           min="15" max="1440" step="15" placeholder="Ej: 60" />
+                                    <div class="form-text">Cuántos minutos antes enviar recordatorio (WhatsApp/Email).</div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
         <!-- Sección General -->
         <div class="col-lg-6 mb-4">
             <div class="card h-100">
@@ -117,6 +335,282 @@
                         <label class="form-label">Nombre del Negocio</label>
                         <input type="text" class="form-control" @bind="_config.NombreNegocio" placeholder="Nombre de la empresa" />
                         <div class="form-text">Se mostrará en reportes e impresiones.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NUEVA FILA: Gimnasio -->
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-heart-pulse me-2"></i>Configuración Gimnasio</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Habilita funcionalidades para gimnasios: membresías, control de acceso 
+                        con reconocimiento facial, planes y seguimiento de clientes.
+                    </p>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="gimnasioActivo" 
+                                   @bind="_config.GimnasioModoActivo" />
+                            <label class="form-check-label fw-bold" for="gimnasioActivo">
+                                💪 Modo Gimnasio Activo
+                            </label>
+                        </div>
+                        <div class="form-text">Habilita gestión de membresías, acceso y control de asistencia.</div>
+                    </div>
+
+                    @if (_config.GimnasioModoActivo)
+                    {
+                        <div class="ps-4 border-start border-danger border-3">
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="reconocimientoFacial" 
+                                           @bind="_config.GimnasioReconocimientoFacialActivo" />
+                                    <label class="form-check-label" for="reconocimientoFacial">
+                                        <i class="bi bi-camera text-primary"></i> Reconocimiento facial activo
+                                    </label>
+                                </div>
+                                <div class="form-text">Permite identificar clientes por cámara al ingresar.</div>
+                            </div>
+
+                            @if (_config.GimnasioReconocimientoFacialActivo)
+                            {
+                                <div class="mb-3">
+                                    <label class="form-label small">Umbral de coincidencia (%)</label>
+                                    <input type="number" class="form-control form-control-sm" 
+                                           @bind="_config.GimnasioUmbralCoincidenciaFacial" 
+                                           min="50" max="100" step="5" placeholder="Ej: 85" />
+                                    <div class="form-text">Porcentaje mínimo para reconocer al cliente (85% recomendado).</div>
+                                </div>
+                            }
+
+                            <div class="mb-3">
+                                <label class="form-label small">Días de gracia después de vencimiento</label>
+                                <input type="number" class="form-control form-control-sm" 
+                                       @bind="_config.GimnasioDiasGracia" 
+                                       min="0" max="15" step="1" placeholder="Ej: 3" />
+                                <div class="form-text">Días que puede acceder después de vencer su membresía.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="permitirDiasGracia" 
+                                           @bind="_config.GimnasioPermitirAccesoDiasGracia" />
+                                    <label class="form-check-label" for="permitirDiasGracia">
+                                        <i class="bi bi-door-open text-success"></i> Permitir acceso en días de gracia
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="habilitarVozGimnasio" 
+                                           @bind="_config.GimnasioHabilitarVoz" />
+                                    <label class="form-check-label" for="habilitarVozGimnasio">
+                                        <i class="bi bi-megaphone text-info"></i> Habilitar voz de bienvenida/despedida
+                                    </label>
+                                </div>
+                            </div>
+
+                            <hr class="my-3"/>
+                            <h6 class="mb-2"><i class="bi bi-chat-quote me-1"></i> Mensajes Personalizados</h6>
+
+                            <div class="mb-2">
+                                <label class="form-label small">Mensaje de bienvenida</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="_config.GimnasioMensajeBienvenida" 
+                                       placeholder="¡Bienvenido/a {nombre}!" />
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label small">Mensaje de despedida</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="_config.GimnasioMensajeDespedida" 
+                                       placeholder="¡Hasta pronto {nombre}!" />
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label small">Mensaje cuando está por vencer</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="_config.GimnasioMensajeVencimientoProximo" 
+                                       placeholder="Tu membresía vence en {dias} días" />
+                            </div>
+
+                            <div class="mb-0">
+                                <label class="form-label small">Mensaje cuando está vencido</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="_config.GimnasioMensajeVencido" 
+                                       placeholder="Tu membresía está vencida" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección Agenda -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-calendar3 me-2"></i>Configuración de Agenda</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Habilita el módulo de agenda para gestionar citas, visitas y recordatorios automáticos.
+                    </p>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="agendaActivo" 
+                                   @bind="_config.AgendaModoActivo" />
+                            <label class="form-check-label fw-bold" for="agendaActivo">
+                                📅 Modo Agenda Activo
+                            </label>
+                        </div>
+                        <div class="form-text">Habilita el calendario con citas, visitas y recordatorios por email.</div>
+                    </div>
+
+                    @if (_config.AgendaModoActivo)
+                    {
+                        <div class="ps-4 border-start border-info border-3">
+                            <div class="mb-3">
+                                <label class="form-label small">Recordatorio por defecto (minutos antes)</label>
+                                <input type="number" class="form-control form-control-sm" 
+                                       @bind="_config.AgendaRecordatorioMinutos" 
+                                       min="5" max="1440" step="5" placeholder="30" />
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="agendaEmail" 
+                                           @bind="_config.AgendaEnviarRecordatoriosEmail" />
+                                    <label class="form-check-label" for="agendaEmail">
+                                        <i class="bi bi-envelope text-primary"></i> Enviar recordatorios por email
+                                    </label>
+                                </div>
+                                <div class="form-text">Requiere configuración de correo en cada sucursal.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="agendaColores" 
+                                           @bind="_config.AgendaColoresPorCliente" />
+                                    <label class="form-check-label" for="agendaColores">
+                                        <i class="bi bi-palette text-warning"></i> Colores personalizados por cliente
+                                    </label>
+                                </div>
+                                <div class="form-text">Permite asignar un color distinto a cada cliente en el calendario.</div>
+                            </div>
+
+                            <div class="mb-0">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="agendaGPS" 
+                                           @bind="_config.AgendaMostrarUbicacionGPS" />
+                                    <label class="form-check-label" for="agendaGPS">
+                                        <i class="bi bi-geo-alt text-success"></i> Mostrar ubicación GPS en citas
+                                    </label>
+                                </div>
+                                <div class="form-text">Habilita integración con Google Maps en las citas.</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Sección Acceso Administrativo -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-database-lock me-2"></i>Acceso Administrativo</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Credenciales de acceso administrativo al sistema y base de datos.
+                        <strong class="text-danger">Proteja esta información.</strong>
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">
+                            <i class="bi bi-server text-primary me-1"></i>Servidor SQL
+                        </label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bi bi-hdd-network"></i></span>
+                            <input type="text" class="form-control" value="@_servidorSql" readonly />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">
+                            <i class="bi bi-database text-info me-1"></i>Base de Datos
+                        </label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bi bi-archive"></i></span>
+                            <input type="text" class="form-control" value="@_baseDatos" readonly />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">
+                            <i class="bi bi-person-badge text-success me-1"></i>Usuario SA
+                        </label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bi bi-person-fill-lock"></i></span>
+                            <input type="text" class="form-control" value="@_usuarioSa" readonly />
+                        </div>
+                    </div>
+
+                    <div class="mb-0">
+                        <label class="form-label small fw-bold">
+                            <i class="bi bi-key text-warning me-1"></i>Contraseña SA
+                        </label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bi bi-shield-lock"></i></span>
+                            <input type="@(_mostrarPasswordSa ? "text" : "password")" class="form-control" value="@_passwordSa" readonly />
+                            <button class="btn btn-outline-secondary" type="button" @onclick="() => _mostrarPasswordSa = !_mostrarPasswordSa">
+                                <i class="bi @(_mostrarPasswordSa ? "bi-eye-slash" : "bi-eye")"></i>
+                            </button>
+                        </div>
+                        <div class="form-text text-danger">
+                            <i class="bi bi-exclamation-triangle"></i> No comparta esta contraseña con personal no autorizado.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección Configuración de Ventas -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-cart me-2"></i>Configuración de Ventas</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Opciones que afectan el comportamiento del módulo de ventas.
+                    </p>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="agregarProductoAlEscanear" 
+                                   @bind="_config.AgregarProductoAlEscanear" />
+                            <label class="form-check-label fw-bold" for="agregarProductoAlEscanear">
+                                📦 Agregar producto automáticamente al escanear código de barras
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle"></i> 
+                            <strong>Si está activo:</strong> Al escanear un código de barras, el producto se agrega directamente con cantidad 1.<br />
+                            <strong>Si está desactivado:</strong> El producto se selecciona en el formulario, permitiendo modificar cantidad, descuento, etc. antes de agregar.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -148,6 +642,8 @@
     </div>
 </div>
 
+}
+
 </PageProtection>
 
 @code {
@@ -155,6 +651,19 @@
     private string? _mensaje;
     private bool _esError;
     private bool _guardando;
+    private bool _mostrarPasswordSa = false;
+    
+    // Control de acceso con contraseña SA
+    private bool _accesoAutorizado = false;
+    private string _passwordIngresada = "";
+    private bool _errorPassword = false;
+    private bool _mostrarPasswordInput = false;
+    
+    // Credenciales de BD leídas de appsettings.json
+    private string _servidorSql = "";
+    private string _baseDatos = "";
+    private string _usuarioSa = "";
+    private string _passwordSa = "";
     
     [CascadingParameter]
     private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
@@ -170,7 +679,60 @@
         }
         catch { }
         
-        await Cargar();
+        // Leer credenciales de la cadena de conexión (necesario para verificar password)
+        CargarCredencialesBD();
+        
+        // NO cargar config hasta que se autentique
+        // await Cargar(); - Se llama después de verificar password
+    }
+    
+    private async Task OnKeyPressPassword(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(_passwordIngresada))
+        {
+            await VerificarPassword();
+        }
+    }
+    
+    private async Task VerificarPassword()
+    {
+        _errorPassword = false;
+        
+        if (_passwordIngresada == _passwordSa)
+        {
+            _accesoAutorizado = true;
+            await Cargar();
+        }
+        else
+        {
+            _errorPassword = true;
+            _passwordIngresada = "";
+        }
+    }
+    
+    private void VolverAlInicio()
+    {
+        Nav.NavigateTo("/");
+    }
+    
+    private void CargarCredencialesBD()
+    {
+        try
+        {
+            var connectionString = Configuration.GetConnectionString("DefaultConnection") ?? "";
+            
+            // Parsear la cadena de conexión
+            var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
+            _servidorSql = builder.DataSource;
+            _baseDatos = builder.InitialCatalog;
+            _usuarioSa = builder.UserID;
+            _passwordSa = builder.Password;
+        }
+        catch (Exception ex)
+        {
+            _servidorSql = "Error al leer configuración";
+            Console.WriteLine($"Error leyendo cadena de conexión: {ex.Message}");
+        }
     }
 
     private async Task Cargar()
@@ -228,15 +790,56 @@
                 db.ConfiguracionSistema.Add(configDb);
             }
             
-            // Actualizar valores
+            // Actualizar valores - Farmacia
             configDb.FarmaciaModoActivo = _config.FarmaciaModoActivo;
             configDb.FarmaciaValidarPrecioMinisterio = _config.FarmaciaValidarPrecioMinisterio;
             configDb.FarmaciaMostrarPrecioMinisterio = _config.FarmaciaMostrarPrecioMinisterio;
             configDb.FarmaciaMostrarPrecioMinisterioEnCompras = _config.FarmaciaMostrarPrecioMinisterioEnCompras;
             configDb.FarmaciaDescuentoBasadoEnPrecioMinisterio = _config.FarmaciaDescuentoBasadoEnPrecioMinisterio;
+            
+            // Actualizar valores - Restaurante
+            configDb.RestauranteModoActivo = _config.RestauranteModoActivo;
+            configDb.RestaurantePermitirDivisionCuenta = _config.RestaurantePermitirDivisionCuenta;
+            configDb.RestaurantePermitirPagosParciales = _config.RestaurantePermitirPagosParciales;
+            configDb.RestauranteMostrarTiempo = _config.RestauranteMostrarTiempo;
+            configDb.RestauranteImprimirComandaAuto = _config.RestauranteImprimirComandaAuto;
+            configDb.RestauranteCargoServicio = _config.RestauranteCargoServicio;
+            configDb.RestauranteImpresoraCocina = _config.RestauranteImpresoraCocina;
+            configDb.RestauranteImpresoraBarra = _config.RestauranteImpresoraBarra;
+            configDb.TipoNegocioMesas = _config.TipoNegocioMesas;
+            
+            // Actualizar valores - Canchas
+            configDb.CanchasModoActivo = _config.CanchasModoActivo;
+            configDb.ReservasHabilitadas = _config.ReservasHabilitadas;
+            configDb.ReservasRecordatorioMinutos = _config.ReservasRecordatorioMinutos;
+            
+            // Actualizar valores - Gimnasio
+            configDb.GimnasioModoActivo = _config.GimnasioModoActivo;
+            configDb.GimnasioMensajeBienvenida = _config.GimnasioMensajeBienvenida;
+            configDb.GimnasioMensajeDespedida = _config.GimnasioMensajeDespedida;
+            configDb.GimnasioMensajeVencimientoProximo = _config.GimnasioMensajeVencimientoProximo;
+            configDb.GimnasioMensajeVencido = _config.GimnasioMensajeVencido;
+            configDb.GimnasioReconocimientoFacialActivo = _config.GimnasioReconocimientoFacialActivo;
+            configDb.GimnasioUmbralCoincidenciaFacial = _config.GimnasioUmbralCoincidenciaFacial;
+            configDb.GimnasioDiasGracia = _config.GimnasioDiasGracia;
+            configDb.GimnasioPermitirAccesoDiasGracia = _config.GimnasioPermitirAccesoDiasGracia;
+            configDb.GimnasioHabilitarVoz = _config.GimnasioHabilitarVoz;
+            configDb.GimnasioHorasAutoSalida = _config.GimnasioHorasAutoSalida;
+            
+            // Actualizar valores - Agenda
+            configDb.AgendaModoActivo = _config.AgendaModoActivo;
+            configDb.AgendaRecordatorioMinutos = _config.AgendaRecordatorioMinutos;
+            configDb.AgendaEnviarRecordatoriosEmail = _config.AgendaEnviarRecordatoriosEmail;
+            configDb.AgendaColoresPorCliente = _config.AgendaColoresPorCliente;
+            configDb.AgendaMostrarUbicacionGPS = _config.AgendaMostrarUbicacionGPS;
+            
+            // General
             configDb.NombreNegocio = _config.NombreNegocio;
             configDb.FechaModificacion = DateTime.Now;
             configDb.UsuarioModificacion = _usuarioNombre;
+            
+            // Ventas - Código de barras
+            configDb.AgregarProductoAlEscanear = _config.AgregarProductoAlEscanear;
             
             await db.SaveChangesAsync();
             
@@ -254,4 +857,26 @@
             _guardando = false;
         }
     }
+
+    // Métodos helper para nombres según tipo de negocio
+    private string ObtenerNombreModulo() => _config.TipoNegocioMesas switch
+    {
+        "Taller" => "Taller",
+        "Complejo" => "Complejo",
+        _ => "Restaurante"
+    };
+
+    private string ObtenerNombreEspacios() => _config.TipoNegocioMesas switch
+    {
+        "Taller" => "Bahías",
+        "Complejo" => "Canchas",
+        _ => "Mesas"
+    };
+
+    private string ObtenerNombreEspacio() => _config.TipoNegocioMesas switch
+    {
+        "Taller" => "Bahía",
+        "Complejo" => "Cancha",
+        _ => "Mesa"
+    };
 }

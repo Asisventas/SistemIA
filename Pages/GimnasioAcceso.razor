@@ -1,0 +1,805 @@
+@page "/gimnasio/acceso"
+@using SistemIA.Models.Gimnasio
+@using Microsoft.EntityFrameworkCore
+@using FaceRecognitionDotNet
+@using System.IO
+@using System.Drawing
+@inject AppDbContext _db
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Control de Acceso - Gimnasio</PageTitle>
+
+<style>
+    .acceso-panel {
+        min-height: calc(100vh - 160px);
+    }
+    .camera-preview {
+        width: 100%;
+        max-width: 640px;
+        aspect-ratio: 4/3;
+        background: var(--bg-page);
+        border-radius: 12px;
+        overflow: hidden;
+        position: relative;
+    }
+    .cliente-card {
+        transition: all 0.3s ease;
+        border-left: 4px solid transparent;
+        cursor: pointer;
+    }
+    .cliente-card:hover { background: var(--bg-hover); }
+    .cliente-card.vigente { border-left-color: #28a745; }
+    .cliente-card.por-vencer { border-left-color: #ffc107; }
+    .cliente-card.vencida { border-left-color: #dc3545; }
+    .cliente-card.sin-membresia { border-left-color: #6c757d; }
+    
+    .mensaje-bienvenida {
+        font-size: 2rem;
+        font-weight: bold;
+        text-align: center;
+        padding: 2rem;
+        border-radius: 12px;
+        animation: fadeIn 0.5s ease;
+    }
+    .mensaje-bienvenida.success { background: rgba(40, 167, 69, 0.1); color: #28a745; }
+    .mensaje-bienvenida.warning { background: rgba(255, 193, 7, 0.1); color: #ffc107; }
+    .mensaje-bienvenida.danger { background: rgba(220, 53, 69, 0.1); color: #dc3545; }
+    
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .historial-acceso {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .acceso-item {
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid var(--bar-border);
+    }
+    .acceso-item:last-child { border-bottom: none; }
+    .acceso-entrada { color: #28a745; }
+    .acceso-salida { color: #6c757d; }
+</style>
+
+<div class="container-fluid acceso-panel py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-person-badge text-primary me-2"></i>
+            Control de Acceso - Gimnasio
+        </h3>
+        <div class="d-flex gap-2">
+            <span class="badge bg-success fs-6">
+                <i class="bi bi-people-fill me-1"></i>
+                @_clientesDentro Dentro
+            </span>
+            <span class="badge bg-secondary fs-6">
+                <i class="bi bi-calendar3 me-1"></i>
+                @_accesosHoy Accesos Hoy
+            </span>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Panel Izquierdo: Búsqueda -->
+        <div class="col-lg-7">
+            <!-- RECONOCIMIENTO FACIAL -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-person-bounding-box me-2"></i>
+                        Reconocimiento Facial Automático
+                    </h5>
+                </div>
+                <div class="card-body text-center">
+                    <div class="mb-3 mx-auto" style="max-width: 500px;">
+                        <video id="videoElementGym" style="width:100%; max-height:300px; border-radius:12px; border:2px solid var(--bar-border);"></video>
+                        <canvas id="canvasElementGym" class="d-none"></canvas>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_reconocimientoMsg))
+                    {
+                        <div class="alert @(_reconocimientoExito ? "alert-success" : "alert-danger")" role="alert">
+                            @((MarkupString)_reconocimientoMsg.Replace(Environment.NewLine, "<br />"))
+                        </div>
+                    }
+                    <div class="d-grid gap-2 col-8 mx-auto">
+                        <button class="btn btn-success btn-lg" @onclick="ReconocerFacial" disabled="@_procesandoFacial">
+                            @if (_procesandoFacial)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                <span>Analizando...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-camera-fill me-2"></i>
+                                <span>Reconocer y Registrar Acceso</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-search me-2"></i>
+                        Buscar Cliente
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Búsqueda Manual -->
+                    <div class="mb-4">
+                        <label class="form-label">Buscar por Nombre, Cédula o Código</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" placeholder="Ingrese nombre, cédula o código..."
+                                   @bind="_busqueda" @bind:event="oninput" @onkeyup="BuscarCliente" />
+                        </div>
+                    </div>
+
+                    <!-- Resultados de Búsqueda -->
+                    @if (_clientesBusqueda.Any())
+                    {
+                        <div class="list-group">
+                            @foreach (var cliente in _clientesBusqueda)
+                            {
+                                var membresia = _membresiasActivas.FirstOrDefault(m => m.IdCliente == cliente.IdCliente);
+                                var estadoClass = membresia?.EstaVigente == true ? "vigente" :
+                                                  membresia?.EstaPorVencer == true ? "por-vencer" :
+                                                  membresia != null ? "vencida" : "sin-membresia";
+                                
+                                <div class="list-group-item cliente-card @estadoClass" @onclick="() => SeleccionarCliente(cliente)">
+                                    <div class="d-flex align-items-center">
+                                        @if (cliente.FotoGimnasio != null)
+                                        {
+                                            <img src="data:image/jpeg;base64,@Convert.ToBase64String(cliente.FotoGimnasio)"
+                                                 class="rounded-circle me-3" style="width:50px;height:50px;object-fit:cover;" />
+                                        }
+                                        else
+                                        {
+                                            <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3"
+                                                 style="width:50px;height:50px;">
+                                                <i class="bi bi-person-fill"></i>
+                                            </div>
+                                        }
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-0">@cliente.RazonSocial</h6>
+                                            <small class="text-muted">@(cliente.RUC ?? "Sin documento")</small>
+                                        </div>
+                                        <div>
+                                            @if (membresia?.EstaVigente == true)
+                                            {
+                                                <span class="badge bg-success">@membresia.DiasRestantes días</span>
+                                            }
+                                            else if (membresia?.EstaPorVencer == true)
+                                            {
+                                                <span class="badge bg-warning text-dark">@membresia.DiasRestantes días</span>
+                                            }
+                                            else if (membresia != null)
+                                            {
+                                                <span class="badge bg-danger">Vencida</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">Sin Membresía</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_busqueda) && _busqueda.Length >= 2)
+                    {
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-search fs-1 d-block mb-2"></i>
+                            No se encontraron clientes
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Derecho: Cliente Seleccionado y Acciones -->
+        <div class="col-lg-5">
+            @if (!string.IsNullOrEmpty(_mensajeAcceso))
+            {
+                <div class="mensaje-bienvenida @_mensajeClass mb-4">
+                    @_mensajeAcceso
+                </div>
+            }
+
+            @if (_clienteSeleccionado != null)
+            {
+                var membresia = _membresiasActivas.FirstOrDefault(m => m.IdCliente == _clienteSeleccionado.IdCliente);
+                
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <i class="bi bi-person-check me-2"></i>
+                            Cliente Seleccionado
+                        </h5>
+                    </div>
+                    <div class="card-body text-center">
+                        @if (_clienteSeleccionado.FotoGimnasio != null)
+                        {
+                            <img src="data:image/jpeg;base64,@Convert.ToBase64String(_clienteSeleccionado.FotoGimnasio)"
+                                 class="rounded-circle mb-3" style="width:120px;height:120px;object-fit:cover;" />
+                        }
+                        else
+                        {
+                            <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center mx-auto mb-3"
+                                 style="width:120px;height:120px;">
+                                <i class="bi bi-person-fill" style="font-size:3rem;"></i>
+                            </div>
+                        }
+                        <h4 class="mb-1">@_clienteSeleccionado.RazonSocial</h4>
+                        <p class="text-muted mb-3">@(_clienteSeleccionado.RUC ?? "Sin documento")</p>
+                        
+                        @if (membresia != null)
+                        {
+                            <div class="alert @(membresia.EstaVigente ? "alert-success" : membresia.EstaPorVencer ? "alert-warning" : "alert-danger") mb-3">
+                                <strong>@membresia.Producto?.Descripcion</strong><br/>
+                                <small>Vence: @membresia.FechaVencimiento.ToString("dd/MM/yyyy") (@membresia.DiasRestantes días)</small>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-secondary mb-3">
+                                <i class="bi bi-exclamation-circle me-1"></i>
+                                Sin membresía activa
+                            </div>
+                        }
+
+                        <div class="d-grid gap-2">
+                            @if (!_estaDentro)
+                            {
+                                <button class="btn btn-success btn-lg" @onclick="() => RegistrarAcceso(true)" disabled="@_procesando">
+                                    <i class="bi bi-box-arrow-in-right me-2"></i>
+                                    Registrar Entrada
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-outline-secondary btn-lg" @onclick="() => RegistrarAcceso(false)" disabled="@_procesando">
+                                    <i class="bi bi-box-arrow-right me-2"></i>
+                                    Registrar Salida
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Historial de Accesos de Hoy -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="bi bi-clock-history me-2"></i>
+                        Últimos Accesos
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="historial-acceso">
+                        @if (_ultimosAccesos.Any())
+                        {
+                            @foreach (var acceso in _ultimosAccesos)
+                            {
+                                <div class="acceso-item d-flex align-items-center justify-content-between">
+                                    <div>
+                                        <i class="bi @(acceso.TipoAcceso == "Entrada" ? "bi-box-arrow-in-right acceso-entrada" : "bi-box-arrow-right acceso-salida") me-2"></i>
+                                        <strong>@acceso.Cliente?.RazonSocial</strong>
+                                    </div>
+                                    <small class="text-muted">@acceso.FechaHora.ToString("HH:mm")</small>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-center text-muted py-4">
+                                <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                                Sin accesos hoy
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private SistemIA.Models.ConfiguracionSistema? _config;
+    private string _busqueda = "";
+    private List<SistemIA.Models.Cliente> _clientesBusqueda = new();
+    private List<MembresiaCliente> _membresiasActivas = new();
+    private SistemIA.Models.Cliente? _clienteSeleccionado;
+    private List<AccesoGimnasio> _ultimosAccesos = new();
+    
+    private int _clientesDentro = 0;
+    private int _accesosHoy = 0;
+    private bool _estaDentro = false;
+    private bool _procesando = false;
+    
+    private string _mensajeAcceso = "";
+    private string _mensajeClass = "";
+    
+    // ========== RECONOCIMIENTO FACIAL ==========
+    private FaceRecognition? _faceRecognition;
+    private List<double[]> _knownEmbeddings = new();
+    private List<int> _knownClienteIds = new();
+    private bool _procesandoFacial = false;
+    private string? _reconocimientoMsg;
+    private bool _reconocimientoExito = false;
+    private const double FACE_RECOGNITION_TOLERANCE = 0.55;
+    
+    // Estado caja/turno
+    private int _idSucursal = 1;
+    #pragma warning disable CS0649 // Campo que puede asignarse dinámicamente
+    private int? _idCaja;
+    #pragma warning restore CS0649
+    private int _turno = 1;
+    private DateTime _fechaCaja = DateTime.Today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _config = await _db.ConfiguracionSistema.FirstOrDefaultAsync();
+        
+        if (_config?.GimnasioModoActivo != true)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        // Inicializar reconocimiento facial
+        var baseDir = AppContext.BaseDirectory;
+        var modeloPath = Path.Combine(baseDir, "face_recognition_models");
+        if (!Directory.Exists(modeloPath))
+            modeloPath = @"C:\asis\SistemIA\face_recognition_models";
+        _faceRecognition = FaceRecognition.Create(modeloPath);
+
+        await CargarEmbeddingsGimnasio();
+        await CargarEstadisticas();
+        await CargarUltimosAccesos();
+        await CargarMembresiasActivas();
+    }
+
+    private async Task CargarEmbeddingsGimnasio()
+    {
+        _knownEmbeddings.Clear();
+        _knownClienteIds.Clear();
+
+        // Cargar embeddings de clientes miembros de gimnasio
+        var clientesConEmbedding = await _db.Clientes
+            .Where(c => c.EsMiembroGimnasio && c.EmbeddingFacialGimnasio != null && c.EmbeddingFacialGimnasio.Length > 0)
+            .ToListAsync();
+
+        foreach (var cliente in clientesConEmbedding)
+        {
+            var doubleArray = ConvertByteArrayToDoubleArray(cliente.EmbeddingFacialGimnasio!);
+            if (doubleArray.Length > 0)
+            {
+                _knownEmbeddings.Add(doubleArray);
+                _knownClienteIds.Add(cliente.IdCliente);
+            }
+        }
+    }
+
+    private async Task CargarEstadisticas()
+    {
+        var hoy = DateTime.Today;
+        
+        // Clientes actualmente dentro (entrada sin salida hoy)
+        var accesoHoy = await _db.AccesosGimnasio
+            .Where(a => a.FechaHora.Date == hoy)
+            .OrderByDescending(a => a.FechaHora)
+            .ToListAsync();
+
+        // Contar únicos que entraron y no salieron
+        var clientesDentro = new HashSet<int>();
+        foreach (var grupo in accesoHoy.GroupBy(a => a.IdCliente))
+        {
+            var ultimoAcceso = grupo.First();
+            if (ultimoAcceso.TipoAcceso == "Entrada")
+                clientesDentro.Add(ultimoAcceso.IdCliente);
+        }
+        _clientesDentro = clientesDentro.Count;
+        _accesosHoy = await _db.AccesosGimnasio.CountAsync(a => a.FechaHora.Date == hoy);
+    }
+
+    private async Task CargarUltimosAccesos()
+    {
+        _ultimosAccesos = await _db.AccesosGimnasio
+            .Include(a => a.Cliente)
+            .Where(a => a.FechaHora.Date == DateTime.Today)
+            .OrderByDescending(a => a.FechaHora)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task CargarMembresiasActivas()
+    {
+        _membresiasActivas = await _db.MembresiasClientes
+            .Include(m => m.Producto)
+            .Where(m => m.Estado == "Activa" || m.Estado == "PendientePago")
+            .ToListAsync();
+    }
+
+    private async Task BuscarCliente()
+    {
+        if (string.IsNullOrWhiteSpace(_busqueda) || _busqueda.Length < 2)
+        {
+            _clientesBusqueda = new();
+            return;
+        }
+
+        _clientesBusqueda = await _db.Clientes
+            .Where(c => c.EsMiembroGimnasio && 
+                       (c.RazonSocial.Contains(_busqueda) || 
+                        (c.RUC != null && c.RUC.Contains(_busqueda)) ||
+                        (c.CodigoGimnasio != null && c.CodigoGimnasio.Contains(_busqueda))))
+            .Take(10)
+            .ToListAsync();
+    }
+
+    private async Task SeleccionarCliente(SistemIA.Models.Cliente cliente)
+    {
+        _clienteSeleccionado = cliente;
+        _mensajeAcceso = "";
+        
+        // Verificar si está dentro
+        var ultimoAcceso = await _db.AccesosGimnasio
+            .Where(a => a.IdCliente == cliente.IdCliente && a.FechaHora.Date == DateTime.Today)
+            .OrderByDescending(a => a.FechaHora)
+            .FirstOrDefaultAsync();
+            
+        _estaDentro = ultimoAcceso?.TipoAcceso == "Entrada";
+        
+        StateHasChanged();
+    }
+
+    private async Task RegistrarAcceso(bool esEntrada)
+    {
+        if (_clienteSeleccionado == null) return;
+        
+        _procesando = true;
+        StateHasChanged();
+
+        try
+        {
+            var membresia = _membresiasActivas.FirstOrDefault(m => m.IdCliente == _clienteSeleccionado.IdCliente);
+            
+            // Determinar si permitir acceso
+            bool accesoPermitido = true;
+            string estadoMembresia = "Sin membresía";
+            
+            if (membresia != null)
+            {
+                if (membresia.EstaVigente)
+                    estadoMembresia = "Vigente";
+                else if (membresia.EstaPorVencer)
+                    estadoMembresia = "Por vencer";
+                else
+                    estadoMembresia = "Vencida";
+            }
+            
+            // Registrar acceso
+            var acceso = new AccesoGimnasio
+            {
+                IdCliente = _clienteSeleccionado.IdCliente,
+                IdMembresia = membresia?.IdMembresia,
+                TipoAcceso = esEntrada ? "Entrada" : "Salida",
+                FechaHora = DateTime.Now,
+                MetodoVerificacion = "Manual",
+                EstadoMembresiaAlAcceso = estadoMembresia,
+                AccesoPermitido = accesoPermitido,
+                IdSucursal = _idSucursal,
+                IdCaja = _idCaja,
+                Turno = _turno,
+                FechaCaja = _fechaCaja
+            };
+
+            _db.AccesosGimnasio.Add(acceso);
+            
+            // Actualizar contador de visitas del cliente
+            if (esEntrada)
+            {
+                _clienteSeleccionado.TotalVisitasGimnasio++;
+                _clienteSeleccionado.FechaUltimaVisitaGimnasio = DateTime.Now;
+            }
+            
+            await _db.SaveChangesAsync();
+
+            // Mostrar mensaje
+            if (esEntrada)
+            {
+                if (membresia == null || !membresia.EstaVigente && !membresia.EstaPorVencer)
+                {
+                    _mensajeAcceso = $"⚠️ MEMBRESÍA VENCIDA - {_clienteSeleccionado.RazonSocial}";
+                    _mensajeClass = "danger";
+                }
+                else if (membresia.EstaPorVencer)
+                {
+                    _mensajeAcceso = $"⏳ {_clienteSeleccionado.RazonSocial} - Membresía vence en {membresia.DiasRestantes} días";
+                    _mensajeClass = "warning";
+                }
+                else
+                {
+                    _mensajeAcceso = $"✅ ¡Bienvenido/a {_clienteSeleccionado.RazonSocial}!";
+                    _mensajeClass = "success";
+                }
+            }
+            else
+            {
+                _mensajeAcceso = $"👋 ¡Hasta pronto {_clienteSeleccionado.RazonSocial}!";
+                _mensajeClass = "success";
+            }
+            
+            _estaDentro = esEntrada;
+            
+            await CargarEstadisticas();
+            await CargarUltimosAccesos();
+
+            // Limpiar mensaje después de 5 segundos
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                _mensajeAcceso = "";
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+        finally
+        {
+            _procesando = false;
+            StateHasChanged();
+        }
+    }
+
+    // ========== RECONOCIMIENTO FACIAL ==========
+    private async Task IniciarCamaraGym()
+    {
+        await JS.InvokeVoidAsync("startCamera", "videoElementGym");
+    }
+
+    private async Task DetenerCamaraGym()
+    {
+        await JS.InvokeVoidAsync("stopCamera", "videoElementGym");
+    }
+
+    private async Task ReconocerFacial()
+    {
+        _procesandoFacial = true;
+        _reconocimientoExito = false;
+        _reconocimientoMsg = "Iniciando cámara...";
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await IniciarCamaraGym();
+            await Task.Delay(1500);
+            _reconocimientoMsg = "Analizando rostro...";
+            await InvokeAsync(StateHasChanged);
+
+            string? base64Image = await JS.InvokeAsync<string>("captureFrame", "videoElementGym", "canvasElementGym");
+            if (string.IsNullOrEmpty(base64Image))
+            {
+                _reconocimientoMsg = "No se pudo capturar la imagen de la cámara.";
+                return;
+            }
+
+            var imageBytes = Convert.FromBase64String(base64Image.Split(',')[1]);
+
+            await Task.Run(async () =>
+            {
+                using var ms = new MemoryStream(imageBytes);
+                using var bitmap = new Bitmap(ms);
+                using var img = FaceRecognition.LoadImage(bitmap);
+                var faceLocations = _faceRecognition?.FaceLocations(img).ToArray() ?? Array.Empty<Location>();
+
+                if (faceLocations.Length == 0)
+                {
+                    await InvokeAsync(() => _reconocimientoMsg = "No se detectó ningún rostro. Por favor, posiciónese frente a la cámara.");
+                    return;
+                }
+
+                if (faceLocations.Length > 1)
+                {
+                    await InvokeAsync(() => _reconocimientoMsg = "Se detectó más de un rostro. Por favor, solo una persona a la vez.");
+                    return;
+                }
+
+                var capturedEncodings = _faceRecognition?.FaceEncodings(img, faceLocations).ToArray() ?? Array.Empty<FaceEncoding>();
+                if (capturedEncodings.Length == 0)
+                {
+                    await InvokeAsync(() => _reconocimientoMsg = "Error al procesar el rostro capturado.");
+                    return;
+                }
+
+                using var capturedEncoding = capturedEncodings[0];
+                var capturedVector = capturedEncoding.GetRawEncoding();
+                var bestMatchIndex = -1;
+                var minDistance = 1.0;
+
+                for (int i = 0; i < _knownEmbeddings.Count; i++)
+                {
+                    var distance = CalculateEuclideanDistance(_knownEmbeddings[i], capturedVector);
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        bestMatchIndex = i;
+                    }
+                }
+
+                if (bestMatchIndex != -1 && minDistance <= FACE_RECOGNITION_TOLERANCE)
+                {
+                    var clienteId = _knownClienteIds[bestMatchIndex];
+                    var cliente = await _db.Clientes.FirstOrDefaultAsync(c => c.IdCliente == clienteId);
+                    
+                    if (cliente != null)
+                    {
+                        await InvokeAsync(async () =>
+                        {
+                            _clienteSeleccionado = cliente;
+                            await VerificarEstadoCliente();
+                            await RegistrarAccesoFacial();
+                            _reconocimientoExito = true;
+                        });
+                    }
+                }
+                else
+                {
+                    await InvokeAsync(() => 
+                    {
+                        _reconocimientoMsg = $"Miembro no reconocido (Distancia: {minDistance:F2}). Intente de nuevo o busque manualmente.";
+                    });
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _reconocimientoMsg = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            await Task.Delay(2000);
+            await DetenerCamaraGym();
+            _procesandoFacial = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task VerificarEstadoCliente()
+    {
+        if (_clienteSeleccionado == null) return;
+        
+        // Verificar si está dentro
+        var ultimoAcceso = await _db.AccesosGimnasio
+            .Where(a => a.IdCliente == _clienteSeleccionado.IdCliente && a.FechaHora.Date == DateTime.Today)
+            .OrderByDescending(a => a.FechaHora)
+            .FirstOrDefaultAsync();
+            
+        _estaDentro = ultimoAcceso?.TipoAcceso == "Entrada";
+    }
+
+    private async Task RegistrarAccesoFacial()
+    {
+        if (_clienteSeleccionado == null) return;
+
+        var membresia = _membresiasActivas.FirstOrDefault(m => m.IdCliente == _clienteSeleccionado.IdCliente);
+        bool esEntrada = !_estaDentro; // Si no está dentro, es entrada
+        
+        string estadoMembresia = "Sin membresía";
+        if (membresia != null)
+        {
+            if (membresia.EstaVigente)
+                estadoMembresia = "Vigente";
+            else if (membresia.EstaPorVencer)
+                estadoMembresia = "Por vencer";
+            else
+                estadoMembresia = "Vencida";
+        }
+
+        // Registrar acceso
+        var acceso = new AccesoGimnasio
+        {
+            IdCliente = _clienteSeleccionado.IdCliente,
+            IdMembresia = membresia?.IdMembresia,
+            TipoAcceso = esEntrada ? "Entrada" : "Salida",
+            FechaHora = DateTime.Now,
+            MetodoVerificacion = "Facial", // ← Marca que fue reconocimiento facial
+            EstadoMembresiaAlAcceso = estadoMembresia,
+            AccesoPermitido = true,
+            IdSucursal = _idSucursal,
+            IdCaja = _idCaja,
+            Turno = _turno,
+            FechaCaja = _fechaCaja
+        };
+
+        _db.AccesosGimnasio.Add(acceso);
+        
+        // Actualizar contador de visitas del cliente
+        if (esEntrada)
+        {
+            _clienteSeleccionado.TotalVisitasGimnasio++;
+            _clienteSeleccionado.FechaUltimaVisitaGimnasio = DateTime.Now;
+        }
+        
+        await _db.SaveChangesAsync();
+
+        // Mostrar mensaje
+        if (esEntrada)
+        {
+            if (membresia == null || (!membresia.EstaVigente && !membresia.EstaPorVencer))
+            {
+                _reconocimientoMsg = $"⚠️ MEMBRESÍA VENCIDA - {_clienteSeleccionado.RazonSocial}";
+                _mensajeAcceso = _reconocimientoMsg;
+                _mensajeClass = "danger";
+            }
+            else if (membresia.EstaPorVencer)
+            {
+                _reconocimientoMsg = $"⏳ Bienvenido/a {_clienteSeleccionado.RazonSocial} - Membresía vence en {membresia.DiasRestantes} días";
+                _mensajeAcceso = _reconocimientoMsg;
+                _mensajeClass = "warning";
+            }
+            else
+            {
+                _reconocimientoMsg = $"✅ ¡Bienvenido/a {_clienteSeleccionado.RazonSocial}!";
+                _mensajeAcceso = _reconocimientoMsg;
+                _mensajeClass = "success";
+            }
+        }
+        else
+        {
+            _reconocimientoMsg = $"👋 ¡Hasta pronto {_clienteSeleccionado.RazonSocial}!";
+            _mensajeAcceso = _reconocimientoMsg;
+            _mensajeClass = "success";
+        }
+        
+        _estaDentro = esEntrada;
+        
+        // Reproducir mensaje de voz
+        await JS.InvokeVoidAsync("hablarTexto", _reconocimientoMsg.Replace("✅", "").Replace("⚠️", "").Replace("⏳", "").Replace("👋", ""));
+
+        await CargarEstadisticas();
+        await CargarUltimosAccesos();
+
+        // Limpiar mensaje después de 5 segundos
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(5000);
+            _mensajeAcceso = "";
+            _reconocimientoMsg = "";
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private double[] ConvertByteArrayToDoubleArray(byte[] byteArray)
+    {
+        if (byteArray == null || byteArray.Length % sizeof(double) != 0)
+            return Array.Empty<double>();
+
+        var doubleArray = new double[byteArray.Length / sizeof(double)];
+        Buffer.BlockCopy(byteArray, 0, doubleArray, 0, doubleArray.Length * sizeof(double));
+        return doubleArray;
+    }
+
+    private double CalculateEuclideanDistance(double[] vector1, double[] vector2)
+    {
+        if (vector1.Length != vector2.Length) throw new ArgumentException("Vectores de diferente longitud.");
+        double sum = 0;
+        for (int i = 0; i < vector1.Length; i++)
+        {
+            sum += Math.Pow(vector1[i] - vector2[i], 2);
+        }
+        return Math.Sqrt(sum);
+    }
+
+    public void Dispose()
+    {
+        _faceRecognition?.Dispose();
+    }
+}

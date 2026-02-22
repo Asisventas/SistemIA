@@ -22,7 +22,9 @@
   private int _lastOnReadyIdVenta = -1; // Evitar invocaciones repetidas de OnReady
   private bool _ocultarImagenes = false; // Debug: ocultar imágenes (logo/QR)
   private bool _modoFarmaciaActivo = false; // Modo farmacia para mostrar Precio Ministerio
-  private bool esFacturaElectronica => (caja?.TipoFacturacion ?? "ELECTRONICA").ToUpper().Contains("ELECTR");
+  // Remisiones (interna o normal) NO son factura electrónica - no generan QR ni CDC
+  private bool esRemision => (venta?.TipoPago?.Nombre?.ToUpper() ?? "").Contains("REMISIÓN") || (venta?.TipoPago?.Nombre?.ToUpper() ?? "").Contains("REMISION");
+  private bool esFacturaElectronica => !esRemision && (caja?.TipoFacturacion ?? "ELECTRONICA").ToUpper().Contains("ELECTR");
   private string numeroCompleto => $"{venta?.Establecimiento}-{venta?.PuntoExpedicion}-{venta?.NumeroFactura}";
   
   // ========== DATOS DEL EMISOR (cabecera) ==========
@@ -256,7 +258,7 @@ else
         {
           <div>Fecha de Inicio de Vigencia: @(caja.VigenciaDel?.ToString("dd/MM/yyyy"))</div>
         }
-        <div class="titulo-doc">@(esFacturaElectronica ? "FACTURA ELECTRÓNICA" : "FACTURA")</div>
+        <div class="titulo-doc">@(esRemision ? (venta?.TipoPago?.Nombre?.ToUpper() ?? "REMISIÓN") : (esFacturaElectronica ? "FACTURA ELECTRÓNICA" : "FACTURA"))</div>
         <div class="numero">@NumKude()</div>
       </div>
     </div>

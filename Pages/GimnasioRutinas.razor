@@ -1,0 +1,537 @@
+@page "/gimnasio/rutinas"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Models.Gimnasio
+@inject AppDbContext _db
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Rutinas de Entrenamiento - Gimnasio</PageTitle>
+
+<PageProtection Modulo="/gimnasio" Permiso="VIEW">
+
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="mb-0"><i class="bi bi-activity text-primary me-2"></i>Rutinas de Entrenamiento</h3>
+            <small class="text-muted">Gestión de rutinas y asignación a clientes</small>
+        </div>
+        <button class="btn btn-primary" @onclick="AbrirModalNuevaRutina">
+            <i class="bi bi-plus-lg me-1"></i>Nueva Rutina
+        </button>
+    </div>
+
+    <div class="card mb-3 shadow-sm">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-12 col-md-4">
+                    <label class="form-label small text-muted">Buscar Cliente</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Nombre o cédula..." @bind="_filtroBusqueda" @bind:event="oninput" />
+                        <button class="btn btn-outline-secondary" @onclick="BuscarRutinas"><i class="bi bi-search"></i></button>
+                    </div>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label small text-muted">Estado</label>
+                    <select class="form-select" @bind="_filtroEstado" @bind:after="BuscarRutinas">
+                        <option value="">Todos</option>
+                        <option value="Activa">Activa</option>
+                        <option value="Completada">Completada</option>
+                        <option value="Pausada">Pausada</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label small text-muted">Instructor</label>
+                    <select class="form-select" @bind="_filtroInstructor" @bind:after="BuscarRutinas">
+                        <option value="0">Todos</option>
+                        @foreach (var inst in _instructores)
+                        {
+                            <option value="@inst.IdInstructor">@inst.NombreCompleto</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12 col-md-2 d-flex align-items-end">
+                    <button class="btn btn-outline-secondary w-100" @onclick="LimpiarFiltros">
+                        <i class="bi bi-x-lg me-1"></i>Limpiar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <h6 class="mb-0"><i class="bi bi-list-ul me-2"></i>Rutinas (@_rutinas.Count)</h6>
+        </div>
+        @if (_cargando)
+        {
+            <div class="card-body text-center py-5">
+                <div class="spinner-border text-primary"></div>
+                <p class="mt-3 text-muted">Cargando rutinas...</p>
+            </div>
+        }
+        else if (!_rutinas.Any())
+        {
+            <div class="card-body text-center py-5">
+                <i class="bi bi-clipboard-x fs-1 text-muted"></i>
+                <p class="mt-3 text-muted">No hay rutinas registradas</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Nombre Rutina</th>
+                            <th>Instructor</th>
+                            <th class="text-center">Ejercicios</th>
+                            <th class="text-center">Duración</th>
+                            <th>Estado</th>
+                            <th>Creada</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rutina in _rutinas)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@(rutina.Cliente?.RazonSocial ?? "-")</strong>
+                                    <br><small class="text-muted">@rutina.Cliente?.NumeroDocumento</small>
+                                </td>
+                                <td>
+                                    <strong>@rutina.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(rutina.Descripcion))
+                                    {
+                                        <br><small class="text-muted">@(rutina.Descripcion.Length > 30 ? rutina.Descripcion[..30] + "..." : rutina.Descripcion)</small>
+                                    }
+                                </td>
+                                <td>@(rutina.Instructor?.NombreCompleto ?? "-")</td>
+                                <td class="text-center"><span class="badge bg-info">@rutina.Ejercicios.Count</span></td>
+                                <td class="text-center">@rutina.DuracionMinutos min</td>
+                                <td><span class="badge @GetBadgeEstado(rutina.Estado)">@rutina.Estado</span></td>
+                                <td>@rutina.FechaCreacion.ToString("dd/MM/yy")</td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" @onclick="() => AbrirDetalleRutina(rutina)" title="Ver"><i class="bi bi-eye"></i></button>
+                                        <button class="btn btn-outline-success" @onclick="() => DuplicarRutina(rutina)" title="Duplicar"><i class="bi bi-copy"></i></button>
+                                        <button class="btn btn-outline-danger" @onclick="() => EliminarRutina(rutina)" title="Eliminar"><i class="bi bi-trash"></i></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (_mostrarModal)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-activity me-2"></i>@(_rutinaEditando.IdRutina == 0 ? "Nueva Rutina" : "Editar Rutina")</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Cliente <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" readonly value="@(_clienteSeleccionado?.RazonSocial ?? "Seleccionar...")" />
+                                <button class="btn btn-outline-secondary" type="button" @onclick="AbrirBuscadorCliente"><i class="bi bi-search"></i></button>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Instructor</label>
+                            <select class="form-select" @bind="_rutinaEditando.IdInstructor">
+                                <option value="">Sin asignar</option>
+                                @foreach (var inst in _instructores)
+                                {
+                                    <option value="@inst.IdInstructor">@inst.NombreCompleto</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Nombre de la Rutina <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_rutinaEditando.Nombre" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Duración (min)</label>
+                            <input type="number" class="form-control" @bind="_rutinaEditando.DuracionMinutos" min="15" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-select" @bind="_rutinaEditando.Tipo">
+                                <option value="Mixto">Mixto</option>
+                                <option value="Fuerza">Fuerza</option>
+                                <option value="Cardio">Cardio</option>
+                                <option value="Funcional">Funcional</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <label class="form-label">Nivel</label>
+                            <select class="form-select" @bind="_rutinaEditando.NivelDificultad">
+                                <option value="Principiante">Principiante</option>
+                                <option value="Intermedio">Intermedio</option>
+                                <option value="Avanzado">Avanzado</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-8">
+                            <label class="form-label">Días Recomendados</label>
+                            <input type="text" class="form-control" @bind="_rutinaEditando.DiasRecomendados" placeholder="Ej: Lunes, Miércoles, Viernes" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Descripción / Objetivo</label>
+                            <textarea class="form-control" rows="2" @bind="_rutinaEditando.Descripcion"></textarea>
+                        </div>
+                        
+                        <div class="col-12 mt-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="text-primary mb-0"><i class="bi bi-list-check me-1"></i>Ejercicios</h6>
+                                <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AgregarEjercicio"><i class="bi bi-plus-lg me-1"></i>Agregar</button>
+                            </div>
+                        </div>
+                        
+                        @if (_ejerciciosEditando.Any())
+                        {
+                            <div class="col-12">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered align-middle">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width:30px">#</th>
+                                                <th>Ejercicio</th>
+                                                <th>Grupo Muscular</th>
+                                                <th style="width:60px">Series</th>
+                                                <th style="width:60px">Reps</th>
+                                                <th style="width:70px">Desc(s)</th>
+                                                <th style="width:70px">Peso(kg)</th>
+                                                <th style="width:40px"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int i = 0; i < _ejerciciosEditando.Count; i++)
+                                            {
+                                                var idx = i;
+                                                var ej = _ejerciciosEditando[idx];
+                                                <tr>
+                                                    <td class="text-center">@(idx + 1)</td>
+                                                    <td><input type="text" class="form-control form-control-sm" @bind="ej.NombreEjercicio" /></td>
+                                                    <td>
+                                                        <select class="form-select form-select-sm" @bind="ej.GrupoMuscular">
+                                                            <option value="">-</option>
+                                                            <option value="Pecho">Pecho</option>
+                                                            <option value="Espalda">Espalda</option>
+                                                            <option value="Hombros">Hombros</option>
+                                                            <option value="Brazos">Brazos</option>
+                                                            <option value="Piernas">Piernas</option>
+                                                            <option value="Core">Core</option>
+                                                            <option value="Cardio">Cardio</option>
+                                                        </select>
+                                                    </td>
+                                                    <td><input type="number" class="form-control form-control-sm text-center" @bind="ej.Series" min="1" /></td>
+                                                    <td><input type="number" class="form-control form-control-sm text-center" @bind="ej.Repeticiones" min="1" /></td>
+                                                    <td><input type="number" class="form-control form-control-sm text-center" @bind="ej.DescansoSegundos" /></td>
+                                                    <td><input type="number" class="form-control form-control-sm text-center" @bind="ej.PesoRecomendadoKg" step="0.5" /></td>
+                                                    <td><button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => QuitarEjercicio(idx)"><i class="bi bi-x"></i></button></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="col-12">
+                                <div class="alert alert-info mb-0"><i class="bi bi-info-circle me-2"></i>Haz clic en "Agregar" para añadir ejercicios.</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarRutina" disabled="@_guardando">
+                        @if (_guardando) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_mostrarBuscadorCliente)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-search me-2"></i>Buscar Cliente</h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarBuscadorCliente = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Nombre o cédula..." @bind="_busquedaCliente" />
+                        <button class="btn btn-primary" @onclick="BuscarClientes"><i class="bi bi-search"></i></button>
+                    </div>
+                    @if (_clientesBusqueda.Any())
+                    {
+                        <div class="list-group">
+                            @foreach (var cli in _clientesBusqueda)
+                            {
+                                <button class="list-group-item list-group-item-action" @onclick="() => SeleccionarCliente(cli)">
+                                    <strong>@cli.RazonSocial</strong>
+                                    <span class="badge bg-secondary float-end">@cli.NumeroDocumento</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_mostrarDetalle && _rutinaDetalle != null)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-clipboard-check me-2"></i>@_rutinaDetalle.Nombre</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarDetalle = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3 mb-4">
+                        <div class="col-6 col-md-3">
+                            <small class="text-muted d-block">Cliente</small>
+                            <strong>@(_rutinaDetalle.Cliente?.RazonSocial ?? "-")</strong>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <small class="text-muted d-block">Instructor</small>
+                            <strong>@(_rutinaDetalle.Instructor?.NombreCompleto ?? "Sin asignar")</strong>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <small class="text-muted d-block">Nivel</small>
+                            <strong>@_rutinaDetalle.NivelDificultad</strong>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <small class="text-muted d-block">Estado</small>
+                            <span class="badge @GetBadgeEstado(_rutinaDetalle.Estado)">@_rutinaDetalle.Estado</span>
+                        </div>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(_rutinaDetalle.Descripcion))
+                    {
+                        <div class="alert alert-info"><strong>Objetivo:</strong> @_rutinaDetalle.Descripcion</div>
+                    }
+                    
+                    <h6 class="mb-3"><i class="bi bi-list-check me-2"></i>Ejercicios (@_rutinaDetalle.Ejercicios.Count)</h6>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Ejercicio</th>
+                                    <th>Grupo</th>
+                                    <th class="text-center">Series</th>
+                                    <th class="text-center">Reps</th>
+                                    <th class="text-center">Descanso</th>
+                                    <th class="text-center">Peso</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ej in _rutinaDetalle.Ejercicios.OrderBy(e => e.Orden))
+                                {
+                                    <tr>
+                                        <td>@ej.Orden</td>
+                                        <td><strong>@ej.NombreEjercicio</strong></td>
+                                        <td>@(ej.GrupoMuscular ?? "-")</td>
+                                        <td class="text-center">@ej.Series</td>
+                                        <td class="text-center">@ej.Repeticiones</td>
+                                        <td class="text-center">@(ej.DescansoSegundos)s</td>
+                                        <td class="text-center">@(ej.PesoRecomendadoKg > 0 ? $"{ej.PesoRecomendadoKg:N1} kg" : "-")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-primary" @onclick="EditarRutinaDesdeDetalle"><i class="bi bi-pencil me-1"></i>Editar</button>
+                    <button class="btn btn-secondary" @onclick="() => _mostrarDetalle = false">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private bool _cargando = true;
+    private bool _mostrarModal, _mostrarDetalle, _mostrarBuscadorCliente, _guardando;
+    private string _filtroBusqueda = "", _filtroEstado = "", _busquedaCliente = "";
+    private int _filtroInstructor;
+    private List<RutinaGimnasio> _rutinas = new();
+    private List<Instructor> _instructores = new();
+    private RutinaGimnasio _rutinaEditando = new();
+    private List<EjercicioRutina> _ejerciciosEditando = new();
+    private Cliente? _clienteSeleccionado;
+    private RutinaGimnasio? _rutinaDetalle;
+    private List<Cliente> _clientesBusqueda = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _instructores = await _db.Instructores.Where(i => i.Activo).OrderBy(i => i.NombreCompleto).ToListAsync();
+        await BuscarRutinas();
+    }
+
+    private async Task BuscarRutinas()
+    {
+        _cargando = true;
+        StateHasChanged();
+        try
+        {
+            var q = _db.RutinasGimnasio.Include(r => r.Cliente).Include(r => r.Instructor).Include(r => r.Ejercicios)
+                .Where(r => r.Estado != "Eliminada").AsQueryable();
+            if (!string.IsNullOrWhiteSpace(_filtroBusqueda))
+            {
+                var t = _filtroBusqueda.ToLower().Trim();
+                q = q.Where(r => (r.Cliente != null && r.Cliente.RazonSocial.ToLower().Contains(t)) || r.Nombre.ToLower().Contains(t));
+            }
+            if (!string.IsNullOrEmpty(_filtroEstado)) q = q.Where(r => r.Estado == _filtroEstado);
+            if (_filtroInstructor > 0) q = q.Where(r => r.IdInstructor == _filtroInstructor);
+            _rutinas = await q.OrderByDescending(r => r.FechaCreacion).Take(100).ToListAsync();
+        }
+        finally { _cargando = false; }
+    }
+
+    private void LimpiarFiltros() { _filtroBusqueda = ""; _filtroEstado = ""; _filtroInstructor = 0; _ = BuscarRutinas(); }
+
+    private void AbrirModalNuevaRutina()
+    {
+        _rutinaEditando = new() { DuracionMinutos = 60, NivelDificultad = "Principiante", Tipo = "Mixto", Estado = "Activa" };
+        _ejerciciosEditando = new(); _clienteSeleccionado = null; _mostrarModal = true;
+    }
+
+    private void AbrirDetalleRutina(RutinaGimnasio r) { _rutinaDetalle = r; _mostrarDetalle = true; }
+
+    private void EditarRutinaDesdeDetalle()
+    {
+        if (_rutinaDetalle == null) return;
+        _rutinaEditando = new()
+        {
+            IdRutina = _rutinaDetalle.IdRutina, IdCliente = _rutinaDetalle.IdCliente, IdInstructor = _rutinaDetalle.IdInstructor,
+            Nombre = _rutinaDetalle.Nombre, Descripcion = _rutinaDetalle.Descripcion, Tipo = _rutinaDetalle.Tipo,
+            NivelDificultad = _rutinaDetalle.NivelDificultad, DuracionMinutos = _rutinaDetalle.DuracionMinutos,
+            DiasRecomendados = _rutinaDetalle.DiasRecomendados, Estado = _rutinaDetalle.Estado
+        };
+        _clienteSeleccionado = _rutinaDetalle.Cliente;
+        _ejerciciosEditando = _rutinaDetalle.Ejercicios.Select(e => new EjercicioRutina
+        {
+            IdEjercicioRutina = e.IdEjercicioRutina, NombreEjercicio = e.NombreEjercicio, GrupoMuscular = e.GrupoMuscular,
+            Series = e.Series, Repeticiones = e.Repeticiones, PesoRecomendadoKg = e.PesoRecomendadoKg,
+            DescansoSegundos = e.DescansoSegundos, Orden = e.Orden, Notas = e.Notas
+        }).ToList();
+        _mostrarDetalle = false; _mostrarModal = true;
+    }
+
+    private void AbrirBuscadorCliente() { _busquedaCliente = ""; _clientesBusqueda = new(); _mostrarBuscadorCliente = true; }
+
+    private async Task BuscarClientes()
+    {
+        if (string.IsNullOrWhiteSpace(_busquedaCliente)) return;
+        var t = _busquedaCliente.ToLower().Trim();
+        _clientesBusqueda = await _db.Clientes
+            .Where(c => c.RazonSocial.ToLower().Contains(t) || (c.NumeroDocumento != null && c.NumeroDocumento.Contains(t)))
+            .OrderBy(c => c.RazonSocial).Take(10).ToListAsync();
+    }
+
+    private void SeleccionarCliente(Cliente c) { _clienteSeleccionado = c; _rutinaEditando.IdCliente = c.IdCliente; _mostrarBuscadorCliente = false; }
+
+    private void AgregarEjercicio()
+    {
+        _ejerciciosEditando.Add(new EjercicioRutina { Orden = _ejerciciosEditando.Count + 1, Series = 3, Repeticiones = 12, DescansoSegundos = 60 });
+    }
+
+    private void QuitarEjercicio(int idx)
+    {
+        if (idx >= 0 && idx < _ejerciciosEditando.Count)
+        {
+            _ejerciciosEditando.RemoveAt(idx);
+            for (int i = 0; i < _ejerciciosEditando.Count; i++) _ejerciciosEditando[i].Orden = i + 1;
+        }
+    }
+
+    private async Task GuardarRutina()
+    {
+        if (_clienteSeleccionado == null) { await JS.InvokeVoidAsync("alert", "Debe seleccionar un cliente"); return; }
+        if (string.IsNullOrWhiteSpace(_rutinaEditando.Nombre)) { await JS.InvokeVoidAsync("alert", "El nombre es obligatorio"); return; }
+        _guardando = true;
+        try
+        {
+            if (_rutinaEditando.IdRutina == 0)
+            {
+                _rutinaEditando.FechaCreacion = DateTime.Now;
+                _db.RutinasGimnasio.Add(_rutinaEditando);
+                await _db.SaveChangesAsync();
+                foreach (var ej in _ejerciciosEditando) { ej.IdRutina = _rutinaEditando.IdRutina; _db.EjerciciosRutina.Add(ej); }
+                await _db.SaveChangesAsync();
+            }
+            else
+            {
+                var rutDb = await _db.RutinasGimnasio.Include(r => r.Ejercicios).FirstOrDefaultAsync(r => r.IdRutina == _rutinaEditando.IdRutina);
+                if (rutDb != null)
+                {
+                    rutDb.IdCliente = _rutinaEditando.IdCliente; rutDb.IdInstructor = _rutinaEditando.IdInstructor;
+                    rutDb.Nombre = _rutinaEditando.Nombre; rutDb.Descripcion = _rutinaEditando.Descripcion;
+                    rutDb.Tipo = _rutinaEditando.Tipo; rutDb.NivelDificultad = _rutinaEditando.NivelDificultad;
+                    rutDb.DuracionMinutos = _rutinaEditando.DuracionMinutos; rutDb.DiasRecomendados = _rutinaEditando.DiasRecomendados;
+                    _db.EjerciciosRutina.RemoveRange(rutDb.Ejercicios);
+                    foreach (var ej in _ejerciciosEditando) { ej.IdEjercicioRutina = 0; ej.IdRutina = rutDb.IdRutina; _db.EjerciciosRutina.Add(ej); }
+                    await _db.SaveChangesAsync();
+                }
+            }
+            CerrarModal(); await BuscarRutinas();
+        }
+        catch (Exception ex) { await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}"); }
+        finally { _guardando = false; }
+    }
+
+    private void DuplicarRutina(RutinaGimnasio r)
+    {
+        _rutinaEditando = new()
+        {
+            IdCliente = r.IdCliente, IdInstructor = r.IdInstructor, Nombre = $"{r.Nombre} (copia)",
+            Descripcion = r.Descripcion, Tipo = r.Tipo, NivelDificultad = r.NivelDificultad,
+            DuracionMinutos = r.DuracionMinutos, DiasRecomendados = r.DiasRecomendados, Estado = "Activa"
+        };
+        _clienteSeleccionado = r.Cliente;
+        _ejerciciosEditando = r.Ejercicios.Select(e => new EjercicioRutina
+        {
+            NombreEjercicio = e.NombreEjercicio, GrupoMuscular = e.GrupoMuscular, Series = e.Series,
+            Repeticiones = e.Repeticiones, PesoRecomendadoKg = e.PesoRecomendadoKg,
+            DescansoSegundos = e.DescansoSegundos, Orden = e.Orden, Notas = e.Notas
+        }).ToList();
+        _mostrarModal = true;
+    }
+
+    private async Task EliminarRutina(RutinaGimnasio r)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar '{r.Nombre}'?")) return;
+        r.Estado = "Eliminada"; await _db.SaveChangesAsync(); await BuscarRutinas();
+    }
+
+    private void CerrarModal() { _mostrarModal = false; _rutinaEditando = new(); _ejerciciosEditando.Clear(); _clienteSeleccionado = null; }
+
+    private string GetBadgeEstado(string e) => e switch { "Activa" => "bg-success", "Completada" => "bg-info", "Pausada" => "bg-warning text-dark", _ => "bg-secondary" };
+}

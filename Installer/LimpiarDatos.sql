@@ -102,9 +102,43 @@ IF OBJECT_ID('Compras', 'U') IS NOT NULL
 GO
 
 -- ============================================
+-- 3B. LIMPIAR TABLAS DE RESTAURANTE/MESAS/PEDIDOS
+-- ============================================
+PRINT '[3B/16] Limpiando mesas, pedidos y reservas...'
+
+-- Pagos de pedidos
+IF OBJECT_ID('PedidoPagos', 'U') IS NOT NULL
+    DELETE FROM PedidoPagos;
+
+-- Detalles de pedidos
+IF OBJECT_ID('PedidoDetalles', 'U') IS NOT NULL
+    DELETE FROM PedidoDetalles;
+
+-- Pedidos
+IF OBJECT_ID('Pedidos', 'U') IS NOT NULL
+    DELETE FROM Pedidos;
+
+-- Reservas
+IF OBJECT_ID('Reservas', 'U') IS NOT NULL
+    DELETE FROM Reservas;
+
+-- Mesas (se limpian pero NO se eliminan - son catálogo)
+-- Las mesas se conservan como parte de la configuración
+GO
+
+-- ============================================
+-- 3C. LIMPIAR COLA DE CORREOS PENDIENTES
+-- ============================================
+PRINT '[3C/16] Limpiando correos pendientes...'
+
+IF OBJECT_ID('CorreosPendientes', 'U') IS NOT NULL
+    DELETE FROM CorreosPendientes;
+GO
+
+-- ============================================
 -- 4. LIMPIAR TABLAS DE PRESUPUESTOS
 -- ============================================
-PRINT '[4/15] Limpiando presupuestos...'
+PRINT '[4/16] Limpiando presupuestos...'
 
 IF OBJECT_ID('PresupuestosDetalles', 'U') IS NOT NULL
     DELETE FROM PresupuestosDetalles;
@@ -497,6 +531,22 @@ IF OBJECT_ID('SalidasStock', 'U') IS NOT NULL
 IF OBJECT_ID('RemisionesInternas', 'U') IS NOT NULL
     DBCC CHECKIDENT ('RemisionesInternas', RESEED, 0);
 
+-- Restaurante/Mesas/Pedidos
+IF OBJECT_ID('PedidoPagos', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('PedidoPagos', RESEED, 0);
+
+IF OBJECT_ID('PedidoDetalles', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('PedidoDetalles', RESEED, 0);
+
+IF OBJECT_ID('Pedidos', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('Pedidos', RESEED, 0);
+
+IF OBJECT_ID('Reservas', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('Reservas', RESEED, 0);
+
+IF OBJECT_ID('CorreosPendientes', 'U') IS NOT NULL
+    DBCC CHECKIDENT ('CorreosPendientes', RESEED, 0);
+
 -- Timbrados
 IF OBJECT_ID('Timbrados', 'U') IS NOT NULL
     DBCC CHECKIDENT ('Timbrados', RESEED, 0);
@@ -554,7 +604,7 @@ GO
 -- 15. RESUMEN
 -- ============================================
 PRINT ''
-PRINT '[15/15] Limpieza completada'
+PRINT '[16/16] Limpieza completada'
 PRINT '============================================'
 PRINT ''
 PRINT 'Datos ELIMINADOS:'
@@ -562,6 +612,9 @@ PRINT '  - Ventas, Compras, Presupuestos y NC (ventas y compras)'
 PRINT '  - Productos, Stock, Lotes, Movimientos'
 PRINT '  - Transferencias de deposito, Salidas de stock'
 PRINT '  - Remisiones internas, Ajustes de stock'
+PRINT '  - Pedidos, Detalles de pedidos, Pagos de pedidos (Restaurante)'
+PRINT '  - Reservas de mesas/canchas'
+PRINT '  - Correos pendientes'
 PRINT '  - Cuentas por cobrar y pagar con cuotas'
 PRINT '  - Pagos de ventas, Cobros, Cuotas'
 PRINT '  - Clientes (excepto ID 1)'
@@ -578,6 +631,7 @@ PRINT '  - Presupuestos del sistema (cotizaciones comerciales)'
 PRINT ''
 PRINT 'Datos CONSERVADOS:'
 PRINT '  - Sociedades, Sucursales, Cajas, Depositos'
+PRINT '  - Mesas (configuracion de espacios)'
 PRINT '  - Usuarios, Roles, Permisos, Modulos'
 PRINT '  - Monedas, Tipos IVA, Tipos Pago'
 PRINT '  - Marcas, Clasificaciones, Categorias'
@@ -589,6 +643,7 @@ PRINT '  - ConfiguracionSistema, DescuentosCategorias'
 PRINT '  - ConfiguracionesAsistenteIA'
 PRINT '  - ArticulosConocimiento (base de conocimiento IA)'
 PRINT '  - CategoriasConocimiento'
+PRINT '  - ConfiguracionesVPN (conexiones remotas)'
 PRINT ''
 PRINT '============================================'
 GO

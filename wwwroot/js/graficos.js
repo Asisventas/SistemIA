@@ -316,6 +316,82 @@ window.limpiarGraficoSimple = function() {
     }
 };
 
+// Función para crear gráficos en informe de restaurante
+window.crearGraficoRestaurante = function(canvasId, tipo, labels, datos, etiqueta, colores) {
+    try {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) {
+            console.debug('Canvas no encontrado:', canvasId);
+            return false;
+        }
+
+        if (typeof Chart === 'undefined') {
+            console.debug('Chart.js no disponible');
+            return false;
+        }
+
+        // Destruir gráfico anterior si existe
+        const chartKey = canvasId + '_chart';
+        if (window[chartKey]) {
+            window[chartKey].destroy();
+            window[chartKey] = null;
+        }
+
+        const config = {
+            type: tipo,
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: etiqueta,
+                    data: datos,
+                    backgroundColor: colores,
+                    borderColor: colores.map(c => c),
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: tipo === 'bar' ? 'y' : 'x',
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return etiqueta + ': ' + context.parsed.x.toLocaleString('es-PY');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(0,0,0,0.05)'
+                        }
+                    }
+                }
+            }
+        };
+
+        const chart = new Chart(canvas, config);
+        window[chartKey] = chart;
+        console.debug('Gráfico restaurante creado:', canvasId);
+        return true;
+    } catch (error) {
+        console.error('Error creando gráfico restaurante:', error);
+        return false;
+    }
+};
+
 // Función de verificación de librerías
 window.verificarLibrerias = function() {
     try {

@@ -1,0 +1,1588 @@
+@page "/agenda"
+@using SistemIA.Models
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.WebUtilities
+@inject AppDbContext db
+@inject IAgendaService agendaService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageProtection Modulo="/agenda" Permiso="VIEW">
+
+<div class="agenda-container">
+    @if (_cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Cargando agenda...</p>
+        </div>
+    }
+    else
+    {
+    <!-- ========== ENCABEZADO ========== -->
+    <div class="agenda-header">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <h4 class="mb-0">
+                    <i class="bi bi-calendar3 text-primary me-2"></i>
+                    Agenda
+                </h4>
+                @if (_sucursalActual != null)
+                {
+                    <span class="badge bg-secondary">@_sucursalActual.NombreSucursal</span>
+                }
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-primary btn-sm" @onclick="AbrirModalNuevaCita">
+                    <i class="bi bi-plus-lg me-1"></i>
+                    <span class="d-none d-sm-inline">Nueva Cita</span>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="Refrescar">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== CONTROLES DE NAVEGACIÓN ========== -->
+    <div class="agenda-controles">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <!-- Navegación de mes -->
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-primary" @onclick="MesAnterior">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <button class="btn btn-outline-primary" @onclick="IrAHoy">Hoy</button>
+                <button class="btn btn-outline-primary" @onclick="MesSiguiente">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+
+            <!-- Título del mes -->
+            <h5 class="mb-0 fw-bold text-primary">
+                @_fechaActual.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-ES")).ToUpper()
+            </h5>
+
+            <!-- Vista y filtros -->
+            <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" style="width: auto;" @bind="_vistaActual">
+                    <option value="mes">Mes</option>
+                    <option value="semana">Semana</option>
+                    <option value="dia">Día</option>
+                    <option value="agenda">Lista</option>
+                </select>
+                <select class="form-select form-select-sm" style="width: auto;" @bind="_filtroTipo" @bind:after="FiltrarCitas">
+                    <option value="">Todos los tipos</option>
+                    @foreach (var tipo in _tiposCita)
+                    {
+                        <option value="@tipo">@tipo</option>
+                    }
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== CALENDARIO MENSUAL ========== -->
+    @if (_vistaActual == "mes")
+    {
+        <div class="calendario-mes">
+            <!-- Encabezado de días -->
+            <div class="calendario-header">
+                <div class="dia-header">Dom</div>
+                <div class="dia-header">Lun</div>
+                <div class="dia-header">Mar</div>
+                <div class="dia-header">Mié</div>
+                <div class="dia-header">Jue</div>
+                <div class="dia-header">Vie</div>
+                <div class="dia-header">Sáb</div>
+            </div>
+
+            <!-- Celdas del calendario -->
+            <div class="calendario-body">
+                @foreach (var semana in _semanas)
+                {
+                    <div class="calendario-semana">
+                        @foreach (var dia in semana)
+                        {
+                            var citasDelDia = ObtenerCitasDelDia(dia);
+                            var esHoy = dia.Date == DateTime.Today;
+                            var esMesActual = dia.Month == _fechaActual.Month;
+                            
+                            <div class="calendario-celda @(esHoy ? "hoy" : "") @(!esMesActual ? "otro-mes" : "")" 
+                                 @onclick="() => SeleccionarDia(dia)">
+                                <div class="celda-numero">@dia.Day</div>
+                                <div class="celda-citas">
+                                    @foreach (var cita in citasDelDia.Take(3))
+                                    {
+                                        <div class="cita-mini" 
+                                             style="background-color: @cita.ColorFondo; color: @cita.ColorTexto;"
+                                             @onclick:stopPropagation="true"
+                                             @onclick="() => VerCita(cita)">
+                                            <i class="bi @cita.ObtenerIcono() me-1"></i>
+                                            @TruncarTexto(cita.Titulo, 15)
+                                        </div>
+                                    }
+                                    @if (citasDelDia.Count > 3)
+                                    {
+                                        <div class="cita-mas" @onclick:stopPropagation="true" @onclick="() => SeleccionarDia(dia)">
+                                            <small>+@(citasDelDia.Count - 3) más</small>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- ========== VISTA SEMANAL ========== -->
+    @if (_vistaActual == "semana")
+    {
+        <div class="calendario-semana-view">
+            <div class="semana-header">
+                @foreach (var dia in _diasSemana)
+                {
+                    var esHoy = dia.Date == DateTime.Today;
+                    <div class="dia-column-header @(esHoy ? "hoy" : "")">
+                        <div class="dia-nombre">@dia.ToString("ddd", new System.Globalization.CultureInfo("es-ES"))</div>
+                        <div class="dia-numero">@dia.Day</div>
+                    </div>
+                }
+            </div>
+            <div class="semana-body">
+                @foreach (var dia in _diasSemana)
+                {
+                    var citasDelDia = ObtenerCitasDelDia(dia);
+                    <div class="dia-column" @onclick="() => SeleccionarDia(dia)">
+                        @foreach (var cita in citasDelDia)
+                        {
+                            <div class="cita-semana" 
+                                 style="background-color: @cita.ColorFondo; color: @cita.ColorTexto;"
+                                 @onclick:stopPropagation="true"
+                                 @onclick="() => VerCita(cita)">
+                                <div class="cita-hora">
+                                    @cita.FechaHoraInicio.ToString("HH:mm")
+                                </div>
+                                <div class="cita-titulo">@TruncarTexto(cita.Titulo, 20)</div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- ========== VISTA DIARIA ========== -->
+    @if (_vistaActual == "dia")
+    {
+        <div class="calendario-dia-view">
+            <div class="dia-header-view">
+                <h5 class="mb-0">@_diaSeleccionado.ToString("dddd, dd 'de' MMMM 'de' yyyy", new System.Globalization.CultureInfo("es-ES"))</h5>
+            </div>
+            <div class="dia-citas-lista">
+                @{
+                    var citasDelDiaSeleccionado = ObtenerCitasDelDia(_diaSeleccionado);
+                }
+                @if (citasDelDiaSeleccionado.Count == 0)
+                {
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-calendar-x fs-1 mb-2 d-block"></i>
+                        <p>No hay citas para este día</p>
+                        <button class="btn btn-primary btn-sm" @onclick="() => AbrirModalNuevaCitaEnDia(_diaSeleccionado)">
+                            <i class="bi bi-plus-lg me-1"></i>Agregar Cita
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var cita in citasDelDiaSeleccionado.OrderBy(c => c.FechaHoraInicio))
+                    {
+                        <div class="cita-dia-item" @onclick="() => VerCita(cita)">
+                            <div class="cita-hora-badge" style="background-color: @cita.ColorFondo;">
+                                @cita.FechaHoraInicio.ToString("HH:mm")
+                            </div>
+                            <div class="cita-info">
+                                <div class="cita-titulo-dia">
+                                    <i class="bi @cita.ObtenerIcono() me-1"></i>
+                                    @cita.Titulo
+                                </div>
+                                @if (!string.IsNullOrEmpty(cita.NombreCliente))
+                                {
+                                    <div class="cita-cliente">
+                                        <i class="bi bi-person me-1"></i>@cita.NombreCliente
+                                    </div>
+                                }
+                                <div class="cita-duracion">
+                                    <i class="bi bi-clock me-1"></i>@cita.DuracionMinutos min
+                                    <span class="badge @cita.ObtenerClaseBadgeEstado() ms-2">@cita.Estado</span>
+                                </div>
+                            </div>
+                            <div class="cita-acciones">
+                                <button class="btn btn-sm btn-outline-primary" @onclick:stopPropagation="true" @onclick="() => EditarCita(cita)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    <!-- ========== VISTA LISTA/AGENDA ========== -->
+    @if (_vistaActual == "agenda")
+    {
+        <div class="calendario-lista-view">
+            <div class="lista-filtros mb-3">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <label class="form-label small">Desde</label>
+                        <input type="date" class="form-control form-control-sm" @bind="_filtroDesde" @bind:after="FiltrarCitas" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Hasta</label>
+                        <input type="date" class="form-control form-control-sm" @bind="_filtroHasta" @bind:after="FiltrarCitas" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Cliente</label>
+                        <select class="form-select form-select-sm" @bind="_filtroCliente" @bind:after="FiltrarCitas">
+                            <option value="0">Todos</option>
+                            @foreach (var cliente in _clientesConCitas)
+                            {
+                                <option value="@cliente.IdCliente">@cliente.RazonSocial</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Estado</label>
+                        <select class="form-select form-select-sm" @bind="_filtroEstado" @bind:after="FiltrarCitas">
+                            <option value="">Todos</option>
+                            @foreach (var estado in _estadosCita)
+                            {
+                                <option value="@estado">@estado</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lista-citas">
+                @foreach (var grupo in _citasFiltradas.GroupBy(c => c.FechaHoraInicio.Date).OrderBy(g => g.Key))
+                {
+                    <div class="lista-grupo-fecha">
+                        <div class="grupo-fecha-header">
+                            <i class="bi bi-calendar-date me-2"></i>
+                            @grupo.Key.ToString("dddd, dd 'de' MMMM", new System.Globalization.CultureInfo("es-ES"))
+                        </div>
+                        @foreach (var cita in grupo.OrderBy(c => c.FechaHoraInicio))
+                        {
+                            <div class="lista-cita-item" @onclick="() => VerCita(cita)">
+                                <div class="cita-color-bar" style="background-color: @cita.ColorFondo;"></div>
+                                <div class="cita-hora-lista">@cita.FechaHoraInicio.ToString("HH:mm")</div>
+                                <div class="cita-contenido-lista">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="bi @cita.ObtenerIcono()"></i>
+                                        <strong>@cita.Titulo</strong>
+                                        <span class="badge @cita.ObtenerClaseBadgeEstado()">@cita.Estado</span>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(cita.NombreCliente))
+                                    {
+                                        <small class="text-muted">
+                                            <i class="bi bi-person me-1"></i>@cita.NombreCliente
+                                        </small>
+                                    }
+                                </div>
+                                <div class="cita-acciones-lista">
+                                    @if (!string.IsNullOrEmpty(cita.UrlMaps))
+                                    {
+                                        <a href="@cita.UrlMaps" target="_blank" class="btn btn-sm btn-outline-info" @onclick:stopPropagation="true" title="Ver ubicación">
+                                            <i class="bi bi-geo-alt"></i>
+                                        </a>
+                                    }
+                                    <button class="btn btn-sm btn-outline-primary" @onclick:stopPropagation="true" @onclick="() => EditarCita(cita)" title="Editar">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                @if (!_citasFiltradas.Any())
+                {
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-calendar-x fs-1 mb-2 d-block"></i>
+                        <p>No hay citas que coincidan con los filtros</p>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    } @* Cierre del else _cargando *@
+</div>
+
+<!-- ========== PANEL LATERAL: DETALLE DE CITA ========== -->
+@if (_citaSeleccionada != null)
+{
+    <div class="modal-backdrop fade show" @onclick="CerrarDetalleCita"></div>
+    <div class="offcanvas offcanvas-end show" tabindex="-1">
+        <div class="offcanvas-header" style="background: @_citaSeleccionada.ColorFondo; color: @_citaSeleccionada.ColorTexto;">
+            <h5 class="offcanvas-title">
+                <i class="bi @_citaSeleccionada.ObtenerIcono() me-2"></i>
+                @_citaSeleccionada.Titulo
+            </h5>
+            <button type="button" class="btn-close btn-close-white" @onclick="CerrarDetalleCita"></button>
+        </div>
+        <div class="offcanvas-body">
+            <!-- Estado -->
+            <div class="mb-3">
+                <span class="badge @_citaSeleccionada.ObtenerClaseBadgeEstado() fs-6">@_citaSeleccionada.Estado</span>
+                @if (_citaSeleccionada.Prioridad != "Normal")
+                {
+                    <span class="badge bg-warning text-dark ms-1">@_citaSeleccionada.Prioridad</span>
+                }
+            </div>
+
+            <!-- Fecha y hora -->
+            <div class="detalle-item">
+                <i class="bi bi-calendar3 text-primary"></i>
+                <div>
+                    <strong>Fecha y Hora</strong>
+                    <div>@_citaSeleccionada.FechaHoraInicio.ToString("dddd, dd 'de' MMMM 'de' yyyy", new System.Globalization.CultureInfo("es-ES"))</div>
+                    <div>@_citaSeleccionada.FechaHoraInicio.ToString("HH:mm") - @_citaSeleccionada.FechaHoraFin.ToString("HH:mm") (@_citaSeleccionada.DuracionMinutos min)</div>
+                </div>
+            </div>
+
+            <!-- Cliente -->
+            @if (!string.IsNullOrEmpty(_citaSeleccionada.NombreCliente))
+            {
+                <div class="detalle-item">
+                    <i class="bi bi-person text-primary"></i>
+                    <div>
+                        <strong>Cliente</strong>
+                        <div>@_citaSeleccionada.NombreCliente</div>
+                        @if (!string.IsNullOrEmpty(_citaSeleccionada.Telefono))
+                        {
+                            <a href="tel:@_citaSeleccionada.Telefono" class="text-decoration-none">
+                                <i class="bi bi-telephone me-1"></i>@_citaSeleccionada.Telefono
+                            </a>
+                        }
+                        @if (!string.IsNullOrEmpty(_citaSeleccionada.Email))
+                        {
+                            <div>
+                                <a href="mailto:@_citaSeleccionada.Email" class="text-decoration-none">
+                                    <i class="bi bi-envelope me-1"></i>@_citaSeleccionada.Email
+                                </a>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Ubicación -->
+            @if (!string.IsNullOrEmpty(_citaSeleccionada.Direccion) || _citaSeleccionada.Latitud.HasValue)
+            {
+                <div class="detalle-item">
+                    <i class="bi bi-geo-alt text-primary"></i>
+                    <div>
+                        <strong>Ubicación</strong>
+                        @if (!string.IsNullOrEmpty(_citaSeleccionada.Direccion))
+                        {
+                            <div>@_citaSeleccionada.Direccion</div>
+                        }
+                        @if (!string.IsNullOrEmpty(_citaSeleccionada.UrlMaps))
+                        {
+                            <a href="@_citaSeleccionada.UrlMaps" target="_blank" class="btn btn-sm btn-outline-primary mt-1">
+                                <i class="bi bi-map me-1"></i>Ver en Google Maps
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Descripción -->
+            @if (!string.IsNullOrEmpty(_citaSeleccionada.Descripcion))
+            {
+                <div class="detalle-item">
+                    <i class="bi bi-card-text text-primary"></i>
+                    <div>
+                        <strong>Descripción</strong>
+                        <div class="text-muted">@_citaSeleccionada.Descripcion</div>
+                    </div>
+                </div>
+            }
+
+            <!-- Asignado -->
+            @if (!string.IsNullOrEmpty(_citaSeleccionada.NombreAsignado))
+            {
+                <div class="detalle-item">
+                    <i class="bi bi-person-badge text-primary"></i>
+                    <div>
+                        <strong>Asignado a</strong>
+                        <div>@_citaSeleccionada.NombreAsignado</div>
+                    </div>
+                </div>
+            }
+
+            <!-- Recordatorios -->
+            @if (_citaSeleccionada.TieneRecordatorio)
+            {
+                <div class="detalle-item">
+                    <i class="bi bi-bell text-primary"></i>
+                    <div>
+                        <strong>Recordatorios</strong>
+                        @if (_citaSeleccionada.MinutosRecordatorio1.HasValue)
+                        {
+                            <div>@_citaSeleccionada.MinutosRecordatorio1 minutos antes</div>
+                        }
+                        @if (_citaSeleccionada.MinutosRecordatorio2.HasValue)
+                        {
+                            <div>@_citaSeleccionada.MinutosRecordatorio2 minutos antes</div>
+                        }
+                        @if (_citaSeleccionada.EnviarCorreo)
+                        {
+                            <span class="badge bg-info">
+                                <i class="bi bi-envelope me-1"></i>Envío por correo
+                            </span>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Notas -->
+            @if (!string.IsNullOrEmpty(_citaSeleccionada.Notas))
+            {
+                <div class="detalle-item">
+                    <i class="bi bi-sticky text-primary"></i>
+                    <div>
+                        <strong>Notas</strong>
+                        <div class="text-muted small">@_citaSeleccionada.Notas</div>
+                    </div>
+                </div>
+            }
+
+            <!-- Resultado -->
+            @if (!string.IsNullOrEmpty(_citaSeleccionada.Resultado))
+            {
+                <div class="detalle-item">
+                    <i class="bi bi-check2-circle text-success"></i>
+                    <div>
+                        <strong>Resultado</strong>
+                        <div>@_citaSeleccionada.Resultado</div>
+                    </div>
+                </div>
+            }
+
+            <hr />
+
+            <!-- Acciones rápidas de estado -->
+            <div class="mb-3">
+                <label class="form-label small">Cambiar estado:</label>
+                <div class="d-flex flex-wrap gap-1">
+                    @foreach (var estado in _estadosCita)
+                    {
+                        <button class="btn btn-sm @(_citaSeleccionada.Estado == estado ? "btn-primary" : "btn-outline-secondary")" 
+                                @onclick="() => CambiarEstado(estado)">
+                            @estado
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <!-- Botones de acción -->
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary flex-fill" @onclick="() => EditarCita(_citaSeleccionada)">
+                    <i class="bi bi-pencil me-1"></i>Editar
+                </button>
+                <button class="btn btn-outline-danger" @onclick="() => EliminarCita(_citaSeleccionada)" title="Eliminar">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ========== MODAL: CREAR/EDITAR CITA ========== -->
+@if (_mostrarModalCita)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background: @_citaEdicion.ColorFondo; color: @_citaEdicion.ColorTexto;">
+                    <h5 class="modal-title">
+                        <i class="bi bi-calendar-plus me-2"></i>
+                        @(_citaEdicion.IdCita == 0 ? "Nueva Cita" : "Editar Cita")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalCita"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <!-- Título -->
+                        <div class="col-12">
+                            <label class="form-label">Título *</label>
+                            <input type="text" class="form-control" @bind="_citaEdicion.Titulo" placeholder="Título de la cita" />
+                        </div>
+
+                        <!-- Tipo y Prioridad -->
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-select" @bind="_citaEdicion.TipoCita">
+                                @foreach (var tipo in _tiposCita)
+                                {
+                                    <option value="@tipo">@tipo</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Prioridad</label>
+                            <select class="form-select" @bind="_citaEdicion.Prioridad">
+                                @foreach (var prioridad in _prioridades)
+                                {
+                                    <option value="@prioridad">@prioridad</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Fecha y hora -->
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha y hora inicio *</label>
+                            <input type="datetime-local" class="form-control" @bind="_citaEdicion.FechaHoraInicio" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha y hora fin *</label>
+                            <input type="datetime-local" class="form-control" @bind="_citaEdicion.FechaHoraFin" />
+                        </div>
+
+                        <!-- Todo el día -->
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="todoElDia" @bind="_citaEdicion.TodoElDia" />
+                                <label class="form-check-label" for="todoElDia">Todo el día</label>
+                            </div>
+                        </div>
+
+                        <!-- Cliente -->
+                        <div class="col-12">
+                            <label class="form-label">Cliente</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                <select class="form-select" @bind="_citaEdicion.IdCliente" @bind:after="OnClienteSeleccionado">
+                                    <option value="">Sin cliente</option>
+                                    @foreach (var cliente in _clientes)
+                                    {
+                                        <option value="@cliente.IdCliente">@cliente.RazonSocial</option>
+                                    }
+                                </select>
+                            </div>
+                            @if (!string.IsNullOrEmpty(_citaEdicion.NombreCliente))
+                            {
+                                <small class="text-muted">@_citaEdicion.Telefono - @_citaEdicion.Email</small>
+                            }
+                        </div>
+
+                        <!-- Descripción -->
+                        <div class="col-12">
+                            <label class="form-label">Descripción</label>
+                            <textarea class="form-control" rows="2" @bind="_citaEdicion.Descripcion" placeholder="Detalles de la cita..."></textarea>
+                        </div>
+
+                        <!-- Ubicación -->
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="bi bi-geo-alt me-1"></i>Ubicación
+                            </label>
+                            <input type="text" class="form-control" @bind="_citaEdicion.Direccion" placeholder="Dirección o lugar de la cita" />
+                        </div>
+
+                        <!-- Coordenadas (opcional) -->
+                        <div class="col-md-6">
+                            <label class="form-label small">Latitud</label>
+                            <input type="number" step="0.0000001" class="form-control form-control-sm" @bind="_citaEdicion.Latitud" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Longitud</label>
+                            <input type="number" step="0.0000001" class="form-control form-control-sm" @bind="_citaEdicion.Longitud" />
+                        </div>
+
+                        <!-- Color -->
+                        <div class="col-md-6">
+                            <label class="form-label">Color</label>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var (color, nombre) in _coloresDisponibles)
+                                {
+                                    <button type="button" 
+                                            class="btn btn-sm @(_citaEdicion.ColorFondo == color ? "border-dark border-2" : "")"
+                                            style="background-color: @color; width: 30px; height: 30px; border-radius: 4px;"
+                                            title="@nombre"
+                                            @onclick="() => _citaEdicion.ColorFondo = color">
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Asignado -->
+                        <div class="col-md-6">
+                            <label class="form-label">Asignado a</label>
+                            <select class="form-select" @bind="_citaEdicion.IdUsuarioAsignado" @bind:after="OnUsuarioAsignadoSeleccionado">
+                                <option value="">Sin asignar</option>
+                                @foreach (var usuario in _usuarios)
+                                {
+                                    <option value="@usuario.Id_Usu">@($"{usuario.Nombres} {usuario.Apellidos}")</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Recordatorios -->
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header py-2">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="tieneRecordatorio" @bind="_citaEdicion.TieneRecordatorio" />
+                                        <label class="form-check-label" for="tieneRecordatorio">
+                                            <i class="bi bi-bell me-1"></i>Recordatorios
+                                        </label>
+                                    </div>
+                                </div>
+                                @if (_citaEdicion.TieneRecordatorio)
+                                {
+                                    <div class="card-body py-2">
+                                        <div class="row g-2">
+                                            <div class="col-md-4">
+                                                <label class="form-label small">Primer recordatorio</label>
+                                                <select class="form-select form-select-sm" @bind="_citaEdicion.MinutosRecordatorio1">
+                                                    <option value="">No</option>
+                                                    <option value="15">15 minutos antes</option>
+                                                    <option value="30">30 minutos antes</option>
+                                                    <option value="60">1 hora antes</option>
+                                                    <option value="120">2 horas antes</option>
+                                                    <option value="1440">1 día antes</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">Segundo recordatorio</label>
+                                                <select class="form-select form-select-sm" @bind="_citaEdicion.MinutosRecordatorio2">
+                                                    <option value="">No</option>
+                                                    <option value="15">15 minutos antes</option>
+                                                    <option value="30">30 minutos antes</option>
+                                                    <option value="60">1 hora antes</option>
+                                                    <option value="120">2 horas antes</option>
+                                                    <option value="1440">1 día antes</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">&nbsp;</label>
+                                                <div class="form-check">
+                                                    <input type="checkbox" class="form-check-input" id="enviarCorreo" @bind="_citaEdicion.EnviarCorreo" />
+                                                    <label class="form-check-label small" for="enviarCorreo">
+                                                        <i class="bi bi-envelope me-1"></i>Enviar por correo
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Notas -->
+                        <div class="col-12">
+                            <label class="form-label">Notas internas</label>
+                            <textarea class="form-control" rows="2" @bind="_citaEdicion.Notas" placeholder="Notas adicionales..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalCita">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarCita" disabled="@_guardando">
+                        @if (_guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+<style>
+    /* ========== CONTENEDOR PRINCIPAL ========== */
+    .agenda-container {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 80px);
+        background: var(--bg-page);
+        overflow: hidden;
+    }
+
+    .agenda-header {
+        padding: 12px 16px;
+        background: var(--bg-surface);
+        border-bottom: 1px solid var(--bar-border);
+    }
+
+    .agenda-controles {
+        padding: 10px 16px;
+        background: var(--bg-surface);
+        border-bottom: 1px solid var(--bar-border);
+    }
+
+    /* ========== CALENDARIO MENSUAL ========== */
+    .calendario-mes {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .calendario-header {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        background: var(--bs-primary);
+        color: white;
+    }
+
+    .dia-header {
+        padding: 10px 8px;
+        text-align: center;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+
+    .calendario-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .calendario-semana {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        flex: 1;
+        min-height: 100px;
+    }
+
+    .calendario-celda {
+        border: 1px solid var(--bar-border);
+        padding: 4px;
+        min-height: 90px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        background: var(--bg-surface);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .calendario-celda:hover {
+        background: var(--bs-light);
+    }
+
+    .calendario-celda.hoy {
+        background: rgba(13, 110, 253, 0.1);
+        border-color: var(--bs-primary);
+    }
+
+    .calendario-celda.hoy .celda-numero {
+        background: var(--bs-primary);
+        color: white;
+        border-radius: 50%;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .calendario-celda.otro-mes {
+        background: var(--bs-light);
+        opacity: 0.6;
+    }
+
+    .celda-numero {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+    }
+
+    .celda-citas {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .cita-mini {
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.7rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+    }
+
+    .cita-mini:hover {
+        filter: brightness(1.1);
+    }
+
+    .cita-mas {
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        text-align: center;
+        cursor: pointer;
+    }
+
+    /* ========== VISTA SEMANAL ========== */
+    .calendario-semana-view {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .semana-header {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        background: var(--bs-primary);
+        color: white;
+    }
+
+    .dia-column-header {
+        padding: 8px;
+        text-align: center;
+    }
+
+    .dia-column-header.hoy {
+        background: rgba(255,255,255,0.2);
+    }
+
+    .dia-nombre {
+        font-weight: 600;
+        text-transform: capitalize;
+    }
+
+    .dia-numero {
+        font-size: 1.2rem;
+        font-weight: bold;
+    }
+
+    .semana-body {
+        flex: 1;
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        overflow-y: auto;
+    }
+
+    .dia-column {
+        border-right: 1px solid var(--bar-border);
+        padding: 8px 4px;
+        min-height: 300px;
+        background: var(--bg-surface);
+    }
+
+    .cita-semana {
+        padding: 6px 8px;
+        border-radius: 4px;
+        margin-bottom: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+
+    .cita-hora {
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+
+    .cita-titulo {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* ========== VISTA DIARIA ========== */
+    .calendario-dia-view {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: var(--bg-surface);
+    }
+
+    .dia-header-view {
+        padding: 12px 16px;
+        background: var(--bs-primary);
+        color: white;
+        text-transform: capitalize;
+    }
+
+    .dia-citas-lista {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+    }
+
+    .cita-dia-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: var(--bg-surface);
+        border-radius: 8px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        border: 1px solid var(--bar-border);
+        transition: all 0.2s;
+    }
+
+    .cita-dia-item:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transform: translateX(4px);
+    }
+
+    .cita-hora-badge {
+        padding: 8px 12px;
+        border-radius: 8px;
+        color: white;
+        font-weight: bold;
+        font-size: 0.9rem;
+        min-width: 60px;
+        text-align: center;
+    }
+
+    .cita-info {
+        flex: 1;
+    }
+
+    .cita-titulo-dia {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .cita-cliente, .cita-duracion {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+
+    /* ========== VISTA LISTA ========== */
+    .calendario-lista-view {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding: 12px;
+        background: var(--bg-surface);
+    }
+
+    .lista-citas {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .lista-grupo-fecha {
+        margin-bottom: 16px;
+    }
+
+    .grupo-fecha-header {
+        padding: 8px 12px;
+        background: var(--bs-primary);
+        color: white;
+        border-radius: 6px 6px 0 0;
+        font-weight: 600;
+        text-transform: capitalize;
+    }
+
+    .lista-cita-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--bar-border);
+        border-top: none;
+        background: var(--bg-surface);
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .lista-cita-item:hover {
+        background: var(--bs-light);
+    }
+
+    .lista-cita-item:last-child {
+        border-radius: 0 0 6px 6px;
+    }
+
+    .cita-color-bar {
+        width: 4px;
+        height: 40px;
+        border-radius: 2px;
+    }
+
+    .cita-hora-lista {
+        font-weight: 600;
+        min-width: 50px;
+        color: var(--text-primary);
+    }
+
+    .cita-contenido-lista {
+        flex: 1;
+    }
+
+    .cita-acciones-lista {
+        display: flex;
+        gap: 4px;
+    }
+
+    /* ========== DETALLE ITEM ========== */
+    .detalle-item {
+        display: flex;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--bar-border);
+    }
+
+    .detalle-item i {
+        font-size: 1.2rem;
+        margin-top: 2px;
+    }
+
+    /* ========== OFFCANVAS ========== */
+    .offcanvas {
+        width: 400px !important;
+        position: fixed !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        z-index: 1055 !important;
+        background: var(--bg-surface) !important;
+    }
+    
+    .offcanvas.show {
+        visibility: visible !important;
+        transform: none !important;
+    }
+    
+    .modal-backdrop {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        z-index: 1050 !important;
+        background-color: rgba(0,0,0,0.5) !important;
+    }
+
+    /* ========== RESPONSIVE ========== */
+    @@media (max-width: 768px) {
+        .agenda-container {
+            height: calc(100vh - 60px);
+        }
+
+        .calendario-celda {
+            min-height: 70px;
+            padding: 2px;
+        }
+
+        .celda-numero {
+            font-size: 0.8rem;
+        }
+
+        .cita-mini {
+            font-size: 0.6rem;
+            padding: 1px 3px;
+        }
+
+        .dia-header {
+            font-size: 0.7rem;
+            padding: 6px 2px;
+        }
+
+        .semana-body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .dia-column {
+            min-height: auto;
+            border-right: none;
+            border-bottom: 1px solid var(--bar-border);
+        }
+
+        .offcanvas {
+            width: 100% !important;
+        }
+
+        .modal-dialog {
+            margin: 0;
+            max-width: 100%;
+            height: 100%;
+        }
+
+        .modal-content {
+            height: 100%;
+            border-radius: 0;
+        }
+    }
+
+    @@media (max-width: 400px) {
+        .calendario-celda {
+            min-height: 50px;
+        }
+
+        .celda-citas {
+            display: none;
+        }
+
+        .cita-dia-item {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .cita-hora-badge {
+            width: 100%;
+        }
+    }
+</style>
+
+}
+
+@code {
+    // ========== ESTADO ==========
+    private bool _cargando = true;
+    private bool _guardando = false;
+    private Sucursal? _sucursalActual;
+    private DateTime _fechaActual = DateTime.Today;
+    private DateTime _diaSeleccionado = DateTime.Today;
+    private string _vistaActual = "mes";
+
+    // ========== LISTAS ==========
+    private List<CitaAgenda> _citas = new();
+    private List<CitaAgenda> _citasFiltradas = new();
+    private List<Cliente> _clientes = new();
+    private List<Cliente> _clientesConCitas = new();
+    private List<Usuario> _usuarios = new();
+    private List<List<DateTime>> _semanas = new();
+    private List<DateTime> _diasSemana = new();
+
+    // ========== CATÁLOGOS ==========
+    private List<string> _tiposCita = new();
+    private List<string> _estadosCita = new();
+    private List<string> _prioridades = new();
+    private List<(string Color, string Nombre)> _coloresDisponibles = new();
+
+    // ========== FILTROS ==========
+    private string _filtroTipo = "";
+    private string _filtroEstado = "";
+    private int _filtroCliente = 0;
+    private DateTime _filtroDesde = DateTime.Today.AddDays(-30);
+    private DateTime _filtroHasta = DateTime.Today.AddDays(60);
+
+    // ========== EDICIÓN ==========
+    private CitaAgenda? _citaSeleccionada;
+    private CitaAgenda _citaEdicion = new();
+    private bool _mostrarModalCita = false;
+
+    // ========== CICLO DE VIDA ==========
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Suscribirse a cambios de URL para manejar navegación con query strings
+            Navigation.LocationChanged += HandleLocationChanged;
+            
+            // Leer parámetro de URL para la vista
+            LeerVistaDeUrl();
+
+            // Cargar catálogos
+            _tiposCita = agendaService.ObtenerTiposCita();
+            _estadosCita = agendaService.ObtenerEstadosCita();
+            _prioridades = agendaService.ObtenerPrioridadesCita();
+            _coloresDisponibles = agendaService.ObtenerColoresDisponibles();
+
+            // Cargar sucursal (TODO: obtener de sesión)
+            _sucursalActual = await db.Sucursal.FirstOrDefaultAsync();
+            
+            if (_sucursalActual != null)
+            {
+                await CargarCitas();
+                await CargarClientes();
+                await CargarUsuarios();
+            }
+
+            GenerarCalendario();
+            _cargando = false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error inicializando agenda: {ex.Message}");
+            _cargando = false;
+        }
+    }
+
+    private async Task CargarCitas()
+    {
+        if (_sucursalActual == null) return;
+
+        var primerDia = new DateTime(_fechaActual.Year, _fechaActual.Month, 1).AddDays(-7);
+        var ultimoDia = primerDia.AddMonths(2);
+
+        _citas = await agendaService.ObtenerCitasPorRangoAsync(_sucursalActual.Id, primerDia, ultimoDia);
+        FiltrarCitas();
+    }
+
+    private async Task CargarClientes()
+    {
+        _clientes = await db.Clientes
+            .Where(c => c.Estado)
+            .OrderBy(c => c.RazonSocial)
+            .ToListAsync();
+
+        // Clientes que tienen citas
+        var idsConCitas = _citas.Where(c => c.IdCliente.HasValue).Select(c => c.IdCliente!.Value).Distinct();
+        _clientesConCitas = _clientes.Where(c => idsConCitas.Contains(c.IdCliente)).ToList();
+    }
+
+    private async Task CargarUsuarios()
+    {
+        _usuarios = await db.Usuarios
+            .Where(u => u.Estado_Usu == true)
+            .OrderBy(u => u.Nombres)
+            .ToListAsync();
+    }
+
+    private void GenerarCalendario()
+    {
+        _semanas.Clear();
+        var primerDia = new DateTime(_fechaActual.Year, _fechaActual.Month, 1);
+        var ultimoDia = primerDia.AddMonths(1).AddDays(-1);
+
+        // Ajustar al domingo anterior
+        var inicio = primerDia.AddDays(-(int)primerDia.DayOfWeek);
+        var fin = ultimoDia.AddDays(6 - (int)ultimoDia.DayOfWeek);
+
+        var semana = new List<DateTime>();
+        for (var dia = inicio; dia <= fin; dia = dia.AddDays(1))
+        {
+            semana.Add(dia);
+            if (semana.Count == 7)
+            {
+                _semanas.Add(semana);
+                semana = new List<DateTime>();
+            }
+        }
+
+        // Generar días de la semana actual
+        _diasSemana.Clear();
+        var inicioSemana = _diaSeleccionado.AddDays(-(int)_diaSeleccionado.DayOfWeek);
+        for (int i = 0; i < 7; i++)
+        {
+            _diasSemana.Add(inicioSemana.AddDays(i));
+        }
+    }
+
+    // ========== NAVEGACIÓN ==========
+    private async Task MesAnterior()
+    {
+        _fechaActual = _fechaActual.AddMonths(-1);
+        GenerarCalendario();
+        await CargarCitas();
+    }
+
+    private async Task MesSiguiente()
+    {
+        _fechaActual = _fechaActual.AddMonths(1);
+        GenerarCalendario();
+        await CargarCitas();
+    }
+
+    private async Task IrAHoy()
+    {
+        _fechaActual = DateTime.Today;
+        _diaSeleccionado = DateTime.Today;
+        GenerarCalendario();
+        await CargarCitas();
+    }
+
+    private void SeleccionarDia(DateTime dia)
+    {
+        _diaSeleccionado = dia;
+        _vistaActual = "dia";
+        GenerarCalendario();
+    }
+
+    private async Task Refrescar()
+    {
+        await CargarCitas();
+        StateHasChanged();
+    }
+
+    // ========== FILTROS ==========
+    private void FiltrarCitas()
+    {
+        var query = _citas.AsEnumerable();
+
+        if (!string.IsNullOrEmpty(_filtroTipo))
+            query = query.Where(c => c.TipoCita == _filtroTipo);
+
+        if (!string.IsNullOrEmpty(_filtroEstado))
+            query = query.Where(c => c.Estado == _filtroEstado);
+
+        if (_filtroCliente > 0)
+            query = query.Where(c => c.IdCliente == _filtroCliente);
+
+        if (_vistaActual == "agenda")
+        {
+            query = query.Where(c => c.FechaHoraInicio >= _filtroDesde && c.FechaHoraInicio <= _filtroHasta);
+        }
+
+        _citasFiltradas = query.ToList();
+    }
+
+    private List<CitaAgenda> ObtenerCitasDelDia(DateTime dia)
+    {
+        return _citasFiltradas
+            .Where(c => c.FechaHoraInicio.Date == dia.Date)
+            .OrderBy(c => c.FechaHoraInicio)
+            .ToList();
+    }
+
+    // ========== CRUD ==========
+    private void AbrirModalNuevaCita()
+    {
+        _citaEdicion = new CitaAgenda
+        {
+            IdSucursal = _sucursalActual?.Id ?? 0,
+            FechaHoraInicio = _diaSeleccionado.Date.AddHours(9),
+            FechaHoraFin = _diaSeleccionado.Date.AddHours(10),
+            ColorFondo = "#3788d8",
+            ColorTexto = "#ffffff"
+        };
+        _mostrarModalCita = true;
+    }
+
+    private void AbrirModalNuevaCitaEnDia(DateTime dia)
+    {
+        _diaSeleccionado = dia;
+        AbrirModalNuevaCita();
+    }
+
+    private void VerCita(CitaAgenda cita)
+    {
+        _citaSeleccionada = cita;
+    }
+
+    private void EditarCita(CitaAgenda cita)
+    {
+        _citaEdicion = new CitaAgenda
+        {
+            IdCita = cita.IdCita,
+            IdSucursal = cita.IdSucursal,
+            TipoCita = cita.TipoCita,
+            Titulo = cita.Titulo,
+            Descripcion = cita.Descripcion,
+            IdCliente = cita.IdCliente,
+            NombreCliente = cita.NombreCliente,
+            Telefono = cita.Telefono,
+            Email = cita.Email,
+            FechaHoraInicio = cita.FechaHoraInicio,
+            FechaHoraFin = cita.FechaHoraFin,
+            TodoElDia = cita.TodoElDia,
+            Direccion = cita.Direccion,
+            Latitud = cita.Latitud,
+            Longitud = cita.Longitud,
+            ColorFondo = cita.ColorFondo,
+            ColorTexto = cita.ColorTexto,
+            Estado = cita.Estado,
+            Prioridad = cita.Prioridad,
+            TieneRecordatorio = cita.TieneRecordatorio,
+            MinutosRecordatorio1 = cita.MinutosRecordatorio1,
+            MinutosRecordatorio2 = cita.MinutosRecordatorio2,
+            EnviarCorreo = cita.EnviarCorreo,
+            IdUsuarioAsignado = cita.IdUsuarioAsignado,
+            NombreAsignado = cita.NombreAsignado,
+            Notas = cita.Notas
+        };
+        _mostrarModalCita = true;
+        _citaSeleccionada = null;
+    }
+
+    private async Task GuardarCita()
+    {
+        if (string.IsNullOrWhiteSpace(_citaEdicion.Titulo))
+        {
+            await JS.InvokeVoidAsync("alert", "El título es requerido");
+            return;
+        }
+
+        _guardando = true;
+        try
+        {
+            if (_citaEdicion.IdCita == 0)
+            {
+                await agendaService.CrearCitaAsync(_citaEdicion);
+            }
+            else
+            {
+                await agendaService.ActualizarCitaAsync(_citaEdicion);
+            }
+
+            await CargarCitas();
+            CerrarModalCita();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}");
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task EliminarCita(CitaAgenda cita)
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", $"¿Eliminar la cita '{cita.Titulo}'?");
+        if (!confirmar) return;
+
+        try
+        {
+            await agendaService.EliminarCitaAsync(cita.IdCita);
+            await CargarCitas();
+            _citaSeleccionada = null;
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al eliminar: {ex.Message}");
+        }
+    }
+
+    private async Task CambiarEstado(string nuevoEstado)
+    {
+        if (_citaSeleccionada == null) return;
+
+        try
+        {
+            await agendaService.CambiarEstadoCitaAsync(_citaSeleccionada.IdCita, nuevoEstado);
+            _citaSeleccionada.Estado = nuevoEstado;
+            await CargarCitas();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private void CerrarModalCita()
+    {
+        _mostrarModalCita = false;
+        _citaEdicion = new();
+    }
+
+    private void CerrarDetalleCita()
+    {
+        _citaSeleccionada = null;
+    }
+
+    // ========== EVENTOS ==========
+    private async Task OnClienteSeleccionado()
+    {
+        if (_citaEdicion.IdCliente.HasValue)
+        {
+            var cliente = _clientes.FirstOrDefault(c => c.IdCliente == _citaEdicion.IdCliente);
+            if (cliente != null)
+            {
+                _citaEdicion.NombreCliente = cliente.RazonSocial;
+                _citaEdicion.Telefono = cliente.Celular ?? cliente.Telefono;
+                _citaEdicion.Email = cliente.Email;
+                
+                if (!string.IsNullOrEmpty(cliente.ColorAgenda))
+                {
+                    _citaEdicion.ColorFondo = cliente.ColorAgenda;
+                }
+
+                // Copiar ubicación
+                if (cliente.Latitud.HasValue)
+                {
+                    _citaEdicion.Latitud = cliente.Latitud;
+                    _citaEdicion.Longitud = cliente.Longitud;
+                    _citaEdicion.Direccion = cliente.DireccionCompleta ?? cliente.Direccion;
+                }
+            }
+        }
+        else
+        {
+            _citaEdicion.NombreCliente = null;
+            _citaEdicion.Telefono = null;
+            _citaEdicion.Email = null;
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task OnUsuarioAsignadoSeleccionado()
+    {
+        if (_citaEdicion.IdUsuarioAsignado.HasValue)
+        {
+            var usuario = _usuarios.FirstOrDefault(u => u.Id_Usu == _citaEdicion.IdUsuarioAsignado);
+            _citaEdicion.NombreAsignado = usuario != null ? $"{usuario.Nombres} {usuario.Apellidos}" : null;
+        }
+        else
+        {
+            _citaEdicion.NombreAsignado = null;
+        }
+        await Task.CompletedTask;
+    }
+
+    // ========== UTILIDADES ==========
+    private string TruncarTexto(string texto, int maxLength)
+    {
+        if (string.IsNullOrEmpty(texto)) return "";
+        return texto.Length <= maxLength ? texto : texto.Substring(0, maxLength - 2) + "..";
+    }
+
+    // ========== NAVEGACIÓN ==========
+    private void LeerVistaDeUrl()
+    {
+        var uri = new Uri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("vista", out var vistaParam))
+        {
+            var vista = vistaParam.ToString().ToLower();
+            if (vista == "dia" || vista == "mes" || vista == "semana" || vista == "lista" || vista == "agenda")
+            {
+                _vistaActual = vista == "lista" ? "agenda" : vista;
+            }
+        }
+        
+        // Leer fecha si viene en la URL
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("fecha", out var fechaParam))
+        {
+            if (DateTime.TryParse(fechaParam.ToString(), out var fecha))
+            {
+                _fechaActual = fecha;
+                _diaSeleccionado = fecha;
+            }
+        }
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Solo procesar si es la misma página de agenda
+        if (e.Location.Contains("/agenda"))
+        {
+            LeerVistaDeUrl();
+            GenerarCalendario();
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+    }
+}

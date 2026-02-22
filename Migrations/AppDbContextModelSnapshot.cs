@@ -106,6 +106,9 @@ namespace SistemIA.Migrations
                     b.Property<int>("IdProducto")
                         .HasColumnType("int");
 
+                    b.Property<int?>("IdProductoLote")
+                        .HasColumnType("int");
+
                     b.Property<int>("IdSucursal")
                         .HasColumnType("int")
                         .HasColumnName("suc");
@@ -142,6 +145,8 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdDeposito");
 
                     b.HasIndex("IdProducto");
+
+                    b.HasIndex("IdProductoLote");
 
                     b.ToTable("AjustesStockDetalles", (string)null);
                 });
@@ -934,6 +939,21 @@ namespace SistemIA.Migrations
                     b.Property<int?>("CantTurnos")
                         .HasColumnType("int");
 
+                    b.Property<bool?>("ComandaBarraEsRed")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("ComandaCocinaEsRed")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("ComprobanteEsRed")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("CopiasComandaBarra")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CopiasComandaCocina")
+                        .HasColumnType("int");
+
                     b.Property<string>("FacturaInicial")
                         .HasMaxLength(7)
                         .HasColumnType("nchar(7)")
@@ -953,6 +973,24 @@ namespace SistemIA.Migrations
 
                     b.Property<int?>("IdSucursal")
                         .HasColumnType("int");
+
+                    b.Property<string>("ImpresoraComandaBarra")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ImpresoraComandaCocina")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ImpresoraComprobantePedido")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool?>("ImprimirComandaAutomatica")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("ImprimirComprobantePedidoAuto")
+                        .HasColumnType("bit");
 
                     b.Property<int?>("Imprimir_Factura")
                         .HasColumnType("int");
@@ -1038,6 +1076,15 @@ namespace SistemIA.Migrations
                         .HasMaxLength(7)
                         .HasColumnType("nchar(7)")
                         .IsFixedLength();
+
+                    b.Property<int?>("PuertoImpresoraBarra")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PuertoImpresoraCocina")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PuertoImpresoraComprobante")
+                        .HasColumnType("int");
 
                     b.Property<int?>("Serie")
                         .HasColumnType("int");
@@ -1226,6 +1273,182 @@ namespace SistemIA.Migrations
                     b.ToTable("CierresCaja", (string)null);
                 });
 
+            modelBuilder.Entity("SistemIA.Models.CitaAgenda", b =>
+                {
+                    b.Property<int>("IdCita")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdCita"));
+
+                    b.Property<int?>("ClienteIdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ColorFondo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ColorTexto")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Direccion")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("DuracionMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<bool>("EnviarCorreo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EsRecurrente")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEnvioCorreo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFinRecurrencia")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaHoraFin")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaHoraInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Icono")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("IdCitaPadre")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioAsignado")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioCreador")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IntervaloRecurrencia")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("Latitud")
+                        .HasColumnType("decimal(10,7)");
+
+                    b.Property<decimal?>("Longitud")
+                        .HasColumnType("decimal(10,7)");
+
+                    b.Property<int?>("MinutosRecordatorio1")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MinutosRecordatorio2")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("MostrarNotificacion")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NombreAsignado")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("NombreCliente")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("NotificacionMostrada")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Prioridad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Resultado")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("SucursalId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<bool>("TieneRecordatorio")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TipoCita")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("TipoRecurrencia")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Titulo")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("TodoElDia")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("UrlMaps")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("UsuarioAsignadoId_Usu")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("UsuarioCreadorId_Usu")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdCita");
+
+                    b.HasIndex("ClienteIdCliente");
+
+                    b.HasIndex("SucursalId");
+
+                    b.HasIndex("UsuarioAsignadoId_Usu");
+
+                    b.HasIndex("UsuarioCreadorId_Usu");
+
+                    b.ToTable("CitasAgenda");
+                });
+
             modelBuilder.Entity("SistemIA.Models.CiudadCatalogo", b =>
                 {
                     b.Property<int>("Numero")
@@ -1287,6 +1510,10 @@ namespace SistemIA.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdCliente"));
 
+                    b.Property<string>("CadenaConexionBD")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("Celular")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
@@ -1307,10 +1534,18 @@ namespace SistemIA.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("CodigoGimnasio")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("CodigoPais")
                         .IsRequired()
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("ColorAgenda")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("CompDireccion1")
                         .HasMaxLength(100)
@@ -1320,7 +1555,15 @@ namespace SistemIA.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("CondicionesMedicas")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("Contacto")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ContactoEmergencia")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
@@ -1339,14 +1582,24 @@ namespace SistemIA.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
+                    b.Property<string>("DireccionCompleta")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("Email")
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
+
+                    b.Property<byte[]>("EmbeddingFacialGimnasio")
+                        .HasColumnType("varbinary(max)");
 
                     b.Property<bool>("EnviarFacturaPorCorreo")
                         .HasColumnType("bit");
 
                     b.Property<bool>("EsExtranjero")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EsMiembroGimnasio")
                         .HasColumnType("bit");
 
                     b.Property<bool>("Estado")
@@ -1355,8 +1608,23 @@ namespace SistemIA.Migrations
                     b.Property<DateTime?>("FechaAlta")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("FechaAltaGimnasio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaCaptuaFacial")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("FechaNacimiento")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaUltimaVisitaGimnasio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("FotoGimnasio")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<bool>("HabilitadoSoporteRemoto")
+                        .HasColumnType("bit");
 
                     b.Property<int>("IdCiudad")
                         .HasColumnType("int");
@@ -1364,8 +1632,22 @@ namespace SistemIA.Migrations
                     b.Property<int>("IdTipoContribuyente")
                         .HasColumnType("int");
 
+                    b.Property<string>("IpVpnAsignada")
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<decimal?>("Latitud")
+                        .HasColumnType("decimal(10,7)");
+
                     b.Property<decimal?>("LimiteCredito")
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("Longitud")
+                        .HasColumnType("decimal(10,7)");
+
+                    b.Property<string>("MensajeBienvenidaPersonalizado")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<int>("NaturalezaReceptor")
                         .HasColumnType("int");
@@ -1373,6 +1655,14 @@ namespace SistemIA.Migrations
                     b.Property<string>("NombreFantasia")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("NombreServicioWindows")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("NotasAccesoRemoto")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("NumeroCasa")
                         .HasMaxLength(10)
@@ -1386,6 +1676,10 @@ namespace SistemIA.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("ObjetivoFitness")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<bool>("PermiteCredito")
                         .HasColumnType("bit");
 
@@ -1394,6 +1688,9 @@ namespace SistemIA.Migrations
 
                     b.Property<bool>("PrecioDiferenciado")
                         .HasColumnType("bit");
+
+                    b.Property<int?>("PuertoSistema")
+                        .HasColumnType("int");
 
                     b.Property<string>("RUC")
                         .IsRequired()
@@ -1405,10 +1702,18 @@ namespace SistemIA.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
 
+                    b.Property<string>("RutaCarpetaSistema")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
                     b.Property<decimal>("Saldo")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<string>("Telefono")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TelefonoEmergencia")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
@@ -1427,6 +1732,12 @@ namespace SistemIA.Migrations
                     b.Property<string>("TipoOperacion")
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
+
+                    b.Property<int>("TotalVisitasGimnasio")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UltimaConexionRemota")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("VencimientoTimbrado")
                         .HasColumnType("datetime2");
@@ -1624,6 +1935,48 @@ namespace SistemIA.Migrations
                     b.HasIndex("MonedaIdMoneda");
 
                     b.ToTable("CobrosDetalles", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.ColorClienteAgenda", b =>
+                {
+                    b.Property<int>("IdColorCliente")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdColorCliente"));
+
+                    b.Property<int?>("ClienteIdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ColorFondo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ColorTexto")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SucursalId")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdColorCliente");
+
+                    b.HasIndex("ClienteIdCliente");
+
+                    b.HasIndex("SucursalId");
+
+                    b.ToTable("ColoresClientesAgenda");
                 });
 
             modelBuilder.Entity("SistemIA.Models.ComposicionCaja", b =>
@@ -2281,6 +2634,41 @@ namespace SistemIA.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdConfiguracion"));
 
+                    b.Property<bool>("AgendaColoresPorCliente")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AgendaEnviarRecordatoriosEmail")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AgendaModoActivo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AgendaMostrarUbicacionGPS")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("AgendaRecordatorioMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("AgregarProductoAlEscanear")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CanchasMinutosAlerta")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CanchasModoActivo")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CanchasRepetirSonidoSegundos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CanchasSonidoAlerta")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("CanchasSonidoFin")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<bool>("FarmaciaDescuentoBasadoEnPrecioMinisterio")
                         .HasColumnType("bit");
 
@@ -2299,6 +2687,43 @@ namespace SistemIA.Migrations
                     b.Property<DateTime?>("FechaModificacion")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("GimnasioDiasGracia")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("GimnasioHabilitarVoz")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("GimnasioHorasAutoSalida")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GimnasioMensajeBienvenida")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("GimnasioMensajeDespedida")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("GimnasioMensajeVencido")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("GimnasioMensajeVencimientoProximo")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<bool>("GimnasioModoActivo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("GimnasioPermitirAccesoDiasGracia")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("GimnasioReconocimientoFacialActivo")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("GimnasioUmbralCoincidenciaFacial")
+                        .HasColumnType("int");
+
                     b.Property<string>("NombreNegocio")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -2308,6 +2733,38 @@ namespace SistemIA.Migrations
 
                     b.Property<decimal?>("PorcentajeDescuentoMaximo")
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<bool>("ReservasHabilitadas")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("ReservasRecordatorioMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("RestauranteCargoServicio")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("RestauranteImpresoraBarra")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RestauranteImpresoraCocina")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("RestauranteImprimirComandaAuto")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RestauranteModoActivo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RestauranteMostrarTiempo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RestaurantePermitirDivisionCuenta")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RestaurantePermitirPagosParciales")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("SifenColaActiva")
                         .HasColumnType("bit");
@@ -2321,6 +2778,11 @@ namespace SistemIA.Migrations
                     b.Property<int>("SifenMaxReintentos")
                         .HasColumnType("int");
 
+                    b.Property<string>("TipoNegocioMesas")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("UsuarioModificacion")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -2328,6 +2790,75 @@ namespace SistemIA.Migrations
                     b.HasKey("IdConfiguracion");
 
                     b.ToTable("ConfiguracionSistema");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.ConfiguracionVPN", b =>
+                {
+                    b.Property<int>("IdConfiguracionVPN")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdConfiguracionVPN"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ConectarAlIniciar")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ContrasenaVPN")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IntentosReconexion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IpLocalVPN")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("MinutosVerificacion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NombreConexionWindows")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("PuertoPPTP")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RangoRedVPN")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("SegundosEntreIntentos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ServidorVPN")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UltimaConexionExitosa")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UsuarioModificacion")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("UsuarioVPN")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("IdConfiguracionVPN");
+
+                    b.ToTable("ConfiguracionesVPN");
                 });
 
             modelBuilder.Entity("SistemIA.Models.ConversacionIAHistorial", b =>
@@ -2409,6 +2940,74 @@ namespace SistemIA.Migrations
                     b.HasKey("IdConversacionIA");
 
                     b.ToTable("ConversacionesIAHistorial");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.CorreoPendiente", b =>
+                {
+                    b.Property<int>("IdCorreoPendiente")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdCorreoPendiente"));
+
+                    b.Property<string>("AdjuntosJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Asunto")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CuerpoHtml")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Destinatario")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEnvio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaUltimoIntento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdReferencia")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Intentos")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxIntentos")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ProximoIntento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TipoCorreo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("UltimoError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("IdCorreoPendiente");
+
+                    b.ToTable("CorreosPendientes");
                 });
 
             modelBuilder.Entity("SistemIA.Models.CuentaPorCobrar", b =>
@@ -2811,7 +3410,13 @@ namespace SistemIA.Migrations
                     b.Property<bool>("RecibeCuentasPorPagar")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("RecibeInformeComplejos")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("RecibeInformeCompras")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RecibeInformeGimnasio")
                         .HasColumnType("bit");
 
                     b.Property<bool>("RecibeMovimientosStock")
@@ -2948,6 +3553,1038 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdMoneda");
 
                     b.ToTable("EntregasCaja", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.AccesoGimnasio", b =>
+                {
+                    b.Property<int>("IdAcceso")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdAcceso"));
+
+                    b.Property<bool>("AccesoPermitido")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AccesoPorExcepcion")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("AreaAcceso")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("DiasRestantes")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DuracionVisitaMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EstadoMembresiaAlAcceso")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("FechaCaja")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaHora")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("FotoCaptura")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<int?>("IdAccesoEntrada")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdMembresia")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuario")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MensajeMostrado")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<bool>("MensajeVozReproducido")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MetodoVerificacion")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("MotivoDenegacion")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<float?>("PorcentajeCoincidencia")
+                        .HasColumnType("real");
+
+                    b.Property<string>("PuntoAcceso")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("RegistroAutomatico")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TipoAcceso")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TipoExcepcion")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int?>("Turno")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdAcceso");
+
+                    b.HasIndex("IdCaja");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdMembresia");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.ToTable("AccesosGimnasio");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.ClaseGimnasio", b =>
+                {
+                    b.Property<int>("IdClase")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdClase"));
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("CaloriasAproximadas")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CapacidadMaxima")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Categoria")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ColorHex")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("DuracionMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("HorasAnticipacionReserva")
+                        .HasColumnType("int");
+
+                    b.Property<int>("HorasLimiteCancelacion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Icono")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("IdInstructor")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Imagen")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<int>("MaxInasistencias")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinimoAlumnos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Nivel")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("PermiteReservas")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PlanesIncluidos")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal?>("PrecioPorSesion")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Sala")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("TieneCostoAdicional")
+                        .HasColumnType("bit");
+
+                    b.HasKey("IdClase");
+
+                    b.HasIndex("IdInstructor");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.ToTable("ClasesGimnasio");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.DetalleSesionEjercicio", b =>
+                {
+                    b.Property<int>("IdDetalle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdDetalle"));
+
+                    b.Property<bool>("Completado")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("GrupoMuscular")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("IdEjercicioRutina")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSesion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NombreEjercicio")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PesoMaximoKg")
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<decimal>("PesoUtilizadoKg")
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<int>("RepeticionesPromedio")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SeriesCompletadas")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SeriesPlanificadas")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdDetalle");
+
+                    b.HasIndex("IdEjercicioRutina");
+
+                    b.HasIndex("IdSesion");
+
+                    b.ToTable("DetallesSesionEjercicio");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.EjercicioRutina", b =>
+                {
+                    b.Property<int>("IdEjercicioRutina")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdEjercicioRutina"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("DescansoSegundos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("DuracionSegundos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GrupoMuscular")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("IdRutina")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("ImagenDemostrativa")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("NombreEjercicio")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PesoRecomendadoKg")
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<int>("Repeticiones")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Series")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UrlVideo")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("IdEjercicioRutina");
+
+                    b.HasIndex("IdRutina");
+
+                    b.ToTable("EjerciciosRutina");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.HorarioClase", b =>
+                {
+                    b.Property<int>("IdHorario")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdHorario"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("Cancelado")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("CapacidadMaxima")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DiaSemana")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DuracionMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEspecifica")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFinRecurrencia")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaInicioRecurrencia")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<TimeSpan>("HoraFin")
+                        .HasColumnType("time");
+
+                    b.Property<TimeSpan>("HoraInicio")
+                        .HasColumnType("time");
+
+                    b.Property<int>("IdClase")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdInstructor")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MotivoCancelacion")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Sala")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("TipoHorario")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("IdHorario");
+
+                    b.HasIndex("IdClase");
+
+                    b.HasIndex("IdInstructor");
+
+                    b.ToTable("HorariosClases");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.Instructor", b =>
+                {
+                    b.Property<int>("IdInstructor")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdInstructor"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Cedula")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Certificaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ColorHex")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<string>("DiasDisponibles")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<bool>("DictaClasesGrupales")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("EsPersonalTrainer")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Especialidades")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaIngreso")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("Foto")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("HorarioDisponible")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NombreCompleto")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<decimal?>("TarifaHora")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TipoContrato")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("IdInstructor");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.ToTable("Instructores");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.MembresiaCliente", b =>
+                {
+                    b.Property<int>("IdMembresia")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdMembresia"));
+
+                    b.Property<int>("CantidadVisitas")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ClasesUtilizadas")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DiasCongeladosTotales")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("EsRenovacion")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EstaCongelada")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("EstadoPago")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("FechaCaja")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaCongelamiento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFin")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaRecordatorio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaUltimaVisita")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaVencimiento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdMembresiaAnterior")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdProducto")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuario")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdVenta")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MontoPagado")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("MontoTotal")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("MotivoCancelacion")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("MotivoCongelamiento")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NumeroComprobante")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("RecordatorioEnviado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RenovacionAutomatica")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("SaldoPendiente")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("Turno")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UsuarioModificacion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("IdMembresia");
+
+                    b.HasIndex("IdCaja");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdProducto");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.HasIndex("IdVenta");
+
+                    b.ToTable("MembresiasClientes");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.ProgresoCliente", b =>
+                {
+                    b.Property<int>("IdProgreso")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdProgreso"));
+
+                    b.Property<decimal?>("AlturaCm")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("FotoFrontal")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("FotoLateral")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("FotoPosterior")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<decimal?>("IMC")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdInstructor")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdRutina")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("MedidaBrazoDerecho")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("MedidaBrazoIzquierdo")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("MedidaCadera")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("MedidaCintura")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("MedidaMusloDerecho")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("MedidaMusloIzquierdo")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("MedidaPantorrilla")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("MedidaPecho")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Objetivos")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<decimal?>("PesoKg")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("PorcentajeGrasa")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("PorcentajeMusculo")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.HasKey("IdProgreso");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdInstructor");
+
+                    b.HasIndex("IdRutina");
+
+                    b.ToTable("ProgresosCliente");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.ReservaClase", b =>
+                {
+                    b.Property<int>("IdReserva")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdReserva"));
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("FechaCancelacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaClase")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaConfirmacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaRecordatorio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaReserva")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("HoraCheckIn")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdHorario")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdMembresia")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioCheckIn")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdVenta")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("LlegoTarde")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MetodoCheckIn")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal?>("MontoPagado")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("MotivoCancelacion")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<bool>("Pagado")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PosicionListaEspera")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RecordatorioEnviado")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("Turno")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdReserva");
+
+                    b.HasIndex("IdCaja");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdHorario");
+
+                    b.HasIndex("IdMembresia");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.HasIndex("IdVenta");
+
+                    b.ToTable("ReservasClases");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.RutinaGimnasio", b =>
+                {
+                    b.Property<int>("IdRutina")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdRutina"));
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("DiasRecomendados")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("DuracionMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFin")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdInstructor")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NivelDificultad")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("IdRutina");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdInstructor");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.ToTable("RutinasGimnasio");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.SesionEntrenamiento", b =>
+                {
+                    b.Property<int>("IdSesion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdSesion"));
+
+                    b.Property<int?>("CaloriasQuemadas")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DuracionMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("EsfuerzoPercibido")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("EstadoAnimo")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("FechaHoraFin")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaHoraInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("FrecuenciaCardiacaPromedio")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdRutina")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TipoSesion")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("IdSesion");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdRutina");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.ToTable("SesionesEntrenamiento");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.TarjetaPagoCliente", b =>
+                {
+                    b.Property<int>("IdTarjeta")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdTarjeta"));
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Alias")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("AnioExpiracion")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("EsPredeterminada")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IdProcesadorPago")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal>("LimiteMontoTransaccion")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("MarcaTarjeta")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("MesExpiracion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NombreTitular")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("PermiteCobrosAutomaticos")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TipoTarjeta")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TokenProcesador")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("TransaccionesRealizadas")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UltimoUso")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Ultimos4Digitos")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("nvarchar(4)");
+
+                    b.HasKey("IdTarjeta");
+
+                    b.HasIndex("IdCliente");
+
+                    b.ToTable("TarjetasPagoCliente");
                 });
 
             modelBuilder.Entity("SistemIA.Models.HistorialBackupCloud", b =>
@@ -3309,6 +4946,120 @@ namespace SistemIA.Migrations
                     b.HasKey("IdMarca");
 
                     b.ToTable("Marcas");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Mesa", b =>
+                {
+                    b.Property<int>("IdMesa")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdMesa"));
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Alto")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Ancho")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Capacidad")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CobraPorTiempo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ColorLibre")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("ColorOcupada")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("ColorReservada")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Forma")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Icono")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("IdMesaPrincipal")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ImagenUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Nombre")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Numero")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PosicionX")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PosicionY")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("TarifaPorHora")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("TiempoMinimoMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Zona")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("IdMesa");
+
+                    b.HasIndex("IdMesaPrincipal");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.ToTable("Mesas", (string)null);
                 });
 
             modelBuilder.Entity("SistemIA.Models.Modulo", b =>
@@ -4075,6 +5826,300 @@ namespace SistemIA.Migrations
                     b.ToTable("NotasCreditoVentasDetalles", (string)null);
                 });
 
+            modelBuilder.Entity("SistemIA.Models.OrdenTrabajo", b =>
+                {
+                    b.Property<int>("IdOrdenTrabajo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdOrdenTrabajo"));
+
+                    b.Property<int>("AnioOrden")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CodigoOrden")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("CondicionesGarantia")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Diagnostico")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int?>("DiasGarantia")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("EstadoIngreso")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("FechaCaja")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEntrega")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFinTrabajo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaIngreso")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaInicioTrabajo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaPrometida")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaVencimientoGarantia")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FotosIngreso")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("IdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdMecanico")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdMesa")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdPedido")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioCierre")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioCreacion")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdVehiculo")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("KilometrajeIngreso")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MecanicosAdicionales")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("MontoPagado")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("MotivoConsulta")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("NivelCombustible")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NombreMecanico")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("NumeroOrden")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Prioridad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Recomendaciones")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("TipoServicio")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalDescuento")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalExenta")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalIva10")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalIva5")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalManoObra")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalRepuestos")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("TrabajosARealizar")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("TrabajosRealizados")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int?>("Turno")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdOrdenTrabajo");
+
+                    b.HasIndex("Estado");
+
+                    b.HasIndex("FechaCreacion");
+
+                    b.HasIndex("IdCaja");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdMecanico");
+
+                    b.HasIndex("IdMesa");
+
+                    b.HasIndex("IdPedido");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.HasIndex("IdVehiculo");
+
+                    b.HasIndex("AnioOrden", "NumeroOrden")
+                        .IsUnique();
+
+                    b.ToTable("OrdenesTrabajo", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.OrdenTrabajoDetalle", b =>
+                {
+                    b.Property<int>("IdOrdenTrabajoDetalle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdOrdenTrabajoDetalle"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("CodigoProducto")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("CostoUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFin")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("HorasTrabajo")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int?>("IdMecanico")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdOrdenTrabajo")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdProducto")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MontoDescuento")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("MontoExenta")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("MontoIva10")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("MontoIva5")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("NombreMecanico")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("PorcentajeDescuento")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("PrecioUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("TipoIva")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TipoLinea")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("IdOrdenTrabajoDetalle");
+
+                    b.HasIndex("Estado");
+
+                    b.HasIndex("IdOrdenTrabajo");
+
+                    b.HasIndex("IdProducto");
+
+                    b.HasIndex("TipoLinea");
+
+                    b.ToTable("OrdenTrabajoDetalles", (string)null);
+                });
+
             modelBuilder.Entity("SistemIA.Models.PagoProveedor", b =>
                 {
                     b.Property<int>("IdPagoProveedor")
@@ -4228,6 +6273,334 @@ namespace SistemIA.Migrations
                     b.HasKey("CodigoPais");
 
                     b.ToTable("Paises");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Pedido", b =>
+                {
+                    b.Property<int>("IdPedido")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdPedido"));
+
+                    b.Property<decimal>("CargoPorTiempo")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("CargoServicio")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<bool>("ComandaImpresa")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Comensales")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("FechaApertura")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaCaja")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaCierre")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("HoraFin")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("HoraInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdMesa")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdReserva")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuario")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioApertura")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioCierre")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ImpresionesComanda")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MontoPagado")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("NombreCliente")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NombreMesero")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<int>("NumeroPedido")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal?>("PorcentajeServicio")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalDescuento")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalExenta")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalIva10")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("TotalIva5")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("Turno")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdPedido");
+
+                    b.HasIndex("IdCaja");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdMesa");
+
+                    b.HasIndex("IdReserva")
+                        .IsUnique()
+                        .HasFilter("[IdReserva] IS NOT NULL");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.ToTable("Pedidos", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.PedidoDetalle", b =>
+                {
+                    b.Property<int>("IdPedidoDetalle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdPedidoDetalle"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("CantidadEntregada")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("CodigoProducto")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<decimal>("Descuento")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<bool>("EnviadoCocina")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EsUrgente")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("Exenta")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<bool>("Facturado")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEntrega")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEnvioCocina")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("Grabado10")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("Grabado5")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("IVA10")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("IVA5")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("IdPedido")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdProducto")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdTipoIva")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuario")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdVenta")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Importe")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Modificadores")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("NotasCocina")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("NumeroComanda")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("NumeroComensal")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PorcentajeDescuento")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("PrecioUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("IdPedidoDetalle");
+
+                    b.HasIndex("IdPedido");
+
+                    b.HasIndex("IdProducto");
+
+                    b.ToTable("PedidoDetalles", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.PedidoPago", b =>
+                {
+                    b.Property<int>("IdPedidoPago")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdPedidoPago"));
+
+                    b.Property<string>("DetallesIncluidos")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("Facturado")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("FechaPago")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FormaPago")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdPedido")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuario")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdVenta")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Monto")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("MontoRecibido")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("NombrePagador")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("NumeroComensal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal>("Propina")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Referencia")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal?>("Vuelto")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("IdPedidoPago");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdPedido");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.HasIndex("IdVenta");
+
+                    b.ToTable("PedidoPagos", (string)null);
                 });
 
             modelBuilder.Entity("SistemIA.Models.Permiso", b =>
@@ -4662,11 +7035,21 @@ namespace SistemIA.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdProducto"));
 
+                    b.Property<bool>("AccesoTodasAreasMembresia")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("Activo")
                         .HasColumnType("bit");
 
+                    b.Property<string>("AreasIncluidasMembresia")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<decimal?>("CantidadPorPaquete")
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("ClasesIncluidasMembresia")
+                        .HasColumnType("int");
 
                     b.Property<string>("CodigoBarras")
                         .HasMaxLength(14)
@@ -4676,6 +7059,10 @@ namespace SistemIA.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ColorMembresia")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
 
                     b.Property<bool>("ControlaLote")
                         .HasColumnType("bit");
@@ -4706,13 +7093,32 @@ namespace SistemIA.Migrations
                     b.Property<decimal?>("DescuentoMaximoProducto")
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<string>("DiasAccesoMembresia")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<int>("DiasAlertaVencimiento")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DiasGraciaMembresia")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DiasMaxCongelarMembresia")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DiasRecordatorioMembresia")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DuracionDiasMembresia")
                         .HasColumnType("int");
 
                     b.Property<bool>("EsCombo")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
+
+                    b.Property<bool>("EsMembresia")
+                        .HasColumnType("bit");
 
                     b.Property<decimal?>("FactorMultiplicador")
                         .HasColumnType("decimal(18,4)");
@@ -4732,6 +7138,10 @@ namespace SistemIA.Migrations
                     b.Property<string>("Foto")
                         .HasMaxLength(180)
                         .HasColumnType("varchar(180)");
+
+                    b.Property<string>("HorarioAccesoMembresia")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("IP")
                         .HasMaxLength(50)
@@ -4756,6 +7166,9 @@ namespace SistemIA.Migrations
                     b.Property<int>("IdTipoIva")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IncluyePTMembresia")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("LoteInicialCreado")
                         .HasColumnType("bit");
 
@@ -4764,6 +7177,9 @@ namespace SistemIA.Migrations
 
                     b.Property<decimal?>("MarkupPaquetePct")
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<bool>("PermiteCongelarMembresia")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("PermiteDecimal")
                         .HasColumnType("bit");
@@ -4780,6 +7196,9 @@ namespace SistemIA.Migrations
                     b.Property<bool>("PermiteVentaVencido")
                         .HasColumnType("bit");
 
+                    b.Property<decimal?>("PrecioInscripcionMembresia")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal?>("PrecioMinisterio")
                         .HasColumnType("decimal(18,4)");
 
@@ -4795,6 +7214,12 @@ namespace SistemIA.Migrations
                     b.Property<decimal?>("PrecioUnitarioUsd")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<bool>("RenovacionAutomaticaMembresia")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("SesionesPTMembresia")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("Stock")
                         .HasColumnType("decimal(18,4)");
 
@@ -4803,6 +7228,10 @@ namespace SistemIA.Migrations
 
                     b.Property<int>("TipoItem")
                         .HasColumnType("int");
+
+                    b.Property<string>("TipoPeriodoMembresia")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("UndMedida")
                         .IsRequired()
@@ -4824,6 +7253,9 @@ namespace SistemIA.Migrations
                     b.Property<string>("UsuarioModificacion")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("VisibleEnMesas")
+                        .HasColumnType("bit");
 
                     b.HasKey("IdProducto");
 
@@ -5279,6 +7711,52 @@ namespace SistemIA.Migrations
                     b.ToTable("RecetasVentas");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.RecordatorioCita", b =>
+                {
+                    b.Property<int>("IdRecordatorio")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdRecordatorio"));
+
+                    b.Property<int?>("CitaIdCita")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Enviado")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("FechaEnvio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaHoraProgramada")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdCita")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Mensaje")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("MinutosAntes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Resultado")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("IdRecordatorio");
+
+                    b.HasIndex("CitaIdCita");
+
+                    b.ToTable("RecordatoriosCitas");
+                });
+
             modelBuilder.Entity("SistemIA.Models.RemisionInterna", b =>
                 {
                     b.Property<int>("IdRemision")
@@ -5409,6 +7887,130 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdRemision");
 
                     b.ToTable("RemisionesInternasDetalles", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Reserva", b =>
+                {
+                    b.Property<int>("IdReserva")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdReserva"));
+
+                    b.Property<int>("CantidadPersonas")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DuracionMinutos")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("ExtensionPermitida")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaPagoSena")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaRecordatorio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaReserva")
+                        .HasColumnType("datetime2");
+
+                    b.Property<TimeSpan?>("HoraFin")
+                        .HasColumnType("time");
+
+                    b.Property<TimeSpan?>("HoraFinReal")
+                        .HasColumnType("time");
+
+                    b.Property<TimeSpan>("HoraInicio")
+                        .HasColumnType("time");
+
+                    b.Property<TimeSpan?>("HoraInicioReal")
+                        .HasColumnType("time");
+
+                    b.Property<int?>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdMesa")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdPedido")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioCreacion")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioModificacion")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("MontoSena")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Motivo")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("MotivoCancelacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("NombreCliente")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("NumeroReserva")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("RecordatorioEnviado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequiereSena")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SenaPagada")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("TarifaPorHora")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<decimal?>("TotalEstimado")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("IdReserva");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdMesa");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.ToTable("Reservas", (string)null);
                 });
 
             modelBuilder.Entity("SistemIA.Models.Rol", b =>
@@ -5605,6 +8207,147 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdSalidaStock");
 
                     b.ToTable("SalidasStockDetalle");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.SenaReserva", b =>
+                {
+                    b.Property<int>("IdSenaReserva")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdSenaReserva"));
+
+                    b.Property<string>("BancoCheque")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("BancoTransferencia")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("CajaIdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ClienteIdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Devuelta")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("FechaCaja")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaCobroCheque")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaDevolucion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaPago")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdMoneda")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdReserva")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuario")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MarcaTarjeta")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("MedioPago")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MonedaIdMoneda")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Monto")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("MontoGs")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("MotivoAnulacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("NombreCliente")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NumeroAutorizacion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NumeroCheque")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("NumeroComprobante")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("NumeroRecibo")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("SucursalId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("TipoCambio")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("TipoTarjeta")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Turno")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Ultimos4")
+                        .HasMaxLength(4)
+                        .HasColumnType("nvarchar(4)");
+
+                    b.Property<int?>("UsuarioId_Usu")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdSenaReserva");
+
+                    b.HasIndex("CajaIdCaja");
+
+                    b.HasIndex("ClienteIdCliente");
+
+                    b.HasIndex("IdReserva")
+                        .IsUnique();
+
+                    b.HasIndex("MonedaIdMoneda");
+
+                    b.HasIndex("SucursalId");
+
+                    b.HasIndex("UsuarioId_Usu");
+
+                    b.ToTable("SenasReservas");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Sociedad", b =>
@@ -5896,6 +8639,255 @@ namespace SistemIA.Migrations
                     b.HasIndex("IdCiudad");
 
                     b.ToTable("Sucursal", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Suscripciones.FacturaAutomatica", b =>
+                {
+                    b.Property<int>("IdFacturaAutomatica")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdFacturaAutomatica"));
+
+                    b.Property<string>("CDC")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ErrorCorreoFactura")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ErrorCorreoRecibo")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("EstadoCobro")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("EstadoCorreoFactura")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("EstadoCorreoRecibo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("EstadoFactura")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("EstadoSifen")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("FechaCobro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEnvioCorreoFactura")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEnvioCorreoRecibo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaFinPeriodo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaGeneracion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaInicioPeriodo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaProgramada")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSuscripcion")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdVenta")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IntentosEnvioCorreo")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IntentosGeneracion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MensajeError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal>("MontoCobrado")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("MontoFacturado")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("NumeroFactura")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("PeriodoFacturado")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("IdFacturaAutomatica");
+
+                    b.HasIndex("EstadoCobro");
+
+                    b.HasIndex("EstadoFactura");
+
+                    b.HasIndex("FechaGeneracion");
+
+                    b.HasIndex("FechaProgramada");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.HasIndex("IdSuscripcion");
+
+                    b.HasIndex("IdVenta");
+
+                    b.ToTable("FacturasAutomaticas", (string)null);
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Suscripciones.SuscripcionCliente", b =>
+                {
+                    b.Property<int>("IdSuscripcion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdSuscripcion"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("CantidadCuotas")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CondicionPago")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("DescripcionFactura")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("DiaFacturacion")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("EnviarCorreoFactura")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EnviarCorreoRecibo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("FacturacionActiva")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFin")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaProximaFactura")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaUltimaFactura")
+                        .HasColumnType("datetime2");
+
+                    b.Property<TimeSpan?>("HoraEnvioCorreo")
+                        .HasColumnType("time");
+
+                    b.Property<TimeSpan?>("HoraFacturacion")
+                        .HasColumnType("time");
+
+                    b.Property<int?>("IdCaja")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdProducto")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioCreacion")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdUsuarioModificacion")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdVentaReferencia")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MontoFacturar")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("TipoPeriodo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("TotalFacturasCobradas")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalFacturasGeneradas")
+                        .HasColumnType("int");
+
+                    b.HasKey("IdSuscripcion");
+
+                    b.HasIndex("Estado");
+
+                    b.HasIndex("FechaProximaFactura");
+
+                    b.HasIndex("IdCaja");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("IdProducto");
+
+                    b.HasIndex("IdSucursal");
+
+                    b.HasIndex("IdVentaReferencia");
+
+                    b.ToTable("SuscripcionesClientes", (string)null);
                 });
 
             modelBuilder.Entity("SistemIA.Models.Timbrado", b =>
@@ -6308,15 +9300,32 @@ namespace SistemIA.Migrations
                     b.Property<decimal?>("CostoUnitario")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateTime?>("FechaVencimientoLote")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("IdProducto")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdProductoLoteDestino")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdProductoLoteOrigen")
                         .HasColumnType("int");
 
                     b.Property<int>("IdTransferencia")
                         .HasColumnType("int");
 
+                    b.Property<string>("NumeroLote")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.HasKey("IdTransferenciaDetalle");
 
                     b.HasIndex("IdProducto");
+
+                    b.HasIndex("IdProductoLoteDestino");
+
+                    b.HasIndex("IdProductoLoteOrigen");
 
                     b.HasIndex("IdTransferencia");
 
@@ -6410,6 +9419,89 @@ namespace SistemIA.Migrations
                     b.ToTable("Usuarios");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.Vehiculo", b =>
+                {
+                    b.Property<int>("IdVehiculo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdVehiculo"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("Anio")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("IdCliente")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdSucursal")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("KilometrajeActual")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Marca")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Matricula")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Modelo")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NumeroChasis")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("NumeroMotor")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TipoCombustible")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TipoVehiculo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("IdVehiculo");
+
+                    b.HasIndex("IdCliente");
+
+                    b.HasIndex("Matricula");
+
+                    b.HasIndex("IdSucursal", "Matricula")
+                        .IsUnique();
+
+                    b.ToTable("Vehiculos", (string)null);
+                });
+
             modelBuilder.Entity("SistemIA.Models.Venta", b =>
                 {
                     b.Property<int>("IdVenta")
@@ -6485,12 +9577,18 @@ namespace SistemIA.Migrations
                     b.Property<int?>("IdMoneda")
                         .HasColumnType("int");
 
+                    b.Property<int?>("IdPedido")
+                        .HasColumnType("int");
+
                     b.Property<int?>("IdPresupuestoOrigen")
                         .HasColumnType("int");
 
                     b.Property<int>("IdSucursal")
                         .HasColumnType("int")
                         .HasColumnName("suc");
+
+                    b.Property<int?>("IdSuscripcion")
+                        .HasColumnType("int");
 
                     b.Property<int?>("IdTipoDocumentoOperacion")
                         .HasColumnType("int");
@@ -6854,11 +9952,17 @@ namespace SistemIA.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SistemIA.Models.ProductoLote", "ProductoLote")
+                        .WithMany()
+                        .HasForeignKey("IdProductoLote");
+
                     b.Navigation("Ajuste");
 
                     b.Navigation("Deposito");
 
                     b.Navigation("Producto");
+
+                    b.Navigation("ProductoLote");
                 });
 
             modelBuilder.Entity("SistemIA.Models.AsignacionHorario", b =>
@@ -6936,6 +10040,33 @@ namespace SistemIA.Migrations
                         .IsRequired();
 
                     b.Navigation("Caja");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.CitaAgenda", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany("CitasAgenda")
+                        .HasForeignKey("ClienteIdCliente");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("SucursalId");
+
+                    b.HasOne("SistemIA.Models.Usuario", "UsuarioAsignado")
+                        .WithMany()
+                        .HasForeignKey("UsuarioAsignadoId_Usu");
+
+                    b.HasOne("SistemIA.Models.Usuario", "UsuarioCreador")
+                        .WithMany()
+                        .HasForeignKey("UsuarioCreadorId_Usu");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("UsuarioAsignado");
+
+                    b.Navigation("UsuarioCreador");
                 });
 
             modelBuilder.Entity("SistemIA.Models.CiudadCatalogo", b =>
@@ -7083,6 +10214,21 @@ namespace SistemIA.Migrations
                     b.Navigation("Cuota");
 
                     b.Navigation("Moneda");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.ColorClienteAgenda", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("ClienteIdCliente");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("SucursalId");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Sucursal");
                 });
 
             modelBuilder.Entity("SistemIA.Models.ComposicionCaja", b =>
@@ -7395,6 +10541,282 @@ namespace SistemIA.Migrations
                     b.Navigation("Moneda");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.AccesoGimnasio", b =>
+                {
+                    b.HasOne("SistemIA.Models.Caja", "Caja")
+                        .WithMany()
+                        .HasForeignKey("IdCaja");
+
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany("AccesosGimnasio")
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Gimnasio.MembresiaCliente", "Membresia")
+                        .WithMany()
+                        .HasForeignKey("IdMembresia");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario");
+
+                    b.Navigation("Caja");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Membresia");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.ClaseGimnasio", b =>
+                {
+                    b.HasOne("SistemIA.Models.Gimnasio.Instructor", "Instructor")
+                        .WithMany("Clases")
+                        .HasForeignKey("IdInstructor");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal");
+
+                    b.Navigation("Instructor");
+
+                    b.Navigation("Sucursal");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.DetalleSesionEjercicio", b =>
+                {
+                    b.HasOne("SistemIA.Models.Gimnasio.EjercicioRutina", "EjercicioRutina")
+                        .WithMany()
+                        .HasForeignKey("IdEjercicioRutina");
+
+                    b.HasOne("SistemIA.Models.Gimnasio.SesionEntrenamiento", "Sesion")
+                        .WithMany("Ejercicios")
+                        .HasForeignKey("IdSesion")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("EjercicioRutina");
+
+                    b.Navigation("Sesion");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.EjercicioRutina", b =>
+                {
+                    b.HasOne("SistemIA.Models.Gimnasio.RutinaGimnasio", "Rutina")
+                        .WithMany("Ejercicios")
+                        .HasForeignKey("IdRutina")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Rutina");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.HorarioClase", b =>
+                {
+                    b.HasOne("SistemIA.Models.Gimnasio.ClaseGimnasio", "Clase")
+                        .WithMany("Horarios")
+                        .HasForeignKey("IdClase")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Gimnasio.Instructor", "Instructor")
+                        .WithMany()
+                        .HasForeignKey("IdInstructor");
+
+                    b.Navigation("Clase");
+
+                    b.Navigation("Instructor");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.Instructor", b =>
+                {
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal");
+
+                    b.Navigation("Sucursal");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.MembresiaCliente", b =>
+                {
+                    b.HasOne("SistemIA.Models.Caja", "Caja")
+                        .WithMany()
+                        .HasForeignKey("IdCaja");
+
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany("Membresias")
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Producto", "Producto")
+                        .WithMany()
+                        .HasForeignKey("IdProducto")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario");
+
+                    b.HasOne("SistemIA.Models.Venta", "Venta")
+                        .WithMany()
+                        .HasForeignKey("IdVenta");
+
+                    b.Navigation("Caja");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Producto");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("Usuario");
+
+                    b.Navigation("Venta");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.ProgresoCliente", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Gimnasio.Instructor", "Instructor")
+                        .WithMany()
+                        .HasForeignKey("IdInstructor");
+
+                    b.HasOne("SistemIA.Models.Gimnasio.RutinaGimnasio", "Rutina")
+                        .WithMany()
+                        .HasForeignKey("IdRutina");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Instructor");
+
+                    b.Navigation("Rutina");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.ReservaClase", b =>
+                {
+                    b.HasOne("SistemIA.Models.Caja", "Caja")
+                        .WithMany()
+                        .HasForeignKey("IdCaja");
+
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Gimnasio.HorarioClase", "Horario")
+                        .WithMany("Reservas")
+                        .HasForeignKey("IdHorario")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Gimnasio.MembresiaCliente", "Membresia")
+                        .WithMany()
+                        .HasForeignKey("IdMembresia");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Venta", "Venta")
+                        .WithMany()
+                        .HasForeignKey("IdVenta");
+
+                    b.Navigation("Caja");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Horario");
+
+                    b.Navigation("Membresia");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("Venta");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.RutinaGimnasio", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Gimnasio.Instructor", "Instructor")
+                        .WithMany()
+                        .HasForeignKey("IdInstructor");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Instructor");
+
+                    b.Navigation("Sucursal");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.SesionEntrenamiento", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Gimnasio.RutinaGimnasio", "Rutina")
+                        .WithMany()
+                        .HasForeignKey("IdRutina");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Rutina");
+
+                    b.Navigation("Sucursal");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.TarjetaPagoCliente", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Cliente");
+                });
+
             modelBuilder.Entity("SistemIA.Models.HistorialBackupCloud", b =>
                 {
                     b.HasOne("SistemIA.Models.Usuario", "Usuario")
@@ -7444,6 +10866,23 @@ namespace SistemIA.Migrations
                         .IsRequired();
 
                     b.Navigation("ListaPrecio");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Mesa", b =>
+                {
+                    b.HasOne("SistemIA.Models.Mesa", "MesaPrincipal")
+                        .WithMany("MesasUnidas")
+                        .HasForeignKey("IdMesaPrincipal");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("MesaPrincipal");
+
+                    b.Navigation("Sucursal");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Modulo", b =>
@@ -7663,6 +11102,78 @@ namespace SistemIA.Migrations
                     b.Navigation("Producto");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.OrdenTrabajo", b =>
+                {
+                    b.HasOne("SistemIA.Models.Caja", "Caja")
+                        .WithMany()
+                        .HasForeignKey("IdCaja")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Usuario", "Mecanico")
+                        .WithMany()
+                        .HasForeignKey("IdMecanico")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Mesa", "Bahia")
+                        .WithMany()
+                        .HasForeignKey("IdMesa")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Pedido", "Pedido")
+                        .WithMany()
+                        .HasForeignKey("IdPedido")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Vehiculo", "Vehiculo")
+                        .WithMany("OrdenesTrabajo")
+                        .HasForeignKey("IdVehiculo")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Bahia");
+
+                    b.Navigation("Caja");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Mecanico");
+
+                    b.Navigation("Pedido");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("Vehiculo");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.OrdenTrabajoDetalle", b =>
+                {
+                    b.HasOne("SistemIA.Models.OrdenTrabajo", "OrdenTrabajo")
+                        .WithMany("Detalles")
+                        .HasForeignKey("IdOrdenTrabajo")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Producto", "Producto")
+                        .WithMany()
+                        .HasForeignKey("IdProducto")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("OrdenTrabajo");
+
+                    b.Navigation("Producto");
+                });
+
             modelBuilder.Entity("SistemIA.Models.PagoProveedor", b =>
                 {
                     b.HasOne("SistemIA.Models.Caja", "Caja")
@@ -7719,6 +11230,104 @@ namespace SistemIA.Migrations
                     b.Navigation("Cuota");
 
                     b.Navigation("PagoProveedor");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Pedido", b =>
+                {
+                    b.HasOne("SistemIA.Models.Caja", "Caja")
+                        .WithMany()
+                        .HasForeignKey("IdCaja")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Mesa", "Mesa")
+                        .WithMany("Pedidos")
+                        .HasForeignKey("IdMesa")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Reserva", "Reserva")
+                        .WithOne("Pedido")
+                        .HasForeignKey("SistemIA.Models.Pedido", "IdReserva")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Caja");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Mesa");
+
+                    b.Navigation("Reserva");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.PedidoDetalle", b =>
+                {
+                    b.HasOne("SistemIA.Models.Pedido", "Pedido")
+                        .WithMany("Detalles")
+                        .HasForeignKey("IdPedido")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Producto", "Producto")
+                        .WithMany()
+                        .HasForeignKey("IdProducto")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Pedido");
+
+                    b.Navigation("Producto");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.PedidoPago", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Pedido", "Pedido")
+                        .WithMany("Pagos")
+                        .HasForeignKey("IdPedido")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Venta", "Venta")
+                        .WithMany()
+                        .HasForeignKey("IdVenta")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Pedido");
+
+                    b.Navigation("Usuario");
+
+                    b.Navigation("Venta");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Presupuesto", b =>
@@ -7930,6 +11539,15 @@ namespace SistemIA.Migrations
                     b.Navigation("Venta");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.RecordatorioCita", b =>
+                {
+                    b.HasOne("SistemIA.Models.CitaAgenda", "Cita")
+                        .WithMany("Recordatorios")
+                        .HasForeignKey("CitaIdCita");
+
+                    b.Navigation("Cita");
+                });
+
             modelBuilder.Entity("SistemIA.Models.RemisionInterna", b =>
                 {
                     b.HasOne("SistemIA.Models.Cliente", "Cliente")
@@ -7990,6 +11608,32 @@ namespace SistemIA.Migrations
                     b.Navigation("Producto");
 
                     b.Navigation("RemisionInterna");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Reserva", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Mesa", "Mesa")
+                        .WithMany("Reservas")
+                        .HasForeignKey("IdMesa")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Mesa");
+
+                    b.Navigation("Sucursal");
                 });
 
             modelBuilder.Entity("SistemIA.Models.RolModuloPermiso", b =>
@@ -8055,6 +11699,47 @@ namespace SistemIA.Migrations
                     b.Navigation("SalidaStock");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.SenaReserva", b =>
+                {
+                    b.HasOne("SistemIA.Models.Caja", "Caja")
+                        .WithMany()
+                        .HasForeignKey("CajaIdCaja");
+
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("ClienteIdCliente");
+
+                    b.HasOne("SistemIA.Models.Reserva", "Reserva")
+                        .WithOne("SenaReservaPago")
+                        .HasForeignKey("SistemIA.Models.SenaReserva", "IdReserva")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Moneda", "Moneda")
+                        .WithMany()
+                        .HasForeignKey("MonedaIdMoneda");
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("SucursalId");
+
+                    b.HasOne("SistemIA.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId_Usu");
+
+                    b.Navigation("Caja");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Moneda");
+
+                    b.Navigation("Reserva");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("Usuario");
+                });
+
             modelBuilder.Entity("SistemIA.Models.Sociedad", b =>
                 {
                     b.HasOne("SistemIA.Models.CiudadCatalogo", null)
@@ -8091,6 +11776,79 @@ namespace SistemIA.Migrations
                         .HasForeignKey("IdCiudad")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Suscripciones.FacturaAutomatica", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Suscripciones.SuscripcionCliente", "Suscripcion")
+                        .WithMany()
+                        .HasForeignKey("IdSuscripcion")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Venta", "Venta")
+                        .WithMany()
+                        .HasForeignKey("IdVenta")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("Suscripcion");
+
+                    b.Navigation("Venta");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Suscripciones.SuscripcionCliente", b =>
+                {
+                    b.HasOne("SistemIA.Models.Caja", "Caja")
+                        .WithMany()
+                        .HasForeignKey("IdCaja")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Producto", "Producto")
+                        .WithMany()
+                        .HasForeignKey("IdProducto")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SistemIA.Models.Venta", "VentaReferencia")
+                        .WithMany()
+                        .HasForeignKey("IdVentaReferencia");
+
+                    b.Navigation("Caja");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Producto");
+
+                    b.Navigation("Sucursal");
+
+                    b.Navigation("VentaReferencia");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Timbrado", b =>
@@ -8176,11 +11934,23 @@ namespace SistemIA.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SistemIA.Models.ProductoLote", "LoteDestino")
+                        .WithMany()
+                        .HasForeignKey("IdProductoLoteDestino");
+
+                    b.HasOne("SistemIA.Models.ProductoLote", "LoteOrigen")
+                        .WithMany()
+                        .HasForeignKey("IdProductoLoteOrigen");
+
                     b.HasOne("SistemIA.Models.TransferenciaDeposito", "Transferencia")
                         .WithMany("Detalles")
                         .HasForeignKey("IdTransferencia")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("LoteDestino");
+
+                    b.Navigation("LoteOrigen");
 
                     b.Navigation("Producto");
 
@@ -8196,6 +11966,24 @@ namespace SistemIA.Migrations
                         .IsRequired();
 
                     b.Navigation("Rol");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Vehiculo", b =>
+                {
+                    b.HasOne("SistemIA.Models.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("IdCliente")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SistemIA.Models.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("IdSucursal")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Sucursal");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Venta", b =>
@@ -8333,6 +12121,20 @@ namespace SistemIA.Migrations
                     b.Navigation("Entregas");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.CitaAgenda", b =>
+                {
+                    b.Navigation("Recordatorios");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Cliente", b =>
+                {
+                    b.Navigation("AccesosGimnasio");
+
+                    b.Navigation("CitasAgenda");
+
+                    b.Navigation("Membresias");
+                });
+
             modelBuilder.Entity("SistemIA.Models.CobroCuota", b =>
                 {
                     b.Navigation("Detalles");
@@ -8387,6 +12189,31 @@ namespace SistemIA.Migrations
                     b.Navigation("Ciudades");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.ClaseGimnasio", b =>
+                {
+                    b.Navigation("Horarios");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.HorarioClase", b =>
+                {
+                    b.Navigation("Reservas");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.Instructor", b =>
+                {
+                    b.Navigation("Clases");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.RutinaGimnasio", b =>
+                {
+                    b.Navigation("Ejercicios");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Gimnasio.SesionEntrenamiento", b =>
+                {
+                    b.Navigation("Ejercicios");
+                });
+
             modelBuilder.Entity("SistemIA.Models.HorarioTrabajo", b =>
                 {
                     b.Navigation("Asignaciones");
@@ -8395,6 +12222,15 @@ namespace SistemIA.Migrations
             modelBuilder.Entity("SistemIA.Models.ListaPrecio", b =>
                 {
                     b.Navigation("Detalles");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Mesa", b =>
+                {
+                    b.Navigation("MesasUnidas");
+
+                    b.Navigation("Pedidos");
+
+                    b.Navigation("Reservas");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Modulo", b =>
@@ -8414,6 +12250,11 @@ namespace SistemIA.Migrations
                     b.Navigation("Detalles");
                 });
 
+            modelBuilder.Entity("SistemIA.Models.OrdenTrabajo", b =>
+                {
+                    b.Navigation("Detalles");
+                });
+
             modelBuilder.Entity("SistemIA.Models.PagoProveedor", b =>
                 {
                     b.Navigation("Detalles");
@@ -8422,6 +12263,13 @@ namespace SistemIA.Migrations
             modelBuilder.Entity("SistemIA.Models.Paises", b =>
                 {
                     b.Navigation("Clientes");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Pedido", b =>
+                {
+                    b.Navigation("Detalles");
+
+                    b.Navigation("Pagos");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Permiso", b =>
@@ -8451,6 +12299,13 @@ namespace SistemIA.Migrations
             modelBuilder.Entity("SistemIA.Models.RemisionInterna", b =>
                 {
                     b.Navigation("Detalles");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Reserva", b =>
+                {
+                    b.Navigation("Pedido");
+
+                    b.Navigation("SenaReservaPago");
                 });
 
             modelBuilder.Entity("SistemIA.Models.Rol", b =>
@@ -8488,6 +12343,11 @@ namespace SistemIA.Migrations
             modelBuilder.Entity("SistemIA.Models.Usuario", b =>
                 {
                     b.Navigation("Asignaciones");
+                });
+
+            modelBuilder.Entity("SistemIA.Models.Vehiculo", b =>
+                {
+                    b.Navigation("OrdenesTrabajo");
                 });
 
             modelBuilder.Entity("SistemIA.Models.VentaPago", b =>

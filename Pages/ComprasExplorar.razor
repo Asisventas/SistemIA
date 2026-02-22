@@ -15,35 +15,6 @@
 
 <h3 class="mb-3">Explorador de Compras</h3>
 
-<!-- Modal de restricciones para anular/eliminar -->
-<div class="modal fade" id="restriccionEliminarCompraModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-warning text-dark">
-        <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Restricciones para Eliminar</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <p class="mb-3">La compra <strong>#@_restriccionIdCompra</strong> tiene registros asociados que deben ser eliminados primero:</p>
-        
-        @if (_tienePagosConfirmados)
-        {
-          <div class="alert alert-danger">
-            <h6><i class="bi bi-cash-stack me-2"></i>Pagos registrados (@_pagosConfirmadosCount)</h6>
-            <p class="mb-2">Hay pagos <strong>confirmados</strong> asociados a esta compra. Debe ir al historial de pagos y anularlos primero.</p>
-            <a href="/pagos-proveedores/historial" class="btn btn-outline-danger btn-sm">
-              <i class="bi bi-arrow-right me-1"></i>Ir al Historial de Pagos a Proveedores
-            </a>
-          </div>
-        }
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="card mb-3">
   <div class="card-body">
     <div class="row g-2">
@@ -107,7 +78,6 @@
               <div class="btn-group btn-group-sm">
                 <button class="btn btn-outline-secondary" title="Reimprimir" @onclick="() => Reimprimir(c.IdCompra)"><i class="bi bi-printer"></i></button>
                 <button class="btn btn-outline-primary" title="Ver detalles" @onclick="() => Editar(c.IdCompra)"><i class="bi bi-eye"></i></button>
-                <button class="btn btn-outline-danger" title="Eliminar" @onclick="() => Eliminar(c.IdCompra)"><i class="bi bi-trash"></i></button>
                 <button class="btn btn-outline-warning" title="Recuperar" disabled="@(c.Estado != "Anulado")" @onclick="() => Recuperar(c.IdCompra)"><i class="bi bi-arrow-counterclockwise"></i></button>
               </div>
             </td>
@@ -120,6 +90,35 @@
   {
     <div class="p-3 text-muted">Sin resultados</div>
   }
+  @if (TotalPaginas > 1)
+  {
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <small class="text-muted">Mostrando @((paginaActual - 1) * registrosPorPagina + 1)-@Math.Min(paginaActual * registrosPorPagina, totalRegistros) de @totalRegistros</small>
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+            <button class="page-link" @onclick="() => IrPagina(1)" disabled="@(paginaActual == 1)"><i class="bi bi-chevron-double-left"></i></button>
+          </li>
+          <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+            <button class="page-link" @onclick="() => IrPagina(paginaActual - 1)" disabled="@(paginaActual == 1)"><i class="bi bi-chevron-left"></i></button>
+          </li>
+          @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+          {
+            var pag = i;
+            <li class="page-item @(pag == paginaActual ? "active" : "")">
+              <button class="page-link" @onclick="() => IrPagina(pag)">@pag</button>
+            </li>
+          }
+          <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+            <button class="page-link" @onclick="() => IrPagina(paginaActual + 1)" disabled="@(paginaActual == TotalPaginas)"><i class="bi bi-chevron-right"></i></button>
+          </li>
+          <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+            <button class="page-link" @onclick="() => IrPagina(TotalPaginas)" disabled="@(paginaActual == TotalPaginas)"><i class="bi bi-chevron-double-right"></i></button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  }
 </div>
 
 @code {
@@ -130,11 +129,11 @@
   private DateTime? filtroHasta;
   private List<ItemCompra> compras = new();
   
-  // Variables para el modal de restricciones
-  private int _restriccionIdCompra;
-  private int _restriccionIdProveedor;
-  private bool _tienePagosConfirmados;
-  private int _pagosConfirmadosCount;
+  // Paginación
+  private int paginaActual = 1;
+  private int registrosPorPagina = 100;
+  private int totalRegistros = 0;
+  private int TotalPaginas => (int)Math.Ceiling(totalRegistros / (double)registrosPorPagina);
 
   protected override async Task OnInitializedAsync()
   {
@@ -151,6 +150,7 @@
     var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
     filtroDesde = fechaCaja;
     filtroHasta = fechaCaja;
+    paginaActual = 1;  // Resetear página al iniciar
     
     await Buscar();
   }
@@ -199,7 +199,24 @@ END";
     if (!string.IsNullOrWhiteSpace(filtroEstado))
       q = q.Where(x => x.Estado == filtroEstado);
 
-    compras = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdCompra).Take(200).ToListAsync();
+    // Contar total para paginación
+    totalRegistros = await q.CountAsync();
+    
+    // Aplicar paginación
+    compras = await q.OrderByDescending(x => x.Fecha)
+      .ThenByDescending(x => x.IdCompra)
+      .Skip((paginaActual - 1) * registrosPorPagina)
+      .Take(registrosPorPagina)
+      .ToListAsync();
+  }
+  
+  private async Task IrPagina(int pagina)
+  {
+    if (pagina >= 1 && pagina <= TotalPaginas)
+    {
+      paginaActual = pagina;
+      await Buscar();
+    }
   }
 
   private void Editar(int id) => Nav.NavigateTo($"/compras?id={id}"); // Abre en modo visualización
@@ -209,160 +226,6 @@ END";
     // Redirigir a Compras con parámetros para reimpresión
     Nav.NavigateTo($"/compras?id={id}&print=1", true);
     await Task.CompletedTask;
-  }
-
-  private async Task Eliminar(int id)
-  {
-    await using var ctx = await DbFactory.CreateDbContextAsync();
-    
-    // 1. Obtener la compra para saber el proveedor
-    var compraInfo = await ctx.Compras.AsNoTracking()
-      .Where(c => c.IdCompra == id)
-      .Select(c => new { c.IdCompra, c.IdProveedor })
-      .FirstOrDefaultAsync();
-    
-    if (compraInfo == null)
-    {
-      await JS.InvokeVoidAsync("alert", "La compra no existe.");
-      return;
-    }
-    
-    // 2. Verificar si hay Notas de Crédito asociadas (deben eliminarse primero)
-    var notasCreditoAsociadas = await ctx.NotasCreditoCompras
-      .Where(nc => nc.IdCompraAsociada == id && nc.Estado != "Anulada")
-      .Select(nc => new { nc.IdNotaCreditoCompra, nc.Establecimiento, nc.PuntoExpedicion, nc.NumeroNota, nc.Estado })
-      .ToListAsync();
-    
-    if (notasCreditoAsociadas.Any())
-    {
-      var ncList = string.Join("\n", notasCreditoAsociadas.Select(nc => $"  • NC #{nc.Establecimiento}-{nc.PuntoExpedicion}-{nc.NumeroNota} ({nc.Estado})"));
-      await JS.InvokeVoidAsync("alert", $"❌ No se puede eliminar esta compra.\n\nTiene {notasCreditoAsociadas.Count} Nota(s) de Crédito asociada(s):\n{ncList}\n\nDebe anular o eliminar las NC primero.");
-      return;
-    }
-    
-    // 3. Verificar si hay pagos CONFIRMADOS (solo estos bloquean)
-    var pagosConfirmados = await ctx.PagosProveedores
-      .Where(p => p.IdCompra == id && p.Estado != "Anulado")
-      .ToListAsync();
-    
-    if (pagosConfirmados.Any())
-    {
-      // Mostrar modal con restricciones
-      _restriccionIdCompra = id;
-      _restriccionIdProveedor = compraInfo.IdProveedor;
-      _tienePagosConfirmados = true;
-      _pagosConfirmadosCount = pagosConfirmados.Count;
-      StateHasChanged();
-      await JS.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('restriccionEliminarCompraModal')).show()");
-      return;
-    }
-
-    // 3. Solicitar contraseña del usuario para confirmar eliminación definitiva
-    var password = await JS.InvokeAsync<string>("prompt", "⚠️ ADVERTENCIA: Esta acción eliminará PERMANENTEMENTE la compra y ajustará el stock.\n\nPara continuar, ingrese su contraseña:");
-    if (string.IsNullOrWhiteSpace(password))
-    {
-      await JS.InvokeVoidAsync("alert", "Operación cancelada.");
-      return;
-    }
-
-    // 4. Validar contraseña del usuario logueado
-    if (!await ValidarPasswordUsuarioActualAsync(password))
-    {
-      await JS.InvokeVoidAsync("alert", "❌ Contraseña incorrecta. No se realizaron cambios.");
-      return;
-    }
-
-    // 5. Obtener la compra con sus detalles
-    var compra = await ctx.Compras
-      .Include(c => c.Detalles)
-      .FirstOrDefaultAsync(c => c.IdCompra == id);
-    
-    if (compra == null)
-    {
-      await JS.InvokeVoidAsync("alert", "La compra no existe.");
-      return;
-    }
-    
-    // 6. Revertir movimientos de lote primero (si el producto controla lotes)
-    // y luego retroceder el stock general
-    if (compra.IdDeposito.HasValue && compra.Detalles.Any())
-    {
-      try
-      {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var usuarioNombre = authState.User?.Identity?.Name ?? "Sistema";
-        
-        // Revertir movimientos de lotes (para productos con control de lotes)
-        await LoteService.RevertirMovimientoAsync("Compra", id, usuarioNombre);
-        
-        foreach (var d in compra.Detalles)
-        {
-          // Usar el depósito específico del item si está definido, sino el de la compra
-          var depositoAUsar = d.IdDepositoItem ?? compra.IdDeposito.Value;
-          
-          // Ajustar con SALIDA (tipo 2) para restar lo que se había agregado
-          await Inventario.AjustarStockAsync(
-            d.IdProducto, 
-            depositoAUsar, 
-            d.Cantidad, 
-            2, // 2 = SALIDA
-            $"Eliminación definitiva de Compra #{id}", 
-            usuarioNombre);
-        }
-      }
-      catch (Exception ex)
-      {
-        await JS.InvokeVoidAsync("alert", $"❌ No se pudo eliminar la compra debido a un problema con el stock:\n\n{ex.Message}\n\nVerifique que haya suficiente stock en el depósito.");
-        return;
-      }
-    }
-
-    // 7. Eliminar físicamente todos los registros relacionados
-    try
-    {
-      // Buscar cuenta por pagar asociada
-      var cuentaPorPagarEliminar = await ctx.CuentasPorPagar
-        .Include(c => c.Cuotas)
-        .FirstOrDefaultAsync(c => c.IdCompra == id);
-      
-      if (cuentaPorPagarEliminar != null)
-      {
-        // Eliminar pagos ANULADOS y sus detalles (los confirmados ya fueron verificados que no existen)
-        var pagosAnulados = await ctx.PagosProveedores
-          .Include(p => p.Detalles)
-          .Where(p => p.IdCompra == id)
-          .ToListAsync();
-        
-        foreach (var pago in pagosAnulados)
-        {
-          if (pago.Detalles != null && pago.Detalles.Any())
-            ctx.PagosProveedoresDetalles.RemoveRange(pago.Detalles);
-          ctx.PagosProveedores.Remove(pago);
-        }
-        
-        // Eliminar cuotas de la cuenta por pagar
-        if (cuentaPorPagarEliminar.Cuotas != null && cuentaPorPagarEliminar.Cuotas.Any())
-          ctx.CuentasPorPagarCuotas.RemoveRange(cuentaPorPagarEliminar.Cuotas);
-        
-        // Eliminar cuenta por pagar
-        ctx.CuentasPorPagar.Remove(cuentaPorPagarEliminar);
-      }
-      
-      // Eliminar detalles de la compra
-      ctx.ComprasDetalles.RemoveRange(compra.Detalles);
-      
-      // Eliminar la compra
-      ctx.Compras.Remove(compra);
-      
-      await ctx.SaveChangesAsync();
-      await JS.InvokeVoidAsync("alert", $"✅ Compra #{id} eliminada exitosamente. El stock ha sido ajustado correctamente.");
-      await Buscar();
-    }
-    catch (Exception ex)
-    {
-      var innerMsg = ex.InnerException?.Message ?? ex.Message;
-      await JS.InvokeVoidAsync("alert", $"❌ Error al eliminar la compra: {innerMsg}");
-    }
   }
 
   private async Task<bool> ValidarPasswordUsuarioActualAsync(string plain)
@@ -446,6 +309,7 @@ END";
     var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
     filtroDesde = fechaCaja;
     filtroHasta = fechaCaja;
+    paginaActual = 1;  // Resetear página al limpiar
     
     await Buscar();
   }

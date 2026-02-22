@@ -139,6 +139,34 @@ namespace SistemIA.Data
                         RutaPagina = "/inventario/salidas-stock"
                     });
                 }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/inventario/movimientos"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Movimientos de Inventario",
+                        Descripcion = "Registro de entradas y salidas manuales de inventario",
+                        Icono = "bi-arrow-down-up",
+                        Orden = 9,
+                        IdModuloPadre = inventario.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/inventario/movimientos"
+                    });
+                }
+
+                if (!await ctx.Modulos.AnyAsync(m => m.RutaPagina == "/inventario/transferencias"))
+                {
+                    nuevosModulos.Add(new Modulo
+                    {
+                        Nombre = "Transferencias entre Depósitos",
+                        Descripcion = "Transferencia de stock entre depósitos",
+                        Icono = "bi-arrow-left-right",
+                        Orden = 10,
+                        IdModuloPadre = inventario.IdModulo,
+                        Activo = true,
+                        RutaPagina = "/inventario/transferencias"
+                    });
+                }
             }
 
             // Agregar submódulos de Clientes si no existen

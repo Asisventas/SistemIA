@@ -507,15 +507,13 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20250727000644_TiposIvaTableCreated'
 )
 BEGIN
-    DROP INDEX [IX_Clientes_TipoOperacion] ON [Clientes];
     DECLARE @var0 sysname;
     SELECT @var0 = [d].[name]
     FROM [sys].[default_constraints] [d]
     INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
     WHERE ([d].[parent_object_id] = OBJECT_ID(N'[Clientes]') AND [c].[name] = N'TipoOperacion');
     IF @var0 IS NOT NULL EXEC(N'ALTER TABLE [Clientes] DROP CONSTRAINT [' + @var0 + '];');
-    ALTER TABLE [Clientes] ALTER COLUMN [TipoOperacion] nvarchar(1) NULL;
-    CREATE INDEX [IX_Clientes_TipoOperacion] ON [Clientes] ([TipoOperacion]);
+    ALTER TABLE [Clientes] ALTER COLUMN [TipoOperacion] nvarchar(3) NULL;
 END;
 GO
 
@@ -6506,22 +6504,6 @@ GO
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251229145529_Fix_TipoOperacion_StringLength'
-)
-BEGIN
-    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
-    VALUES (N'20251229145529_Fix_TipoOperacion_StringLength', N'8.0.0');
-END;
-GO
-
-COMMIT;
-GO
-
-BEGIN TRANSACTION;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
     WHERE [MigrationId] = N'20251229185747_Agregar_NotasCredito_CierreCaja'
 )
 BEGIN
@@ -7009,40 +6991,6 @@ IF NOT EXISTS (
 BEGIN
     INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
     VALUES (N'20251230193919_Agregar_DescuentosCategorias_y_Producto_Descuento', N'8.0.0');
-END;
-GO
-
-COMMIT;
-GO
-
-BEGIN TRANSACTION;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251231151002_Agregar_MargenAdicionalCajero_v2'
-)
-BEGIN
-    ALTER TABLE [Productos] ADD [MargenAdicionalCajeroProducto] decimal(5,2) NULL;
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251231151002_Agregar_MargenAdicionalCajero_v2'
-)
-BEGIN
-    ALTER TABLE [DescuentosCategorias] ADD [MargenAdicionalCajero] decimal(5,2) NOT NULL DEFAULT 0.0;
-END;
-GO
-
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20251231151002_Agregar_MargenAdicionalCajero_v2'
-)
-BEGIN
-    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
-    VALUES (N'20251231151002_Agregar_MargenAdicionalCajero_v2', N'8.0.0');
 END;
 GO
 
@@ -9515,6 +9463,3074 @@ IF NOT EXISTS (
 BEGIN
     INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
     VALUES (N'20260124160715_Agregar_CamposApiRestCentral_AsistenteIA', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124190608_CloudSync_TablaConfiguracionYHistorial'
+)
+BEGIN
+    CREATE TABLE [ConfiguracionesCloudSync] (
+        [IdConfiguracion] int NOT NULL IDENTITY,
+        [ApiKey] nvarchar(100) NULL,
+        [UrlApi] nvarchar(200) NOT NULL,
+        [CarpetaBackup] nvarchar(500) NULL,
+        [ExtensionesIncluir] nvarchar(200) NOT NULL,
+        [BackupAutomaticoHabilitado] bit NOT NULL,
+        [HoraBackup] time NULL,
+        [DiasBackup] nvarchar(20) NULL,
+        [RetenerUltimosBackups] int NOT NULL,
+        [ComprimirAntesDeSubir] bit NOT NULL,
+        [UltimaSincronizacion] datetime2 NULL,
+        [EstadoUltimaSincronizacion] nvarchar(50) NULL,
+        [MensajeUltimaSincronizacion] nvarchar(max) NULL,
+        [Activo] bit NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        CONSTRAINT [PK_ConfiguracionesCloudSync] PRIMARY KEY ([IdConfiguracion])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124190608_CloudSync_TablaConfiguracionYHistorial'
+)
+BEGIN
+    CREATE TABLE [HistorialBackupsCloud] (
+        [IdHistorial] int NOT NULL IDENTITY,
+        [NombreArchivo] nvarchar(300) NOT NULL,
+        [RutaLocal] nvarchar(500) NULL,
+        [RutaRemota] nvarchar(500) NULL,
+        [TamanoBytes] bigint NOT NULL,
+        [FechaInicio] datetime2 NOT NULL,
+        [FechaFin] datetime2 NULL,
+        [DuracionSegundos] int NULL,
+        [Estado] nvarchar(30) NOT NULL,
+        [MensajeError] nvarchar(max) NULL,
+        [IdArchivoRemoto] nvarchar(100) NULL,
+        [HashMD5] nvarchar(32) NULL,
+        [FueAutomatico] bit NOT NULL,
+        [IdUsuario] int NULL,
+        CONSTRAINT [PK_HistorialBackupsCloud] PRIMARY KEY ([IdHistorial]),
+        CONSTRAINT [FK_HistorialBackupsCloud_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124190608_CloudSync_TablaConfiguracionYHistorial'
+)
+BEGIN
+    CREATE INDEX [IX_HistorialBackupsCloud_IdUsuario] ON [HistorialBackupsCloud] ([IdUsuario]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124190608_CloudSync_TablaConfiguracionYHistorial'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260124190608_CloudSync_TablaConfiguracionYHistorial', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124192531_Agregar_Modulo_CloudSync'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/configuracion/cloudsync')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('CloudSync (Backups)', 'Gestión de copias de seguridad en la nube', 
+                                '/configuracion/cloudsync', 'bi-cloud-arrow-up', 8, 11, 1, GETDATE());
+                        DECLARE @NuevoIdModulo INT = SCOPE_IDENTITY();
+                        -- Agregar permisos VIEW, CREATE, EDIT, DELETE al rol Admin (IdRol=1)
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = 1 AND IdModulo = @NuevoIdModulo AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (1, @NuevoIdModulo, 1, 1, GETDATE());  -- VIEW
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = 1 AND IdModulo = @NuevoIdModulo AND IdPermiso = 2)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (1, @NuevoIdModulo, 2, 1, GETDATE());  -- CREATE
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = 1 AND IdModulo = @NuevoIdModulo AND IdPermiso = 3)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (1, @NuevoIdModulo, 3, 1, GETDATE());  -- EDIT
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = 1 AND IdModulo = @NuevoIdModulo AND IdPermiso = 4)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (1, @NuevoIdModulo, 4, 1, GETDATE());  -- DELETE
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260124192531_Agregar_Modulo_CloudSync'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260124192531_Agregar_Modulo_CloudSync', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260125015448_Agregar_Campos_Programacion_CloudSync'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesCloudSync] ADD [IntervaloHoras] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260125015448_Agregar_Campos_Programacion_CloudSync'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesCloudSync] ADD [ProximaEjecucion] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260125015448_Agregar_Campos_Programacion_CloudSync'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesCloudSync] ADD [TipoProgramacion] nvarchar(20) NOT NULL DEFAULT N'';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260125015448_Agregar_Campos_Programacion_CloudSync'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionesCloudSync] ADD [UltimoBackupExitoso] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260125015448_Agregar_Campos_Programacion_CloudSync'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260125015448_Agregar_Campos_Programacion_CloudSync', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260126235039_Agregar_Modulo_LibroIVA'
+)
+BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/informes/libro-iva')
+                    BEGIN
+                        DECLARE @IdModuloPadre INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/reportes' AND IdModuloPadre IS NULL);
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES (
+                            'Libro IVA',
+                            'Libro IVA de Ventas y Compras para declaraciones fiscales SET/SIFEN',
+                            '/informes/libro-iva',
+                            'bi-journal-bookmark-fill',
+                            @IdModuloPadre,
+                            20,
+                            1,
+                            GETDATE()
+                        );
+                        DECLARE @NuevoIdModulo INT = SCOPE_IDENTITY();
+                        -- Permisos para rol Admin (IdRol=1): VIEW=1, CREATE=2, EDIT=3, DELETE=4
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES 
+                            (1, @NuevoIdModulo, 1, 1, GETDATE()),
+                            (1, @NuevoIdModulo, 2, 1, GETDATE()),
+                            (1, @NuevoIdModulo, 3, 1, GETDATE()),
+                            (1, @NuevoIdModulo, 4, 1, GETDATE());
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260126235039_Agregar_Modulo_LibroIVA'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260126235039_Agregar_Modulo_LibroIVA', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260130233608_Agregar_IdProductoLote_AjustesStockDetalles'
+)
+BEGIN
+    ALTER TABLE [AjustesStockDetalles] ADD [IdProductoLote] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260130233608_Agregar_IdProductoLote_AjustesStockDetalles'
+)
+BEGIN
+    CREATE INDEX [IX_AjustesStockDetalles_IdProductoLote] ON [AjustesStockDetalles] ([IdProductoLote]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260130233608_Agregar_IdProductoLote_AjustesStockDetalles'
+)
+BEGIN
+    ALTER TABLE [AjustesStockDetalles] ADD CONSTRAINT [FK_AjustesStockDetalles_ProductosLotes_IdProductoLote] FOREIGN KEY ([IdProductoLote]) REFERENCES [ProductosLotes] ([IdProductoLote]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260130233608_Agregar_IdProductoLote_AjustesStockDetalles'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260130233608_Agregar_IdProductoLote_AjustesStockDetalles', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    ALTER TABLE [TransferenciasDepositoDetalle] ADD [FechaVencimientoLote] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    ALTER TABLE [TransferenciasDepositoDetalle] ADD [IdProductoLoteDestino] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    ALTER TABLE [TransferenciasDepositoDetalle] ADD [IdProductoLoteOrigen] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    ALTER TABLE [TransferenciasDepositoDetalle] ADD [NumeroLote] nvarchar(50) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    CREATE INDEX [IX_TransferenciasDepositoDetalle_IdProductoLoteDestino] ON [TransferenciasDepositoDetalle] ([IdProductoLoteDestino]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    CREATE INDEX [IX_TransferenciasDepositoDetalle_IdProductoLoteOrigen] ON [TransferenciasDepositoDetalle] ([IdProductoLoteOrigen]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    ALTER TABLE [TransferenciasDepositoDetalle] ADD CONSTRAINT [FK_TransferenciasDepositoDetalle_ProductosLotes_IdProductoLoteDestino] FOREIGN KEY ([IdProductoLoteDestino]) REFERENCES [ProductosLotes] ([IdProductoLote]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    ALTER TABLE [TransferenciasDepositoDetalle] ADD CONSTRAINT [FK_TransferenciasDepositoDetalle_ProductosLotes_IdProductoLoteOrigen] FOREIGN KEY ([IdProductoLoteOrigen]) REFERENCES [ProductosLotes] ([IdProductoLote]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260131010556_Agregar_Lotes_TransferenciasDeposito'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260131010556_Agregar_Lotes_TransferenciasDeposito', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224329_Agregar_Modulos_Restaurante_Permisos'
+)
+BEGIN
+                    DECLARE @IdModuloPadre INT;
+                    -- 1. Crear módulo padre 'Mesas / Canchas'
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE Nombre = 'Mesas / Canchas')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Mesas / Canchas', 'Gestión de mesas de restaurante y canchas deportivas', NULL, 'bi-grid-3x3-gap', NULL, 15, 1, GETDATE());
+                        SET @IdModuloPadre = SCOPE_IDENTITY();
+                    END
+                    ELSE
+                    BEGIN
+                        SELECT @IdModuloPadre = IdModulo FROM Modulos WHERE Nombre = 'Mesas / Canchas';
+                    END
+                    -- 2. Panel de Mesas
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/mesas/panel')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Panel de Mesas', 'Vista de panel visual de mesas y su estado', '/mesas/panel', 'bi-grid-3x3-gap-fill', @IdModuloPadre, 1, 1, GETDATE());
+                        DECLARE @IdPanelMesas INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdPanelMesas, 1, 1, GETDATE()), (1, @IdPanelMesas, 2, 1, GETDATE()), (1, @IdPanelMesas, 3, 1, GETDATE()), (1, @IdPanelMesas, 4, 1, GETDATE());
+                    END
+                    -- 3. Administrar Mesas
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/mesas')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Administrar Mesas', 'CRUD de mesas y canchas', '/mesas', 'bi-table', @IdModuloPadre, 2, 1, GETDATE());
+                        DECLARE @IdAdminMesas INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdAdminMesas, 1, 1, GETDATE()), (1, @IdAdminMesas, 2, 1, GETDATE()), (1, @IdAdminMesas, 3, 1, GETDATE()), (1, @IdAdminMesas, 4, 1, GETDATE());
+                    END
+                    -- 4. Pedido de Mesa
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/mesas/pedido')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Pedido de Mesa', 'Toma de pedidos en mesas', '/mesas/pedido', 'bi-receipt', @IdModuloPadre, 3, 1, GETDATE());
+                        DECLARE @IdPedidoMesa INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdPedidoMesa, 1, 1, GETDATE()), (1, @IdPedidoMesa, 2, 1, GETDATE()), (1, @IdPedidoMesa, 3, 1, GETDATE()), (1, @IdPedidoMesa, 4, 1, GETDATE());
+                    END
+                    -- 5. Explorar Pedidos
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/pedidos/explorar')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Explorar Pedidos', 'Historial y búsqueda de pedidos', '/pedidos/explorar', 'bi-search', @IdModuloPadre, 4, 1, GETDATE());
+                        DECLARE @IdExplorarPedidos INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdExplorarPedidos, 1, 1, GETDATE()), (1, @IdExplorarPedidos, 2, 1, GETDATE()), (1, @IdExplorarPedidos, 3, 1, GETDATE()), (1, @IdExplorarPedidos, 4, 1, GETDATE());
+                    END
+                    -- 6. Reservas
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/reservas')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Reservas', 'Gestión de reservas de mesas y canchas', '/reservas', 'bi-calendar-check', @IdModuloPadre, 5, 1, GETDATE());
+                        DECLARE @IdReservas INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdReservas, 1, 1, GETDATE()), (1, @IdReservas, 2, 1, GETDATE()), (1, @IdReservas, 3, 1, GETDATE()), (1, @IdReservas, 4, 1, GETDATE());
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224329_Agregar_Modulos_Restaurante_Permisos'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260202224329_Agregar_Modulos_Restaurante_Permisos', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [CanchasModoActivo] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [ReservasHabilitadas] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [ReservasRecordatorioMinutos] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [RestauranteCargoServicio] decimal(5,2) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [RestauranteImpresoraBarra] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [RestauranteImpresoraCocina] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [RestauranteImprimirComandaAuto] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [RestauranteModoActivo] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [RestauranteMostrarTiempo] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [RestaurantePermitirDivisionCuenta] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [RestaurantePermitirPagosParciales] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE TABLE [Mesas] (
+        [IdMesa] int NOT NULL IDENTITY,
+        [IdSucursal] int NOT NULL,
+        [Numero] nvarchar(20) NOT NULL,
+        [Nombre] nvarchar(100) NULL,
+        [Descripcion] nvarchar(500) NULL,
+        [Tipo] nvarchar(50) NOT NULL,
+        [Zona] nvarchar(50) NULL,
+        [Capacidad] int NOT NULL,
+        [PosicionX] int NOT NULL,
+        [PosicionY] int NOT NULL,
+        [Ancho] int NOT NULL,
+        [Alto] int NOT NULL,
+        [Forma] nvarchar(20) NOT NULL,
+        [ColorLibre] nvarchar(10) NOT NULL,
+        [ColorOcupada] nvarchar(10) NOT NULL,
+        [ColorReservada] nvarchar(10) NOT NULL,
+        [ImagenUrl] nvarchar(500) NULL,
+        [Icono] nvarchar(50) NULL,
+        [CobraPorTiempo] bit NOT NULL,
+        [TarifaPorHora] decimal(18,4) NULL,
+        [TiempoMinimoMinutos] int NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [Activa] bit NOT NULL,
+        [Orden] int NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        CONSTRAINT [PK_Mesas] PRIMARY KEY ([IdMesa]),
+        CONSTRAINT [FK_Mesas_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE TABLE [Reservas] (
+        [IdReserva] int NOT NULL IDENTITY,
+        [IdSucursal] int NOT NULL,
+        [IdMesa] int NOT NULL,
+        [NumeroReserva] int NOT NULL,
+        [NombreCliente] nvarchar(200) NOT NULL,
+        [Telefono] nvarchar(30) NULL,
+        [Email] nvarchar(100) NULL,
+        [IdCliente] int NULL,
+        [FechaReserva] datetime2 NOT NULL,
+        [HoraInicio] time NOT NULL,
+        [HoraFin] time NULL,
+        [DuracionMinutos] int NULL,
+        [CantidadPersonas] int NOT NULL,
+        [Motivo] nvarchar(200) NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [RecordatorioEnviado] bit NOT NULL,
+        [FechaRecordatorio] datetime2 NULL,
+        [RequiereSena] bit NOT NULL,
+        [MontoSena] decimal(18,4) NULL,
+        [SenaPagada] bit NOT NULL,
+        [FechaPagoSena] datetime2 NULL,
+        [TarifaPorHora] decimal(18,4) NULL,
+        [TotalEstimado] decimal(18,4) NULL,
+        [IdPedido] int NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        [IdUsuarioCreacion] int NULL,
+        [IdUsuarioModificacion] int NULL,
+        [MotivoCancelacion] nvarchar(500) NULL,
+        CONSTRAINT [PK_Reservas] PRIMARY KEY ([IdReserva]),
+        CONSTRAINT [FK_Reservas_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Reservas_Mesas_IdMesa] FOREIGN KEY ([IdMesa]) REFERENCES [Mesas] ([IdMesa]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Reservas_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE TABLE [Pedidos] (
+        [IdPedido] int NOT NULL IDENTITY,
+        [IdSucursal] int NOT NULL,
+        [IdCaja] int NULL,
+        [Turno] int NULL,
+        [FechaCaja] datetime2 NULL,
+        [IdMesa] int NOT NULL,
+        [NumeroPedido] int NOT NULL,
+        [Comensales] int NOT NULL,
+        [NombreCliente] nvarchar(200) NULL,
+        [IdCliente] int NULL,
+        [FechaApertura] datetime2 NOT NULL,
+        [FechaCierre] datetime2 NULL,
+        [HoraInicio] datetime2 NULL,
+        [HoraFin] datetime2 NULL,
+        [Subtotal] decimal(18,4) NOT NULL,
+        [TotalDescuento] decimal(18,4) NOT NULL,
+        [CargoServicio] decimal(18,4) NOT NULL,
+        [PorcentajeServicio] decimal(5,2) NULL,
+        [CargoPorTiempo] decimal(18,4) NOT NULL,
+        [TotalIva10] decimal(18,4) NOT NULL,
+        [TotalIva5] decimal(18,4) NOT NULL,
+        [TotalExenta] decimal(18,4) NOT NULL,
+        [Total] decimal(18,4) NOT NULL,
+        [MontoPagado] decimal(18,4) NOT NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [ComandaImpresa] bit NOT NULL,
+        [ImpresionesComanda] int NOT NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [IdReserva] int NULL,
+        [IdUsuario] int NULL,
+        [NombreMesero] nvarchar(250) NULL,
+        [IdUsuarioApertura] int NULL,
+        [IdUsuarioCierre] int NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        CONSTRAINT [PK_Pedidos] PRIMARY KEY ([IdPedido]),
+        CONSTRAINT [FK_Pedidos_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Pedidos_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Pedidos_Mesas_IdMesa] FOREIGN KEY ([IdMesa]) REFERENCES [Mesas] ([IdMesa]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Pedidos_Reservas_IdReserva] FOREIGN KEY ([IdReserva]) REFERENCES [Reservas] ([IdReserva]) ON DELETE SET NULL,
+        CONSTRAINT [FK_Pedidos_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_Pedidos_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE TABLE [PedidoDetalles] (
+        [IdPedidoDetalle] int NOT NULL IDENTITY,
+        [IdPedido] int NOT NULL,
+        [IdProducto] int NOT NULL,
+        [CodigoProducto] nvarchar(50) NULL,
+        [Descripcion] nvarchar(250) NOT NULL,
+        [Cantidad] decimal(18,4) NOT NULL,
+        [CantidadEntregada] decimal(18,4) NOT NULL,
+        [PrecioUnitario] decimal(18,4) NOT NULL,
+        [Importe] decimal(18,4) NOT NULL,
+        [PorcentajeDescuento] decimal(5,2) NOT NULL,
+        [Descuento] decimal(18,4) NOT NULL,
+        [IdTipoIva] int NULL,
+        [IVA10] decimal(18,4) NOT NULL,
+        [IVA5] decimal(18,4) NOT NULL,
+        [Exenta] decimal(18,4) NOT NULL,
+        [Grabado10] decimal(18,4) NOT NULL,
+        [Grabado5] decimal(18,4) NOT NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [EnviadoCocina] bit NOT NULL,
+        [FechaEnvioCocina] datetime2 NULL,
+        [FechaEntrega] datetime2 NULL,
+        [NumeroComanda] int NULL,
+        [Modificadores] nvarchar(500) NULL,
+        [NotasCocina] nvarchar(500) NULL,
+        [NumeroComensal] int NULL,
+        [Facturado] bit NOT NULL,
+        [IdVenta] int NULL,
+        [IdUsuario] int NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        CONSTRAINT [PK_PedidoDetalles] PRIMARY KEY ([IdPedidoDetalle]),
+        CONSTRAINT [FK_PedidoDetalles_Pedidos_IdPedido] FOREIGN KEY ([IdPedido]) REFERENCES [Pedidos] ([IdPedido]) ON DELETE CASCADE,
+        CONSTRAINT [FK_PedidoDetalles_Productos_IdProducto] FOREIGN KEY ([IdProducto]) REFERENCES [Productos] ([IdProducto]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE TABLE [PedidoPagos] (
+        [IdPedidoPago] int NOT NULL IDENTITY,
+        [IdPedido] int NOT NULL,
+        [Monto] decimal(18,4) NOT NULL,
+        [FormaPago] nvarchar(20) NOT NULL,
+        [Referencia] nvarchar(100) NULL,
+        [MontoRecibido] decimal(18,4) NULL,
+        [Vuelto] decimal(18,4) NULL,
+        [Propina] decimal(18,4) NOT NULL,
+        [NumeroComensal] int NULL,
+        [NombrePagador] nvarchar(100) NULL,
+        [DetallesIncluidos] nvarchar(500) NULL,
+        [Facturado] bit NOT NULL,
+        [IdVenta] int NULL,
+        [IdCliente] int NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [FechaPago] datetime2 NOT NULL,
+        [IdUsuario] int NULL,
+        [Observaciones] nvarchar(500) NULL,
+        CONSTRAINT [PK_PedidoPagos] PRIMARY KEY ([IdPedidoPago]),
+        CONSTRAINT [FK_PedidoPagos_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_PedidoPagos_Pedidos_IdPedido] FOREIGN KEY ([IdPedido]) REFERENCES [Pedidos] ([IdPedido]) ON DELETE CASCADE,
+        CONSTRAINT [FK_PedidoPagos_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_PedidoPagos_Ventas_IdVenta] FOREIGN KEY ([IdVenta]) REFERENCES [Ventas] ([IdVenta]) ON DELETE SET NULL
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Mesas_IdSucursal] ON [Mesas] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_PedidoDetalles_IdPedido] ON [PedidoDetalles] ([IdPedido]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_PedidoDetalles_IdProducto] ON [PedidoDetalles] ([IdProducto]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_PedidoPagos_IdCliente] ON [PedidoPagos] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_PedidoPagos_IdPedido] ON [PedidoPagos] ([IdPedido]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_PedidoPagos_IdUsuario] ON [PedidoPagos] ([IdUsuario]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_PedidoPagos_IdVenta] ON [PedidoPagos] ([IdVenta]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Pedidos_IdCaja] ON [Pedidos] ([IdCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Pedidos_IdCliente] ON [Pedidos] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Pedidos_IdMesa] ON [Pedidos] ([IdMesa]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    EXEC(N'CREATE UNIQUE INDEX [IX_Pedidos_IdReserva] ON [Pedidos] ([IdReserva]) WHERE [IdReserva] IS NOT NULL');
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Pedidos_IdSucursal] ON [Pedidos] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Pedidos_IdUsuario] ON [Pedidos] ([IdUsuario]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Reservas_IdCliente] ON [Reservas] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Reservas_IdMesa] ON [Reservas] ([IdMesa]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    CREATE INDEX [IX_Reservas_IdSucursal] ON [Reservas] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+                    DECLARE @IdModuloPadre INT;
+                    -- 1. Crear módulo padre 'Mesas / Canchas'
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE Nombre = 'Mesas / Canchas')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Mesas / Canchas', 'Gestión de mesas de restaurante y canchas deportivas', NULL, 'bi-grid-3x3-gap', NULL, 15, 1, GETDATE());
+                        SET @IdModuloPadre = SCOPE_IDENTITY();
+                    END
+                    ELSE
+                    BEGIN
+                        SELECT @IdModuloPadre = IdModulo FROM Modulos WHERE Nombre = 'Mesas / Canchas';
+                    END
+                    -- 2. Panel de Mesas
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/mesas/panel')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Panel de Mesas', 'Vista de panel visual de mesas y su estado', '/mesas/panel', 'bi-grid-3x3-gap-fill', @IdModuloPadre, 1, 1, GETDATE());
+                        DECLARE @IdPanelMesas INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdPanelMesas, 1, 1, GETDATE()), (1, @IdPanelMesas, 2, 1, GETDATE()), (1, @IdPanelMesas, 3, 1, GETDATE()), (1, @IdPanelMesas, 4, 1, GETDATE());
+                    END
+                    -- 3. Administrar Mesas
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/mesas')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Administrar Mesas', 'CRUD de mesas y canchas', '/mesas', 'bi-table', @IdModuloPadre, 2, 1, GETDATE());
+                        DECLARE @IdAdminMesas INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdAdminMesas, 1, 1, GETDATE()), (1, @IdAdminMesas, 2, 1, GETDATE()), (1, @IdAdminMesas, 3, 1, GETDATE()), (1, @IdAdminMesas, 4, 1, GETDATE());
+                    END
+                    -- 4. Pedido de Mesa
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/mesas/pedido')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Pedido de Mesa', 'Toma de pedidos en mesas', '/mesas/pedido', 'bi-receipt', @IdModuloPadre, 3, 1, GETDATE());
+                        DECLARE @IdPedidoMesa INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdPedidoMesa, 1, 1, GETDATE()), (1, @IdPedidoMesa, 2, 1, GETDATE()), (1, @IdPedidoMesa, 3, 1, GETDATE()), (1, @IdPedidoMesa, 4, 1, GETDATE());
+                    END
+                    -- 5. Explorar Pedidos
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/pedidos/explorar')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Explorar Pedidos', 'Historial y búsqueda de pedidos', '/pedidos/explorar', 'bi-search', @IdModuloPadre, 4, 1, GETDATE());
+                        DECLARE @IdExplorarPedidos INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdExplorarPedidos, 1, 1, GETDATE()), (1, @IdExplorarPedidos, 2, 1, GETDATE()), (1, @IdExplorarPedidos, 3, 1, GETDATE()), (1, @IdExplorarPedidos, 4, 1, GETDATE());
+                    END
+                    -- 6. Reservas
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/reservas')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Reservas', 'Gestión de reservas de mesas y canchas', '/reservas', 'bi-calendar-check', @IdModuloPadre, 5, 1, GETDATE());
+                        DECLARE @IdReservas INT = SCOPE_IDENTITY();
+                        INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                        VALUES (1, @IdReservas, 1, 1, GETDATE()), (1, @IdReservas, 2, 1, GETDATE()), (1, @IdReservas, 3, 1, GETDATE()), (1, @IdReservas, 4, 1, GETDATE());
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260202224819_Agregar_Sistema_Mesas_y_Modulos_Completo', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203125941_Agregar_IdPedido_En_Ventas'
+)
+BEGIN
+    ALTER TABLE [Ventas] ADD [IdPedido] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203125941_Agregar_IdPedido_En_Ventas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260203125941_Agregar_IdPedido_En_Ventas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203205147_Agregar_HoraRealReservas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260203205147_Agregar_HoraRealReservas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203214953_Agregar_HorasReales_Reservas'
+)
+BEGIN
+    ALTER TABLE [Reservas] ADD [HoraFinReal] time NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203214953_Agregar_HorasReales_Reservas'
+)
+BEGIN
+    ALTER TABLE [Reservas] ADD [HoraInicioReal] time NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203214953_Agregar_HorasReales_Reservas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260203214953_Agregar_HorasReales_Reservas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [ComandaBarraEsRed] bit NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [ComandaCocinaEsRed] bit NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [CopiasComandaBarra] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [CopiasComandaCocina] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [ImpresoraComandaBarra] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [ImpresoraComandaCocina] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [ImprimirComandaAutomatica] bit NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [PuertoImpresoraBarra] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [PuertoImpresoraCocina] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+                    DECLARE @IdModuloPadre INT;
+                    -- Obtener el ID del módulo padre 'Mesas / Canchas'
+                    SELECT @IdModuloPadre = IdModulo FROM Modulos WHERE Nombre = 'Mesas / Canchas';
+                    -- Si no existe el módulo padre, crearlo
+                    IF @IdModuloPadre IS NULL
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Mesas / Canchas', 'Gestión de mesas de restaurante y canchas deportivas', NULL, 'bi-grid-3x3-gap', NULL, 15, 1, GETDATE());
+                        SET @IdModuloPadre = SCOPE_IDENTITY();
+                    END
+                    -- Agregar módulo Pantalla Cocina si no existe
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/cocina')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Pantalla Cocina', 'Pantalla de visualización para cocina (KDS)', '/cocina', 'bi-fire', @IdModuloPadre, 5, 1, GETDATE());
+                        DECLARE @IdPantallaCocina INT = SCOPE_IDENTITY();
+                        -- Asignar permisos al rol Administrador (Id_Rol = 1) - Tabla se llama Rol, columna es Id_Rol
+                        IF EXISTS (SELECT 1 FROM Rol WHERE Id_Rol = 1)
+                        BEGIN
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (1, @IdPantallaCocina, 1, 1, GETDATE()), -- VIEW
+                                   (1, @IdPantallaCocina, 2, 1, GETDATE()), -- CREATE
+                                   (1, @IdPantallaCocina, 3, 1, GETDATE()), -- EDIT
+                                   (1, @IdPantallaCocina, 4, 1, GETDATE()); -- DELETE
+                        END
+                        PRINT 'Módulo Pantalla Cocina creado con permisos';
+                    END
+                    ELSE
+                    BEGIN
+                        PRINT 'Módulo Pantalla Cocina ya existe';
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203223848_Agregar_Campos_Comandas_Caja'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260203223848_Agregar_Campos_Comandas_Caja', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203225846_Agregar_Campos_Comprobante_Pedido_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [ComprobanteEsRed] bit NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203225846_Agregar_Campos_Comprobante_Pedido_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [ImpresoraComprobantePedido] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203225846_Agregar_Campos_Comprobante_Pedido_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [ImprimirComprobantePedidoAuto] bit NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203225846_Agregar_Campos_Comprobante_Pedido_Caja'
+)
+BEGIN
+    ALTER TABLE [Cajas] ADD [PuertoImpresoraComprobante] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260203225846_Agregar_Campos_Comprobante_Pedido_Caja'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260203225846_Agregar_Campos_Comprobante_Pedido_Caja', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204002823_Agregar_CorreosPendientes'
+)
+BEGIN
+    CREATE TABLE [CorreosPendientes] (
+        [IdCorreoPendiente] int NOT NULL IDENTITY,
+        [Destinatario] nvarchar(200) NOT NULL,
+        [Asunto] nvarchar(500) NOT NULL,
+        [CuerpoHtml] nvarchar(max) NOT NULL,
+        [IdSucursal] int NOT NULL,
+        [TipoCorreo] nvarchar(50) NOT NULL,
+        [IdReferencia] int NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [Intentos] int NOT NULL,
+        [MaxIntentos] int NOT NULL,
+        [UltimoError] nvarchar(1000) NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaUltimoIntento] datetime2 NULL,
+        [FechaEnvio] datetime2 NULL,
+        [ProximoIntento] datetime2 NULL,
+        [AdjuntosJson] nvarchar(max) NULL,
+        CONSTRAINT [PK_CorreosPendientes] PRIMARY KEY ([IdCorreoPendiente])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204002823_Agregar_CorreosPendientes'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260204002823_Agregar_CorreosPendientes', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204005532_Agregar_EsUrgente_PedidoDetalle'
+)
+BEGIN
+    ALTER TABLE [PedidoDetalles] ADD [EsUrgente] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204005532_Agregar_EsUrgente_PedidoDetalle'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260204005532_Agregar_EsUrgente_PedidoDetalle', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204143049_Agregar_Rol_Mesero'
+)
+BEGIN
+                    DECLARE @IdRolMesero INT;
+                    -- 1. Crear el rol Mesero si no existe
+                    IF NOT EXISTS (SELECT 1 FROM Rol WHERE NombreRol = 'Mesero')
+                    BEGIN
+                        INSERT INTO Rol (NombreRol, Descripcion, Estado)
+                        VALUES ('Mesero', 'Rol para meseros - Acceso limitado al panel de mesas y pedidos', 1);
+                        SET @IdRolMesero = SCOPE_IDENTITY();
+                    END
+                    ELSE
+                    BEGIN
+                        SELECT @IdRolMesero = Id_Rol FROM Rol WHERE NombreRol = 'Mesero';
+                    END
+                    -- 2. Asignar permisos al Panel de Mesas (VIEW, CREATE, EDIT)
+                    DECLARE @IdPanelMesas INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/mesas/panel');
+                    IF @IdPanelMesas IS NOT NULL
+                    BEGIN
+                        -- VIEW (IdPermiso = 1)
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolMesero AND IdModulo = @IdPanelMesas AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (@IdRolMesero, @IdPanelMesas, 1, 1, GETDATE());
+                        -- CREATE (IdPermiso = 2)
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolMesero AND IdModulo = @IdPanelMesas AND IdPermiso = 2)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (@IdRolMesero, @IdPanelMesas, 2, 1, GETDATE());
+                        -- EDIT (IdPermiso = 3)
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolMesero AND IdModulo = @IdPanelMesas AND IdPermiso = 3)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (@IdRolMesero, @IdPanelMesas, 3, 1, GETDATE());
+                    END
+                    -- 3. Asignar permisos al Pedido de Mesa (VIEW, CREATE, EDIT)
+                    DECLARE @IdPedidoMesa INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/mesas/pedido');
+                    IF @IdPedidoMesa IS NOT NULL
+                    BEGIN
+                        -- VIEW
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolMesero AND IdModulo = @IdPedidoMesa AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (@IdRolMesero, @IdPedidoMesa, 1, 1, GETDATE());
+                        -- CREATE
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolMesero AND IdModulo = @IdPedidoMesa AND IdPermiso = 2)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (@IdRolMesero, @IdPedidoMesa, 2, 1, GETDATE());
+                        -- EDIT
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolMesero AND IdModulo = @IdPedidoMesa AND IdPermiso = 3)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (@IdRolMesero, @IdPedidoMesa, 3, 1, GETDATE());
+                    END
+                    -- 4. Asignar permiso VIEW al módulo padre 'Mesas / Canchas' para que aparezca en el menú
+                    DECLARE @IdModuloPadre INT = (SELECT IdModulo FROM Modulos WHERE Nombre = 'Mesas / Canchas' AND IdModuloPadre IS NULL);
+                    IF @IdModuloPadre IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolMesero AND IdModulo = @IdModuloPadre AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (@IdRolMesero, @IdModuloPadre, 1, 1, GETDATE());
+                    END
+                    -- 5. Asignar permiso VIEW a Pantalla Cocina (para que vea los pedidos)
+                    DECLARE @IdPantallaCocina INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/cocina');
+                    IF @IdPantallaCocina IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolMesero AND IdModulo = @IdPantallaCocina AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (@IdRolMesero, @IdPantallaCocina, 1, 1, GETDATE());
+                    END
+                    PRINT 'Rol Mesero creado con permisos para Panel de Mesas, Pedido de Mesa y Pantalla Cocina';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204143049_Agregar_Rol_Mesero'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260204143049_Agregar_Rol_Mesero', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204143807_Agregar_Rol_Cajero'
+)
+BEGIN
+                    DECLARE @IdRolCajero INT;
+                    -- 1. Crear el rol Cajero si no existe
+                    IF NOT EXISTS (SELECT 1 FROM Rol WHERE NombreRol = 'Cajero')
+                    BEGIN
+                        INSERT INTO Rol (NombreRol, Descripcion, Estado)
+                        VALUES ('Cajero', 'Rol para cajeros - Acceso a ventas, caja, cobros y clientes', 1);
+                        SET @IdRolCajero = SCOPE_IDENTITY();
+                    END
+                    ELSE
+                    BEGIN
+                        SELECT @IdRolCajero = Id_Rol FROM Rol WHERE NombreRol = 'Cajero';
+                    END
+                    -- Helper para asignar permisos (VIEW=1, CREATE=2, EDIT=3, DELETE=4)
+                    -- Ventas (IdModulo=1) - Ver, Crear, Editar (sin eliminar)
+                    DECLARE @IdVentas INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/ventas');
+                    IF @IdVentas IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdVentas AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdVentas, 1, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdVentas AND IdPermiso = 2)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdVentas, 2, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdVentas AND IdPermiso = 3)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdVentas, 3, 1, GETDATE());
+                    END
+                    -- Historial de Ventas (IdModulo=10) - Solo Ver
+                    DECLARE @IdHistVentas INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/ventas/explorar');
+                    IF @IdHistVentas IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdHistVentas AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdHistVentas, 1, 1, GETDATE());
+                    END
+                    -- Cierre de Caja (IdModulo=42) - Ver, Crear, Editar
+                    DECLARE @IdCierreCaja INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/caja/cierre');
+                    IF @IdCierreCaja IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdCierreCaja AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdCierreCaja, 1, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdCierreCaja AND IdPermiso = 2)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdCierreCaja, 2, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdCierreCaja AND IdPermiso = 3)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdCierreCaja, 3, 1, GETDATE());
+                    END
+                    -- Historial de Cierres (IdModulo=43) - Solo Ver
+                    DECLARE @IdHistCierres INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/caja/historial-cierres');
+                    IF @IdHistCierres IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdHistCierres AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdHistCierres, 1, 1, GETDATE());
+                    END
+                    -- Resumen de Caja (IdModulo=44) - Solo Ver
+                    DECLARE @IdResumenCaja INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/informes/resumen-caja');
+                    IF @IdResumenCaja IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdResumenCaja AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdResumenCaja, 1, 1, GETDATE());
+                    END
+                    -- Clientes (IdModulo=4) - Ver, Crear, Editar (sin eliminar)
+                    DECLARE @IdClientes INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/clientes');
+                    IF @IdClientes IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdClientes AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdClientes, 1, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdClientes AND IdPermiso = 2)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdClientes, 2, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdClientes AND IdPermiso = 3)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdClientes, 3, 1, GETDATE());
+                    END
+                    -- Historial de Clientes (IdModulo=22) - Solo Ver
+                    DECLARE @IdHistClientes INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/clientes/explorar');
+                    IF @IdHistClientes IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdHistClientes AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdHistClientes, 1, 1, GETDATE());
+                    END
+                    -- Cobros (IdModulo=23) - Ver, Crear, Editar
+                    DECLARE @IdCobros INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/clientes/cobros');
+                    IF @IdCobros IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdCobros AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdCobros, 1, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdCobros AND IdPermiso = 2)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdCobros, 2, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdCobros AND IdPermiso = 3)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdCobros, 3, 1, GETDATE());
+                    END
+                    -- Pendientes de Cobro (IdModulo=46) - Solo Ver
+                    DECLARE @IdPendCobro INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/informes/cuentas-por-cobrar');
+                    IF @IdPendCobro IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdPendCobro AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdPendCobro, 1, 1, GETDATE());
+                    END
+                    -- Nota de Crédito (IdModulo=48) - Ver, Crear, Editar
+                    DECLARE @IdNC INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/notas-credito');
+                    IF @IdNC IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdNC AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdNC, 1, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdNC AND IdPermiso = 2)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdNC, 2, 1, GETDATE());
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdNC AND IdPermiso = 3)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdNC, 3, 1, GETDATE());
+                    END
+                    -- Explorar NC Ventas (IdModulo=49) - Solo Ver
+                    DECLARE @IdExpNC INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/notas-credito/explorar');
+                    IF @IdExpNC IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdExpNC AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdExpNC, 1, 1, GETDATE());
+                    END
+                    -- Productos (IdModulo=11) - Solo Ver (para buscar en ventas)
+                    DECLARE @IdProductos INT = (SELECT IdModulo FROM Modulos WHERE RutaPagina = '/productos');
+                    IF @IdProductos IS NOT NULL
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM RolesModulosPermisos WHERE IdRol = @IdRolCajero AND IdModulo = @IdProductos AND IdPermiso = 1)
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion) VALUES (@IdRolCajero, @IdProductos, 1, 1, GETDATE());
+                    END
+                    PRINT 'Rol Cajero creado con permisos para Ventas, Caja, Cobros, Clientes, NC y Productos';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204143807_Agregar_Rol_Cajero'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260204143807_Agregar_Rol_Cajero', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204170228_Agregar_RecibeInformeComplejos'
+)
+BEGIN
+    ALTER TABLE [DestinatariosInforme] ADD [RecibeInformeComplejos] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260204170228_Agregar_RecibeInformeComplejos'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260204170228_Agregar_RecibeInformeComplejos', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260205023459_Agregar_MesasUnidas'
+)
+BEGIN
+    ALTER TABLE [Mesas] ADD [IdMesaPrincipal] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260205023459_Agregar_MesasUnidas'
+)
+BEGIN
+    CREATE INDEX [IX_Mesas_IdMesaPrincipal] ON [Mesas] ([IdMesaPrincipal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260205023459_Agregar_MesasUnidas'
+)
+BEGIN
+    ALTER TABLE [Mesas] ADD CONSTRAINT [FK_Mesas_Mesas_IdMesaPrincipal] FOREIGN KEY ([IdMesaPrincipal]) REFERENCES [Mesas] ([IdMesa]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260205023459_Agregar_MesasUnidas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260205023459_Agregar_MesasUnidas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [CadenaConexionBD] nvarchar(500) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [HabilitadoSoporteRemoto] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [IpVpnAsignada] nvarchar(15) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [NombreServicioWindows] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [NotasAccesoRemoto] nvarchar(1000) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [PuertoSistema] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [RutaCarpetaSistema] nvarchar(255) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [UltimaConexionRemota] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260206180403_Agregar_Campos_SoporteRemoto_Cliente', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206182245_Agregar_ConfiguracionVPN'
+)
+BEGIN
+    CREATE TABLE [ConfiguracionesVPN] (
+        [IdConfiguracionVPN] int NOT NULL IDENTITY,
+        [ServidorVPN] nvarchar(100) NULL,
+        [PuertoPPTP] int NOT NULL,
+        [UsuarioVPN] nvarchar(100) NULL,
+        [ContrasenaVPN] nvarchar(256) NULL,
+        [NombreConexionWindows] nvarchar(100) NOT NULL,
+        [RangoRedVPN] nvarchar(50) NULL,
+        [IpLocalVPN] nvarchar(20) NULL,
+        [ConectarAlIniciar] bit NOT NULL,
+        [IntentosReconexion] int NOT NULL,
+        [SegundosEntreIntentos] int NOT NULL,
+        [Activo] bit NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        [UsuarioModificacion] nvarchar(100) NULL,
+        [UltimaConexionExitosa] datetime2 NULL,
+        CONSTRAINT [PK_ConfiguracionesVPN] PRIMARY KEY ([IdConfiguracionVPN])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260206182245_Agregar_ConfiguracionVPN'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260206182245_Agregar_ConfiguracionVPN', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260207130541_Agregar_Campo_AgregarProductoAlEscanear'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [AgregarProductoAlEscanear] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260207130541_Agregar_Campo_AgregarProductoAlEscanear'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260207130541_Agregar_Campo_AgregarProductoAlEscanear', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211152820_Agregar_TipoNegocioMesas'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [TipoNegocioMesas] nvarchar(30) NOT NULL DEFAULT N'';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211152820_Agregar_TipoNegocioMesas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260211152820_Agregar_TipoNegocioMesas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioDiasGracia] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioHabilitarVoz] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioHorasAutoSalida] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioMensajeBienvenida] nvarchar(300) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioMensajeDespedida] nvarchar(300) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioMensajeVencido] nvarchar(300) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioMensajeVencimientoProximo] nvarchar(300) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioModoActivo] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioPermitirAccesoDiasGracia] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioReconocimientoFacialActivo] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [GimnasioUmbralCoincidenciaFacial] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [CodigoGimnasio] nvarchar(20) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [CondicionesMedicas] nvarchar(500) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [ContactoEmergencia] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [EmbeddingFacialGimnasio] varbinary(max) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [EsMiembroGimnasio] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [FechaAltaGimnasio] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [FechaCaptuaFacial] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [FechaUltimaVisitaGimnasio] datetime2 NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [FotoGimnasio] varbinary(max) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [MensajeBienvenidaPersonalizado] nvarchar(200) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [ObjetivoFitness] nvarchar(100) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [TelefonoEmergencia] nvarchar(20) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    ALTER TABLE [Clientes] ADD [TotalVisitasGimnasio] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE TABLE [PlanesMembresia] (
+        [IdPlan] int NOT NULL IDENTITY,
+        [IdSucursal] int NULL,
+        [Nombre] nvarchar(100) NOT NULL,
+        [Descripcion] nvarchar(500) NULL,
+        [TipoPeriodo] nvarchar(20) NOT NULL,
+        [DuracionDias] int NOT NULL,
+        [PrecioInscripcion] decimal(18,4) NOT NULL,
+        [Precio] decimal(18,4) NOT NULL,
+        [IdMoneda] int NULL,
+        [ClasesIncluidasPorPeriodo] int NOT NULL,
+        [IncluyePersonalTrainer] bit NOT NULL,
+        [SesionesPTIncluidas] int NULL,
+        [AccesoTodasAreas] bit NOT NULL,
+        [AreasIncluidas] nvarchar(500) NULL,
+        [PermiteCongelar] bit NOT NULL,
+        [DiasCongelamientoMaximo] int NOT NULL,
+        [DiasGracia] int NOT NULL,
+        [RenovacionAutomatica] bit NOT NULL,
+        [DiasRecordatorioVencimiento] int NOT NULL,
+        [HorarioAcceso] nvarchar(50) NULL,
+        [DiasAcceso] nvarchar(20) NULL,
+        [Activo] bit NOT NULL,
+        [Orden] int NOT NULL,
+        [ColorHex] nvarchar(7) NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        [UsuarioCreacion] nvarchar(50) NULL,
+        [UsuarioModificacion] nvarchar(50) NULL,
+        CONSTRAINT [PK_PlanesMembresia] PRIMARY KEY ([IdPlan]),
+        CONSTRAINT [FK_PlanesMembresia_Monedas_IdMoneda] FOREIGN KEY ([IdMoneda]) REFERENCES [Monedas] ([IdMoneda]),
+        CONSTRAINT [FK_PlanesMembresia_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE TABLE [MembresiasClientes] (
+        [IdMembresia] int NOT NULL IDENTITY,
+        [IdSucursal] int NOT NULL,
+        [IdCaja] int NULL,
+        [Turno] int NULL,
+        [FechaCaja] datetime2 NULL,
+        [IdCliente] int NOT NULL,
+        [IdPlan] int NOT NULL,
+        [FechaInicio] datetime2 NOT NULL,
+        [FechaVencimiento] datetime2 NOT NULL,
+        [FechaFin] datetime2 NULL,
+        [EstaCongelada] bit NOT NULL,
+        [FechaCongelamiento] datetime2 NULL,
+        [DiasCongeladosTotales] int NOT NULL,
+        [MotivoCongelamiento] nvarchar(200) NULL,
+        [Estado] nvarchar(30) NOT NULL,
+        [EstadoPago] nvarchar(20) NOT NULL,
+        [MontoTotal] decimal(18,4) NOT NULL,
+        [MontoPagado] decimal(18,4) NOT NULL,
+        [SaldoPendiente] decimal(18,4) NOT NULL,
+        [IdVenta] int NULL,
+        [NumeroComprobante] nvarchar(50) NULL,
+        [EsRenovacion] bit NOT NULL,
+        [IdMembresiaAnterior] int NULL,
+        [RenovacionAutomatica] bit NOT NULL,
+        [RecordatorioEnviado] bit NOT NULL,
+        [FechaRecordatorio] datetime2 NULL,
+        [CantidadVisitas] int NOT NULL,
+        [FechaUltimaVisita] datetime2 NULL,
+        [ClasesUtilizadas] int NOT NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [MotivoCancelacion] nvarchar(200) NULL,
+        [IdUsuario] int NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        [UsuarioModificacion] nvarchar(50) NULL,
+        CONSTRAINT [PK_MembresiasClientes] PRIMARY KEY ([IdMembresia]),
+        CONSTRAINT [FK_MembresiasClientes_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]),
+        CONSTRAINT [FK_MembresiasClientes_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE CASCADE,
+        CONSTRAINT [FK_MembresiasClientes_PlanesMembresia_IdPlan] FOREIGN KEY ([IdPlan]) REFERENCES [PlanesMembresia] ([IdPlan]) ON DELETE CASCADE,
+        CONSTRAINT [FK_MembresiasClientes_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE CASCADE,
+        CONSTRAINT [FK_MembresiasClientes_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu]),
+        CONSTRAINT [FK_MembresiasClientes_Ventas_IdVenta] FOREIGN KEY ([IdVenta]) REFERENCES [Ventas] ([IdVenta])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE TABLE [AccesosGimnasio] (
+        [IdAcceso] int NOT NULL IDENTITY,
+        [IdSucursal] int NOT NULL,
+        [IdCaja] int NULL,
+        [Turno] int NULL,
+        [FechaCaja] datetime2 NULL,
+        [IdCliente] int NOT NULL,
+        [IdMembresia] int NULL,
+        [TipoAcceso] nvarchar(20) NOT NULL,
+        [FechaHora] datetime2 NOT NULL,
+        [IdAccesoEntrada] int NULL,
+        [MetodoVerificacion] nvarchar(30) NOT NULL,
+        [PorcentajeCoincidencia] real NULL,
+        [FotoCaptura] varbinary(max) NULL,
+        [EstadoMembresiaAlAcceso] nvarchar(30) NOT NULL,
+        [DiasRestantes] int NULL,
+        [AccesoPermitido] bit NOT NULL,
+        [MotivoDenegacion] nvarchar(200) NULL,
+        [AccesoPorExcepcion] bit NOT NULL,
+        [TipoExcepcion] nvarchar(30) NULL,
+        [AreaAcceso] nvarchar(50) NULL,
+        [PuntoAcceso] nvarchar(50) NULL,
+        [MensajeMostrado] nvarchar(300) NULL,
+        [MensajeVozReproducido] bit NOT NULL,
+        [DuracionVisitaMinutos] int NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [IdUsuario] int NULL,
+        [RegistroAutomatico] bit NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        CONSTRAINT [PK_AccesosGimnasio] PRIMARY KEY ([IdAcceso]),
+        CONSTRAINT [FK_AccesosGimnasio_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]),
+        CONSTRAINT [FK_AccesosGimnasio_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE CASCADE,
+        CONSTRAINT [FK_AccesosGimnasio_MembresiasClientes_IdMembresia] FOREIGN KEY ([IdMembresia]) REFERENCES [MembresiasClientes] ([IdMembresia]),
+        CONSTRAINT [FK_AccesosGimnasio_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE CASCADE,
+        CONSTRAINT [FK_AccesosGimnasio_Usuarios_IdUsuario] FOREIGN KEY ([IdUsuario]) REFERENCES [Usuarios] ([Id_Usu])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_AccesosGimnasio_IdCaja] ON [AccesosGimnasio] ([IdCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_AccesosGimnasio_IdCliente] ON [AccesosGimnasio] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_AccesosGimnasio_IdMembresia] ON [AccesosGimnasio] ([IdMembresia]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_AccesosGimnasio_IdSucursal] ON [AccesosGimnasio] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_AccesosGimnasio_IdUsuario] ON [AccesosGimnasio] ([IdUsuario]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_MembresiasClientes_IdCaja] ON [MembresiasClientes] ([IdCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_MembresiasClientes_IdCliente] ON [MembresiasClientes] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_MembresiasClientes_IdPlan] ON [MembresiasClientes] ([IdPlan]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_MembresiasClientes_IdSucursal] ON [MembresiasClientes] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_MembresiasClientes_IdUsuario] ON [MembresiasClientes] ([IdUsuario]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_MembresiasClientes_IdVenta] ON [MembresiasClientes] ([IdVenta]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_PlanesMembresia_IdMoneda] ON [PlanesMembresia] ([IdMoneda]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    CREATE INDEX [IX_PlanesMembresia_IdSucursal] ON [PlanesMembresia] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260211185424_Agregar_Modulo_Gimnasio'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260211185424_Agregar_Modulo_Gimnasio', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260212184852_Agregar_VisibleEnMesas_Producto'
+)
+BEGIN
+    ALTER TABLE [Productos] ADD [VisibleEnMesas] bit NOT NULL DEFAULT CAST(1 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260212184852_Agregar_VisibleEnMesas_Producto'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260212184852_Agregar_VisibleEnMesas_Producto', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213014204_Agregar_CanchasAlertasConfiguracion'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [CanchasMinutosAlerta] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213014204_Agregar_CanchasAlertasConfiguracion'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [CanchasRepetirSonidoSegundos] int NOT NULL DEFAULT 0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213014204_Agregar_CanchasAlertasConfiguracion'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [CanchasSonidoAlerta] nvarchar(50) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213014204_Agregar_CanchasAlertasConfiguracion'
+)
+BEGIN
+    ALTER TABLE [ConfiguracionSistema] ADD [CanchasSonidoFin] nvarchar(50) NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213014204_Agregar_CanchasAlertasConfiguracion'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260213014204_Agregar_CanchasAlertasConfiguracion', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE TABLE [SuscripcionesClientes] (
+        [IdSuscripcion] int NOT NULL IDENTITY,
+        [IdSucursal] int NOT NULL,
+        [IdCliente] int NOT NULL,
+        [IdProducto] int NOT NULL,
+        [IdCaja] int NULL,
+        [MontoFacturar] decimal(18,4) NOT NULL,
+        [Cantidad] decimal(18,4) NOT NULL,
+        [DiaFacturacion] int NOT NULL,
+        [TipoPeriodo] nvarchar(20) NOT NULL,
+        [FechaInicio] datetime2 NOT NULL,
+        [FechaFin] datetime2 NULL,
+        [FechaProximaFactura] datetime2 NULL,
+        [FechaUltimaFactura] datetime2 NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [FacturacionActiva] bit NOT NULL,
+        [EnviarCorreoFactura] bit NOT NULL,
+        [EnviarCorreoRecibo] bit NOT NULL,
+        [DescripcionFactura] nvarchar(500) NULL,
+        [Observaciones] nvarchar(1000) NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        [IdUsuarioCreacion] int NULL,
+        [IdUsuarioModificacion] int NULL,
+        [TotalFacturasGeneradas] int NOT NULL,
+        [TotalFacturasCobradas] int NOT NULL,
+        CONSTRAINT [PK_SuscripcionesClientes] PRIMARY KEY ([IdSuscripcion]),
+        CONSTRAINT [FK_SuscripcionesClientes_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]) ON DELETE SET NULL,
+        CONSTRAINT [FK_SuscripcionesClientes_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_SuscripcionesClientes_Productos_IdProducto] FOREIGN KEY ([IdProducto]) REFERENCES [Productos] ([IdProducto]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_SuscripcionesClientes_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE TABLE [Vehiculos] (
+        [IdVehiculo] int NOT NULL IDENTITY,
+        [IdCliente] int NULL,
+        [IdSucursal] int NOT NULL,
+        [Matricula] nvarchar(20) NOT NULL,
+        [Marca] nvarchar(50) NULL,
+        [Modelo] nvarchar(50) NULL,
+        [Anio] int NULL,
+        [Color] nvarchar(30) NULL,
+        [NumeroChasis] nvarchar(20) NULL,
+        [NumeroMotor] nvarchar(30) NULL,
+        [TipoCombustible] nvarchar(20) NULL,
+        [TipoVehiculo] nvarchar(30) NOT NULL,
+        [KilometrajeActual] int NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [FotoUrl] nvarchar(500) NULL,
+        [Activo] bit NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        CONSTRAINT [PK_Vehiculos] PRIMARY KEY ([IdVehiculo]),
+        CONSTRAINT [FK_Vehiculos_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE SET NULL,
+        CONSTRAINT [FK_Vehiculos_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE TABLE [FacturasAutomaticas] (
+        [IdFacturaAutomatica] int NOT NULL IDENTITY,
+        [IdSuscripcion] int NOT NULL,
+        [IdSucursal] int NOT NULL,
+        [IdCliente] int NOT NULL,
+        [IdVenta] int NULL,
+        [PeriodoFacturado] nvarchar(50) NOT NULL,
+        [FechaInicioPeriodo] datetime2 NOT NULL,
+        [FechaFinPeriodo] datetime2 NOT NULL,
+        [MontoFacturado] decimal(18,4) NOT NULL,
+        [EstadoFactura] nvarchar(30) NOT NULL,
+        [MensajeError] nvarchar(1000) NULL,
+        [IntentosGeneracion] int NOT NULL,
+        [EstadoCorreoFactura] nvarchar(30) NOT NULL,
+        [FechaEnvioCorreoFactura] datetime2 NULL,
+        [ErrorCorreoFactura] nvarchar(500) NULL,
+        [IntentosEnvioCorreo] int NOT NULL,
+        [EstadoCobro] nvarchar(20) NOT NULL,
+        [FechaCobro] datetime2 NULL,
+        [MontoCobrado] decimal(18,4) NOT NULL,
+        [EstadoCorreoRecibo] nvarchar(30) NOT NULL,
+        [FechaEnvioCorreoRecibo] datetime2 NULL,
+        [ErrorCorreoRecibo] nvarchar(500) NULL,
+        [FechaProgramada] datetime2 NOT NULL,
+        [FechaGeneracion] datetime2 NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [NumeroFactura] nvarchar(20) NULL,
+        [CDC] nvarchar(64) NULL,
+        [EstadoSifen] nvarchar(30) NOT NULL,
+        CONSTRAINT [PK_FacturasAutomaticas] PRIMARY KEY ([IdFacturaAutomatica]),
+        CONSTRAINT [FK_FacturasAutomaticas_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_FacturasAutomaticas_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_FacturasAutomaticas_SuscripcionesClientes_IdSuscripcion] FOREIGN KEY ([IdSuscripcion]) REFERENCES [SuscripcionesClientes] ([IdSuscripcion]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_FacturasAutomaticas_Ventas_IdVenta] FOREIGN KEY ([IdVenta]) REFERENCES [Ventas] ([IdVenta]) ON DELETE SET NULL
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE TABLE [OrdenesTrabajo] (
+        [IdOrdenTrabajo] int NOT NULL IDENTITY,
+        [IdSucursal] int NOT NULL,
+        [IdCaja] int NULL,
+        [Turno] int NULL,
+        [FechaCaja] datetime2 NULL,
+        [IdMesa] int NULL,
+        [IdVehiculo] int NOT NULL,
+        [IdCliente] int NULL,
+        [NumeroOrden] int NOT NULL,
+        [AnioOrden] int NOT NULL,
+        [CodigoOrden] nvarchar(30) NULL,
+        [KilometrajeIngreso] int NULL,
+        [NivelCombustible] int NULL,
+        [EstadoIngreso] nvarchar(1000) NULL,
+        [FotosIngreso] nvarchar(max) NULL,
+        [MotivoConsulta] nvarchar(1000) NULL,
+        [Diagnostico] nvarchar(2000) NULL,
+        [TrabajosARealizar] nvarchar(2000) NULL,
+        [TrabajosRealizados] nvarchar(2000) NULL,
+        [Recomendaciones] nvarchar(1000) NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaIngreso] datetime2 NULL,
+        [FechaInicioTrabajo] datetime2 NULL,
+        [FechaFinTrabajo] datetime2 NULL,
+        [FechaEntrega] datetime2 NULL,
+        [FechaPrometida] datetime2 NULL,
+        [IdMecanico] int NULL,
+        [NombreMecanico] nvarchar(200) NULL,
+        [MecanicosAdicionales] nvarchar(max) NULL,
+        [IdUsuarioCreacion] int NULL,
+        [IdUsuarioCierre] int NULL,
+        [Estado] nvarchar(30) NOT NULL,
+        [Prioridad] nvarchar(20) NOT NULL,
+        [TipoServicio] nvarchar(30) NULL,
+        [TotalManoObra] decimal(18,4) NOT NULL,
+        [TotalRepuestos] decimal(18,4) NOT NULL,
+        [Subtotal] decimal(18,4) NOT NULL,
+        [TotalDescuento] decimal(18,4) NOT NULL,
+        [TotalIva10] decimal(18,4) NOT NULL,
+        [TotalIva5] decimal(18,4) NOT NULL,
+        [TotalExenta] decimal(18,4) NOT NULL,
+        [Total] decimal(18,4) NOT NULL,
+        [MontoPagado] decimal(18,4) NOT NULL,
+        [DiasGarantia] int NULL,
+        [FechaVencimientoGarantia] datetime2 NULL,
+        [CondicionesGarantia] nvarchar(500) NULL,
+        [IdPedido] int NULL,
+        [FechaModificacion] datetime2 NULL,
+        CONSTRAINT [PK_OrdenesTrabajo] PRIMARY KEY ([IdOrdenTrabajo]),
+        CONSTRAINT [FK_OrdenesTrabajo_Cajas_IdCaja] FOREIGN KEY ([IdCaja]) REFERENCES [Cajas] ([id_caja]) ON DELETE SET NULL,
+        CONSTRAINT [FK_OrdenesTrabajo_Clientes_IdCliente] FOREIGN KEY ([IdCliente]) REFERENCES [Clientes] ([IdCliente]) ON DELETE SET NULL,
+        CONSTRAINT [FK_OrdenesTrabajo_Mesas_IdMesa] FOREIGN KEY ([IdMesa]) REFERENCES [Mesas] ([IdMesa]) ON DELETE SET NULL,
+        CONSTRAINT [FK_OrdenesTrabajo_Pedidos_IdPedido] FOREIGN KEY ([IdPedido]) REFERENCES [Pedidos] ([IdPedido]) ON DELETE SET NULL,
+        CONSTRAINT [FK_OrdenesTrabajo_Sucursal_IdSucursal] FOREIGN KEY ([IdSucursal]) REFERENCES [Sucursal] ([Id]) ON DELETE NO ACTION,
+        CONSTRAINT [FK_OrdenesTrabajo_Usuarios_IdMecanico] FOREIGN KEY ([IdMecanico]) REFERENCES [Usuarios] ([Id_Usu]) ON DELETE SET NULL,
+        CONSTRAINT [FK_OrdenesTrabajo_Vehiculos_IdVehiculo] FOREIGN KEY ([IdVehiculo]) REFERENCES [Vehiculos] ([IdVehiculo]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE TABLE [OrdenTrabajoDetalles] (
+        [IdOrdenTrabajoDetalle] int NOT NULL IDENTITY,
+        [IdOrdenTrabajo] int NOT NULL,
+        [TipoLinea] nvarchar(20) NOT NULL,
+        [IdProducto] int NULL,
+        [CodigoProducto] nvarchar(50) NULL,
+        [Descripcion] nvarchar(500) NOT NULL,
+        [Observaciones] nvarchar(500) NULL,
+        [Cantidad] decimal(18,4) NOT NULL,
+        [PrecioUnitario] decimal(18,4) NOT NULL,
+        [CostoUnitario] decimal(18,4) NULL,
+        [PorcentajeDescuento] decimal(5,2) NULL,
+        [MontoDescuento] decimal(18,4) NOT NULL,
+        [Total] decimal(18,4) NOT NULL,
+        [TipoIva] int NOT NULL,
+        [MontoIva10] decimal(18,4) NOT NULL,
+        [MontoIva5] decimal(18,4) NOT NULL,
+        [MontoExenta] decimal(18,4) NOT NULL,
+        [HorasTrabajo] decimal(5,2) NULL,
+        [IdMecanico] int NULL,
+        [NombreMecanico] nvarchar(200) NULL,
+        [Estado] nvarchar(20) NOT NULL,
+        [FechaInicio] datetime2 NULL,
+        [FechaFin] datetime2 NULL,
+        [Orden] int NOT NULL,
+        [FechaCreacion] datetime2 NOT NULL,
+        [FechaModificacion] datetime2 NULL,
+        CONSTRAINT [PK_OrdenTrabajoDetalles] PRIMARY KEY ([IdOrdenTrabajoDetalle]),
+        CONSTRAINT [FK_OrdenTrabajoDetalles_OrdenesTrabajo_IdOrdenTrabajo] FOREIGN KEY ([IdOrdenTrabajo]) REFERENCES [OrdenesTrabajo] ([IdOrdenTrabajo]) ON DELETE CASCADE,
+        CONSTRAINT [FK_OrdenTrabajoDetalles_Productos_IdProducto] FOREIGN KEY ([IdProducto]) REFERENCES [Productos] ([IdProducto]) ON DELETE SET NULL
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_FacturasAutomaticas_EstadoCobro] ON [FacturasAutomaticas] ([EstadoCobro]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_FacturasAutomaticas_EstadoFactura] ON [FacturasAutomaticas] ([EstadoFactura]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_FacturasAutomaticas_FechaGeneracion] ON [FacturasAutomaticas] ([FechaGeneracion]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_FacturasAutomaticas_FechaProgramada] ON [FacturasAutomaticas] ([FechaProgramada]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_FacturasAutomaticas_IdCliente] ON [FacturasAutomaticas] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_FacturasAutomaticas_IdSucursal] ON [FacturasAutomaticas] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_FacturasAutomaticas_IdSuscripcion] ON [FacturasAutomaticas] ([IdSuscripcion]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_FacturasAutomaticas_IdVenta] ON [FacturasAutomaticas] ([IdVenta]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_OrdenesTrabajo_AnioOrden_NumeroOrden] ON [OrdenesTrabajo] ([AnioOrden], [NumeroOrden]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_Estado] ON [OrdenesTrabajo] ([Estado]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_FechaCreacion] ON [OrdenesTrabajo] ([FechaCreacion]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_IdCaja] ON [OrdenesTrabajo] ([IdCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_IdCliente] ON [OrdenesTrabajo] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_IdMecanico] ON [OrdenesTrabajo] ([IdMecanico]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_IdMesa] ON [OrdenesTrabajo] ([IdMesa]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_IdPedido] ON [OrdenesTrabajo] ([IdPedido]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_IdSucursal] ON [OrdenesTrabajo] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenesTrabajo_IdVehiculo] ON [OrdenesTrabajo] ([IdVehiculo]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenTrabajoDetalles_Estado] ON [OrdenTrabajoDetalles] ([Estado]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenTrabajoDetalles_IdOrdenTrabajo] ON [OrdenTrabajoDetalles] ([IdOrdenTrabajo]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenTrabajoDetalles_IdProducto] ON [OrdenTrabajoDetalles] ([IdProducto]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_OrdenTrabajoDetalles_TipoLinea] ON [OrdenTrabajoDetalles] ([TipoLinea]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_SuscripcionesClientes_Estado] ON [SuscripcionesClientes] ([Estado]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_SuscripcionesClientes_FechaProximaFactura] ON [SuscripcionesClientes] ([FechaProximaFactura]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_SuscripcionesClientes_IdCaja] ON [SuscripcionesClientes] ([IdCaja]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_SuscripcionesClientes_IdCliente] ON [SuscripcionesClientes] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_SuscripcionesClientes_IdProducto] ON [SuscripcionesClientes] ([IdProducto]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_SuscripcionesClientes_IdSucursal] ON [SuscripcionesClientes] ([IdSucursal]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_Vehiculos_IdCliente] ON [Vehiculos] ([IdCliente]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_Vehiculos_IdSucursal_Matricula] ON [Vehiculos] ([IdSucursal], [Matricula]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    CREATE INDEX [IX_Vehiculos_Matricula] ON [Vehiculos] ([Matricula]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260213162324_Agregar_Sistema_Taller_Vehiculos_OrdenesTrabajo', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213174019_Agregar_Modulos_Suscripciones_FacturasAutomaticas'
+)
+BEGIN
+                    DECLARE @IdModuloPadre INT;
+                    -- Buscar el módulo padre 'Clientes'
+                    SELECT @IdModuloPadre = IdModulo FROM Modulos WHERE Nombre = 'Clientes' OR RutaPagina = '/clientes';
+                    -- Si no existe, buscar alternativa
+                    IF @IdModuloPadre IS NULL
+                    BEGIN
+                        SELECT @IdModuloPadre = IdModulo FROM Modulos WHERE Nombre LIKE '%Cliente%' AND IdModuloPadre IS NULL;
+                    END
+                    -- Agregar módulo Suscripciones si no existe
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/suscripciones')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Suscripciones', 'Gestion de suscripciones y cuotas de clientes', '/suscripciones', 'bi-calendar-check', @IdModuloPadre, 10, 1, GETDATE());
+                        DECLARE @IdSuscripciones INT = SCOPE_IDENTITY();
+                        -- Asignar permisos al rol Administrador (Id_Rol = 1)
+                        IF EXISTS (SELECT 1 FROM Rol WHERE Id_Rol = 1)
+                        BEGIN
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (1, @IdSuscripciones, 1, 1, GETDATE()), -- VIEW
+                                   (1, @IdSuscripciones, 2, 1, GETDATE()), -- CREATE
+                                   (1, @IdSuscripciones, 3, 1, GETDATE()), -- EDIT
+                                   (1, @IdSuscripciones, 4, 1, GETDATE()); -- DELETE
+                        END
+                    END
+                    -- Agregar módulo Monitor Facturas Automaticas si no existe
+                    IF NOT EXISTS (SELECT 1 FROM Modulos WHERE RutaPagina = '/monitor-facturas-automaticas')
+                    BEGIN
+                        INSERT INTO Modulos (Nombre, Descripcion, RutaPagina, Icono, IdModuloPadre, Orden, Activo, FechaCreacion)
+                        VALUES ('Facturas Automaticas', 'Monitor de facturacion automatica y recurrente', '/monitor-facturas-automaticas', 'bi-receipt', @IdModuloPadre, 11, 1, GETDATE());
+                        DECLARE @IdMonitorFacturas INT = SCOPE_IDENTITY();
+                        -- Asignar permisos al rol Administrador (Id_Rol = 1)
+                        IF EXISTS (SELECT 1 FROM Rol WHERE Id_Rol = 1)
+                        BEGIN
+                            INSERT INTO RolesModulosPermisos (IdRol, IdModulo, IdPermiso, Concedido, FechaAsignacion)
+                            VALUES (1, @IdMonitorFacturas, 1, 1, GETDATE()), -- VIEW
+                                   (1, @IdMonitorFacturas, 2, 1, GETDATE()), -- CREATE
+                                   (1, @IdMonitorFacturas, 3, 1, GETDATE()), -- EDIT
+                                   (1, @IdMonitorFacturas, 4, 1, GETDATE()); -- DELETE
+                        END
+                    END
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213174019_Agregar_Modulos_Suscripciones_FacturasAutomaticas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260213174019_Agregar_Modulos_Suscripciones_FacturasAutomaticas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213175910_Agregar_Horarios_Suscripcion'
+)
+BEGIN
+    ALTER TABLE [SuscripcionesClientes] ADD [HoraEnvioCorreo] time NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213175910_Agregar_Horarios_Suscripcion'
+)
+BEGIN
+    ALTER TABLE [SuscripcionesClientes] ADD [HoraFacturacion] time NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213175910_Agregar_Horarios_Suscripcion'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260213175910_Agregar_Horarios_Suscripcion', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213185305_Agregar_VentaReferencia_Suscripcion'
+)
+BEGIN
+    ALTER TABLE [SuscripcionesClientes] ADD [CantidadCuotas] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213185305_Agregar_VentaReferencia_Suscripcion'
+)
+BEGIN
+    ALTER TABLE [SuscripcionesClientes] ADD [CondicionPago] nvarchar(20) NOT NULL DEFAULT N'';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213185305_Agregar_VentaReferencia_Suscripcion'
+)
+BEGIN
+    ALTER TABLE [SuscripcionesClientes] ADD [IdVentaReferencia] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213185305_Agregar_VentaReferencia_Suscripcion'
+)
+BEGIN
+    CREATE INDEX [IX_SuscripcionesClientes_IdVentaReferencia] ON [SuscripcionesClientes] ([IdVentaReferencia]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213185305_Agregar_VentaReferencia_Suscripcion'
+)
+BEGIN
+    ALTER TABLE [SuscripcionesClientes] ADD CONSTRAINT [FK_SuscripcionesClientes_Ventas_IdVentaReferencia] FOREIGN KEY ([IdVentaReferencia]) REFERENCES [Ventas] ([IdVenta]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260213185305_Agregar_VentaReferencia_Suscripcion'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260213185305_Agregar_VentaReferencia_Suscripcion', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260214151145_Agregar_IdSuscripcion_En_Ventas'
+)
+BEGIN
+    ALTER TABLE [Ventas] ADD [IdSuscripcion] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260214151145_Agregar_IdSuscripcion_En_Ventas'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260214151145_Agregar_IdSuscripcion_En_Ventas', N'8.0.0');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260214234559_Hacer_IdProducto_Nullable_SuscripcionCliente'
+)
+BEGIN
+    DECLARE @var29 sysname;
+    SELECT @var29 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[SuscripcionesClientes]') AND [c].[name] = N'IdProducto');
+    IF @var29 IS NOT NULL EXEC(N'ALTER TABLE [SuscripcionesClientes] DROP CONSTRAINT [' + @var29 + '];');
+    ALTER TABLE [SuscripcionesClientes] ALTER COLUMN [IdProducto] int NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260214234559_Hacer_IdProducto_Nullable_SuscripcionCliente'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260214234559_Hacer_IdProducto_Nullable_SuscripcionCliente', N'8.0.0');
 END;
 GO
 

@@ -1,0 +1,1810 @@
+@page "/reservas"
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Models.Enums
+@using SistemIA.Services
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+@inject IReservaCorreoService ReservaCorreoService
+@inject IRucDnitService RucService
+@inject Sifen SifenService
+@inject ICajaProvider CajaProvider
+@inject ISucursalProvider SucursalProvider
+
+<PageTitle>Gestión de Reservas</PageTitle>
+
+<PageProtection Modulo="/reservas" Permiso="VIEW">
+
+<div class="container-fluid py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-calendar-check text-primary me-2"></i>
+            Gestión de Reservas
+        </h3>
+        <button class="btn btn-primary" @onclick="NuevaReserva">
+            <i class="bi bi-plus-lg me-1"></i>Nueva Reserva
+        </button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Fecha Desde</label>
+                    <input type="date" class="form-control" @bind="_fechaDesde" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Fecha Hasta</label>
+                    <input type="date" class="form-control" @bind="_fechaHasta" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Estado</label>
+                    <select class="form-select" @bind="_estadoFiltro">
+                        <option value="">Todos</option>
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="Confirmada">Confirmada</option>
+                        <option value="EnCurso">En Curso</option>
+                        <option value="Completada">Completada</option>
+                        <option value="Cancelada">Cancelada</option>
+                        <option value="NoShow">No Show</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">@_terminoEspacio</label>
+                    <select class="form-select" @bind="_mesaFiltro">
+                        <option value="0">Todas</option>
+                        @foreach (var mesa in _mesas)
+                        {
+                            <option value="@mesa.IdMesa">@mesa.TextoMostrar</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Buscar Cliente</label>
+                    <input type="text" class="form-control" placeholder="Nombre o teléfono" @bind="_busquedaCliente" />
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" @onclick="Buscar">
+                        <i class="bi bi-search me-1"></i>Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vista de Hoy (fecha de caja) -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-info text-white">
+            <h6 class="mb-0"><i class="bi bi-calendar-day me-2"></i>Reservas de Hoy (@_fechaDesde.ToString("dd/MM/yyyy"))</h6>
+        </div>
+        <div class="card-body">
+            @if (_reservasHoy.Any())
+            {
+                <div class="row">
+                    @foreach (var reserva in _reservasHoy.OrderBy(r => r.HoraInicio))
+                    {
+                        <div class="col-md-4 col-lg-3 mb-3">
+                            <div class="card h-100 @GetCardClass(reserva.Estado)">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between">
+                                        <h6 class="card-title">@reserva.HoraInicio.ToString(@"hh\:mm")</h6>
+                                        <span class="badge @GetBadgeClass(reserva.Estado)">@reserva.Estado</span>
+                                    </div>
+                                    <p class="card-text mb-1">
+                                        <i class="bi bi-person me-1"></i>@reserva.NombreCliente
+                                    </p>
+                                    <p class="card-text mb-1">
+                                        <i class="bi @_iconoEspacio me-1"></i>@(reserva.Mesa?.TextoMostrar ?? "Sin asignar")
+                                    </p>
+                                    <p class="card-text mb-1">
+                                        <i class="bi bi-people me-1"></i>@reserva.CantidadPersonas personas
+                                    </p>
+                                    @if (!string.IsNullOrEmpty(reserva.Telefono))
+                                    {
+                                        <p class="card-text mb-1">
+                                            <i class="bi bi-telephone me-1"></i>@reserva.Telefono
+                                        </p>
+                                    }
+                                    @* ========== SEÑA ========== *@
+                                    @if (reserva.RequiereSena && reserva.MontoSena > 0)
+                                    {
+                                        <p class="card-text mb-1 d-flex align-items-center gap-2">
+                                            <i class="bi bi-cash-coin text-warning"></i>
+                                            <span>Seña: @reserva.MontoSena?.ToString("N0") Gs</span>
+                                            @if (reserva.SenaPagada)
+                                            {
+                                                <span class="badge bg-success">PAGADA</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-warning text-dark">PENDIENTE</span>
+                                                <button class="btn btn-sm btn-outline-success py-0 px-1" @onclick="() => AbrirModalPagoSena(reserva)" @onclick:stopPropagation="true" title="Cobrar seña">
+                                                    <i class="bi bi-wallet2"></i>
+                                                </button>
+                                            }
+                                        </p>
+                                    }
+                                </div>
+                                <div class="card-footer bg-transparent">
+                                    <div class="btn-group btn-group-sm w-100">
+                                        @if (reserva.Estado == "Pendiente")
+                                        {
+                                            <button class="btn btn-success" @onclick="() => CambiarEstado(reserva, GetEstadoConfirmada())" title="Confirmar">
+                                                <i class="bi bi-check-lg"></i>
+                                            </button>
+                                        }
+                                        @if (reserva.Estado == "Confirmada")
+                                        {
+                                            <button class="btn btn-info" @onclick="() => CambiarEstado(reserva, GetEstadoEnCurso())" title="Iniciar">
+                                                <i class="bi bi-play-fill"></i>
+                                            </button>
+                                        }
+                                        @if (reserva.Estado == "EnCurso")
+                                        {
+                                            <button class="btn btn-success" @onclick="() => CambiarEstado(reserva, GetEstadoCompletada())" title="Completar">
+                                                <i class="bi bi-check-circle"></i>
+                                            </button>
+                                        }
+                                        @if (reserva.Estado != "Cancelada" && reserva.Estado != "Completada")
+                                        {
+                                            <button class="btn btn-danger" @onclick="() => CambiarEstado(reserva, GetEstadoCancelada())" title="Cancelar">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        }
+                                        <button class="btn btn-outline-primary" @onclick="() => EditarReserva(reserva)" title="Editar">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="text-center text-muted py-3">
+                    <i class="bi bi-calendar-x fs-3 d-block mb-2"></i>
+                    No hay reservas para hoy
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Lista de Reservas -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-list-ul me-2"></i>Todas las Reservas</h6>
+                <small class="text-muted">@_reservas.Count reserva(s)</small>
+            </div>
+        </div>
+        <div class="table-responsive">
+            @if (_cargando)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else if (_reservas.Any())
+            {
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha/Hora</th>
+                            <th>Cliente</th>
+                            <th>Teléfono</th>
+                            <th>@_terminoEspacio</th>
+                            <th class="text-center">Personas</th>
+                            <th class="text-center">Estado</th>
+                            <th class="text-center">Seña</th>
+                            <th>Observaciones</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var reserva in _reservas)
+                        {
+                            <tr>
+                                <td>
+                                    <div>@reserva.FechaReserva.ToString("dd/MM/yyyy")</div>
+                                    <small class="text-muted">@reserva.HoraInicio.ToString(@"hh\:mm") - @reserva.HoraFin?.ToString(@"hh\:mm")</small>
+                                </td>
+                                <td>@reserva.NombreCliente</td>
+                                <td>@(reserva.Telefono ?? "-")</td>
+                                <td>@(reserva.Mesa?.TextoMostrar ?? "Sin asignar")</td>
+                                <td class="text-center">@reserva.CantidadPersonas</td>
+                                <td class="text-center">
+                                    <span class="badge @GetBadgeClass(reserva.Estado)">@reserva.Estado</span>
+                                </td>
+                                <td class="text-center">
+                                    @if (reserva.RequiereSena && reserva.MontoSena > 0)
+                                    {
+                                        <div class="d-flex flex-column align-items-center gap-1">
+                                            <small class="text-muted">@reserva.MontoSena?.ToString("N0") Gs</small>
+                                            @if (reserva.SenaPagada)
+                                            {
+                                                <span class="badge bg-success"><i class="bi bi-check-lg"></i></span>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-outline-warning py-0 px-1" @onclick="() => AbrirModalPagoSena(reserva)" title="Cobrar seña">
+                                                    <i class="bi bi-wallet2"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(reserva.Observaciones))
+                                    {
+                                        <span title="@reserva.Observaciones">@(reserva.Observaciones.Length > 30 ? reserva.Observaciones.Substring(0, 30) + "..." : reserva.Observaciones)</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" @onclick="() => EditarReserva(reserva)" title="Editar">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" @onclick="() => EliminarReserva(reserva)" title="Eliminar">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-calendar-x fs-1 d-block mb-3"></i>
+                    No se encontraron reservas con los filtros seleccionados
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva/Editar Reserva -->
+@if (_mostrarModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-calendar-plus me-2"></i>
+                        @(_reservaEditando.IdReserva == 0 ? "Nueva Reserva" : "Editar Reserva")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Búsqueda de Cliente -->
+                    <div class="mb-3">
+                        <label class="form-label">Cliente *</label>
+                        <div class="position-relative">
+                            @if (_clienteSeleccionado != null)
+                            {
+                                <!-- Cliente seleccionado -->
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-person-check text-success"></i></span>
+                                    <input type="text" class="form-control" 
+                                           value="@_clienteSeleccionado.RazonSocial" readonly />
+                                    <button class="btn btn-outline-secondary" type="button" 
+                                            @onclick="CambiarClienteReserva" title="Cambiar cliente">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_clienteSeleccionado.RUC))
+                                {
+                                    <small class="text-muted">RUC: @_clienteSeleccionado.RUC-@_clienteSeleccionado.DV</small>
+                                }
+                            }
+                            else
+                            {
+                                <!-- Buscador de cliente -->
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    <input type="text" class="form-control" 
+                                           placeholder="Buscar por nombre, RUC o teléfono..."
+                                           @bind="_buscarClienteTexto" 
+                                           @bind:event="oninput"
+                                           @bind:after="AplicarFiltroClientesReserva"
+                                           @onkeydown="OnClienteKeyDownReserva"
+                                           @onfocus="OnClienteFocusReserva"
+                                           @onblur="OnClienteBlurReserva" />
+                                    <button class="btn btn-outline-primary" type="button"
+                                            @onclick="AbrirModalNuevoClienteReserva" title="Crear cliente nuevo">
+                                        <i class="bi bi-person-plus"></i>
+                                    </button>
+                                </div>
+                                
+                                <!-- Mensaje de búsqueda automática -->
+                                @if (!string.IsNullOrEmpty(_mensajeRucAutoReserva))
+                                {
+                                    <small class="@(_esRucAutoErrorReserva ? "text-danger" : "text-success")">
+                                        @_mensajeRucAutoReserva
+                                    </small>
+                                }
+                                
+                                <!-- Dropdown de sugerencias -->
+                                @if (_mostrarSugerenciasCliente && _clientesFiltrados.Any())
+                                {
+                                    <div class="dropdown-menu show w-100 shadow" style="max-height: 250px; overflow-y: auto; position: absolute; z-index: 1050;">
+                                        @foreach (var cli in _clientesFiltrados.Take(15))
+                                        {
+                                            <button type="button" class="dropdown-item"
+                                                    @onmousedown="() => SeleccionarClienteReserva(cli)">
+                                                <div class="fw-bold">@cli.RazonSocial</div>
+                                                <small class="text-muted">
+                                                    @(cli.RUC ?? cli.NumeroDocumento)
+                                                    @if (!string.IsNullOrEmpty(cli.Telefono)) { <span>| <i class="bi bi-telephone"></i> @cli.Telefono</span> }
+                                                </small>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                    
+                    <!-- Datos manuales del cliente (si no hay cliente seleccionado o para edición) -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre (para la reserva) *</label>
+                            <input type="text" class="form-control" @bind="_reservaEditando.NombreCliente" 
+                                   placeholder="@(_clienteSeleccionado?.RazonSocial ?? "Nombre del cliente")" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" @bind="_reservaEditando.Telefono" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" @bind="_reservaEditando.Email" />
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha *</label>
+                            <input type="date" class="form-control" @bind="_fechaReserva" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Hora *</label>
+                            <input type="time" class="form-control" value="@_horaReservaStr" 
+                                   @onchange="@(e => CambiarHoraReserva(e.Value?.ToString()))" />
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Duración (minutos)</label>
+                            <input type="number" class="form-control" @bind="_duracionMinutos" min="30" step="30" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Cantidad de Personas *</label>
+                            <input type="number" class="form-control" @bind="_reservaEditando.CantidadPersonas" min="1" />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">@_terminoEspacio *</label>
+                        <select class="form-select" @bind="_idMesaSeleccionada">
+                            <option value="0">Seleccionar @(_terminoEspacio.ToLower())...</option>
+                            @foreach (var mesa in _mesas.Where(m => m.Capacidad >= _reservaEditando.CantidadPersonas || _reservaEditando.IdMesa == m.IdMesa))
+                            {
+                                <option value="@mesa.IdMesa">@mesa.TextoMostrar @(mesa.Capacidad > 0 ? $"(Cap: {mesa.Capacidad})" : "")</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observaciones</label>
+                        <textarea class="form-control" rows="2" @bind="_reservaEditando.Observaciones" 
+                                  placeholder="Cumpleaños, alergias, preferencias..."></textarea>
+                    </div>
+                    
+                    @* ========== SEÑA / ANTICIPO ========== *@
+                    <div class="card bg-light mb-3">
+                        <div class="card-body py-2">
+                            <div class="row align-items-center">
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="chkRequiereSena"
+                                               @bind="_reservaEditando.RequiereSena" />
+                                        <label class="form-check-label fw-bold" for="chkRequiereSena">
+                                            <i class="bi bi-cash-coin text-warning me-1"></i>Requiere Seña
+                                        </label>
+                                    </div>
+                                </div>
+                                @if (_reservaEditando.RequiereSena)
+                                {
+                                    <div class="col-md-4">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text">Gs</span>
+                                            <input type="number" class="form-control" @bind="_reservaEditando.MontoSena" 
+                                                   min="0" step="1000" placeholder="Monto" />
+                                        </div>
+                                    </div>
+                                    @if (_reservaEditando.IdReserva > 0)
+                                    {
+                                        <div class="col-md-4 text-end">
+                                            @if (_reservaEditando.SenaPagada)
+                                            {
+                                                <span class="badge bg-success">
+                                                    <i class="bi bi-check-circle me-1"></i>PAGADA
+                                                    @if (_reservaEditando.FechaPagoSena.HasValue)
+                                                    {
+                                                        <small>(@_reservaEditando.FechaPagoSena.Value.ToString("dd/MM HH:mm"))</small>
+                                                    }
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-success" @onclick="() => AbrirModalPagoSena(_reservaEditando)" type="button">
+                                                    <i class="bi bi-wallet2 me-1"></i>Cobrar Seña
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="GuardarReserva" disabled="@_guardando">
+                        @if (_guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Nuevo Cliente Rápido -->
+@if (_mostrarModalNuevoCliente)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5); z-index: 1060;">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-plus me-2"></i>Nuevo Cliente
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalNuevoClienteReserva"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_errorNuevoCliente))
+                    {
+                        <div class="alert alert-danger py-2">@_errorNuevoCliente</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_successNuevoCliente))
+                    {
+                        <div class="alert alert-success py-2">@_successNuevoCliente</div>
+                    }
+                    
+                    <div class="mb-3">
+                        <label class="form-label">RUC / Cédula *</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" @bind="_nuevoCliRuc" 
+                                   placeholder="Ej: 4637249" @bind:after="CalcularDvNuevoCliente" />
+                            <span class="input-group-text">-@_nuevoCliDv</span>
+                            <button class="btn btn-outline-primary" type="button" 
+                                    @onclick="BuscarClienteEnSifenReserva" disabled="@_buscandoClienteSifen"
+                                    title="Buscar en SIFEN">
+                                @if (_buscandoClienteSifen)
+                                {
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-search"></i>
+                                }
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_mensajeSifenCliente))
+                        {
+                            <small class="@(_esSifenClienteError ? "text-danger" : "text-success")">@_mensajeSifenCliente</small>
+                        }
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Razón Social / Nombre *</label>
+                        <input type="text" class="form-control" @bind="_nuevoCliRazonSocial" />
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" @bind="_nuevoCliTelefono" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" @bind="_nuevoCliEmail" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModalNuevoClienteReserva">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="GuardarNuevoClienteReserva" disabled="@_guardandoNuevoCliente">
+                        @if (_guardandoNuevoCliente)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar Cliente
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========== MODAL PAGO DE SEÑA ========== *@
+@if (_mostrarModalPagoSena)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5); z-index: 1070;">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-wallet2 me-2"></i>Cobrar Seña
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalPagoSena"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_mensajePagoSena))
+                    {
+                        <div class="alert @(_pagoSenaExito ? "alert-success" : "alert-danger") py-2">
+                            @_mensajePagoSena
+                        </div>
+                    }
+                    
+                    @if (_reservaPagoSena != null)
+                    {
+                        <div class="alert alert-info py-2">
+                            <strong>Reserva #@_reservaPagoSena.NumeroReserva</strong> - @_reservaPagoSena.NombreCliente<br/>
+                            <span class="fs-5 fw-bold text-success">@_reservaPagoSena.MontoSena?.ToString("N0") Gs</span>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Medio de Pago *</label>
+                            <select class="form-select" @bind="_medioPagoSena">
+                                <option value="@MedioPago.Efectivo">💵 Efectivo</option>
+                                <option value="@MedioPago.Tarjeta">💳 Tarjeta</option>
+                                <option value="@MedioPago.QR">📱 QR</option>
+                                <option value="@MedioPago.Transferencia">🏦 Transferencia</option>
+                            </select>
+                        </div>
+                        
+                        @if (_medioPagoSena == MedioPago.Tarjeta)
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small">Tipo Tarjeta</label>
+                                    <select class="form-select form-select-sm" @bind="_tipoTarjetaSena">
+                                        <option value="@TipoTarjeta.Debito">Débito</option>
+                                        <option value="@TipoTarjeta.Credito">Crédito</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small">Marca</label>
+                                    <select class="form-select form-select-sm" @bind="_marcaTarjetaSena">
+                                        <option value="Visa">Visa</option>
+                                        <option value="Mastercard">Mastercard</option>
+                                        <option value="Cabal">Cabal</option>
+                                        <option value="Otra">Otra</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small">N° Autorización</label>
+                                <input type="text" class="form-control form-control-sm" @bind="_numeroAutorizacionSena" placeholder="Opcional" />
+                            </div>
+                        }
+                        
+                        @if (_medioPagoSena == MedioPago.Transferencia)
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small">Banco</label>
+                                    <input type="text" class="form-control form-control-sm" @bind="_bancoTransferenciaSena" placeholder="Ej: Itaú" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small">N° Comprobante</label>
+                                    <input type="text" class="form-control form-control-sm" @bind="_numeroComprobanteSena" />
+                                </div>
+                            </div>
+                        }
+                        
+                        @if (_medioPagoSena == MedioPago.QR)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label small">N° Comprobante QR</label>
+                                <input type="text" class="form-control form-control-sm" @bind="_numeroComprobanteSena" placeholder="Opcional" />
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModalPagoSena">Cancelar</button>
+                    <button class="btn btn-success" @onclick="RegistrarPagoSena" disabled="@_guardandoPagoSena">
+                        @if (_guardandoPagoSena)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Confirmar Pago
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private bool _cargando = true;
+    private bool _guardando = false;
+    private List<Reserva> _reservas = new();
+    private List<Reserva> _reservasHoy = new();
+    private List<Mesa> _mesas = new();
+    private Caja? _cajaActual;
+    
+    // Modo de negocio y etiquetas dinámicas según TipoNegocioMesas
+    private Models.ConfiguracionSistema? _config;
+    private string _tipoNegocio = "Restaurante";
+    private bool _modoCanchas => _tipoNegocio == "Complejo";
+    private bool _modoTaller => _tipoNegocio == "Taller";
+    
+    // Etiquetas dinámicas según tipo de negocio
+    private string _terminoEspacio => _tipoNegocio switch
+    {
+        "Complejo" => "Cancha",
+        "Taller" => "Bahía",
+        _ => "Mesa"
+    };
+    private string _terminoEspacioPlural => _tipoNegocio switch
+    {
+        "Complejo" => "Canchas",
+        "Taller" => "Bahías",
+        _ => "Mesas"
+    };
+    private string _iconoEspacio => _tipoNegocio switch
+    {
+        "Complejo" => "bi-dribbble",
+        "Taller" => "bi-wrench",
+        _ => "bi-grid-3x3-gap"
+    };
+
+    // Filtros - Por defecto fecha de caja
+    private DateTime _fechaDesde = DateTime.Today;
+    private DateTime _fechaHasta = DateTime.Today;
+    private string _estadoFiltro = "";
+    private int _mesaFiltro = 0;
+    private string _busquedaCliente = "";
+    private DateTime _fechaCaja = DateTime.Today; // Fecha de caja para nuevas reservas
+
+    // Modal
+    private bool _mostrarModal = false;
+    private Reserva _reservaEditando = new();
+    private DateTime _fechaReserva = DateTime.Today;
+    private TimeSpan _horaReserva = new TimeSpan(12, 0, 0);
+    private string _horaReservaStr => _horaReserva.ToString(@"hh\:mm");
+    private int _duracionMinutos = 120;
+    private int _idMesaSeleccionada = 0;
+    private int _idSucursal = 1;
+
+    // ========== BÚSQUEDA DE CLIENTE ==========
+    private List<Cliente> _clientes = new();
+    private List<Cliente> _clientesFiltrados = new();
+    private bool _mostrarSugerenciasCliente = false;
+    private string _buscarClienteTexto = string.Empty;
+    private Cliente? _clienteSeleccionado = null;
+    private bool _mouseDownEnSugerencia = false;
+    
+    // Búsqueda automática de RUC
+    private bool _buscandoRucAutoReserva;
+    private string? _mensajeRucAutoReserva;
+    private bool _esRucAutoErrorReserva;
+    
+    // Modal nuevo cliente
+    private bool _mostrarModalNuevoCliente = false;
+    private bool _guardandoNuevoCliente = false;
+    private string? _errorNuevoCliente;
+    private string? _successNuevoCliente;
+    private string _nuevoCliRuc = string.Empty;
+    private string _nuevoCliRazonSocial = string.Empty;
+    private string _nuevoCliTelefono = string.Empty;
+    private string _nuevoCliEmail = string.Empty;
+    private int _nuevoCliDv = 0;
+    private bool _buscandoClienteSifen = false;
+    private string? _mensajeSifenCliente = null;
+    private bool _esSifenClienteError = false;
+    private bool _nuevoCliEsRucEncontrado = false;
+
+    // ========== PAGO DE SEÑA ==========
+    private bool _mostrarModalPagoSena = false;
+    private bool _guardandoPagoSena = false;
+    private string? _mensajePagoSena;
+    private bool _pagoSenaExito = false;
+    private Reserva? _reservaPagoSena;
+    private MedioPago _medioPagoSena = MedioPago.Efectivo;
+    private TipoTarjeta _tipoTarjetaSena = TipoTarjeta.Debito;
+    private string _marcaTarjetaSena = "Visa";
+    private string? _numeroAutorizacionSena;
+    private string? _bancoTransferenciaSena;
+    private string? _numeroComprobanteSena;
+
+    // Métodos helper para evitar problemas de escape en onclick
+    private string GetEstadoConfirmada() => "Confirmada";
+    private string GetEstadoEnCurso() => "EnCurso";
+    private string GetEstadoCompletada() => "Completada";
+    private string GetEstadoCancelada() => "Cancelada";
+
+    private void CambiarHoraReserva(string? valor)
+    {
+        if (!string.IsNullOrEmpty(valor) && TimeSpan.TryParse(valor, out var ts))
+        {
+            _horaReserva = ts;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _cargando = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            // ========== OBTENER CAJA DE LA MISMA FORMA QUE VENTAS ==========
+            // Primero intentar obtener del CajaProvider (caja seleccionada en sesión)
+            var cajaIdProvider = CajaProvider.GetCajaId();
+            if (cajaIdProvider.HasValue)
+            {
+                _cajaActual = await db.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.IdCaja == cajaIdProvider.Value);
+            }
+            
+            // Si no hay caja en provider, buscar la marcada como actual
+            if (_cajaActual == null)
+            {
+                _cajaActual = await db.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+            }
+            
+            // Si aún no hay, tomar la primera disponible
+            if (_cajaActual == null)
+            {
+                _cajaActual = await db.Cajas.AsNoTracking().FirstOrDefaultAsync();
+            }
+            
+            if (_cajaActual != null)
+            {
+                var fechaCaja = _cajaActual.FechaActualCaja ?? DateTime.Today;
+                _fechaCaja = fechaCaja; // Guardar para usar en nuevas reservas
+                _fechaDesde = fechaCaja;
+                _fechaHasta = fechaCaja;
+                _fechaReserva = fechaCaja; // Fecha por defecto para nuevas reservas
+                _idSucursal = _cajaActual.IdSucursal ?? 1;
+            }
+            
+            // Cargar configuración para determinar tipo de negocio
+            _config = await db.ConfiguracionSistema.AsNoTracking().FirstOrDefaultAsync();
+            _tipoNegocio = _config?.TipoNegocioMesas ?? "Restaurante";
+            
+            // Cargar espacios según el tipo de negocio y sucursal
+            var tipoFiltro = _tipoNegocio switch
+            {
+                "Complejo" => "Cancha",
+                "Taller" => "Bahia",
+                _ => (string?)null // Restaurante: todas las mesas
+            };
+            
+            _mesas = await db.Mesas
+                .Where(m => m.Activa 
+                         && m.IdSucursal == _idSucursal
+                         && (tipoFiltro == null || m.Tipo == tipoFiltro))
+                .OrderBy(m => m.Numero)
+                .ToListAsync();
+            
+            // Cargar clientes para búsqueda
+            _clientes = await db.Clientes.AsNoTracking()
+                .Where(c => c.Estado)
+                .OrderBy(c => c.RazonSocial)
+                .ToListAsync();
+            
+            // Obtener IDs de las mesas válidas para este tipo de negocio
+            var idsMesasValidas = _mesas.Select(m => m.IdMesa).ToList();
+            
+            // Reservas de hoy (fecha de caja) - Filtrar por sucursal y tipo de mesa correcta
+            var fechaHoy = _cajaActual?.FechaActualCaja?.Date ?? DateTime.Today.Date;
+            _reservasHoy = await db.Reservas
+                .Include(r => r.Mesa)
+                .Where(r => r.FechaReserva.Date == fechaHoy 
+                         && r.IdSucursal == _idSucursal
+                         && idsMesasValidas.Contains(r.IdMesa))
+                .OrderBy(r => r.HoraInicio)
+                .ToListAsync();
+
+            await Buscar();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task Buscar()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        
+        // ========== VERIFICAR SI LA CAJA CAMBIÓ (CIERRE DE CAJA) ==========
+        if (_cajaActual != null)
+        {
+            var cajaDb = await db.Cajas.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.IdCaja == _cajaActual.IdCaja);
+            
+            if (cajaDb != null)
+            {
+                var fechaCajaDb = cajaDb.FechaActualCaja ?? DateTime.Today;
+                if (fechaCajaDb.Date != _cajaActual.FechaActualCaja?.Date)
+                {
+                    // Caja cambió, actualizar
+                    _cajaActual = cajaDb;
+                    _fechaDesde = fechaCajaDb;
+                    _fechaHasta = fechaCajaDb;
+                    _fechaReserva = fechaCajaDb;
+                    Console.WriteLine($"[Reservas] Fecha de caja actualizada: {fechaCajaDb:dd/MM/yyyy}");
+                }
+            }
+        }
+
+        // Obtener IDs de mesas válidas para el tipo de negocio
+        var idsMesasValidas = _mesas.Select(m => m.IdMesa).ToList();
+
+        var query = db.Reservas
+            .Include(r => r.Mesa)
+            .Include(r => r.Cliente)
+            .Where(r => r.FechaReserva.Date >= _fechaDesde.Date 
+                     && r.FechaReserva.Date <= _fechaHasta.Date
+                     && r.IdSucursal == _idSucursal
+                     && idsMesasValidas.Contains(r.IdMesa))
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(_estadoFiltro))
+        {
+            query = query.Where(r => r.Estado == _estadoFiltro);
+        }
+
+        if (_mesaFiltro > 0)
+        {
+            query = query.Where(r => r.IdMesa == _mesaFiltro);
+        }
+
+        if (!string.IsNullOrEmpty(_busquedaCliente))
+        {
+            var busq = _busquedaCliente.ToLower();
+            query = query.Where(r => r.NombreCliente.ToLower().Contains(busq) || 
+                                     (r.Telefono != null && r.Telefono.Contains(busq)));
+        }
+
+        _reservas = await query
+            .OrderByDescending(r => r.FechaReserva)
+            .ThenByDescending(r => r.HoraInicio)
+            .Take(200)
+            .ToListAsync();
+    }
+
+    private void NuevaReserva()
+    {
+        _reservaEditando = new Reserva
+        {
+            CantidadPersonas = 2,
+            Estado = "Pendiente",
+            IdSucursal = _idSucursal
+        };
+        _fechaReserva = _fechaCaja; // Usar fecha de caja
+        _horaReserva = new TimeSpan(12, 0, 0);
+        _duracionMinutos = 120;
+        _idMesaSeleccionada = 0;
+        // Limpiar búsqueda de cliente
+        _clienteSeleccionado = null;
+        _buscarClienteTexto = string.Empty;
+        _mostrarSugerenciasCliente = false;
+        _mensajeRucAutoReserva = null;
+        _mostrarModal = true;
+    }
+
+    private void EditarReserva(Reserva reserva)
+    {
+        _reservaEditando = new Reserva
+        {
+            IdReserva = reserva.IdReserva,
+            IdMesa = reserva.IdMesa,
+            IdSucursal = reserva.IdSucursal,
+            IdCliente = reserva.IdCliente,
+            NombreCliente = reserva.NombreCliente,
+            Telefono = reserva.Telefono,
+            Email = reserva.Email,
+            CantidadPersonas = reserva.CantidadPersonas,
+            FechaReserva = reserva.FechaReserva,
+            HoraInicio = reserva.HoraInicio,
+            HoraFin = reserva.HoraFin,
+            DuracionMinutos = reserva.DuracionMinutos,
+            Estado = reserva.Estado,
+            Observaciones = reserva.Observaciones
+        };
+        _fechaReserva = reserva.FechaReserva.Date;
+        _horaReserva = reserva.HoraInicio;
+        _idMesaSeleccionada = reserva.IdMesa;
+        _duracionMinutos = reserva.DuracionMinutos ?? 
+            (reserva.HoraFin.HasValue ? (int)(reserva.HoraFin.Value - reserva.HoraInicio).TotalMinutes : 120);
+        
+        // Cargar cliente si existe
+        _clienteSeleccionado = reserva.IdCliente.HasValue 
+            ? _clientes.FirstOrDefault(c => c.IdCliente == reserva.IdCliente.Value)
+            : null;
+        _buscarClienteTexto = string.Empty;
+        _mostrarSugerenciasCliente = false;
+        _mensajeRucAutoReserva = null;
+        
+        _mostrarModal = true;
+    }
+
+    private void CerrarModal()
+    {
+        _mostrarModal = false;
+        _reservaEditando = new();
+        _clienteSeleccionado = null;
+        _buscarClienteTexto = string.Empty;
+        _mostrarSugerenciasCliente = false;
+    }
+
+    private async Task GuardarReserva()
+    {
+        if (string.IsNullOrWhiteSpace(_reservaEditando.NombreCliente))
+        {
+            await JS.InvokeVoidAsync("alert", "El nombre del cliente es obligatorio");
+            return;
+        }
+
+        if (_idMesaSeleccionada <= 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar una mesa");
+            return;
+        }
+
+        _guardando = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            _reservaEditando.FechaReserva = _fechaReserva.Date;
+            _reservaEditando.HoraInicio = _horaReserva;
+            _reservaEditando.HoraFin = _horaReserva.Add(TimeSpan.FromMinutes(_duracionMinutos));
+            _reservaEditando.DuracionMinutos = _duracionMinutos;
+            _reservaEditando.IdMesa = _idMesaSeleccionada;
+            
+            // Asignar cliente si está seleccionado
+            _reservaEditando.IdCliente = _clienteSeleccionado?.IdCliente;
+
+            bool esNueva = _reservaEditando.IdReserva == 0;
+            string? emailCliente = _reservaEditando.Email;
+
+            if (esNueva)
+            {
+                // Generar número de reserva (máximo + 1)
+                var maxNumero = await db.Reservas
+                    .Where(r => r.IdSucursal == _idSucursal)
+                    .MaxAsync(r => (int?)r.NumeroReserva) ?? 0;
+                _reservaEditando.NumeroReserva = maxNumero + 1;
+                
+                _reservaEditando.FechaCreacion = DateTime.Now;
+                _reservaEditando.Estado = "Confirmada"; // Las reservas nuevas se crean como confirmadas
+                db.Reservas.Add(_reservaEditando);
+            }
+            else
+            {
+                var reservaDb = await db.Reservas.FindAsync(_reservaEditando.IdReserva);
+                if (reservaDb != null)
+                {
+                    reservaDb.IdMesa = _reservaEditando.IdMesa;
+                    reservaDb.IdCliente = _reservaEditando.IdCliente;
+                    reservaDb.NombreCliente = _reservaEditando.NombreCliente;
+                    reservaDb.Telefono = _reservaEditando.Telefono;
+                    reservaDb.Email = _reservaEditando.Email;
+                    reservaDb.CantidadPersonas = _reservaEditando.CantidadPersonas;
+                    reservaDb.FechaReserva = _reservaEditando.FechaReserva;
+                    reservaDb.HoraInicio = _reservaEditando.HoraInicio;
+                    reservaDb.HoraFin = _reservaEditando.HoraFin;
+                    reservaDb.DuracionMinutos = _reservaEditando.DuracionMinutos;
+                    reservaDb.Observaciones = _reservaEditando.Observaciones;
+                    reservaDb.FechaModificacion = DateTime.Now;
+                }
+            }
+
+            await db.SaveChangesAsync();
+
+            // Enviar correo de confirmación SOLO si es reserva nueva y tiene email
+            if (esNueva && !string.IsNullOrWhiteSpace(emailCliente))
+            {
+                var resultado = await ReservaCorreoService.EnviarConfirmacionAsync(_reservaEditando.IdReserva);
+                if (resultado.Exito)
+                {
+                    await JS.InvokeVoidAsync("alert", $"✅ Reserva creada y correo enviado a {emailCliente}");
+                }
+                else
+                {
+                    await JS.InvokeVoidAsync("alert", $"⚠️ Reserva creada, pero no se pudo enviar correo: {resultado.Mensaje}");
+                }
+            }
+
+            CerrarModal();
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            var mensaje = ex.Message;
+            if (ex.InnerException != null)
+                mensaje += $"\n\nDetalle: {ex.InnerException.Message}";
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {mensaje}");
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task CambiarEstado(Reserva reserva, string nuevoEstado)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        
+        var reservaDb = await db.Reservas.FindAsync(reserva.IdReserva);
+            
+        if (reservaDb != null)
+        {
+            reservaDb.Estado = nuevoEstado;
+            reservaDb.FechaModificacion = DateTime.Now;
+            
+            // Si se inicia la reserva, registrar la hora real de inicio
+            if (nuevoEstado == "EnCurso")
+            {
+                reservaDb.HoraInicioReal = DateTime.Now.TimeOfDay;
+            }
+            // Si se completa, registrar hora de fin
+            else if (nuevoEstado == "Completada")
+            {
+                reservaDb.HoraFinReal = DateTime.Now.TimeOfDay;
+            }
+            
+            await db.SaveChangesAsync();
+            
+            // Actualizar lista local
+            reserva.Estado = nuevoEstado;
+            StateHasChanged();
+        }
+    }
+
+    private async Task EliminarReserva(Reserva reserva)
+    {
+        var confirmado = await JS.InvokeAsync<bool>("confirm", $"¿Eliminar la reserva de {reserva.NombreCliente}?");
+        if (!confirmado) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        
+        var reservaDb = await db.Reservas.FindAsync(reserva.IdReserva);
+        if (reservaDb != null)
+        {
+            db.Reservas.Remove(reservaDb);
+            await db.SaveChangesAsync();
+            await CargarDatos();
+        }
+    }
+
+    private string GetBadgeClass(string estado) => estado switch
+    {
+        "Pendiente" => "bg-warning text-dark",
+        "Confirmada" => "bg-info",
+        "EnCurso" => "bg-primary",
+        "Completada" => "bg-success",
+        "Cancelada" => "bg-danger",
+        "NoShow" => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private string GetCardClass(string estado) => estado switch
+    {
+        "Pendiente" => "border-warning",
+        "Confirmada" => "border-info",
+        "EnCurso" => "border-primary",
+        "Completada" => "border-success",
+        "Cancelada" => "border-danger",
+        _ => ""
+    };
+
+    // ========== MÉTODOS DE BÚSQUEDA DE CLIENTE ==========
+    
+    private void AplicarFiltroClientesReserva()
+    {
+        var texto = (_buscarClienteTexto ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            _clientesFiltrados = new();
+            _mostrarSugerenciasCliente = false;
+            StateHasChanged();
+            return;
+        }
+        var digitos = new string(texto.Where(char.IsDigit).ToArray());
+        _clientesFiltrados = _clientes
+            .Where(c => (c.RazonSocial ?? string.Empty).ToLowerInvariant().Contains(texto)
+                        || (!string.IsNullOrEmpty(digitos) && (c.RUC ?? string.Empty).Contains(digitos))
+                        || (!string.IsNullOrEmpty(digitos) && (c.Telefono ?? string.Empty).Contains(digitos))
+                        || (!string.IsNullOrEmpty(digitos) && (c.Celular ?? string.Empty).Contains(digitos)))
+            .OrderBy(c => c.RazonSocial)
+            .Take(30)
+            .ToList();
+        _mostrarSugerenciasCliente = _clientesFiltrados.Any();
+        StateHasChanged();
+    }
+    
+    private async Task OnClienteKeyDownReserva(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == "Tab")
+        {
+            var texto = (_buscarClienteTexto ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(texto))
+            {
+                _clientesFiltrados = new(_clientes.Take(30));
+                _mostrarSugerenciasCliente = _clientesFiltrados.Any();
+                StateHasChanged();
+                return;
+            }
+            
+            var soloDigitos = new string(texto.Where(char.IsDigit).ToArray());
+            if (!string.IsNullOrEmpty(soloDigitos))
+            {
+                // Buscar coincidencia exacta por RUC
+                var clientePorRuc = _clientes.FirstOrDefault(c => 
+                    !string.IsNullOrEmpty(c.RUC) && c.RUC.Equals(soloDigitos, StringComparison.OrdinalIgnoreCase));
+                
+                if (clientePorRuc != null)
+                {
+                    SeleccionarClienteReserva(clientePorRuc);
+                    return;
+                }
+                
+                // Si parece ser un RUC (>= 5 dígitos), hacer búsqueda automática
+                if (soloDigitos.Length >= 5)
+                {
+                    await BuscarRucAutoClienteReservaAsync(soloDigitos);
+                    return;
+                }
+            }
+            
+            // Seleccionar el primero de la lista filtrada
+            var cli = _clientesFiltrados.FirstOrDefault();
+            if (cli != null)
+            {
+                SeleccionarClienteReserva(cli);
+            }
+        }
+        else if (e.Key == "Escape")
+        {
+            _mostrarSugerenciasCliente = false;
+            _mensajeRucAutoReserva = null;
+            StateHasChanged();
+        }
+    }
+    
+    private void OnClienteFocusReserva(FocusEventArgs _)
+    {
+        _mostrarSugerenciasCliente = !string.IsNullOrWhiteSpace(_buscarClienteTexto) && _clientesFiltrados.Any();
+    }
+    
+    private async Task OnClienteBlurReserva(FocusEventArgs _)
+    {
+        await Task.Delay(150);
+        if (!_mouseDownEnSugerencia)
+        {
+            var texto = (_buscarClienteTexto ?? string.Empty).Trim();
+            var soloDigitos = new string(texto.Where(char.IsDigit).ToArray());
+            
+            if (_clienteSeleccionado == null && soloDigitos.Length >= 5 && !_buscandoRucAutoReserva)
+            {
+                var clienteExistente = _clientes.FirstOrDefault(c => 
+                    !string.IsNullOrEmpty(c.RUC) && c.RUC.Equals(soloDigitos, StringComparison.OrdinalIgnoreCase));
+                
+                if (clienteExistente != null)
+                {
+                    SeleccionarClienteReserva(clienteExistente);
+                }
+                else
+                {
+                    await BuscarRucAutoClienteReservaAsync(soloDigitos);
+                }
+            }
+            
+            _mostrarSugerenciasCliente = false;
+            StateHasChanged();
+        }
+    }
+    
+    private void SeleccionarClienteReserva(Cliente cliente)
+    {
+        _mouseDownEnSugerencia = true;
+        _clienteSeleccionado = cliente;
+        _reservaEditando.IdCliente = cliente.IdCliente;
+        _reservaEditando.NombreCliente = cliente.RazonSocial ?? "";
+        _reservaEditando.Telefono = cliente.Telefono ?? cliente.Celular;
+        _reservaEditando.Email = cliente.Email;
+        _buscarClienteTexto = "";
+        _mostrarSugerenciasCliente = false;
+        _mensajeRucAutoReserva = null;
+        _ = Task.Run(async () => { await Task.Delay(150); _mouseDownEnSugerencia = false; });
+        StateHasChanged();
+    }
+    
+    private void CambiarClienteReserva()
+    {
+        _clienteSeleccionado = null;
+        _reservaEditando.IdCliente = null;
+        // Mantener los datos ingresados manualmente
+        StateHasChanged();
+    }
+    
+    /// <summary>
+    /// Búsqueda automática de RUC: Cliente local → RucDnit → SIFEN
+    /// </summary>
+    private async Task BuscarRucAutoClienteReservaAsync(string ruc)
+    {
+        _buscandoRucAutoReserva = true;
+        _mensajeRucAutoReserva = "🔍 Buscando RUC...";
+        _esRucAutoErrorReserva = false;
+        _mostrarSugerenciasCliente = false;
+        StateHasChanged();
+
+        try
+        {
+            var resultado = await RucService.BuscarRucUnificadoClienteAsync(ruc);
+
+            if (resultado.Encontrado)
+            {
+                if (resultado.YaRegistrado && resultado.IdExistente.HasValue)
+                {
+                    // Ya existe en la BD - seleccionarlo directamente
+                    var clienteExistente = _clientes.FirstOrDefault(c => c.IdCliente == resultado.IdExistente.Value);
+                    if (clienteExistente != null)
+                    {
+                        SeleccionarClienteReserva(clienteExistente);
+                        _mensajeRucAutoReserva = $"✓ {resultado.Mensaje}";
+                        _esRucAutoErrorReserva = false;
+                    }
+                }
+                else
+                {
+                    // Encontrado pero no registrado - registrar automáticamente
+                    _mensajeRucAutoReserva = $"📝 {resultado.Mensaje} - Registrando...";
+                    StateHasChanged();
+                    
+                    var nuevoCliente = await RegistrarClienteDesdeRucReservaAsync(resultado);
+                    if (nuevoCliente != null)
+                    {
+                        _clientes.Add(nuevoCliente);
+                        SeleccionarClienteReserva(nuevoCliente);
+                        _mensajeRucAutoReserva = $"✓ Cliente registrado: {nuevoCliente.RazonSocial}";
+                        _esRucAutoErrorReserva = false;
+                    }
+                    else
+                    {
+                        _mensajeRucAutoReserva = "⚠️ Error al registrar cliente";
+                        _esRucAutoErrorReserva = true;
+                    }
+                }
+            }
+            else
+            {
+                // No encontrado - abrir modal de creación rápida
+                _mensajeRucAutoReserva = resultado.Mensaje;
+                _esRucAutoErrorReserva = true;
+                
+                // Precargar datos en el modal
+                _nuevoCliRuc = ruc;
+                _nuevoCliDv = resultado.DV;
+                _nuevoCliRazonSocial = string.Empty;
+                AbrirModalNuevoClienteReserva();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR BuscarRucAutoClienteReservaAsync] {ex.Message}");
+            _mensajeRucAutoReserva = "⚠️ Error de conexión";
+            _esRucAutoErrorReserva = true;
+        }
+        finally
+        {
+            _buscandoRucAutoReserva = false;
+            StateHasChanged();
+            
+            // Limpiar mensaje después de 4 segundos
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(4000);
+                await InvokeAsync(() =>
+                {
+                    if (!_esRucAutoErrorReserva) _mensajeRucAutoReserva = null;
+                    StateHasChanged();
+                });
+            });
+        }
+    }
+    
+    /// <summary>
+    /// Registra un cliente automáticamente desde el resultado de búsqueda
+    /// </summary>
+    private async Task<Cliente?> RegistrarClienteDesdeRucReservaAsync(RucBusquedaResultado resultado)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            var rucSinGuion = (resultado.RUC ?? "").Replace("-", "").Trim();
+            var existente = await ctx.Clientes.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.RUC == rucSinGuion || c.RUC == resultado.RUC);
+            
+            if (existente != null)
+            {
+                return existente;
+            }
+            
+            var maxCodigo = await ctx.Clientes
+                .Where(c => c.CodigoCliente != null)
+                .Select(c => c.CodigoCliente)
+                .OrderByDescending(c => c)
+                .FirstOrDefaultAsync();
+            
+            int siguienteCodigo = 1;
+            if (!string.IsNullOrEmpty(maxCodigo) && int.TryParse(maxCodigo, out var ultimoCodigo))
+            {
+                siguienteCodigo = ultimoCodigo + 1;
+            }
+            
+            int tipoContribuyente = rucSinGuion.Length == 8 ? 2 : 1;
+            
+            var nuevoCliente = new Cliente
+            {
+                CodigoCliente = siguienteCodigo.ToString().PadLeft(6, '0'),
+                RazonSocial = resultado.RazonSocial ?? "SIN NOMBRE",
+                RUC = rucSinGuion,
+                DV = resultado.DV,
+                TipoDocumento = "RU",
+                NumeroDocumento = rucSinGuion,
+                Saldo = 0,
+                Estado = true,
+                NaturalezaReceptor = 1,
+                TipoDocumentoIdentidadSifen = null,
+                NumeroDocumentoIdentidad = null,
+                IdTipoContribuyente = tipoContribuyente,
+                TipoOperacion = (long.TryParse(rucSinGuion, out var rucNum) && rucNum >= 50_000_000) ? "1" : "2",
+                PermiteCredito = false,
+                FechaAlta = DateTime.Now,
+                CodigoPais = "PRY",
+                EsExtranjero = false,
+                IdCiudad = 1
+            };
+            
+            ctx.Clientes.Add(nuevoCliente);
+            await ctx.SaveChangesAsync();
+            
+            return nuevoCliente;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR RegistrarClienteDesdeRucReservaAsync] {ex.Message}");
+            return null;
+        }
+    }
+    
+    // ========== MODAL NUEVO CLIENTE ==========
+    
+    private void AbrirModalNuevoClienteReserva()
+    {
+        _mostrarModalNuevoCliente = true;
+        _errorNuevoCliente = null;
+        _successNuevoCliente = null;
+        _nuevoCliRazonSocial = string.Empty;
+        if (string.IsNullOrEmpty(_nuevoCliRuc)) _nuevoCliRuc = string.Empty;
+        _nuevoCliTelefono = string.Empty;
+        _nuevoCliEmail = string.Empty;
+        _mensajeSifenCliente = null;
+        _esSifenClienteError = false;
+        _nuevoCliEsRucEncontrado = false;
+    }
+    
+    private void CerrarModalNuevoClienteReserva()
+    {
+        _mostrarModalNuevoCliente = false;
+    }
+    
+    private void CalcularDvNuevoCliente()
+    {
+        if (!string.IsNullOrWhiteSpace(_nuevoCliRuc) && _nuevoCliRuc.All(char.IsDigit))
+        {
+            _nuevoCliDv = Utils.RucHelper.CalcularDvRuc(_nuevoCliRuc);
+        }
+        else
+        {
+            _nuevoCliDv = 0;
+        }
+    }
+    
+    private async Task BuscarClienteEnSifenReserva()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevoCliRuc) || _nuevoCliRuc.Length < 5)
+        {
+            _mensajeSifenCliente = "Ingrese un RUC válido (mínimo 5 dígitos)";
+            _esSifenClienteError = true;
+            return;
+        }
+
+        _buscandoClienteSifen = true;
+        _mensajeSifenCliente = null;
+        _esSifenClienteError = false;
+        StateHasChanged();
+
+        try
+        {
+            // Primero buscar en BD local
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var clienteLocal = await ctx.Clientes.FirstOrDefaultAsync(c => c.RUC == _nuevoCliRuc);
+            if (clienteLocal != null)
+            {
+                _nuevoCliRazonSocial = clienteLocal.RazonSocial ?? string.Empty;
+                _nuevoCliDv = clienteLocal.DV;
+                _nuevoCliTelefono = clienteLocal.Telefono ?? string.Empty;
+                _nuevoCliEmail = clienteLocal.Email ?? string.Empty;
+                _nuevoCliEsRucEncontrado = true;
+                _mensajeSifenCliente = $"✓ Cliente encontrado en BD local: {clienteLocal.RazonSocial}";
+                _esSifenClienteError = false;
+                return;
+            }
+            
+            // Buscar en RucDnit
+            var rucDnit = await ctx.RucDnit.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RUC == _nuevoCliRuc);
+            if (rucDnit != null)
+            {
+                _nuevoCliRazonSocial = rucDnit.RazonSocial ?? string.Empty;
+                _nuevoCliDv = rucDnit.DV;
+                _nuevoCliEsRucEncontrado = true;
+                _mensajeSifenCliente = $"✓ RUC encontrado (DNIT): {rucDnit.RazonSocial}";
+                _esSifenClienteError = false;
+                return;
+            }
+
+            // Calcular DV
+            _nuevoCliDv = Utils.RucHelper.CalcularDvRuc(_nuevoCliRuc);
+
+            // Si no está en BD local ni RucDnit, consultar SIFEN
+            var sociedad = await ctx.Sociedades.FirstOrDefaultAsync();
+            if (sociedad == null || string.IsNullOrEmpty(sociedad.PathCertificadoP12))
+            {
+                _mensajeSifenCliente = "⚠️ No hay certificado SIFEN configurado";
+                _esSifenClienteError = true;
+                return;
+            }
+
+            var url = sociedad.DeUrlConsultaRuc ?? SifenConfig.GetConsultaRucUrl("test");
+            if (!string.IsNullOrWhiteSpace(url) && !url.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase))
+            {
+                url = url + ".wsdl";
+            }
+            var xmlRespuesta = await SifenService.Consulta(url, _nuevoCliRuc, "1", sociedad.PathCertificadoP12 ?? "", sociedad.PasswordCertificadoP12 ?? "");
+
+            if (string.IsNullOrEmpty(xmlRespuesta))
+            {
+                _mensajeSifenCliente = "⚠️ Sin respuesta de SIFEN. Intente nuevamente.";
+                _esSifenClienteError = true;
+                return;
+            }
+
+            var xmlDoc = new System.Xml.XmlDocument();
+            xmlDoc.LoadXml(xmlRespuesta);
+
+            var codRes = xmlDoc.SelectSingleNode("//*[local-name()='dCodRes']")?.InnerText ?? "";
+            var msgRes = xmlDoc.SelectSingleNode("//*[local-name()='dMsgRes']")?.InnerText ?? "";
+
+            if (codRes == "0502")
+            {
+                var xContRUC = xmlDoc.SelectSingleNode("//*[local-name()='xContRUC']");
+                if (xContRUC != null)
+                {
+                    var dRazCons = xContRUC.SelectSingleNode(".//*[local-name()='dRazCons']")?.InnerText;
+                    var dDesEstCons = xContRUC.SelectSingleNode(".//*[local-name()='dDesEstCons']")?.InnerText;
+                    
+                    if (!string.IsNullOrEmpty(dRazCons))
+                    {
+                        _nuevoCliRazonSocial = dRazCons.Trim();
+                    }
+                    
+                    _nuevoCliEsRucEncontrado = true;
+                    _mensajeSifenCliente = $"✓ SIFEN: {dRazCons?.Trim()} - {dDesEstCons}";
+                    _esSifenClienteError = false;
+                }
+            }
+            else if (codRes == "0501")
+            {
+                _nuevoCliEsRucEncontrado = false;
+                _mensajeSifenCliente = "✓ Número identificado como Cédula de Identidad (no encontrado como RUC)";
+                _esSifenClienteError = false;
+            }
+            else
+            {
+                _mensajeSifenCliente = $"SIFEN: [{codRes}] {msgRes}";
+                _esSifenClienteError = codRes != "0500";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR BuscarClienteEnSifenReserva] {ex.Message}");
+            _mensajeSifenCliente = "⚠️ Error de conexión. Intente nuevamente.";
+            _esSifenClienteError = true;
+        }
+        finally
+        {
+            _buscandoClienteSifen = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task GuardarNuevoClienteReserva()
+    {
+        _errorNuevoCliente = null;
+        _successNuevoCliente = null;
+
+        if (string.IsNullOrWhiteSpace(_nuevoCliRazonSocial))
+        {
+            _errorNuevoCliente = "La Razón Social es obligatoria.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nuevoCliRuc) || !_nuevoCliRuc.All(char.IsDigit) || _nuevoCliRuc.Length < 5)
+        {
+            _errorNuevoCliente = "El RUC/CI debe contener al menos 5 dígitos numéricos.";
+            return;
+        }
+
+        _guardandoNuevoCliente = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+
+            var existe = await ctx.Clientes.AnyAsync(c => c.RUC == _nuevoCliRuc);
+            if (existe)
+            {
+                _errorNuevoCliente = "Ya existe un cliente con este RUC/CI.";
+                _guardandoNuevoCliente = false;
+                return;
+            }
+
+            if (_nuevoCliDv == 0)
+            {
+                _nuevoCliDv = Utils.RucHelper.CalcularDvRuc(_nuevoCliRuc);
+            }
+
+            using var transaction = await ctx.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                var maxCodigo = await ctx.Clientes
+                    .Where(c => c.CodigoCliente != null)
+                    .Select(c => c.CodigoCliente)
+                    .OrderByDescending(c => c)
+                    .FirstOrDefaultAsync();
+                
+                int siguienteCodigo = 1;
+                if (!string.IsNullOrEmpty(maxCodigo) && int.TryParse(maxCodigo, out var ultimoCodigo))
+                {
+                    siguienteCodigo = ultimoCodigo + 1;
+                }
+
+                int naturalezaReceptor = _nuevoCliEsRucEncontrado ? 1 : 2;
+                int? tipoDocIdentidad = _nuevoCliEsRucEncontrado ? null : (int?)1;
+                string? numeroDocIdentidad = _nuevoCliEsRucEncontrado ? null : _nuevoCliRuc.Trim();
+                string tipoOperacion = _nuevoCliEsRucEncontrado 
+                    ? ((long.TryParse(_nuevoCliRuc.Trim(), out var rucNum) && rucNum >= 50_000_000) ? "1" : "2")
+                    : "2";
+                
+                int tipoContribuyente = 1;
+                if (_nuevoCliEsRucEncontrado && _nuevoCliRuc.Trim().Length == 8)
+                {
+                    tipoContribuyente = 2;
+                }
+
+                var nuevoCliente = new Cliente
+                {
+                    CodigoCliente = siguienteCodigo.ToString().PadLeft(6, '0'),
+                    RazonSocial = _nuevoCliRazonSocial.Trim(),
+                    RUC = _nuevoCliRuc.Trim(),
+                    DV = _nuevoCliDv,
+                    NumeroDocumento = _nuevoCliRuc.Trim(),
+                    TipoDocumento = _nuevoCliEsRucEncontrado ? "RU" : "CI",
+                    Telefono = string.IsNullOrWhiteSpace(_nuevoCliTelefono) ? null : _nuevoCliTelefono.Trim(),
+                    Email = string.IsNullOrWhiteSpace(_nuevoCliEmail) ? null : _nuevoCliEmail.Trim(),
+                    Estado = true,
+                    FechaAlta = DateTime.Now,
+                    CodigoPais = "PRY",
+                    NaturalezaReceptor = naturalezaReceptor,
+                    TipoDocumentoIdentidadSifen = tipoDocIdentidad,
+                    NumeroDocumentoIdentidad = numeroDocIdentidad,
+                    IdTipoContribuyente = tipoContribuyente,
+                    TipoOperacion = tipoOperacion,
+                    Saldo = 0,
+                    PermiteCredito = false,
+                    PrecioDiferenciado = false,
+                    EsExtranjero = false,
+                    IdCiudad = 1
+                };
+
+                ctx.Clientes.Add(nuevoCliente);
+                await ctx.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                var tipoLabel = _nuevoCliEsRucEncontrado ? "RUC" : "CI";
+                _successNuevoCliente = $"Cliente '{_nuevoCliRazonSocial}' creado exitosamente ({tipoLabel}).";
+                
+                // Agregar a la lista local y seleccionar
+                _clientes.Add(nuevoCliente);
+                SeleccionarClienteReserva(nuevoCliente);
+
+                // Cerrar modal después de un momento
+                await Task.Delay(800);
+                _mostrarModalNuevoCliente = false;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorNuevoCliente = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardandoNuevoCliente = false;
+            StateHasChanged();
+        }
+    }
+
+    // ========== MÉTODOS PAGO DE SEÑA ==========
+    private void AbrirModalPagoSena(Reserva reserva)
+    {
+        _reservaPagoSena = reserva;
+        _mostrarModalPagoSena = true;
+        _mensajePagoSena = null;
+        _pagoSenaExito = false;
+        _guardandoPagoSena = false;
+        
+        // Reset campos
+        _medioPagoSena = MedioPago.Efectivo;
+        _tipoTarjetaSena = TipoTarjeta.Debito;
+        _marcaTarjetaSena = "Visa";
+        _numeroAutorizacionSena = null;
+        _bancoTransferenciaSena = null;
+        _numeroComprobanteSena = null;
+        
+        StateHasChanged();
+    }
+
+    private void CerrarModalPagoSena()
+    {
+        _mostrarModalPagoSena = false;
+        _reservaPagoSena = null;
+        _mensajePagoSena = null;
+    }
+
+    private async Task RegistrarPagoSena()
+    {
+        if (_reservaPagoSena == null) return;
+        
+        _guardandoPagoSena = true;
+        _mensajePagoSena = null;
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            // Obtener datos de caja para la composición
+            var idCaja = CajaProvider.GetCajaId() ?? _cajaActual?.IdCaja;
+            var turnoActual = _cajaActual?.TurnoActual ?? 1;
+            var fechaCaja = _cajaActual?.FechaActualCaja ?? DateTime.Today;
+            
+            // Crear registro de SenaReserva
+            var senaReserva = new SenaReserva
+            {
+                IdReserva = _reservaPagoSena.IdReserva,
+                IdCliente = _reservaPagoSena.IdCliente,
+                FechaPago = DateTime.Now,
+                Monto = _reservaPagoSena.MontoSena ?? 0,
+                MontoGs = _reservaPagoSena.MontoSena ?? 0,
+                MedioPago = _medioPagoSena,
+                IdSucursal = _idSucursal,
+                IdCaja = idCaja,
+                Turno = turnoActual,
+                FechaCaja = fechaCaja,
+                Estado = "Pagada",
+                Devuelta = false
+            };
+            
+            // Agregar datos según medio de pago
+            if (_medioPagoSena == MedioPago.Tarjeta)
+            {
+                senaReserva.TipoTarjeta = _tipoTarjetaSena;
+                senaReserva.MarcaTarjeta = _marcaTarjetaSena;
+                senaReserva.NumeroAutorizacion = _numeroAutorizacionSena;
+            }
+            else if (_medioPagoSena == MedioPago.Transferencia)
+            {
+                senaReserva.BancoTransferencia = _bancoTransferenciaSena;
+                senaReserva.NumeroComprobante = _numeroComprobanteSena;
+            }
+            else if (_medioPagoSena == MedioPago.QR)
+            {
+                senaReserva.NumeroComprobante = _numeroComprobanteSena;
+            }
+            
+            ctx.SenasReservas.Add(senaReserva);
+            
+            // Actualizar reserva
+            var reservaDb = await ctx.Reservas.FindAsync(_reservaPagoSena.IdReserva);
+            if (reservaDb != null)
+            {
+                reservaDb.SenaPagada = true;
+                reservaDb.FechaPagoSena = DateTime.Now;
+            }
+            
+            await ctx.SaveChangesAsync();
+            
+            _mensajePagoSena = "✅ Pago de seña registrado correctamente";
+            _pagoSenaExito = true;
+            
+            // Cerrar modal después de un momento
+            await Task.Delay(1500);
+            CerrarModalPagoSena();
+            
+            // Refrescar datos
+            await CargarDatos();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _mensajePagoSena = $"Error al registrar pago: {ex.Message}";
+            _pagoSenaExito = false;
+            Console.WriteLine($"[Reservas] Error RegistrarPagoSena: {ex}");
+        }
+        finally
+        {
+            _guardandoPagoSena = false;
+            StateHasChanged();
+        }
+    }
+}

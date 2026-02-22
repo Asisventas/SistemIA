@@ -306,7 +306,7 @@ namespace SistemIA.Services
                 {
                     result.Exito = true;
 
-                    // Actualizar estado de la venta
+                    // Actualizar SOLO estado SIFEN (el estado local "Anulada" lo maneja VentasExplorar)
                     venta.EstadoSifen = "CANCELADO";
                     venta.MensajeSifen = $"Cancelado vía evento SIFEN. Motivo: {motivo}";
                     await _context.SaveChangesAsync();

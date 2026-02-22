@@ -11,6 +11,7 @@ namespace SistemIA.Models
         public int IdAjusteStock { get; set; }
         public int IdProducto { get; set; }
         public int IdDeposito { get; set; }  // Depósito por línea
+        public int? IdProductoLote { get; set; }  // Lote específico si el producto controla lotes
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal StockAjuste { get; set; }
@@ -49,6 +50,9 @@ namespace SistemIA.Models
         
         [ForeignKey("IdDeposito")]
         public Deposito? Deposito { get; set; }
+        
+        [ForeignKey("IdProductoLote")]
+        public ProductoLote? ProductoLote { get; set; }
         
         // Propiedad auxiliar para validación (no se persiste en BD)
         [NotMapped]

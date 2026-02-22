@@ -1,0 +1,455 @@
+@using SistemIA.Models
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Modal de Alarma que aparece sobre todo el sistema *@
+@if (_mostrarAlarma && _citaActual != null)
+{
+    <div class="alarma-overlay">
+        <div class="alarma-modal">
+            <div class="alarma-header" style="background: @_citaActual.ColorFondo;">
+                <div class="alarma-icono">
+                    <i class="bi bi-bell-fill alarma-animada"></i>
+                </div>
+                <h4 class="alarma-titulo">@ObtenerTituloAlarma()</h4>
+            </div>
+            <div class="alarma-body">
+                <h3>@_citaActual.Titulo</h3>
+                
+                <div class="alarma-detalle">
+                    <i class="bi bi-clock text-primary"></i>
+                    <span>@_citaActual.FechaHoraInicio.ToString("dddd dd/MM/yyyy HH:mm")</span>
+                </div>
+                
+                @if (!string.IsNullOrEmpty(_citaActual.NombreCliente))
+                {
+                    <div class="alarma-detalle">
+                        <i class="bi bi-person text-success"></i>
+                        <span>@_citaActual.NombreCliente</span>
+                    </div>
+                }
+                
+                @if (!string.IsNullOrEmpty(_citaActual.Direccion))
+                {
+                    <div class="alarma-detalle">
+                        <i class="bi bi-geo-alt text-danger"></i>
+                        <span>@_citaActual.Direccion</span>
+                    </div>
+                }
+                
+                @if (!string.IsNullOrEmpty(_citaActual.Descripcion))
+                {
+                    <div class="alarma-descripcion">
+                        @_citaActual.Descripcion
+                    </div>
+                }
+                
+                <div class="alarma-tiempo @(_esCitaPasada ? "alarma-pasada" : "")">
+                    <i class="bi @(_esCitaPasada ? "bi-exclamation-triangle-fill" : "bi-alarm")"></i>
+                    <span>@_tiempoRestante</span>
+                </div>
+            </div>
+            <div class="alarma-footer">
+                <button class="btn btn-lg btn-outline-secondary" @onclick="PosponerAlarma">
+                    <i class="bi bi-clock-history me-2"></i>Posponer 5 min
+                </button>
+                <button class="btn btn-lg btn-primary" @onclick="ApagarAlarma">
+                    <i class="bi bi-check-lg me-2"></i>Entendido
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Audio para la alarma - generado dinámicamente *@
+<script suppress-error="BL9992">
+    window.alarmaSound = {
+        audioContext: null,
+        oscillator: null,
+        gainNode: null,
+        isPlaying: false,
+        
+        play: function() {
+            if (this.isPlaying) return;
+            
+            try {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.gainNode = this.audioContext.createGain();
+                this.gainNode.connect(this.audioContext.destination);
+                
+                this.isPlaying = true;
+                this.beep();
+            } catch(e) {
+                console.log('Audio not supported:', e);
+            }
+        },
+        
+        beep: function() {
+            if (!this.isPlaying) return;
+            
+            const osc = this.audioContext.createOscillator();
+            const gain = this.audioContext.createGain();
+            
+            osc.connect(gain);
+            gain.connect(this.audioContext.destination);
+            
+            osc.frequency.value = 880;
+            osc.type = 'sine';
+            
+            gain.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+            
+            osc.start(this.audioContext.currentTime);
+            osc.stop(this.audioContext.currentTime + 0.3);
+            
+            if (this.isPlaying) {
+                setTimeout(() => this.beep(), 800);
+            }
+        },
+        
+        stop: function() {
+            this.isPlaying = false;
+            if (this.audioContext) {
+                this.audioContext.close().catch(() => {});
+                this.audioContext = null;
+            }
+        }
+    };
+</script>
+
+<style>
+    .alarma-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: fadeIn 0.3s ease;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    .alarma-modal {
+        background: white;
+        border-radius: 16px;
+        width: 90%;
+        max-width: 480px;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+        animation: slideUp 0.4s ease;
+    }
+
+    @@keyframes slideUp {
+        from { transform: translateY(50px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+
+    .alarma-header {
+        padding: 24px;
+        text-align: center;
+        color: white;
+    }
+
+    .alarma-icono {
+        font-size: 48px;
+        margin-bottom: 8px;
+    }
+
+    .alarma-animada {
+        animation: ring 0.5s ease infinite;
+    }
+
+    @@keyframes ring {
+        0%, 100% { transform: rotate(-15deg); }
+        50% { transform: rotate(15deg); }
+    }
+
+    .alarma-titulo {
+        margin: 0;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+
+    .alarma-body {
+        padding: 24px;
+    }
+
+    .alarma-body h3 {
+        margin: 0 0 16px 0;
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+
+    .alarma-detalle {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
+        font-size: 16px;
+        color: var(--text-secondary);
+    }
+
+    .alarma-detalle i {
+        font-size: 20px;
+        width: 24px;
+        text-align: center;
+    }
+
+    .alarma-descripcion {
+        margin: 16px 0;
+        padding: 12px;
+        background: var(--bg-page);
+        border-radius: 8px;
+        color: var(--text-secondary);
+        font-size: 14px;
+    }
+
+    .alarma-tiempo {
+        margin-top: 16px;
+        padding: 12px 16px;
+        background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+        color: white;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .alarma-tiempo.alarma-pasada {
+        background: linear-gradient(135deg, #c0392b, #8e0000);
+        animation: pulsePasada 1s ease infinite;
+    }
+
+    @@keyframes pulsePasada {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+    }
+
+    .alarma-footer {
+        display: flex;
+        gap: 12px;
+        padding: 16px 24px 24px;
+        background: var(--bg-surface);
+    }
+
+    .alarma-footer .btn {
+        flex: 1;
+        padding: 12px;
+        font-weight: 600;
+    }
+</style>
+
+@code {
+    private bool _mostrarAlarma = false;
+    private CitaAgenda? _citaActual;
+    private string _tiempoRestante = "";
+    private Timer? _timerChequeo;
+    private Timer? _timerActualizacion;
+    private DateTime? _pospuestoHasta;
+    private int? _citaPospuestaId;
+    private bool _disposed = false;
+    private bool _esCitaPasada = false;
+
+    protected override void OnInitialized()
+    {
+        // Chequear cada 30 segundos si hay citas próximas
+        _timerChequeo = new Timer(async _ => await ChequearRecordatorios(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task ChequearRecordatorios()
+    {
+        if (_disposed || _mostrarAlarma) return; // No chequear si ya hay alarma activa
+
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var ahora = DateTime.Now;
+            var limiteAtras = ahora.AddHours(-24); // Buscar citas pasadas hasta 24 horas atrás
+
+            // Buscar citas con recordatorio que aún no se descartó (NotificacionMostrada = false)
+            var citas = await ctx.CitasAgenda
+                .Where(c => c.TieneRecordatorio && !c.NotificacionMostrada)
+                .Where(c => c.Estado == "Programada" || c.Estado == "Confirmada")
+                .Where(c => c.FechaHoraInicio >= limiteAtras) // Pasadas (hasta 24h) + futuras
+                .OrderBy(c => c.FechaHoraInicio) // Citas más urgentes primero
+                .ToListAsync();
+
+            foreach (var cita in citas)
+            {
+                // Verificar si está pospuesta
+                if (_citaPospuestaId == cita.IdCita && _pospuestoHasta.HasValue && ahora < _pospuestoHasta.Value)
+                    continue;
+
+                var minutosParaCita = (cita.FechaHoraInicio - ahora).TotalMinutes;
+                bool activar = false;
+
+                // Para citas PASADAS (no descartadas): siempre activar alarma
+                if (minutosParaCita <= 0)
+                {
+                    activar = true;
+                    _esCitaPasada = true;
+                }
+                // Para citas FUTURAS: verificar si algún recordatorio debe activarse
+                else
+                {
+                    _esCitaPasada = false;
+                    if (cita.MinutosRecordatorio1.HasValue && minutosParaCita <= cita.MinutosRecordatorio1.Value)
+                        activar = true;
+                    if (cita.MinutosRecordatorio2.HasValue && minutosParaCita <= cita.MinutosRecordatorio2.Value)
+                        activar = true;
+                }
+
+                if (activar)
+                {
+                    _citaActual = cita;
+                    _tiempoRestante = FormatearTiempoRestante(minutosParaCita);
+                    _mostrarAlarma = true;
+
+                    // Intentar reproducir sonido
+                    await InvokeAsync(async () =>
+                    {
+                        try
+                        {
+                            await JS.InvokeVoidAsync("eval", "window.alarmaSound?.play()");
+                        }
+                        catch { }
+                        StateHasChanged();
+                    });
+
+                    // Iniciar timer para actualizar tiempo restante
+                    _timerActualizacion = new Timer(async _ => await ActualizarTiempoRestante(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+                    break; // Solo mostrar una alarma a la vez
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error chequeando recordatorios: {ex.Message}");
+        }
+    }
+
+    private async Task ActualizarTiempoRestante()
+    {
+        if (_citaActual == null || _disposed) return;
+
+        var minutosParaCita = (_citaActual.FechaHoraInicio - DateTime.Now).TotalMinutes;
+        _tiempoRestante = FormatearTiempoRestante(minutosParaCita);
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string FormatearTiempoRestante(double minutos)
+    {
+        if (minutos <= -60)
+        {
+            // Cita pasada hace más de 1 hora
+            var horasPasadas = (int)Math.Abs(minutos / 60);
+            var minsPasados = (int)Math.Abs(minutos % 60);
+            return $"Pasó hace {horasPasadas}h {minsPasados}m";
+        }
+        if (minutos < 0)
+        {
+            // Cita pasada hace menos de 1 hora
+            return $"Pasó hace {(int)Math.Abs(minutos)} minuto{((int)Math.Abs(minutos) == 1 ? "" : "s")}";
+        }
+        if (minutos == 0) return "¡AHORA!";
+        if (minutos < 1) return "Menos de 1 minuto";
+        if (minutos < 60) return $"En {(int)minutos} minuto{((int)minutos == 1 ? "" : "s")}";
+        
+        var horas = (int)(minutos / 60);
+        var mins = (int)(minutos % 60);
+        return $"En {horas}h {mins}m";
+    }
+
+    private string ObtenerTituloAlarma()
+    {
+        if (_esCitaPasada)
+            return "¡CITA PENDIENTE!";
+        if (_citaActual?.TipoCita == "Recordatorio")
+            return "RECORDATORIO";
+        return "CITA PRÓXIMA";
+    }
+
+    private async Task PosponerAlarma()
+    {
+        if (_citaActual == null) return;
+
+        _citaPospuestaId = _citaActual.IdCita;
+        _pospuestoHasta = DateTime.Now.AddMinutes(5);
+        
+        _mostrarAlarma = false;
+        _citaActual = null;
+        _esCitaPasada = false;
+        _timerActualizacion?.Dispose();
+        _timerActualizacion = null;
+
+        // Detener sonido
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "window.alarmaSound?.stop()");
+        }
+        catch { }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApagarAlarma()
+    {
+        if (_citaActual == null) return;
+
+        try
+        {
+            // Marcar como notificada en la BD
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var cita = await ctx.CitasAgenda.FindAsync(_citaActual.IdCita);
+            if (cita != null)
+            {
+                cita.NotificacionMostrada = true;
+                await ctx.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error actualizando cita: {ex.Message}");
+        }
+
+        _mostrarAlarma = false;
+        _citaActual = null;
+        _citaPospuestaId = null;
+        _pospuestoHasta = null;
+        _esCitaPasada = false;
+        _timerActualizacion?.Dispose();
+        _timerActualizacion = null;
+
+        // Detener sonido
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "window.alarmaSound?.stop()");
+        }
+        catch { }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _timerChequeo?.Dispose();
+        _timerActualizacion?.Dispose();
+    }
+}

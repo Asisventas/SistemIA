@@ -4,6 +4,8 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
 @inject SistemIA.Services.ICajaService CajaService
+@inject SistemIA.Services.ComandaService ComandaService
+@inject SistemIA.Services.ImpresionDirectaService ImpresionDirectaService
 
 <PageProtection Modulo="/configuracion" Permiso="VIEW">
 
@@ -337,6 +339,213 @@
         </div>
     </div>
 
+    @* ========== SECCIÓN COMANDAS RESTAURANTE ========== *@
+    <div class="card mb-3 border-danger">
+        <div class="card-header bg-danger text-white py-2">
+            <i class="bi bi-fire me-2"></i><strong>Impresoras de Comandas (Cocina/Barra)</strong>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                @* COCINA *@
+                <div class="col-12">
+                    <h6 class="text-danger"><i class="bi bi-egg-fried me-1"></i>Impresora Cocina</h6>
+                </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Impresora / IP Cocina</label>
+                        <div class="input-group">
+                            <input class="form-control" type="text" @bind="editando.ImpresoraComandaCocina" 
+                                   placeholder="@(ComandaCocinaEsRedChecked ? "192.168.1.100" : "Nombre impresora")" />
+                            @if (!string.IsNullOrEmpty(editando.ImpresoraComandaCocina))
+                            {
+                                <button class="btn btn-outline-secondary" type="button" @onclick="ProbarImpresoraCocina" 
+                                        disabled="@_probandoCocina" title="Probar conexión">
+                                    @if (_probandoCocina)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-lightning"></i>
+                                    }
+                                </button>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(_resultadoPruebaCocina))
+                        {
+                            <small class="@(_exitoPruebaCocina ? "text-success" : "text-danger")">
+                                <i class="bi @(_exitoPruebaCocina ? "bi-check-circle" : "bi-x-circle") me-1"></i>@_resultadoPruebaCocina
+                            </small>
+                        }
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Puerto TCP</label>
+                        <input class="form-control" type="number" @bind="editando.PuertoImpresoraCocina" placeholder="9100" 
+                               disabled="@(!ComandaCocinaEsRedChecked)" />
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check mt-4">
+                            <input id="chkCocinaRed" type="checkbox" class="form-check-input" @bind="ComandaCocinaEsRedChecked" />
+                            <label class="form-check-label" for="chkCocinaRed">Es IP de Red</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Copias</label>
+                        <input class="form-control" type="number" @bind="editando.CopiasComandaCocina" min="1" max="5" placeholder="1" />
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-danger mt-4" type="button" @onclick="ImprimirPruebaCocina" 
+                                disabled="@(string.IsNullOrEmpty(editando.ImpresoraComandaCocina) || _imprimiendoPruebaCocina)">
+                            @if (_imprimiendoPruebaCocina)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-printer me-1"></i>Prueba
+                        </button>
+                    </div>
+
+                    <div class="col-12"><hr class="my-2" /></div>
+
+                    @* BARRA *@
+                    <div class="col-12">
+                        <h6 class="text-info"><i class="bi bi-cup-straw me-1"></i>Impresora Barra</h6>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Impresora / IP Barra</label>
+                        <div class="input-group">
+                            <input class="form-control" type="text" @bind="editando.ImpresoraComandaBarra" 
+                                   placeholder="@(ComandaBarraEsRedChecked ? "192.168.1.101" : "Nombre impresora")" />
+                            @if (!string.IsNullOrEmpty(editando.ImpresoraComandaBarra))
+                            {
+                                <button class="btn btn-outline-secondary" type="button" @onclick="ProbarImpresoraBarra" 
+                                        disabled="@_probandoBarra" title="Probar conexión">
+                                    @if (_probandoBarra)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-lightning"></i>
+                                    }
+                                </button>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(_resultadoPruebaBarra))
+                        {
+                            <small class="@(_exitoPruebaBarra ? "text-success" : "text-danger")">
+                                <i class="bi @(_exitoPruebaBarra ? "bi-check-circle" : "bi-x-circle") me-1"></i>@_resultadoPruebaBarra
+                            </small>
+                        }
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Puerto TCP</label>
+                        <input class="form-control" type="number" @bind="editando.PuertoImpresoraBarra" placeholder="9100" 
+                               disabled="@(!ComandaBarraEsRedChecked)" />
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check mt-4">
+                            <input id="chkBarraRed" type="checkbox" class="form-check-input" @bind="ComandaBarraEsRedChecked" />
+                            <label class="form-check-label" for="chkBarraRed">Es IP de Red</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Copias</label>
+                        <input class="form-control" type="number" @bind="editando.CopiasComandaBarra" min="1" max="5" placeholder="1" />
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-info mt-4" type="button" @onclick="ImprimirPruebaBarra" 
+                                disabled="@(string.IsNullOrEmpty(editando.ImpresoraComandaBarra) || _imprimiendoPruebaBarra)">
+                            @if (_imprimiendoPruebaBarra)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-printer me-1"></i>Prueba
+                        </button>
+                    </div>
+
+                    <div class="col-12"><hr class="my-2" /></div>
+
+                    @* OPCIONES GENERALES *@
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input id="chkComandaAuto" type="checkbox" class="form-check-input" @bind="ImprimirComandaAutomaticaChecked" />
+                            <label class="form-check-label" for="chkComandaAuto">
+                                <i class="bi bi-lightning-charge text-warning me-1"></i>Imprimir comanda automáticamente al agregar items
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="alert alert-info py-2 mb-0 small">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <strong>Tip:</strong> Para impresoras de red, use la IP directa (ej: 192.168.1.100) con puerto 9100 (RAW printing).
+                            Para impresoras Windows compartidas, use el nombre (ej: \\SERVIDOR\Cocina).
+                        </div>
+                    </div>
+
+                    <div class="col-12"><hr class="my-2" /></div>
+
+                    @* COMPROBANTE PEDIDO (CLIENTE) *@
+                    <div class="col-12">
+                        <h6 class="text-success"><i class="bi bi-receipt me-1"></i>Impresora Comprobante Pedido (Cliente)</h6>
+                        <small class="text-muted">Imprime ticket de pedido para el cliente (diferente a la comanda de cocina)</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Impresora / IP Comprobante</label>
+                        <div class="input-group">
+                            <input class="form-control" type="text" @bind="editando.ImpresoraComprobantePedido" 
+                                   placeholder="@(ComprobanteEsRedChecked ? "192.168.1.102" : "Nombre impresora")" />
+                            @if (!string.IsNullOrEmpty(editando.ImpresoraComprobantePedido))
+                            {
+                                <button class="btn btn-outline-secondary" type="button" @onclick="ProbarImpresoraComprobante" 
+                                        disabled="@_probandoComprobante" title="Probar conexión">
+                                    @if (_probandoComprobante)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-lightning"></i>
+                                    }
+                                </button>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(_resultadoPruebaComprobante))
+                        {
+                            <small class="@(_exitoPruebaComprobante ? "text-success" : "text-danger")">
+                                <i class="bi @(_exitoPruebaComprobante ? "bi-check-circle" : "bi-x-circle") me-1"></i>@_resultadoPruebaComprobante
+                            </small>
+                        }
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Puerto TCP</label>
+                        <input class="form-control" type="number" @bind="editando.PuertoImpresoraComprobante" placeholder="9100" 
+                               disabled="@(!ComprobanteEsRedChecked)" />
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check mt-4">
+                            <input id="chkComprobanteRed" type="checkbox" class="form-check-input" @bind="ComprobanteEsRedChecked" />
+                            <label class="form-check-label" for="chkComprobanteRed">Es IP de Red</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check mt-4">
+                            <input id="chkComprobanteAuto" type="checkbox" class="form-check-input" @bind="ImprimirComprobantePedidoAutoChecked" />
+                            <label class="form-check-label" for="chkComprobanteAuto">Auto al confirmar</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-success mt-4" type="button" @onclick="ImprimirPruebaComprobante" 
+                                disabled="@(string.IsNullOrEmpty(editando.ImpresoraComprobantePedido) || _imprimiendoPruebaComprobante)">
+                            @if (_imprimiendoPruebaComprobante)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-printer me-1"></i>Prueba
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     <!-- Botones -->
     <div class="mt-3 d-flex gap-2">
         <button class="btn btn-success" type="button" @onclick="Guardar"><i class="bi bi-check-lg me-1"></i>Guardar</button>
@@ -350,6 +559,22 @@
     private string? error;
     private List<SistemIA.Models.Caja> cajas = new();
     private SistemIA.Models.Caja? editando;
+    private bool _modoRestauranteActivo = false;
+    
+    // Variables para pruebas de impresoras de comandas
+    private bool _probandoCocina = false;
+    private bool _probandoBarra = false;
+    private bool _probandoComprobante = false;
+    private bool _imprimiendoPruebaCocina = false;
+    private bool _imprimiendoPruebaBarra = false;
+    private bool _imprimiendoPruebaComprobante = false;
+    private string? _resultadoPruebaCocina;
+    private string? _resultadoPruebaBarra;
+    private string? _resultadoPruebaComprobante;
+    private bool _exitoPruebaCocina;
+    private bool _exitoPruebaBarra;
+    private bool _exitoPruebaComprobante;
+
     private bool BloqFacturaChecked
     {
         get => editando?.BloquearFactura ?? false;
@@ -400,6 +625,35 @@
         get => editando?.MostrarLogo ?? false;
         set { if (editando != null) editando.MostrarLogo = value; }
     }
+    
+    // Propiedades para configuración de comandas
+    private bool ComandaCocinaEsRedChecked
+    {
+        get => editando?.ComandaCocinaEsRed ?? false;
+        set { if (editando != null) editando.ComandaCocinaEsRed = value; }
+    }
+    private bool ComandaBarraEsRedChecked
+    {
+        get => editando?.ComandaBarraEsRed ?? false;
+        set { if (editando != null) editando.ComandaBarraEsRed = value; }
+    }
+    private bool ImprimirComandaAutomaticaChecked
+    {
+        get => editando?.ImprimirComandaAutomatica ?? false;
+        set { if (editando != null) editando.ImprimirComandaAutomatica = value; }
+    }
+    
+    // Propiedades para comprobante de pedido
+    private bool ComprobanteEsRedChecked
+    {
+        get => editando?.ComprobanteEsRed ?? false;
+        set { if (editando != null) editando.ComprobanteEsRed = value; }
+    }
+    private bool ImprimirComprobantePedidoAutoChecked
+    {
+        get => editando?.ImprimirComprobantePedidoAuto ?? false;
+        set { if (editando != null) editando.ImprimirComprobantePedidoAuto = value; }
+    }
 
     protected override async Task OnInitializedAsync() => await Cargar();
 
@@ -411,6 +665,10 @@
             await using var ctx = await DbFactory.CreateDbContextAsync();
             await EnsureColumnasCajaAsync(ctx);
             cajas = await ctx.Cajas.AsNoTracking().OrderBy(c => c.IdCaja).ToListAsync();
+            
+            // Verificar si está activo el modo restaurante
+            var config = await ctx.ConfiguracionSistema.FirstOrDefaultAsync();
+            _modoRestauranteActivo = config?.RestauranteModoActivo ?? false;
         }
         catch (Exception ex)
         {
@@ -425,6 +683,11 @@
 
     private void Editar(SistemIA.Models.Caja c)
     {
+        // Limpiar resultados de pruebas anteriores
+        _resultadoPruebaCocina = null;
+        _resultadoPruebaBarra = null;
+        _resultadoPruebaComprobante = null;
+        
         editando = new SistemIA.Models.Caja
         {
             IdCaja = c.IdCaja,
@@ -479,7 +742,22 @@
             VigenciaAlRecibo = c.VigenciaAlRecibo,
             NombreImpresoraRecibo = c.NombreImpresoraRecibo,
             BloquearFacturaRecibo = c.BloquearFacturaRecibo,
-            Imprimir_remisionRecibo = c.Imprimir_remisionRecibo
+            Imprimir_remisionRecibo = c.Imprimir_remisionRecibo,
+            // Comandas Restaurante
+            ImpresoraComandaCocina = c.ImpresoraComandaCocina,
+            ImpresoraComandaBarra = c.ImpresoraComandaBarra,
+            PuertoImpresoraCocina = c.PuertoImpresoraCocina,
+            PuertoImpresoraBarra = c.PuertoImpresoraBarra,
+            ComandaCocinaEsRed = c.ComandaCocinaEsRed,
+            ComandaBarraEsRed = c.ComandaBarraEsRed,
+            ImprimirComandaAutomatica = c.ImprimirComandaAutomatica,
+            CopiasComandaCocina = c.CopiasComandaCocina,
+            CopiasComandaBarra = c.CopiasComandaBarra,
+            // Comprobante Pedido (Cliente)
+            ImpresoraComprobantePedido = c.ImpresoraComprobantePedido,
+            PuertoImpresoraComprobante = c.PuertoImpresoraComprobante,
+            ComprobanteEsRed = c.ComprobanteEsRed,
+            ImprimirComprobantePedidoAuto = c.ImprimirComprobantePedidoAuto
         };
     }
 
@@ -553,6 +831,21 @@
                     cajaOriginal.NombreImpresoraRecibo = editando.NombreImpresoraRecibo;
                     cajaOriginal.BloquearFacturaRecibo = editando.BloquearFacturaRecibo;
                     cajaOriginal.Imprimir_remisionRecibo = editando.Imprimir_remisionRecibo;
+                    // Comandas Restaurante
+                    cajaOriginal.ImpresoraComandaCocina = editando.ImpresoraComandaCocina;
+                    cajaOriginal.ImpresoraComandaBarra = editando.ImpresoraComandaBarra;
+                    cajaOriginal.PuertoImpresoraCocina = editando.PuertoImpresoraCocina;
+                    cajaOriginal.PuertoImpresoraBarra = editando.PuertoImpresoraBarra;
+                    cajaOriginal.ComandaCocinaEsRed = editando.ComandaCocinaEsRed;
+                    cajaOriginal.ComandaBarraEsRed = editando.ComandaBarraEsRed;
+                    cajaOriginal.ImprimirComandaAutomatica = editando.ImprimirComandaAutomatica;
+                    cajaOriginal.CopiasComandaCocina = editando.CopiasComandaCocina;
+                    cajaOriginal.CopiasComandaBarra = editando.CopiasComandaBarra;
+                    // Comprobante Pedido (Cliente)
+                    cajaOriginal.ImpresoraComprobantePedido = editando.ImpresoraComprobantePedido;
+                    cajaOriginal.PuertoImpresoraComprobante = editando.PuertoImpresoraComprobante;
+                    cajaOriginal.ComprobanteEsRed = editando.ComprobanteEsRed;
+                    cajaOriginal.ImprimirComprobantePedidoAuto = editando.ImprimirComprobantePedidoAuto;
                 }
             }
             await ctx.SaveChangesAsync();
@@ -598,4 +891,248 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'bloquear_fechaCaja' AND 
     }
 
     private void Cancelar() => editando = null;
+    
+    // ========== MÉTODOS PARA PRUEBA DE IMPRESORAS DE COMANDAS ==========
+    
+    private async Task ProbarImpresoraCocina()
+    {
+        if (editando == null || string.IsNullOrEmpty(editando.ImpresoraComandaCocina)) return;
+        
+        _probandoCocina = true;
+        _resultadoPruebaCocina = null;
+        StateHasChanged();
+        
+        try
+        {
+            if (ComandaCocinaEsRedChecked)
+            {
+                var resultado = await ComandaService.ProbarConexionAsync(
+                    editando.ImpresoraComandaCocina, 
+                    editando.PuertoImpresoraCocina ?? 9100);
+                _exitoPruebaCocina = resultado.Exitoso;
+                _resultadoPruebaCocina = resultado.Mensaje;
+            }
+            else
+            {
+                // Verificar si existe la impresora en Windows
+                var impresoras = System.Drawing.Printing.PrinterSettings.InstalledPrinters;
+                var existe = false;
+                foreach (string imp in impresoras)
+                {
+                    if (imp.Equals(editando.ImpresoraComandaCocina, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existe = true;
+                        break;
+                    }
+                }
+                _exitoPruebaCocina = existe;
+                _resultadoPruebaCocina = existe ? "Impresora encontrada" : "Impresora no encontrada en el sistema";
+            }
+        }
+        catch (Exception ex)
+        {
+            _exitoPruebaCocina = false;
+            _resultadoPruebaCocina = ex.Message;
+        }
+        finally
+        {
+            _probandoCocina = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ProbarImpresoraBarra()
+    {
+        if (editando == null || string.IsNullOrEmpty(editando.ImpresoraComandaBarra)) return;
+        
+        _probandoBarra = true;
+        _resultadoPruebaBarra = null;
+        StateHasChanged();
+        
+        try
+        {
+            if (ComandaBarraEsRedChecked)
+            {
+                var resultado = await ComandaService.ProbarConexionAsync(
+                    editando.ImpresoraComandaBarra, 
+                    editando.PuertoImpresoraBarra ?? 9100);
+                _exitoPruebaBarra = resultado.Exitoso;
+                _resultadoPruebaBarra = resultado.Mensaje;
+            }
+            else
+            {
+                var impresoras = System.Drawing.Printing.PrinterSettings.InstalledPrinters;
+                var existe = false;
+                foreach (string imp in impresoras)
+                {
+                    if (imp.Equals(editando.ImpresoraComandaBarra, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existe = true;
+                        break;
+                    }
+                }
+                _exitoPruebaBarra = existe;
+                _resultadoPruebaBarra = existe ? "Impresora encontrada" : "Impresora no encontrada en el sistema";
+            }
+        }
+        catch (Exception ex)
+        {
+            _exitoPruebaBarra = false;
+            _resultadoPruebaBarra = ex.Message;
+        }
+        finally
+        {
+            _probandoBarra = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ImprimirPruebaCocina()
+    {
+        if (editando == null) return;
+        
+        _imprimiendoPruebaCocina = true;
+        StateHasChanged();
+        
+        try
+        {
+            var resultado = await ComandaService.ImprimirPruebaAsync(editando, "COCINA");
+            _exitoPruebaCocina = resultado.Exitoso;
+            _resultadoPruebaCocina = resultado.Mensaje;
+        }
+        catch (Exception ex)
+        {
+            _exitoPruebaCocina = false;
+            _resultadoPruebaCocina = ex.Message;
+        }
+        finally
+        {
+            _imprimiendoPruebaCocina = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ImprimirPruebaBarra()
+    {
+        if (editando == null) return;
+        
+        _imprimiendoPruebaBarra = true;
+        StateHasChanged();
+        
+        try
+        {
+            var resultado = await ComandaService.ImprimirPruebaAsync(editando, "BARRA");
+            _exitoPruebaBarra = resultado.Exitoso;
+            _resultadoPruebaBarra = resultado.Mensaje;
+        }
+        catch (Exception ex)
+        {
+            _exitoPruebaBarra = false;
+            _resultadoPruebaBarra = ex.Message;
+        }
+        finally
+        {
+            _imprimiendoPruebaBarra = false;
+            StateHasChanged();
+        }
+    }
+    
+    // ========== MÉTODOS PARA IMPRESORA COMPROBANTE PEDIDO ==========
+    
+    private async Task ProbarImpresoraComprobante()
+    {
+        if (editando == null || string.IsNullOrEmpty(editando.ImpresoraComprobantePedido)) return;
+        
+        _probandoComprobante = true;
+        _resultadoPruebaComprobante = null;
+        StateHasChanged();
+        
+        try
+        {
+            if (ComprobanteEsRedChecked)
+            {
+                var resultado = await ComandaService.ProbarConexionAsync(
+                    editando.ImpresoraComprobantePedido, 
+                    editando.PuertoImpresoraComprobante ?? 9100);
+                _exitoPruebaComprobante = resultado.Exitoso;
+                _resultadoPruebaComprobante = resultado.Mensaje;
+            }
+            else
+            {
+                var impresoras = System.Drawing.Printing.PrinterSettings.InstalledPrinters;
+                var existe = false;
+                foreach (string imp in impresoras)
+                {
+                    if (imp.Equals(editando.ImpresoraComprobantePedido, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existe = true;
+                        break;
+                    }
+                }
+                _exitoPruebaComprobante = existe;
+                _resultadoPruebaComprobante = existe ? "Impresora encontrada" : "Impresora no encontrada en el sistema";
+            }
+        }
+        catch (Exception ex)
+        {
+            _exitoPruebaComprobante = false;
+            _resultadoPruebaComprobante = ex.Message;
+        }
+        finally
+        {
+            _probandoComprobante = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ImprimirPruebaComprobante()
+    {
+        if (editando == null || string.IsNullOrEmpty(editando.ImpresoraComprobantePedido)) return;
+        
+        _imprimiendoPruebaComprobante = true;
+        StateHasChanged();
+        
+        try
+        {
+            // Crear datos de prueba para ticket de pedido
+            var datosPrueba = new SistemIA.Services.DatosPedidoTicket
+            {
+                NombreEmpresa = "RESTAURANTE DEMO",
+                DireccionEmpresa = "Av. Principal 123",
+                TelefonoEmpresa = "(021) 555-1234",
+                NumeroPedido = 1,
+                NombreMesa = "MESA 5",
+                NombreMesero = "Juan Pérez",
+                FechaPedido = DateTime.Now,
+                CantidadComensales = 2,
+                Items = new List<SistemIA.Services.ItemPedidoTicket>
+                {
+                    new() { Descripcion = "HAMBURGUESA COMPLETA", Cantidad = 2, PrecioUnitario = 45000, Subtotal = 90000, Modificadores = "Sin cebolla, extra queso" },
+                    new() { Descripcion = "PAPAS FRITAS GRANDES", Cantidad = 1, PrecioUnitario = 25000, Subtotal = 25000 },
+                    new() { Descripcion = "COCA COLA 500ML", Cantidad = 2, PrecioUnitario = 15000, Subtotal = 30000 }
+                },
+                Subtotal = 145000,
+                Total = 145000,
+                MostrarPrecios = true,
+                MensajePie = "¡Gracias por su pedido!"
+            };
+            
+            var resultado = await ImpresionDirectaService.ImprimirTicketPedido80mm(
+                datosPrueba,
+                editando.ImpresoraComprobantePedido);
+            
+            _exitoPruebaComprobante = resultado.Exitoso;
+            _resultadoPruebaComprobante = resultado.Mensaje;
+        }
+        catch (Exception ex)
+        {
+            _exitoPruebaComprobante = false;
+            _resultadoPruebaComprobante = ex.Message;
+        }
+        finally
+        {
+            _imprimiendoPruebaComprobante = false;
+            StateHasChanged();
+        }
+    }
 }

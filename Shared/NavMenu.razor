@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using SistemIA.Shared
 @using SistemIA.Services
+@implements IDisposable
 
 <div class="nav-menu d-flex flex-column @(AnySubMenuOpen ? "has-submenu-open" : "")">
     <div class="nav-header p-3">
@@ -40,31 +41,6 @@
                </NavLink>  
            </div>  
        }  
-
-        <!-- CloudSync - Backup en la Nube (Acceso directo) -->
-        <div class="nav-item mb-1">
-            <NavLink class="nav-link" href="/configuracion/cloudsync" title="@(IsCollapsed ? "CloudSync" : "")" @onclick="OnAnyNavigate">
-                <i class="bi bi-cloud-arrow-up me-2"></i>
-                @if (!IsCollapsed)
-                {
-                    <span class="link-text d-flex align-items-center">
-                        CloudSync
-                        @if (_backupActualizado)
-                        {
-                            <i class="bi bi-check-circle-fill text-success ms-2" title="Backup sincronizado"></i>
-                        }
-                        else if (_ultimoBackup.HasValue)
-                        {
-                            <i class="bi bi-exclamation-circle-fill text-warning ms-2" title="Backup desactualizado"></i>
-                        }
-                        else
-                        {
-                            <i class="bi bi-x-circle-fill text-danger ms-2" title="Sin backup"></i>
-                        }
-                    </span>
-                }
-            </NavLink>
-        </div>
 
         <!-- Submenú de Productos -->
         <div class="nav-item mb-1">
@@ -150,6 +126,186 @@
             </div>
         </div>
 
+        <!-- Submenú de Mesas / Canchas / Bahías (Restaurante/Complejo/Taller) - Solo visible si modo restaurante está activo -->
+        @if (_modoRestauranteActivo)
+        {
+        <div class="nav-item mb-1">
+            <button class="nav-link submenu-button w-100 d-flex align-items-center justify-content-between @(isMesasSubMenuOpen ? "active" : "")"
+                    @onclick="ToggleMesasSubMenu"
+                    type="button"
+                    title="@(IsCollapsed ? _nombreMenuMesas : "")">
+                <span class="d-flex align-items-center">
+                    <i class="bi @_iconoMenuMesas me-2"></i>
+                    @if (!IsCollapsed)
+                    {
+                        <span class="link-text text-nowrap">@_nombreMenuMesas</span>
+                    }
+                </span>
+                @if (!IsCollapsed)
+                {
+                    <i class="bi @(isMesasSubMenuOpen ? "bi-chevron-down" : "bi-chevron-right") ms-2"></i>
+                }
+            </button>
+
+            <div class="submenu-container @(isMesasSubMenuOpen ? "show" : "collapse")">
+                <div class="submenu-items">
+                    <NavLink class="nav-link" href="/mesas/panel" title="@(IsCollapsed ? $"Panel de {_nombreEspacios}" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-grid-1x2 me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Panel de @_nombreEspacios</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/mesas" title="@(IsCollapsed ? $"Administrar {_nombreEspacios}" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-gear me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Administrar @_nombreEspacios</span>}
+                    </NavLink>
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    <NavLink class="nav-link" href="/reservas" title="@(IsCollapsed ? "Reservas" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-calendar-check me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Reservas</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/agenda" title="@(IsCollapsed ? "Agenda" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-calendar3 text-info me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Agenda</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/pedidos/explorar" title="@(IsCollapsed ? $"Explorar {(_tipoNegocioMesas == "Taller" ? "Órdenes" : "Pedidos")}" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-search me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Explorar @(_tipoNegocioMesas == "Taller" ? "Órdenes" : "Pedidos")</span>}
+                    </NavLink>
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    @if (_tipoNegocioMesas == "Taller")
+                    {
+                        <NavLink class="nav-link" href="/taller" title="@(IsCollapsed ? "Pantalla Taller" : "")" @onclick="OnAnyNavigate">
+                            <i class="bi bi-tools text-warning me-2"></i>
+                            @if (!IsCollapsed){<span class="link-text">Pantalla Taller</span>}
+                        </NavLink>
+                        <NavLink class="nav-link" href="/ordenes-trabajo/explorar" title="@(IsCollapsed ? "Órdenes de Trabajo" : "")" @onclick="OnAnyNavigate">
+                            <i class="bi bi-clipboard-check me-2"></i>
+                            @if (!IsCollapsed){<span class="link-text">Órdenes de Trabajo</span>}
+                        </NavLink>
+                        <NavLink class="nav-link" href="/vehiculos/explorar" title="@(IsCollapsed ? "Vehículos" : "")" @onclick="OnAnyNavigate">
+                            <i class="bi bi-car-front me-2"></i>
+                            @if (!IsCollapsed){<span class="link-text">Vehículos</span>}
+                        </NavLink>
+                    }
+                    else
+                    {
+                        <NavLink class="nav-link" href="/cocina" title="@(IsCollapsed ? "Pantalla Cocina" : "")" @onclick="OnAnyNavigate">
+                            <i class="bi bi-fire text-danger me-2"></i>
+                            @if (!IsCollapsed){<span class="link-text">Pantalla Cocina</span>}
+                        </NavLink>
+                    }
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    <NavLink class="nav-link" href="/caja/cierre" title="@(IsCollapsed ? "Cerrar Turno" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-lock text-danger me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Cerrar Turno</span>}
+                    </NavLink>
+                </div>
+            </div>
+        </div>
+        }
+
+        <!-- Submenú de Gimnasio - Solo visible si modo gimnasio está activo -->
+        @if (_modoGimnasioActivo)
+        {
+        <div class="nav-item mb-1">
+            <button class="nav-link submenu-button w-100 d-flex align-items-center justify-content-between @(isGimnasioSubMenuOpen ? "active" : "")"
+                    @onclick="ToggleGimnasioSubMenu"
+                    type="button"
+                    title="@(IsCollapsed ? "Gimnasio" : "")">
+                <span class="d-flex align-items-center">
+                    <i class="bi bi-heart-pulse me-2"></i>
+                    @if (!IsCollapsed)
+                    {
+                        <span class="link-text text-nowrap">Gimnasio</span>
+                    }
+                </span>
+                @if (!IsCollapsed)
+                {
+                    <i class="bi @(isGimnasioSubMenuOpen ? "bi-chevron-down" : "bi-chevron-right") ms-2"></i>
+                }
+            </button>
+
+            <div class="submenu-container @(isGimnasioSubMenuOpen ? "show" : "collapse")">
+                <div class="submenu-items">
+                    <NavLink class="nav-link" href="/gimnasio/acceso" title="@(IsCollapsed ? "Control de Acceso" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-door-open text-success me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Control de Acceso</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/gimnasio/miembros" title="@(IsCollapsed ? "Miembros" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-people-fill me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Miembros</span>}
+                    </NavLink>
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    <NavLink class="nav-link" href="/gimnasio/clases" title="@(IsCollapsed ? "Clases Grupales" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-calendar2-event me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Clases Grupales</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/gimnasio/horarios" title="@(IsCollapsed ? "Horarios de Clases" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-clock-history me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Horarios de Clases</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/gimnasio/reservas" title="@(IsCollapsed ? "Reservas y Asistencia" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-bookmark-check me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Reservas y Asistencia</span>}
+                    </NavLink>
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    <NavLink class="nav-link" href="/gimnasio/rutinas" title="@(IsCollapsed ? "Rutinas y Entrenamiento" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-clipboard-check me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Rutinas</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/gimnasio/mi-portal" title="@(IsCollapsed ? "Portal del Cliente" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-person-badge text-info me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Portal del Cliente</span>}
+                    </NavLink>
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    <NavLink class="nav-link" href="/informes/gimnasio" title="@(IsCollapsed ? "Informes Gimnasio" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-bar-chart-line me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Informes Gimnasio</span>}
+                    </NavLink>
+                </div>
+            </div>
+        </div>
+        }
+
+        <!-- Submenú de Agenda - Solo visible si modo agenda está activo -->
+        @if (_modoAgendaActivo)
+        {
+        <div class="nav-item mb-1">
+            <button class="nav-link submenu-button w-100 d-flex align-items-center justify-content-between @(isAgendaSubMenuOpen ? "active" : "")"
+                    @onclick="ToggleAgendaSubMenu"
+                    type="button"
+                    title="@(IsCollapsed ? "Agenda" : "")">
+                <span class="d-flex align-items-center">
+                    <i class="bi bi-calendar3 me-2"></i>
+                    @if (!IsCollapsed)
+                    {
+                        <span class="link-text text-nowrap">Agenda</span>
+                    }
+                </span>
+                @if (!IsCollapsed)
+                {
+                    <i class="bi @(isAgendaSubMenuOpen ? "bi-chevron-down" : "bi-chevron-right") ms-2"></i>
+                }
+            </button>
+
+            <div class="submenu-container @(isAgendaSubMenuOpen ? "show" : "collapse")">
+                <div class="submenu-items">
+                    <NavLink class="nav-link" href="/agenda" title="@(IsCollapsed ? "Calendario" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-calendar-week text-primary me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Calendario</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/agenda?vista=dia" title="@(IsCollapsed ? "Vista Día" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-calendar-day me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Vista Día</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/agenda?vista=lista" title="@(IsCollapsed ? "Lista de Citas" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-list-ul me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Lista de Citas</span>}
+                    </NavLink>
+                </div>
+            </div>
+        </div>
+        }
+
         <!-- Submenú de Compras -->
         <div class="nav-item mb-1">
             <button class="nav-link submenu-button w-100 d-flex align-items-center justify-content-between @(isComprasSubMenuOpen ? "active" : "")"
@@ -219,6 +375,15 @@
                     <NavLink class="nav-link" href="/cobros" title="@(IsCollapsed ? "Cuentas por Cobrar" : "")" @onclick="OnAnyNavigate">
                         <i class="bi bi-cash-coin me-2"></i>
                         @if (!IsCollapsed){<span class="link-text">Cuentas por Cobrar</span>}
+                    </NavLink>
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    <NavLink class="nav-link" href="/suscripciones" title="@(IsCollapsed ? "Suscripciones" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-calendar-check me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Suscripciones</span>}
+                    </NavLink>
+                    <NavLink class="nav-link" href="/monitor-facturas-automaticas" title="@(IsCollapsed ? "Monitor Facturación" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-speedometer2 me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Monitor Facturación</span>}
                     </NavLink>
                 </div>
             </div>
@@ -358,6 +523,18 @@
                     
                     <hr class="my-1 mx-2 border-secondary opacity-25" />
                     
+                    <!-- Libro IVA / Obligaciones Fiscales -->
+                    <div class="submenu-section-header">
+                        <i class="bi bi-journal-bookmark-fill me-1 text-danger"></i>
+                        <span class="small fw-bold text-danger">LIBRO IVA / FISCAL</span>
+                    </div>
+                    <NavLink class="nav-link" href="/informes/libro-iva" title="@(IsCollapsed ? "Libro IVA" : "")" @onclick="OnAnyNavigate">
+                        <i class="bi bi-journal-richtext me-2"></i>
+                        @if (!IsCollapsed){<span class="link-text">Libro IVA Ventas y Compras</span>}
+                    </NavLink>
+                    
+                    <hr class="my-1 mx-2 border-secondary opacity-25" />
+                    
                     <!-- Informes de Productos -->
                     <div class="submenu-section-header">
                         <i class="bi bi-box-seam me-1" style="color: #fd7e14;"></i>
@@ -439,6 +616,21 @@
                         <i class="bi bi-file-earmark-pdf me-2"></i>
                         @if (!IsCollapsed){<span class="link-text">Informe de Asistencia</span>}
                     </NavLink>
+                    
+                    @if (_modoRestauranteActivo)
+                    {
+                        <hr class="my-1 mx-2 border-secondary opacity-25" />
+                        
+                        <!-- Informes de Operaciones (Restaurante/Complejo/Taller) -->
+                        <div class="submenu-section-header">
+                            <i class="bi @_iconoMenuMesas me-1" style="color: #ff6b6b;"></i>
+                            <span class="small fw-bold" style="color: #ff6b6b;">@_nombreMenuMesas.ToUpper()</span>
+                        </div>
+                        <NavLink class="nav-link" href="/informes/cierre-operaciones" title="@(IsCollapsed ? $"Informe de Cierre de {_nombreMenuMesas}" : "")" @onclick="OnAnyNavigate">
+                            <i class="bi bi-clipboard-data me-2"></i>
+                            @if (!IsCollapsed){<span class="link-text">Cierre de @_nombreMenuMesas</span>}
+                        </NavLink>
+                    }
                 </div>
             </div>
         </div>
@@ -639,6 +831,11 @@
                         <span class="link-text">CloudSync (Backups)</span>
                         <span class="badge bg-success ms-1" style="font-size: 0.55rem;">Nuevo</span>
                     </NavLink>
+                    <NavLink class="nav-link submenu-item" href="/configuracion/vpn" title="VPN y Soporte Remoto (Solo SA)" @onclick="OnAnyNavigate">
+                        <i class="bi bi-shield-lock me-2"></i>
+                        <span class="link-text">VPN / Soporte Remoto</span>
+                        <span class="badge bg-warning text-dark ms-1" style="font-size: 0.55rem;">SA</span>
+                    </NavLink>
                     <NavLink class="nav-link submenu-item" href="/configuracion/tema" title="Configuración de Tema" @onclick="OnAnyNavigate">
                         <i class="bi bi-palette me-2"></i>
                         <span class="link-text">Tema</span>
@@ -766,13 +963,38 @@
     private bool isProductosSubMenuOpen = false;
     private bool isComprasSubMenuOpen = false;
     private bool isClientesSubMenuOpen = false;
+    private bool isMesasSubMenuOpen = false;
     private string? logoImageDataUrl;
     private string? navMenuError;
+    
+    // Modo restaurante activo
+    private bool _modoRestauranteActivo = false;
+    
+    // Modo gimnasio activo
+    private bool _modoGimnasioActivo = false;
+    private bool isGimnasioSubMenuOpen = false;
+    
+    // Modo agenda activo
+    private bool _modoAgendaActivo = false;
+    private bool isAgendaSubMenuOpen = false;
+    
+    // ========== TIPO DE NEGOCIO (Restaurante/Complejo/Taller) ==========
+    private string _tipoNegocioMesas = "Restaurante";
+    private string _nombreMenuMesas = "Restaurante";
+    private string _iconoMenuMesas = "bi-grid-3x3-gap";
+    private string _nombreEspacios = "Mesas";
+    #pragma warning disable CS0414 // Campo singular reservado para UI futura
+    private string _nombreEspacio = "Mesa";
+    #pragma warning restore CS0414
     
     // Estado del backup para el indicador
     private bool _backupActualizado = false;
     private DateTime? _ultimoBackup;
     private string _backupTooltip = "Estado del backup";
+    
+    // Timer para actualizar estado de backup
+    private System.Threading.Timer? _backupStatusTimer;
+    private bool _disposed = false;
 
     protected override void OnParametersSet()
     {
@@ -797,13 +1019,46 @@
                 logoImageDataUrl = $"data:image/png;base64,{base64}";
             }
 
+            // Cargar configuración del sistema para modo restaurante
+            var config = await dbContext.ConfiguracionSistema.FirstOrDefaultAsync();
+            _modoRestauranteActivo = config?.RestauranteModoActivo == true;
+            _modoGimnasioActivo = config?.GimnasioModoActivo == true;
+            _modoAgendaActivo = config?.AgendaModoActivo == true;
+            
+            // Cargar tipo de negocio para adaptar menú (Restaurante/Complejo/Taller)
+            _tipoNegocioMesas = config?.TipoNegocioMesas ?? "Restaurante";
+            ConfigurarNombresPorTipoNegocio();
+
             // Cargar estado del backup desde cache
             ActualizarEstadoBackup();
+            
+            // Iniciar timer para verificar estado de backup cada 30 segundos
+            _backupStatusTimer = new System.Threading.Timer(
+                async _ => await VerificarEstadoBackupAsync(),
+                null,
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(30));
         }
         catch (Exception ex)
         {
             navMenuError = $"Error en NavMenu: {ex.Message}";
             Console.WriteLine($"[ERROR NavMenu] {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+    
+    private async Task VerificarEstadoBackupAsync()
+    {
+        if (_disposed) return;
+        
+        var estadoAnterior = _backupActualizado;
+        var ultimoAnterior = _ultimoBackup;
+        
+        ActualizarEstadoBackup();
+        
+        // Solo refrescar UI si hubo cambios
+        if (estadoAnterior != _backupActualizado || ultimoAnterior != _ultimoBackup)
+        {
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -825,6 +1080,36 @@
         else
         {
             _backupTooltip = "No hay backup sincronizado";
+        }
+    }
+    
+    /// <summary>
+    /// Configura los nombres del módulo según el tipo de negocio seleccionado
+    /// </summary>
+    private void ConfigurarNombresPorTipoNegocio()
+    {
+        switch (_tipoNegocioMesas)
+        {
+            case "Taller":
+                _nombreMenuMesas = "Taller";
+                _iconoMenuMesas = "bi-car-front";
+                _nombreEspacios = "Bahías";
+                #pragma warning disable CS0414
+                _nombreEspacio = "Bahía";
+                #pragma warning restore CS0414
+                break;
+            case "Complejo":
+                _nombreMenuMesas = "Complejo";
+                _iconoMenuMesas = "bi-dribbble";
+                _nombreEspacios = "Canchas";
+                _nombreEspacio = "Cancha";
+                break;
+            default: // Restaurante
+                _nombreMenuMesas = "Restaurante";
+                _iconoMenuMesas = "bi-grid-3x3-gap";
+                _nombreEspacios = "Mesas";
+                _nombreEspacio = "Mesa";
+                break;
         }
     }
 
@@ -891,6 +1176,27 @@
         StateHasChanged();
     }
 
+    private void ToggleMesasSubMenu()
+    {
+        CloseAllSubMenusExcept("mesas");
+        isMesasSubMenuOpen = !isMesasSubMenuOpen;
+        StateHasChanged();
+    }
+
+    private void ToggleGimnasioSubMenu()
+    {
+        CloseAllSubMenusExcept("gimnasio");
+        isGimnasioSubMenuOpen = !isGimnasioSubMenuOpen;
+        StateHasChanged();
+    }
+
+    private void ToggleAgendaSubMenu()
+    {
+        CloseAllSubMenusExcept("agenda");
+        isAgendaSubMenuOpen = !isAgendaSubMenuOpen;
+        StateHasChanged();
+    }
+
     private void CloseAllSubMenusExcept(string except)
     {
         if (except != "sub") isSubMenuOpen = false;
@@ -902,11 +1208,15 @@
         if (except != "productos") isProductosSubMenuOpen = false;
         if (except != "compras") isComprasSubMenuOpen = false;
         if (except != "clientes") isClientesSubMenuOpen = false;
+        if (except != "mesas") isMesasSubMenuOpen = false;
+        if (except != "gimnasio") isGimnasioSubMenuOpen = false;
+        if (except != "agenda") isAgendaSubMenuOpen = false;
     }
 
     private bool AnySubMenuOpen => isSubMenuOpen || isInformesSubMenuOpen || isProveedoresSubMenuOpen || 
                                    isVentasSubMenuOpen || isConfiguracionSubMenuOpen || isInventarioSubMenuOpen ||
-                                   isProductosSubMenuOpen || isComprasSubMenuOpen || isClientesSubMenuOpen;
+                                   isProductosSubMenuOpen || isComprasSubMenuOpen || isClientesSubMenuOpen || 
+                                   isMesasSubMenuOpen || isGimnasioSubMenuOpen || isAgendaSubMenuOpen;
 
     // Método para forzar actualización del componente
     private void ForceUpdate()
@@ -926,6 +1236,9 @@
         isProductosSubMenuOpen = false;
         isComprasSubMenuOpen = false;
         isClientesSubMenuOpen = false;
+        isMesasSubMenuOpen = false;
+        isGimnasioSubMenuOpen = false;
+        isAgendaSubMenuOpen = false;
         
         StateHasChanged();
         
@@ -941,6 +1254,12 @@
     {
         new("/", "Inicio", "bi bi-house-door", NavLinkMatch.All),
     };
+    
+    public void Dispose()
+    {
+        _disposed = true;
+        _backupStatusTimer?.Dispose();
+    }
 }
 
 @* Estilos específicos del NavMenu *@

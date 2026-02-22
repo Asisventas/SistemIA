@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Mesa redonda de madera con mantel -->
+  <defs>
+    <linearGradient id="woodGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B4513"/>
+      <stop offset="50%" style="stop-color:#A0522D"/>
+      <stop offset="100%" style="stop-color:#8B4513"/>
+    </linearGradient>
+    <radialGradient id="tableTop" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#DEB887"/>
+      <stop offset="100%" style="stop-color:#D2691E"/>
+    </radialGradient>
+  </defs>
+  <!-- Sombra -->
+  <ellipse cx="105" cy="105" rx="85" ry="85" fill="rgba(0,0,0,0.2)"/>
+  <!-- Superficie de la mesa -->
+  <circle cx="100" cy="100" r="85" fill="url(#tableTop)" stroke="#654321" stroke-width="4"/>
+  <!-- Borde decorativo -->
+  <circle cx="100" cy="100" r="75" fill="none" stroke="#8B4513" stroke-width="2"/>
+  <!-- Centro decorativo -->
+  <circle cx="100" cy="100" r="20" fill="#FAEBD7" opacity="0.5"/>
+  <!-- Detalles de madera -->
+  <circle cx="100" cy="100" r="50" fill="none" stroke="#A0522D" stroke-width="1" opacity="0.5"/>
+</svg>

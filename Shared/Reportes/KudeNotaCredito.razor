@@ -24,6 +24,27 @@
     private bool _ocultarImagenes = false;
     private bool esFacturaElectronica => (caja?.TipoFacturacion ?? "ELECTRONICA") == "ELECTRONICA";
     
+    // ========== DATOS DEL EMISOR (según modo) ==========
+    // Autoimpresor: usar Sucursal | Factura Electrónica: usar Sociedad
+    private string NombreEmisor => esFacturaElectronica 
+        ? (empresa?.Nombre ?? nc?.Sucursal?.NombreEmpresa ?? "") 
+        : (nc?.Sucursal?.NombreEmpresa ?? "");
+    private string DireccionEmisor => esFacturaElectronica 
+        ? (empresa?.Direccion ?? nc?.Sucursal?.Direccion ?? "") 
+        : (nc?.Sucursal?.Direccion ?? "");
+    private string TelefonoEmisor => esFacturaElectronica 
+        ? (empresa?.Telefono ?? nc?.Sucursal?.Telefono ?? "") 
+        : (nc?.Sucursal?.Telefono ?? "");
+    private string CorreoEmisor => esFacturaElectronica 
+        ? (empresa?.Email ?? nc?.Sucursal?.Correo ?? "") 
+        : (nc?.Sucursal?.Correo ?? "");
+    private string RucEmisor => esFacturaElectronica 
+        ? (empresa?.RUC ?? nc?.Sucursal?.RUC ?? "") 
+        : (nc?.Sucursal?.RUC ?? "");
+    private int? DvEmisor => esFacturaElectronica 
+        ? (empresa?.DV ?? nc?.Sucursal?.DV) 
+        : nc?.Sucursal?.DV;
+    
     protected override async Task OnParametersSetAsync()
     {
         if (_lastLoadedId == IdNotaCredito && nc != null)
@@ -214,17 +235,17 @@ else
                         <img class="logo" src="@LogoDataUrl()" alt="Logo" />
                     }
                     <div class="empresa">
-                        <div class="nombre">@(nc.Sucursal?.NombreEmpresa ?? empresa?.Nombre)</div>
-                        <div class="dir">@(nc.Sucursal?.Direccion ?? empresa?.Direccion)</div>
-                        @if (!string.IsNullOrWhiteSpace(nc.Sucursal?.Telefono ?? empresa?.Telefono))
+                        <div class="nombre">@NombreEmisor</div>
+                        <div class="dir">@DireccionEmisor</div>
+                        @if (!string.IsNullOrWhiteSpace(TelefonoEmisor))
                         {
-                            <div class="tel">Teléfono: @(nc.Sucursal?.Telefono ?? empresa?.Telefono)</div>
+                            <div class="tel">Teléfono: @TelefonoEmisor</div>
                         }
-                        @if (!string.IsNullOrWhiteSpace(nc.Sucursal?.Correo ?? empresa?.Email))
+                        @if (!string.IsNullOrWhiteSpace(CorreoEmisor))
                         {
-                            <div class="mail">@(nc.Sucursal?.Correo ?? empresa?.Email)</div>
+                            <div class="mail">@CorreoEmisor</div>
                         }
-                        @if (!string.IsNullOrWhiteSpace(nc.Sucursal?.RubroEmpresa))
+                        @if (!string.IsNullOrWhiteSpace(nc?.Sucursal?.RubroEmpresa))
                         {
                             <div class="rubro">Actividad Económica: @nc.Sucursal?.RubroEmpresa</div>
                         }
@@ -232,7 +253,7 @@ else
                 </div>
             </div>
             <div class="emisor-right">
-                <div>R.U.C.: @(nc.Sucursal?.RUC ?? empresa?.RUC)-@(nc.Sucursal?.DV ?? empresa?.DV ?? 0)</div>
+                <div>R.U.C.: @RucEmisor-@(DvEmisor ?? 0)</div>
                 <div>Timbrado N°: @nc.Timbrado</div>
                 @if (caja != null)
                 {

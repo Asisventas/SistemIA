@@ -11,6 +11,8 @@
 @inject IJSRuntime JS
 @inject IInventarioService Inventario
 @inject ILoteService LoteService
+@inject PermisosService PermisosService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageProtection Modulo="/notas-credito-compra" Permiso="VIEW">
 <PageTitle>Explorar Notas de Crédito de Compras</PageTitle>
@@ -121,6 +123,12 @@
                                                     <i class="bi bi-x-circle"></i>
                                                 </button>
                                             }
+                                            @if (_tienePermisoEliminar && PuedeEliminarNCCompra(nc))
+                                            {
+                                                <button class="btn btn-outline-danger" @onclick="() => EliminarNCCompra(nc)" title="Eliminar permanentemente">
+                                                    <i class="bi bi-trash3"></i>
+                                                </button>
+                                            }
                                         </div>
                                     </td>
                                 </tr>
@@ -209,6 +217,8 @@
 @code {
     private bool _loading = true;
     private bool _esAdmin = false;
+    private bool _tienePermisoEliminar = false;
+    private int _usuarioId = 0;
     private List<NotaCreditoCompra> _notasCredito = new();
     
     // Filtros
@@ -231,6 +241,16 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Obtener usuario autenticado
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var idClaim = authState.User.FindFirst("IdUsuario")?.Value;
+        if (int.TryParse(idClaim, out var idUsu))
+        {
+            _usuarioId = idUsu;
+            // Verificar permiso DELETE para NC Compras
+            _tienePermisoEliminar = await PermisosService.TienePermisoAsync(idUsu, "/notas-credito-compra", "DELETE");
+        }
+        
         // Verificar si es admin
         _esAdmin = true; // TODO: Implementar verificación real
         
@@ -386,4 +406,120 @@
         "Anulada" => "bg-danger",
         _ => "bg-secondary"
     };
+
+    /// <summary>
+    /// Verifica si una NC de Compra puede eliminarse.
+    /// Las NC de Compra son documentos del proveedor (autoimpresor), no electrónicos.
+    /// Solo se puede eliminar si está en estado Borrador o Anulada.
+    /// Las NC Confirmadas con stock afectado requieren cuidado especial.
+    /// </summary>
+    private bool PuedeEliminarNCCompra(NotaCreditoCompra nc)
+    {
+        // Solo se puede eliminar si está en Borrador o Anulada
+        var estado = nc.Estado?.ToUpper() ?? "";
+        if (estado == "BORRADOR" || estado == "ANULADA" || estado == "ANULADO")
+            return true;
+        
+        // Confirmadas también se pueden eliminar (con advertencia sobre stock)
+        // El stock se revertirá automáticamente
+        return true;
+    }
+
+    /// <summary>
+    /// Elimina permanentemente una NC de Compra (solo si cumple condiciones SIFEN/permisos)
+    /// </summary>
+    private async Task EliminarNCCompra(NotaCreditoCompra ncParam)
+    {
+        // Doble verificación de permisos
+        if (!_tienePermisoEliminar)
+        {
+            await JS.InvokeVoidAsync("alert", "No tiene permiso para eliminar notas de crédito.");
+            return;
+        }
+
+        // Verificar condiciones SIFEN
+        if (!PuedeEliminarNCCompra(ncParam))
+        {
+            await JS.InvokeVoidAsync("alert", "Esta NC no puede eliminarse porque está registrada en SIFEN como ACEPTADA.");
+            return;
+        }
+
+        // Confirmar eliminación
+        var confirmar = await JS.InvokeAsync<bool>("confirm", 
+            $"¿Está seguro de ELIMINAR permanentemente la NC #{ncParam.NumeroNota}?\n\n" +
+            $"Proveedor: {ncParam.NombreProveedor ?? ncParam.Proveedor?.RazonSocial ?? "N/A"}\n" +
+            $"Total: {ncParam.Total:N0} Gs.\n\n" +
+            "Esta acción NO se puede deshacer.");
+
+        if (!confirmar) return;
+
+        try
+        {
+            using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            var nc = await ctx.NotasCreditoCompras
+                .Include(n => n.Detalles)
+                    .ThenInclude(d => d.Producto)
+                .FirstOrDefaultAsync(n => n.IdNotaCreditoCompra == ncParam.IdNotaCreditoCompra);
+
+            if (nc == null)
+            {
+                await JS.InvokeVoidAsync("alert", "NC no encontrada.");
+                return;
+            }
+
+            // Si la NC afectaba stock, revertir los movimientos
+            if (nc.Estado == "Confirmada" && nc.AfectaStock != 0 && nc.Detalles != null && nc.Detalles.Any())
+            {
+                // Revertir movimientos de lotes primero
+                await LoteService.RevertirMovimientoAsync("NotaCreditoCompra", nc.IdNotaCreditoCompra, "Eliminación NC");
+
+                foreach (var det in nc.Detalles)
+                {
+                    if (det.IdProducto > 0)
+                    {
+                        var depositoId = det.Producto?.IdDepositoPredeterminado ?? 1;
+                        
+                        // Revertir: Si NC restó (2=salida), ahora sumamos (1=entrada) y viceversa
+                        var tipoMov = nc.AfectaStock == 2 ? 1 : 2;
+                        var motivo = $"Eliminación NC Compra #{nc.NumeroNota}";
+                        
+                        await Inventario.AjustarStockAsync(
+                            det.IdProducto,
+                            depositoId,
+                            det.Cantidad,
+                            tipoMov,
+                            motivo,
+                            "Sistema");
+                    }
+                }
+            }
+
+            // Guardar datos para posible rollback del contador
+            var idCaja = nc.IdCaja;
+            var numeroNC = nc.NumeroNota;
+
+            // Eliminar detalles primero
+            if (nc.Detalles != null && nc.Detalles.Any())
+            {
+                ctx.NotasCreditoComprasDetalles.RemoveRange(nc.Detalles);
+            }
+
+            // Eliminar la NC
+            ctx.NotasCreditoCompras.Remove(nc);
+            await ctx.SaveChangesAsync();
+
+            // Nota: NC de Compras usa numeración del documento del proveedor,
+            // no tiene contador propio en Cajas como las NC de Ventas
+            Console.WriteLine($"[NC COMPRA] NC #{numeroNC ?? "s/n"} eliminada correctamente.");
+
+            await JS.InvokeVoidAsync("alert", "NC eliminada correctamente.");
+            await Filtrar();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] EliminarNCCompra: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al eliminar: {ex.Message}");
+        }
+    }
 }

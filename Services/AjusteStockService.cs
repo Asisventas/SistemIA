@@ -9,7 +9,7 @@ namespace SistemIA.Services
             IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null);
     }
 
-    public record LineaAjusteInput(int IdProducto, int IdDeposito, decimal StockSistema, decimal StockAjuste, decimal PrecioCostoGs);
+    public record LineaAjusteInput(int IdProducto, int IdDeposito, decimal StockSistema, decimal StockAjuste, decimal PrecioCostoGs, int? IdLote = null);
 
     public class AjusteStockService : IAjusteStockService
     {
@@ -24,69 +24,92 @@ namespace SistemIA.Services
             _logger = logger;
         }
 
-        public async Task<int> CrearAjusteAsync(int idSucursal, int? idCaja, int? turno, string usuario, string? comentario,
-            IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null)
+       public async Task<int> CrearAjusteAsync(int idSucursal, int? idCaja, int? turno, string usuario, string? comentario,
+    IEnumerable<LineaAjusteInput> lineas, DateTime? fechaAjuste = null)
+{
+    await using var ctx = await _dbFactory.CreateDbContextAsync();
+    using var trx = await ctx.Database.BeginTransactionAsync();
+
+    try
+    {
+        // 1. Normalización de datos
+        var usr = string.IsNullOrWhiteSpace(usuario) ? "Sistema" : (usuario.Length > 50 ? usuario.Substring(0, 50) : usuario);
+        var comm = string.IsNullOrWhiteSpace(comentario) ? null : (comentario!.Length > 280 ? comentario.Substring(0, 280) : comentario);
+        var fecha = fechaAjuste ?? DateTime.Now;
+
+        // 2. Crear Cabecera
+        var cab = new AjusteStock
         {
-            await using var ctx = await _dbFactory.CreateDbContextAsync();
-            using var trx = await ctx.Database.BeginTransactionAsync();
+            IdSucursal = idSucursal,
+            IdCaja = idCaja,
+            Turno = turno,
+            FechaAjuste = fecha,
+            Usuario = usr,
+            Comentario = comm,
+            UsuarioCreacion = usr
+        };
+        
+        ctx.AjustesStock.Add(cab);
+        await ctx.SaveChangesAsync();
 
-            // Normalizar y truncar según restricciones de la BD
-            var usr = string.IsNullOrWhiteSpace(usuario) ? "Sistema" : (usuario.Length > 50 ? usuario.Substring(0, 50) : usuario);
-            var comm = string.IsNullOrWhiteSpace(comentario) ? null : (comentario!.Length > 280 ? comentario.Substring(0, 280) : comentario);
-            var fecha = fechaAjuste ?? DateTime.Now;
+        decimal totalMonto = 0;
 
-            var cab = new AjusteStock
+        // 3. Procesar Líneas
+        foreach (var l in lineas)
+        {
+            var dif = l.StockAjuste - l.StockSistema; // positivo = entrada, negativo = salida
+            var monto = Math.Abs(dif) * (l.PrecioCostoGs <= 0 ? 0 : l.PrecioCostoGs);
+            totalMonto += monto;
+
+            var det = new AjusteStockDetalle
             {
+                IdAjusteStock = cab.IdAjusteStock,
+                IdProducto = l.IdProducto,
+                IdDeposito = l.IdDeposito,
+                IdProductoLote = l.IdLote,
+                StockAjuste = l.StockAjuste,
+                StockSistema = l.StockSistema,
+                Diferencia = dif,
+                Monto = monto,
+                FechaAjuste = cab.FechaAjuste,
                 IdSucursal = idSucursal,
                 IdCaja = idCaja,
                 Turno = turno,
-                FechaAjuste = fecha,
                 Usuario = usr,
-                Comentario = comm,
                 UsuarioCreacion = usr
             };
-            ctx.AjustesStock.Add(cab);
-            await ctx.SaveChangesAsync();
 
-            decimal totalMonto = 0;
-            foreach (var l in lineas)
+            ctx.AjustesStockDetalles.Add(det);
+            
+            // 4. Afectar Inventario si hay diferencia
+            if (dif != 0)
             {
-                var dif = l.StockAjuste - l.StockSistema; // positivo = entrada, negativo = salida
-                var monto = Math.Abs(dif) * (l.PrecioCostoGs <= 0 ? 0 : l.PrecioCostoGs);
-                totalMonto += monto;
+                var tipo = dif > 0 ? 1 : 2; // 1 entrada, 2 salida
+                var cantidad = Math.Abs(dif);
 
-                var det = new AjusteStockDetalle
-                {
-                    IdAjusteStock = cab.IdAjusteStock,
-                    IdProducto = l.IdProducto,
-                    IdDeposito = l.IdDeposito,
-                    StockAjuste = l.StockAjuste,
-                    StockSistema = l.StockSistema,
-                    Diferencia = dif,
-                    Monto = monto,
-                    FechaAjuste = cab.FechaAjuste,
-                    IdSucursal = idSucursal,
-                    IdCaja = idCaja,
-                    Turno = turno,
-                    Usuario = usr,
-                    UsuarioCreacion = usr
-                };
-                ctx.AjustesStockDetalles.Add(det);
-                await ctx.SaveChangesAsync();
-
-                if (dif != 0)
-                {
-                    var tipo = dif > 0 ? 1 : 2; // 1 entrada, 2 salida
-                    var cantidad = Math.Abs(dif);
-                    await _inventario.AjustarStockAsync(l.IdProducto, l.IdDeposito, cantidad, tipo, $"Ajuste de stock #{cab.IdAjusteStock}", usr);
-                }
+                await _inventario.AjustarStockAsync(
+                    l.IdProducto,
+                    l.IdDeposito,
+                    cantidad,
+                    tipo,
+                    $"Ajuste de stock #{cab.IdAjusteStock}",
+                    usr,
+                    l.IdLote
+                );
             }
-
-            cab.TotalMonto = totalMonto;
-            ctx.AjustesStock.Update(cab);
-            await ctx.SaveChangesAsync();
-            await trx.CommitAsync();
-            return cab.IdAjusteStock;
         }
+
+        await ctx.SaveChangesAsync();
+        await trx.CommitAsync();
+
+        return cab.IdAjusteStock;
+    }
+    catch (Exception ex)
+    {
+        await trx.RollbackAsync();
+        _logger.LogError(ex, "Error al crear ajuste de stock para la sucursal {IdSucursal}", idSucursal);
+        throw;
+    }
+}
     }
 }

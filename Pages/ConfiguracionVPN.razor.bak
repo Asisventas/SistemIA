@@ -1,0 +1,651 @@
+@page "/configuracion/vpn"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Web
+@using SistemIA.Models
+@using Microsoft.Data.SqlClient
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IConfiguration Configuration
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageProtection Modulo="/configuracion" Permiso="VIEW">
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="mb-0">
+        <i class="bi bi-shield-lock text-warning me-2"></i>
+        Configuración VPN - Soporte Remoto
+    </h3>
+    @if (_autenticado && _config != null)
+    {
+        <div class="d-flex gap-2">
+            <span class="badge @(_estadoConexion == "Conectado" ? "bg-success" : _estadoConexion == "Conectando" ? "bg-warning text-dark" : "bg-secondary")">
+                <i class="bi @(_estadoConexion == "Conectado" ? "bi-wifi" : _estadoConexion == "Conectando" ? "bi-hourglass-split" : "bi-wifi-off") me-1"></i>
+                @_estadoConexion
+            </span>
+        </div>
+    }
+</div>
+
+@if (!_autenticado)
+{
+    <!-- ========== PANTALLA DE AUTENTICACIÓN SA ========== -->
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Acceso Protegido</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning py-2 mb-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <small>Esta configuración requiere la contraseña del usuario <strong>SA</strong> de SQL Server.</small>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(_mensajeError))
+                    {
+                        <div class="alert alert-danger py-2">@_mensajeError</div>
+                    }
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña SA:</label>
+                        <input type="password" class="form-control" @bind="_contrasenaSA" 
+                               placeholder="Ingrese la contraseña" 
+                               @onkeydown="OnKeyDown" />
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary" @onclick="ValidarSA" disabled="@(string.IsNullOrEmpty(_contrasenaSA) || _validando)">
+                            @if (_validando)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                <span>Validando...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-unlock me-1"></i>
+                                <span>Acceder</span>
+                            }
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="Volver">
+                            <i class="bi bi-arrow-left me-1"></i>Volver
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (_cargando)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2">Cargando configuración...</p>
+    </div>
+}
+else if (_config != null)
+{
+    <!-- ========== FORMULARIO DE CONFIGURACIÓN VPN ========== -->
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="bi bi-router me-2"></i>Servidor VPN (Mikrotik)</h6>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(_mensajeExito))
+                    {
+                        <div class="alert alert-success py-2">@_mensajeExito</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_mensajeError))
+                    {
+                        <div class="alert alert-danger py-2">@_mensajeError</div>
+                    }
+                    
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Servidor VPN (IP o Dominio) *</label>
+                            <input type="text" class="form-control" @bind="_config.ServidorVPN" placeholder="vpn.miempresa.com o 200.123.45.67" />
+                            <small class="text-muted">IP pública o dominio DDNS del Mikrotik</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Puerto PPTP</label>
+                            <input type="number" class="form-control" @bind="_config.PuertoPPTP" />
+                            <small class="text-muted">Default: 1723</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Usuario VPN *</label>
+                            <input type="text" class="form-control" @bind="_config.UsuarioVPN" placeholder="usuario_vpn" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Contraseña VPN *</label>
+                            <div class="input-group">
+                                <input type="@(_mostrarContrasenaVPN ? "text" : "password")" class="form-control" @bind="_config.ContrasenaVPN" placeholder="••••••••" />
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => _mostrarContrasenaVPN = !_mostrarContrasenaVPN">
+                                    <i class="bi @(_mostrarContrasenaVPN ? "bi-eye-slash" : "bi-eye")"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre Conexión Windows</label>
+                            <input type="text" class="form-control" @bind="_config.NombreConexionWindows" placeholder="SistemIA VPN" />
+                            <small class="text-muted">Nombre que aparece en Windows</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Rango Red VPN</label>
+                            <input type="text" class="form-control" @bind="_config.RangoRedVPN" placeholder="192.168.89" />
+                            <small class="text-muted">Primeros 3 octetos del pool</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">IP Local (Esta PC)</label>
+                            <input type="text" class="form-control" @bind="_config.IpLocalVPN" placeholder="192.168.89.1" />
+                            <small class="text-muted">IP asignada a esta PC en la VPN</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="bi bi-gear me-2"></i>Comportamiento</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="conectarInicio" @bind="_config.ConectarAlIniciar" />
+                                <label class="form-check-label" for="conectarInicio">
+                                    <strong>Conectar automáticamente al iniciar SistemIA</strong>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Intentos de reconexión</label>
+                            <input type="number" class="form-control" @bind="_config.IntentosReconexion" min="0" max="10" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Segundos entre intentos</label>
+                            <input type="number" class="form-control" @bind="_config.SegundosEntreIntentos" min="5" max="300" />
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="activo" @bind="_config.Activo" />
+                                <label class="form-check-label" for="activo">
+                                    <strong>Configuración activa</strong>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@_guardando">
+                    @if (_guardando)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-check-lg me-1"></i>
+                    }
+                    Guardar Configuración
+                </button>
+                <button class="btn btn-outline-secondary" @onclick="Volver">
+                    <i class="bi bi-arrow-left me-1"></i>Volver
+                </button>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <!-- Panel de conexión -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h6 class="mb-0"><i class="bi bi-plug me-2"></i>Conexión VPN</h6>
+                </div>
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="bi @(_estadoConexion == "Conectado" ? "bi-wifi text-success" : _estadoConexion == "Conectando" ? "bi-hourglass-split text-warning" : "bi-wifi-off text-muted")" style="font-size: 3rem;"></i>
+                        <h5 class="mt-2">@_estadoConexion</h5>
+                        @if (_config.UltimaConexionExitosa.HasValue)
+                        {
+                            <small class="text-muted">Última conexión: @_config.UltimaConexionExitosa.Value.ToString("dd/MM/yyyy HH:mm")</small>
+                        }
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        @if (_estadoConexion != "Conectado")
+                        {
+                            <button class="btn btn-success" @onclick="ConectarVPN" disabled="@(_conectando || string.IsNullOrEmpty(_config.ServidorVPN))">
+                                @if (_conectando)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Conectando...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-plug me-1"></i>
+                                    <span>Conectar</span>
+                                }
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-danger" @onclick="DesconectarVPN" disabled="@_conectando">
+                                <i class="bi bi-x-circle me-1"></i>
+                                Desconectar
+                            </button>
+                        }
+                        <button class="btn btn-outline-primary btn-sm" @onclick="CrearConexionWindows" disabled="@(string.IsNullOrEmpty(_config.ServidorVPN))">
+                            <i class="bi bi-windows me-1"></i>Crear conexión en Windows
+                        </button>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(_mensajeConexion))
+                    {
+                        <div class="alert @(_exitoConexion ? "alert-success" : "alert-warning") py-2 mt-3 small">
+                            @_mensajeConexion
+                        </div>
+                    }
+                </div>
+            </div>
+            
+            <!-- Clientes con soporte remoto -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-people me-2"></i>Clientes VPN</h6>
+                    <span class="badge bg-light text-dark">@_clientesVPN.Count</span>
+                </div>
+                <div class="card-body p-0">
+                    @if (_clientesVPN.Count == 0)
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <small>No hay clientes con soporte remoto configurado.</small>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+                            @foreach (var cli in _clientesVPN)
+                            {
+                                <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong class="small">@cli.Nombre</strong><br />
+                                        <small class="text-muted">@cli.IpVpnAsignada:@(cli.PuertoSistema ?? 5095)</small>
+                                    </div>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" @onclick="() => ProbarCliente(cli)" title="Probar conexión">
+                                            <i class="bi bi-wifi"></i>
+                                        </button>
+                                        <button class="btn btn-outline-success" @onclick="() => AbrirSistemaCliente(cli)" title="Abrir sistema">
+                                            <i class="bi bi-box-arrow-up-right"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" @onclick="() => EditarCliente(cli)" title="Editar">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+@code {
+    private bool _autenticado = false;
+    private string _contrasenaSA = "";
+    private bool _validando = false;
+    private bool _cargando = false;
+    private bool _guardando = false;
+    private bool _conectando = false;
+    private bool _mostrarContrasenaVPN = false;
+    
+    private string? _mensajeError;
+    private string? _mensajeExito;
+    private string? _mensajeConexion;
+    private bool _exitoConexion = false;
+    
+    private string _estadoConexion = "Desconectado";
+    private ConfiguracionVPN? _config;
+    private List<Cliente> _clientesVPN = new();
+    
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(_contrasenaSA))
+        {
+            await ValidarSA();
+        }
+    }
+    
+    private async Task ValidarSA()
+    {
+        _validando = true;
+        _mensajeError = null;
+        StateHasChanged();
+        
+        try
+        {
+            var connectionString = Configuration.GetConnectionString("DefaultConnection");
+            var builder = new SqlConnectionStringBuilder(connectionString);
+            var testConnectionString = $"Server={builder.DataSource};Database={builder.InitialCatalog};User Id=sa;Password={_contrasenaSA};TrustServerCertificate=True;Connect Timeout=5;";
+            
+            using var testConnection = new SqlConnection(testConnectionString);
+            await testConnection.OpenAsync();
+            
+            _autenticado = true;
+            await CargarConfiguracion();
+        }
+        catch (SqlException ex)
+        {
+            _mensajeError = ex.Number == 18456 ? "Contraseña incorrecta." : $"Error: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _mensajeError = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _validando = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task CargarConfiguracion()
+    {
+        _cargando = true;
+        StateHasChanged();
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            _config = await ctx.ConfiguracionesVPN.FirstOrDefaultAsync();
+            if (_config == null)
+            {
+                _config = new ConfiguracionVPN();
+                ctx.ConfiguracionesVPN.Add(_config);
+                await ctx.SaveChangesAsync();
+            }
+            
+            _clientesVPN = await ctx.Clientes
+                .Where(c => c.HabilitadoSoporteRemoto && !string.IsNullOrEmpty(c.IpVpnAsignada))
+                .OrderBy(c => c.Nombre)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensajeError = $"Error al cargar: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task Guardar()
+    {
+        if (_config == null) return;
+        
+        _guardando = true;
+        _mensajeError = null;
+        _mensajeExito = null;
+        StateHasChanged();
+        
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var configDb = await ctx.ConfiguracionesVPN.FindAsync(_config.IdConfiguracionVPN);
+            
+            if (configDb != null)
+            {
+                configDb.ServidorVPN = _config.ServidorVPN?.Trim();
+                configDb.PuertoPPTP = _config.PuertoPPTP;
+                configDb.UsuarioVPN = _config.UsuarioVPN?.Trim();
+                configDb.ContrasenaVPN = _config.ContrasenaVPN;
+                configDb.NombreConexionWindows = _config.NombreConexionWindows?.Trim() ?? "SistemIA VPN";
+                configDb.RangoRedVPN = _config.RangoRedVPN?.Trim();
+                configDb.IpLocalVPN = _config.IpLocalVPN?.Trim();
+                configDb.ConectarAlIniciar = _config.ConectarAlIniciar;
+                configDb.IntentosReconexion = _config.IntentosReconexion;
+                configDb.SegundosEntreIntentos = _config.SegundosEntreIntentos;
+                configDb.Activo = _config.Activo;
+                configDb.FechaModificacion = DateTime.Now;
+                
+                await ctx.SaveChangesAsync();
+                _mensajeExito = "Configuración guardada correctamente.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensajeError = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardando = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ConectarVPN()
+    {
+        if (_config == null || string.IsNullOrEmpty(_config.ServidorVPN)) return;
+        
+        _conectando = true;
+        _estadoConexion = "Conectando";
+        _mensajeConexion = null;
+        StateHasChanged();
+        
+        try
+        {
+            // Ejecutar rasdial para conectar
+            var nombreConexion = _config.NombreConexionWindows ?? "SistemIA VPN";
+            var usuario = _config.UsuarioVPN ?? "";
+            var contrasena = _config.ContrasenaVPN ?? "";
+            
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "rasdial",
+                Arguments = $"\"{nombreConexion}\" \"{usuario}\" \"{contrasena}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process != null)
+            {
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                
+                if (process.ExitCode == 0)
+                {
+                    _estadoConexion = "Conectado";
+                    _exitoConexion = true;
+                    _mensajeConexion = "Conectado exitosamente.";
+                    
+                    // Registrar última conexión
+                    await using var ctx = await DbFactory.CreateDbContextAsync();
+                    var cfg = await ctx.ConfiguracionesVPN.FindAsync(_config.IdConfiguracionVPN);
+                    if (cfg != null)
+                    {
+                        cfg.UltimaConexionExitosa = DateTime.Now;
+                        await ctx.SaveChangesAsync();
+                        _config.UltimaConexionExitosa = cfg.UltimaConexionExitosa;
+                    }
+                }
+                else
+                {
+                    _estadoConexion = "Desconectado";
+                    _exitoConexion = false;
+                    _mensajeConexion = $"Error al conectar: {(string.IsNullOrEmpty(error) ? output : error)}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _estadoConexion = "Desconectado";
+            _exitoConexion = false;
+            _mensajeConexion = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _conectando = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task DesconectarVPN()
+    {
+        if (_config == null) return;
+        
+        _conectando = true;
+        StateHasChanged();
+        
+        try
+        {
+            var nombreConexion = _config.NombreConexionWindows ?? "SistemIA VPN";
+            
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "rasdial",
+                Arguments = $"\"{nombreConexion}\" /disconnect",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+            
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process != null)
+            {
+                await process.WaitForExitAsync();
+            }
+            
+            _estadoConexion = "Desconectado";
+            _mensajeConexion = "Desconectado.";
+            _exitoConexion = true;
+        }
+        catch (Exception ex)
+        {
+            _mensajeConexion = $"Error: {ex.Message}";
+            _exitoConexion = false;
+        }
+        finally
+        {
+            _conectando = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task CrearConexionWindows()
+    {
+        if (_config == null || string.IsNullOrEmpty(_config.ServidorVPN)) return;
+        
+        _mensajeConexion = null;
+        StateHasChanged();
+        
+        try
+        {
+            // Crear conexión VPN usando PowerShell
+            var nombreConexion = _config.NombreConexionWindows ?? "SistemIA VPN";
+            var servidor = _config.ServidorVPN;
+            
+            var script = $@"
+                try {{
+                    Remove-VpnConnection -Name '{nombreConexion}' -Force -ErrorAction SilentlyContinue
+                    Add-VpnConnection -Name '{nombreConexion}' -ServerAddress '{servidor}' -TunnelType Pptp -AuthenticationMethod Pap -RememberCredential -Force
+                    Write-Output 'OK'
+                }} catch {{
+                    Write-Output $_.Exception.Message
+                }}
+            ";
+            
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{script.Replace("\"", "\\\"")}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process != null)
+            {
+                var output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                
+                if (output.Contains("OK"))
+                {
+                    _mensajeConexion = $"Conexión '{nombreConexion}' creada. Ahora puede conectar.";
+                    _exitoConexion = true;
+                }
+                else
+                {
+                    _mensajeConexion = $"Resultado: {output}";
+                    _exitoConexion = false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensajeConexion = $"Error: {ex.Message}";
+            _exitoConexion = false;
+        }
+        
+        StateHasChanged();
+    }
+    
+    private async Task ProbarCliente(Cliente cli)
+    {
+        if (string.IsNullOrEmpty(cli.IpVpnAsignada)) return;
+        
+        try
+        {
+            var url = $"http://{cli.IpVpnAsignada}:{cli.PuertoSistema ?? 5095}/";
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var response = await httpClient.GetAsync(url);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                await JS.InvokeVoidAsync("alert", $"✓ Conexión exitosa a {cli.Nombre}");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"Sistema respondió con código {(int)response.StatusCode}");
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            await JS.InvokeVoidAsync("alert", $"Timeout: {cli.Nombre} no responde (5s)");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+    
+    private async Task AbrirSistemaCliente(Cliente cli)
+    {
+        if (string.IsNullOrEmpty(cli.IpVpnAsignada)) return;
+        var url = $"http://{cli.IpVpnAsignada}:{cli.PuertoSistema ?? 5095}/";
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+    
+    private void EditarCliente(Cliente cli)
+    {
+        Navigation.NavigateTo($"/clientes/editar/{cli.IdCliente}");
+    }
+    
+    private void Volver()
+    {
+        Navigation.NavigateTo("/configuracion");
+    }
+}

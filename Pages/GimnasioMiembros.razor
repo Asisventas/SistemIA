@@ -1,0 +1,663 @@
+@page "/gimnasio/miembros"
+@using SistemIA.Models
+@using SistemIA.Models.Gimnasio
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext _db
+@inject NavigationManager Nav
+@inject ICajaService CajaService
+@using SistemIA.Services
+
+<PageTitle>Miembros del Gimnasio</PageTitle>
+
+<div class="container-fluid py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-people-fill text-primary me-2"></i>
+            Miembros del Gimnasio
+        </h3>
+        <div class="d-flex gap-2">
+            <span class="badge bg-success fs-6">
+                <i class="bi bi-check-circle me-1"></i>
+                @_miembrosActivos Activos
+            </span>
+            <span class="badge bg-warning text-dark fs-6">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                @_porVencer Por Vencer
+            </span>
+            <span class="badge bg-danger fs-6">
+                <i class="bi bi-x-circle me-1"></i>
+                @_vencidos Vencidos
+            </span>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" placeholder="Buscar por nombre, cédula..."
+                               @bind="_filtroTexto" @bind:event="oninput" @onkeyup="Buscar" />
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" @bind="_filtroEstado" @bind:after="Buscar">
+                        <option value="">Todos los estados</option>
+                        <option value="Activa">✅ Activos</option>
+                        <option value="PorVencer">⚠️ Por Vencer (7 días)</option>
+                        <option value="Vencida">❌ Vencidos</option>
+                        <option value="SinMembresia">⚪ Sin Membresía</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" @bind="_filtroProducto" @bind:after="Buscar">
+                        <option value="0">Todas las membresías</option>
+                        @foreach (var prod in _productosMembresia)
+                        {
+                            <option value="@prod.IdProducto">@prod.Descripcion</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" @onclick="AbrirRegistroMiembro">
+                        <i class="bi bi-person-plus me-1"></i>Nuevo Miembro
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Miembros -->
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:5%">Foto</th>
+                        <th>Nombre</th>
+                        <th>Documento</th>
+                        <th>Membresía</th>
+                        <th class="text-center">Vencimiento</th>
+                        <th class="text-center">Días</th>
+                        <th class="text-center">Visitas</th>
+                        <th class="text-center">Estado</th>
+                        <th style="width:15%">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_miembros.Any())
+                    {
+                        @foreach (var miembro in _miembros)
+                        {
+                            var membresia = miembro.Membresias?.FirstOrDefault(m => m.Estado == "Activa" || m.Estado == "PendientePago");
+                            var estadoClase = membresia?.EstaVigente == true ? "success" : 
+                                              membresia?.EstaPorVencer == true ? "warning" :
+                                              membresia != null ? "danger" : "secondary";
+                            
+                            <tr>
+                                <td>
+                                    @if (miembro.FotoGimnasio != null)
+                                    {
+                                        <img src="data:image/jpeg;base64,@Convert.ToBase64String(miembro.FotoGimnasio)"
+                                             class="rounded-circle" style="width:40px;height:40px;object-fit:cover;" />
+                                    }
+                                    else
+                                    {
+                                        <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center"
+                                             style="width:40px;height:40px;">
+                                            <i class="bi bi-person"></i>
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <strong>@miembro.RazonSocial</strong>
+                                    @if (!string.IsNullOrEmpty(miembro.CodigoGimnasio))
+                                    {
+                                        <br/><small class="text-muted">Cód: @miembro.CodigoGimnasio</small>
+                                    }
+                                </td>
+                                <td>@miembro.RUC</td>
+                                <td>
+                                    @if (membresia?.Producto != null)
+                                    {
+                                        <span class="badge" style="background-color: @(membresia.Producto.ColorMembresia ?? "#3498db")">
+                                            @membresia.Producto.Descripcion
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (membresia != null)
+                                    {
+                                        @membresia.FechaVencimiento.ToString("dd/MM/yyyy")
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (membresia != null)
+                                    {
+                                        <span class="badge bg-@estadoClase">
+                                            @(membresia.DiasRestantes > 0 ? membresia.DiasRestantes.ToString() : "Vencido")
+                                        </span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-light text-dark">
+                                        <i class="bi bi-door-open me-1"></i>@miembro.TotalVisitasGimnasio
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    @if (membresia?.EstaVigente == true)
+                                    {
+                                        <span class="badge bg-success">Activo</span>
+                                    }
+                                    else if (membresia?.EstaPorVencer == true)
+                                    {
+                                        <span class="badge bg-warning text-dark">Por Vencer</span>
+                                    }
+                                    else if (membresia?.Estado == "Vencida" || (membresia != null && membresia.FechaVencimiento < DateTime.Today))
+                                    {
+                                        <span class="badge bg-danger">Vencido</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Sin Membresía</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" title="Asignar/Renovar Membresía"
+                                                @onclick="() => AbrirAsignarMembresia(miembro)">
+                                            <i class="bi bi-card-checklist"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" title="Editar Datos"
+                                                @onclick="() => EditarMiembro(miembro)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-info" title="Ver Historial"
+                                                @onclick="() => VerHistorial(miembro)">
+                                            <i class="bi bi-clock-history"></i>
+                                        </button>
+                                        @if (miembro.EmbeddingFacialGimnasio == null)
+                                        {
+                                            <button class="btn btn-outline-success" title="Registrar Rostro"
+                                                    @onclick="() => RegistrarRostro(miembro)">
+                                                <i class="bi bi-camera"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center py-5 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No se encontraron miembros
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Asignar Membresía -->
+@if (_mostrarModalMembresia)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-card-checklist me-2"></i>
+                        Asignar Membresía - @_clienteSeleccionado?.RazonSocial
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => _mostrarModalMembresia = false"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Membresía Actual -->
+                    @if (_membresiaActualCliente != null)
+                    {
+                        <div class="alert @(_membresiaActualCliente.EstaVigente ? "alert-success" : "alert-warning") mb-4">
+                            <h6 class="alert-heading">Membresía Actual</h6>
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong>@_membresiaActualCliente.Producto?.Descripcion</strong><br/>
+                                    Vence: @_membresiaActualCliente.FechaVencimiento.ToString("dd/MM/yyyy")
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-@(_membresiaActualCliente.EstaVigente ? "success" : "warning") fs-6">
+                                        @_membresiaActualCliente.DiasRestantes días restantes
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Selección de Membresía (Productos con EsMembresia=true) -->
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label fw-bold">Seleccionar Membresía *</label>
+                            @if (_productosMembresia.Count == 0)
+                            {
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    No hay productos configurados como membresía. 
+                                    <a href="/productos" class="alert-link">Crear un producto con "Es Membresía Gimnasio" activo</a>.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="row g-2">
+                                    @foreach (var prod in _productosMembresia)
+                                    {
+                                        <div class="col-md-4">
+                                            <div class="card @(_productoSeleccionado?.IdProducto == prod.IdProducto ? "border-primary border-2" : "")"
+                                                 style="cursor:pointer;"
+                                                 @onclick="() => SeleccionarProducto(prod)">
+                                                <div class="card-body text-center py-3">
+                                                    <div class="mb-2" style="color: @(prod.ColorMembresia ?? "#3498db")">
+                                                        <i class="bi bi-person-badge fs-2"></i>
+                                                    </div>
+                                                    <h6 class="mb-1">@prod.Descripcion</h6>
+                                                    <strong class="fs-5" style="color: @(prod.ColorMembresia ?? "#3498db")">
+                                                        @prod.PrecioUnitarioGs.ToString("N0") Gs
+                                                    </strong>
+                                                    <br/><small class="text-muted">@(prod.DuracionDiasMembresia ?? 30) días</small>
+                                                    @if (prod.IncluyePTMembresia)
+                                                    {
+                                                        <br/><span class="badge bg-info">+PT @prod.SesionesPTMembresia sesiones</span>
+                                                    }
+                                                    @if (prod.ClasesIncluidasMembresia == -1)
+                                                    {
+                                                        <br/><span class="badge bg-success">Clases Ilimitadas</span>
+                                                    }
+                                                    else if (prod.ClasesIncluidasMembresia > 0)
+                                                    {
+                                                        <br/><span class="badge bg-secondary">@prod.ClasesIncluidasMembresia clases</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha de Inicio</label>
+                            <input type="date" class="form-control" @bind="_nuevaMembresia.FechaInicio" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha de Vencimiento</label>
+                            <input type="date" class="form-control" @bind="_nuevaMembresia.FechaVencimiento" readonly />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Monto Total (Gs)</label>
+                            <input type="number" class="form-control" @bind="_nuevaMembresia.MontoTotal" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Estado de Pago</label>
+                            <select class="form-select" @bind="_nuevaMembresia.EstadoPago">
+                                <option value="Pagado">✅ Pagado</option>
+                                <option value="Pendiente">⏳ Pendiente</option>
+                                <option value="Parcial">📊 Parcial</option>
+                            </select>
+                        </div>
+
+                        @if (_nuevaMembresia.EstadoPago == "Parcial")
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">Monto Pagado (Gs)</label>
+                                <input type="number" class="form-control" @bind="_nuevaMembresia.MontoPagado" />
+                            </div>
+                        }
+
+                        <div class="col-12">
+                            <label class="form-label">Observaciones</label>
+                            <textarea class="form-control" rows="2" @bind="_nuevaMembresia.Observaciones"></textarea>
+                        </div>
+
+                        <!-- Opción de generar factura -->
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input type="checkbox" class="form-check-input" id="chkGenerarFactura" @bind="_generarFactura">
+                                <label class="form-check-label fw-bold" for="chkGenerarFactura">
+                                    <i class="bi bi-receipt text-success me-1"></i>
+                                    Generar Factura/Ticket
+                                </label>
+                            </div>
+                            <small class="text-muted">Se creará una venta automáticamente</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _mostrarModalMembresia = false">
+                        Cancelar
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarMembresia" disabled="@_guardando">
+                        @if (_guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>
+                        @(_membresiaActualCliente != null ? "Renovar Membresía" : "Asignar Membresía")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SistemIA.Models.Cliente> _miembros = new();
+    private List<Producto> _productosMembresia = new();
+    
+    private string _filtroTexto = "";
+    private string _filtroEstado = "";
+    private int _filtroProducto = 0;
+    
+    private int _miembrosActivos = 0;
+    private int _porVencer = 0;
+    private int _vencidos = 0;
+
+    // Modal Membresía
+    private bool _mostrarModalMembresia = false;
+    private bool _guardando = false;
+    private SistemIA.Models.Cliente? _clienteSeleccionado;
+    private MembresiaCliente? _membresiaActualCliente;
+    private MembresiaCliente _nuevaMembresia = new();
+
+    // Selección Producto
+    private Producto? _productoSeleccionado;
+    private bool _generarFactura = true;
+
+    // Estado caja/turno
+    private int _idSucursal = 1;
+    private int? _idCaja;
+    private int _turno = 1;
+    private DateTime _fechaCaja = DateTime.Today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar caja actual para facturación
+        var caja = await CajaService.ObtenerCajaActualAsync();
+        if (caja != null)
+        {
+            _idCaja = caja.IdCaja;
+            _idSucursal = caja.IdSucursal ?? 1;
+            _turno = 1;
+        }
+        
+        _productosMembresia = await _db.Productos
+            .Where(p => p.EsMembresia && p.Activo)
+            .OrderBy(p => p.Descripcion)
+            .ToListAsync();
+        await Buscar();
+        await CargarEstadisticas();
+    }
+
+    private async Task Buscar()
+    {
+        var query = _db.Clientes
+            .Include(c => c.Membresias!)
+                .ThenInclude(m => m.Producto)
+            .Where(c => c.EsMiembroGimnasio);
+
+        if (!string.IsNullOrWhiteSpace(_filtroTexto))
+        {
+            var txt = _filtroTexto.ToLower();
+            query = query.Where(c => 
+                c.RazonSocial!.ToLower().Contains(txt) || 
+                (c.RUC != null && c.RUC.Contains(txt)) ||
+                (c.CodigoGimnasio != null && c.CodigoGimnasio.ToLower().Contains(txt)));
+        }
+
+        // Filtro por producto membresía
+        if (_filtroProducto > 0)
+        {
+            query = query.Where(c => 
+                c.Membresias!.Any(m => m.IdProducto == _filtroProducto && (m.Estado == "Activa" || m.Estado == "PendientePago")));
+        }
+
+        _miembros = await query.OrderBy(c => c.RazonSocial).Take(100).ToListAsync();
+
+        // Aplicar filtros de estado en memoria
+        if (!string.IsNullOrEmpty(_filtroEstado))
+        {
+            _miembros = _miembros.Where(m =>
+            {
+                var mem = m.Membresias?.FirstOrDefault(x => x.Estado == "Activa" || x.Estado == "PendientePago");
+                return _filtroEstado switch
+                {
+                    "Activa" => mem?.EstaVigente == true,
+                    "PorVencer" => mem?.EstaPorVencer == true,
+                    "Vencida" => mem != null && !mem.EstaVigente && !mem.EstaPorVencer,
+                    "SinMembresia" => mem == null,
+                    _ => true
+                };
+            }).ToList();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task CargarEstadisticas()
+    {
+        var membresias = await _db.MembresiasClientes
+            .Where(m => m.Estado == "Activa" || m.Estado == "PendientePago")
+            .ToListAsync();
+
+        _miembrosActivos = membresias.Count(m => m.EstaVigente);
+        _porVencer = membresias.Count(m => m.EstaPorVencer);
+        _vencidos = membresias.Count(m => !m.EstaVigente && !m.EstaPorVencer);
+    }
+
+    private void AbrirAsignarMembresia(SistemIA.Models.Cliente cliente)
+    {
+        _clienteSeleccionado = cliente;
+        _membresiaActualCliente = cliente.Membresias?
+            .FirstOrDefault(m => m.Estado == "Activa" || m.Estado == "PendientePago");
+
+        _productoSeleccionado = null;
+        _generarFactura = true;
+
+        _nuevaMembresia = new MembresiaCliente
+        {
+            IdCliente = cliente.IdCliente,
+            IdSucursal = _idSucursal,
+            IdCaja = _idCaja,
+            Turno = _turno,
+            FechaCaja = _fechaCaja,
+            FechaInicio = _membresiaActualCliente != null 
+                ? _membresiaActualCliente.FechaVencimiento.AddDays(1) 
+                : DateTime.Today,
+            Estado = "Activa",
+            EstadoPago = "Pagado",
+            EsRenovacion = _membresiaActualCliente != null,
+            IdMembresiaAnterior = _membresiaActualCliente?.IdMembresia
+        };
+
+        // Seleccionar primer producto por defecto
+        var productoDefault = _productosMembresia.FirstOrDefault();
+        if (productoDefault != null)
+        {
+            SeleccionarProducto(productoDefault);
+        }
+
+        _mostrarModalMembresia = true;
+    }
+
+    private void SeleccionarProducto(Producto producto)
+    {
+        _productoSeleccionado = producto;
+        _nuevaMembresia.IdProducto = producto.IdProducto;
+        _nuevaMembresia.FechaVencimiento = _nuevaMembresia.FechaInicio.AddDays(producto.DuracionDiasMembresia ?? 30);
+        var precioInscripcion = producto.PrecioInscripcionMembresia ?? 0;
+        _nuevaMembresia.MontoTotal = producto.PrecioUnitarioGs + precioInscripcion;
+        _nuevaMembresia.MontoPagado = _nuevaMembresia.MontoTotal;
+        _nuevaMembresia.SaldoPendiente = 0;
+        StateHasChanged();
+    }
+
+    private async Task GuardarMembresia()
+    {
+        // Validar que se seleccionó un producto
+        if (_productoSeleccionado == null) return;
+
+        _guardando = true;
+        StateHasChanged();
+
+        try
+        {
+            // Marcar membresía anterior como finalizada
+            if (_membresiaActualCliente != null)
+            {
+                _membresiaActualCliente.Estado = "Finalizada";
+                _membresiaActualCliente.FechaFin = DateTime.Now;
+            }
+
+            // Calcular saldo
+            if (_nuevaMembresia.EstadoPago == "Pagado")
+            {
+                _nuevaMembresia.MontoPagado = _nuevaMembresia.MontoTotal;
+                _nuevaMembresia.SaldoPendiente = 0;
+            }
+            else if (_nuevaMembresia.EstadoPago == "Pendiente")
+            {
+                _nuevaMembresia.MontoPagado = 0;
+                _nuevaMembresia.SaldoPendiente = _nuevaMembresia.MontoTotal;
+            }
+            else
+            {
+                _nuevaMembresia.SaldoPendiente = _nuevaMembresia.MontoTotal - _nuevaMembresia.MontoPagado;
+            }
+
+            // Generar venta si corresponde
+            if (_generarFactura && _clienteSeleccionado != null)
+            {
+                var producto = _productoSeleccionado;
+                
+                // Obtener siguiente número de factura
+                var ultimaVenta = await _db.Ventas
+                    .Where(v => v.IdSucursal == _idSucursal && v.NumeroFactura != null)
+                    .OrderByDescending(v => v.NumeroFactura)
+                    .FirstOrDefaultAsync();
+                
+                int nuevoNumero = 1;
+                if (ultimaVenta?.NumeroFactura != null && int.TryParse(ultimaVenta.NumeroFactura, out int ultimo))
+                    nuevoNumero = ultimo + 1;
+                
+                // Calcular IVA según tipo producto
+                decimal montoTotal = _nuevaMembresia.MontoTotal;
+                decimal iva10 = 0, iva5 = 0, exenta = 0, gravado10 = 0, gravado5 = 0;
+                
+                switch (producto.IdTipoIva)
+                {
+                    case 1: // 10%
+                        iva10 = Math.Round(montoTotal / 11m, 0);
+                        gravado10 = montoTotal - iva10;
+                        break;
+                    case 2: // 5%
+                        iva5 = Math.Round(montoTotal / 21m, 0);
+                        gravado5 = montoTotal - iva5;
+                        break;
+                    default: // Exenta
+                        exenta = montoTotal;
+                        break;
+                }
+                
+                var venta = new Venta
+                {
+                    IdCliente = _clienteSeleccionado.IdCliente,
+                    IdSucursal = _idSucursal,
+                    IdCaja = _idCaja,
+                    Turno = _turno,
+                    Fecha = DateTime.Now,
+                    NumeroFactura = nuevoNumero.ToString("0000000"),
+                    Establecimiento = "001",
+                    PuntoExpedicion = "002",
+                    TipoDocumento = "Factura",
+                    FormaPago = _nuevaMembresia.EstadoPago == "Pagado" ? "Contado" : "Credito",
+                    Estado = "Confirmada",
+                    Total = montoTotal,
+                    IdMoneda = 1,
+                    Comentario = $"Membresía: {producto.Descripcion}"
+                };
+
+                _db.Ventas.Add(venta);
+                await _db.SaveChangesAsync();
+
+                // Crear detalle de venta
+                var detalle = new VentaDetalle
+                {
+                    IdVenta = venta.IdVenta,
+                    IdProducto = producto.IdProducto,
+                    Cantidad = 1,
+                    PrecioUnitario = producto.PrecioUnitarioGs,
+                    Importe = montoTotal,
+                    Exenta = exenta,
+                    Grabado5 = gravado5,
+                    Grabado10 = gravado10,
+                    IVA5 = iva5,
+                    IVA10 = iva10,
+                    IdTipoIva = producto.IdTipoIva
+                };
+                _db.VentasDetalles.Add(detalle);
+                await _db.SaveChangesAsync();
+
+                // Vincular venta con membresía
+                _nuevaMembresia.IdVenta = venta.IdVenta;
+                _nuevaMembresia.NumeroComprobante = $"{venta.Establecimiento}-{venta.PuntoExpedicion}-{venta.NumeroFactura}";
+            }
+
+            _nuevaMembresia.FechaCreacion = DateTime.Now;
+            _db.MembresiasClientes.Add(_nuevaMembresia);
+
+            await _db.SaveChangesAsync();
+
+            _mostrarModalMembresia = false;
+            await Buscar();
+            await CargarEstadisticas();
+        }
+        finally
+        {
+            _guardando = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AbrirRegistroMiembro()
+    {
+        Nav.NavigateTo("/clientes?modo=gimnasio");
+    }
+
+    private void EditarMiembro(SistemIA.Models.Cliente cliente)
+    {
+        Nav.NavigateTo($"/clientes/editar/{cliente.IdCliente}?modo=gimnasio");
+    }
+
+    private void VerHistorial(SistemIA.Models.Cliente cliente)
+    {
+        Nav.NavigateTo($"/gimnasio/historial/{cliente.IdCliente}");
+    }
+
+    private void RegistrarRostro(SistemIA.Models.Cliente cliente)
+    {
+        Nav.NavigateTo($"/gimnasio/registrar-rostro/{cliente.IdCliente}");
+    }
+}

@@ -1,0 +1,769 @@
+@page "/taller"
+@page "/taller/{IdSucursal:int}"
+@using Microsoft.EntityFrameworkCore
+@using System.Timers
+@implements IDisposable
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Panel Taller - SistemIA</PageTitle>
+
+<div class="taller-container">
+    @* ========== HEADER ========== *@
+    <div class="taller-header">
+        <div class="d-flex align-items-center gap-3">
+            <h2 class="mb-0">
+                <i class="bi bi-wrench text-warning me-2"></i>TALLER
+            </h2>
+            <span class="badge bg-light text-dark fs-5">
+                <i class="bi bi-clock me-1"></i>@DateTime.Now.ToString("HH:mm:ss")
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            @if (_sonidoActivo)
+            {
+                <button class="btn btn-outline-light" @onclick="ToggleSonido" title="Sonido activado">
+                    <i class="bi bi-volume-up-fill"></i>
+                </button>
+            }
+            else
+            {
+                <button class="btn btn-outline-secondary" @onclick="ToggleSonido" title="Sonido desactivado">
+                    <i class="bi bi-volume-mute-fill"></i>
+                </button>
+            }
+            <select class="form-select form-select-sm bg-dark text-white border-secondary" style="width: 200px;"
+                    @bind="_filtroMecanico" @bind:after="CargarOrdenes">
+                <option value="0">Todos los mecánicos</option>
+                @foreach (var mec in _mecanicos)
+                {
+                    <option value="@mec.Id_Usu">@mec.Nombres @mec.Apellidos</option>
+                }
+            </select>
+            <span class="text-white-50">
+                Recepción: <span class="badge bg-info fs-6">@_ordenesRecepcion.Count</span>
+                En Proceso: <span class="badge bg-danger fs-6">@_ordenesEnProceso.Count</span>
+                Listos: <span class="badge bg-success fs-6">@_ordenesTerminados.Count</span>
+            </span>
+        </div>
+    </div>
+
+    @* ========== CONTENIDO PRINCIPAL ========== *@
+    <div class="taller-body">
+        @* COLUMNA RECEPCIÓN *@
+        <div class="taller-columna recepcion">
+            <div class="columna-header bg-info text-white">
+                <i class="bi bi-inbox me-2"></i>RECEPCIÓN / DIAGNÓSTICO
+                <span class="badge bg-light text-dark">@_ordenesRecepcion.Count</span>
+            </div>
+            <div class="columna-body">
+                @foreach (var orden in _ordenesRecepcion)
+                {
+                    <div class="orden-card @(orden.Prioridad == "Urgente" ? "urgente" : "")">
+                        <div class="orden-header">
+                            <span class="vehiculo-info">
+                                <i class="bi bi-car-front-fill me-1"></i>@orden.Vehiculo?.Matricula
+                            </span>
+                            <span class="tiempo @GetClaseTiempo(orden.TiempoEnTaller)">
+                                @orden.TiempoEnTallerTexto
+                            </span>
+                        </div>
+                        <div class="vehiculo-detalle">
+                            <strong>@orden.Vehiculo?.Marca @orden.Vehiculo?.Modelo</strong>
+                            @if (orden.Vehiculo?.Anio.HasValue == true)
+                            {
+                                <span class="text-muted">(@orden.Vehiculo.Anio)</span>
+                            }
+                        </div>
+                        <div class="orden-info">
+                            <small>
+                                OT #@orden.NumeroOrden | 
+                                @orden.FechaIngreso?.ToString("dd/MM HH:mm") |
+                                @(orden.Cliente?.RazonSocial ?? "Sin cliente")
+                            </small>
+                        </div>
+                        @if (!string.IsNullOrEmpty(orden.MotivoConsulta))
+                        {
+                            <div class="motivo-consulta">
+                                <i class="bi bi-chat-quote me-1"></i>@orden.MotivoConsulta
+                            </div>
+                        }
+                        <div class="orden-detalles">
+                            @if (orden.Detalles?.Any() == true)
+                            {
+                                @foreach (var det in orden.Detalles.Take(3))
+                                {
+                                    <div class="detalle-item @det.TipoLinea.ToLower()">
+                                        <i class="bi @det.IconoTipo me-1"></i>
+                                        <span>@det.Descripcion</span>
+                                    </div>
+                                }
+                                @if (orden.Detalles.Count > 3)
+                                {
+                                    <div class="detalle-item text-muted">
+                                        <i class="bi bi-three-dots me-1"></i>+@(orden.Detalles.Count - 3) más
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="orden-actions">
+                            <button class="btn btn-danger btn-lg w-100" 
+                                    @onclick="() => IniciarTrabajo(orden)">
+                                <i class="bi bi-play-fill me-1"></i>INICIAR TRABAJO
+                            </button>
+                        </div>
+                    </div>
+                }
+                @if (!_ordenesRecepcion.Any())
+                {
+                    <div class="sin-ordenes">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                        <p>Sin vehículos pendientes</p>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* COLUMNA EN PROCESO *@
+        <div class="taller-columna en-proceso">
+            <div class="columna-header bg-danger text-white">
+                <i class="bi bi-tools me-2"></i>EN PROCESO
+                <span class="badge bg-light text-dark">@_ordenesEnProceso.Count</span>
+            </div>
+            <div class="columna-body">
+                @foreach (var orden in _ordenesEnProceso)
+                {
+                    <div class="orden-card trabajando @(orden.Prioridad == "Urgente" ? "urgente" : "")">
+                        <div class="orden-header">
+                            <span class="vehiculo-info">
+                                <i class="bi bi-car-front-fill me-1"></i>@orden.Vehiculo?.Matricula
+                            </span>
+                            <span class="tiempo trabajando">
+                                <i class="bi bi-stopwatch me-1"></i>@FormatearTiempoTrabajo(orden.FechaInicioTrabajo)
+                            </span>
+                        </div>
+                        <div class="vehiculo-detalle">
+                            <strong>@orden.Vehiculo?.Marca @orden.Vehiculo?.Modelo</strong>
+                            <span class="badge bg-secondary ms-2">@orden.NombreMecanico</span>
+                        </div>
+                        <div class="orden-info">
+                            <small>OT #@orden.NumeroOrden | Bahía: @(orden.Bahia?.Numero ?? "-")</small>
+                        </div>
+                        <div class="orden-detalles">
+                            @if (orden.Detalles?.Any() == true)
+                            {
+                                @foreach (var det in orden.Detalles)
+                                {
+                                    <div class="detalle-item @det.TipoLinea.ToLower() @det.Estado.ToLower()">
+                                        <span class="estado-icono">@det.EstadoIcono</span>
+                                        <i class="bi @det.IconoTipo me-1"></i>
+                                        <span>@det.Descripcion</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="orden-actions d-flex gap-2">
+                            <button class="btn btn-warning flex-fill" 
+                                    @onclick="() => PausarTrabajo(orden)">
+                                <i class="bi bi-pause-fill me-1"></i>PAUSAR
+                            </button>
+                            <button class="btn btn-success btn-lg flex-fill" 
+                                    @onclick="() => FinalizarTrabajo(orden)">
+                                <i class="bi bi-check-lg me-1"></i>LISTO
+                            </button>
+                        </div>
+                    </div>
+                }
+                @if (!_ordenesEnProceso.Any())
+                {
+                    <div class="sin-ordenes">
+                        <i class="bi bi-cup-hot text-muted"></i>
+                        <p>Sin trabajos en proceso</p>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* COLUMNA TERMINADOS *@
+        <div class="taller-columna terminados">
+            <div class="columna-header bg-success text-white">
+                <i class="bi bi-check-circle-fill me-2"></i>LISTOS PARA ENTREGA
+                <span class="badge bg-light text-dark">@_ordenesTerminados.Count</span>
+            </div>
+            <div class="columna-body">
+                @foreach (var orden in _ordenesTerminados)
+                {
+                    <div class="orden-card listo">
+                        <div class="orden-header">
+                            <span class="vehiculo-info">
+                                <i class="bi bi-car-front-fill me-1"></i>@orden.Vehiculo?.Matricula
+                            </span>
+                            <span class="tiempo listo">
+                                <i class="bi bi-check-all me-1"></i>@orden.FechaFinTrabajo?.ToString("HH:mm")
+                            </span>
+                        </div>
+                        <div class="vehiculo-detalle">
+                            <strong>@orden.Vehiculo?.Marca @orden.Vehiculo?.Modelo</strong>
+                        </div>
+                        <div class="orden-info">
+                            <small>
+                                OT #@orden.NumeroOrden | 
+                                @(orden.Cliente?.RazonSocial ?? "Cliente")
+                            </small>
+                        </div>
+                        <div class="orden-totales">
+                            <div class="d-flex justify-content-between">
+                                <span>Total:</span>
+                                <strong class="text-success">Gs @orden.Total.ToString("N0")</strong>
+                            </div>
+                            @if (orden.SaldoPendiente > 0)
+                            {
+                                <div class="d-flex justify-content-between text-warning">
+                                    <span>Pendiente:</span>
+                                    <strong>Gs @orden.SaldoPendiente.ToString("N0")</strong>
+                                </div>
+                            }
+                        </div>
+                        <div class="orden-actions">
+                            <button class="btn btn-outline-success btn-lg w-100" 
+                                    @onclick="() => MarcarEntregado(orden)">
+                                <i class="bi bi-hand-thumbs-up me-1"></i>ENTREGADO
+                            </button>
+                        </div>
+                    </div>
+                }
+                @if (!_ordenesTerminados.Any())
+                {
+                    <div class="sin-ordenes">
+                        <i class="bi bi-emoji-smile text-muted"></i>
+                        <p>Sin vehículos listos</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ========== MODAL ASIGNAR MECÁNICO ========== *@
+@if (_mostrarModalAsignar && _ordenSeleccionada != null)
+{
+    <div class="modal-backdrop show"></div>
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-gear me-2"></i>Asignar Mecánico
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Vehículo</label>
+                        <div class="fs-5 text-warning">
+                            @_ordenSeleccionada.Vehiculo?.Matricula - 
+                            @_ordenSeleccionada.Vehiculo?.Marca @_ordenSeleccionada.Vehiculo?.Modelo
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mecánico asignado</label>
+                        <select class="form-select form-select-lg" @bind="_mecanicoSeleccionado">
+                            <option value="0">-- Seleccionar mecánico --</option>
+                            @foreach (var mec in _mecanicos)
+                            {
+                                <option value="@mec.Id_Usu">@mec.Nombres @mec.Apellidos</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bahía de trabajo</label>
+                        <select class="form-select" @bind="_bahiaSeleccionada">
+                            <option value="0">-- Sin asignar --</option>
+                            @foreach (var bahia in _bahiasDisponibles)
+                            {
+                                <option value="@bahia.IdMesa">@bahia.Numero - @bahia.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button type="button" class="btn btn-danger btn-lg" @onclick="ConfirmarInicioTrabajo" 
+                            disabled="@(_mecanicoSeleccionado == 0)">
+                        <i class="bi bi-play-fill me-1"></i>INICIAR TRABAJO
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========== ESTILOS ========== *@
+<style>
+    .taller-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background: #1a1a2e;
+        color: white;
+        overflow: hidden;
+    }
+
+    .taller-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 20px;
+        background: #16213e;
+        border-bottom: 3px solid #ffc107;
+    }
+
+    .taller-body {
+        display: flex;
+        flex: 1;
+        gap: 10px;
+        padding: 10px;
+        overflow: hidden;
+    }
+
+    .taller-columna {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #0f3460;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .columna-header {
+        padding: 15px;
+        font-size: 1.2rem;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .columna-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .orden-card {
+        background: #1a1a2e;
+        border-radius: 10px;
+        padding: 15px;
+        border-left: 5px solid #17a2b8;
+        transition: all 0.3s ease;
+    }
+
+    .orden-card.urgente {
+        border-left-color: #dc3545;
+        animation: pulse 1s infinite;
+    }
+
+    .orden-card.trabajando {
+        border-left-color: #dc3545;
+        background: linear-gradient(135deg, #1a1a2e, #2d1f1f);
+    }
+
+    .orden-card.listo {
+        border-left-color: #28a745;
+        background: linear-gradient(135deg, #1a1a2e, #1f2d1f);
+    }
+
+    @@keyframes pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+        50% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+    }
+
+    .orden-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+
+    .vehiculo-info {
+        font-size: 1.3rem;
+        font-weight: bold;
+        color: #ffc107;
+    }
+
+    .vehiculo-detalle {
+        font-size: 1.1rem;
+        margin-bottom: 5px;
+    }
+
+    .tiempo {
+        font-size: 1rem;
+        font-weight: bold;
+        padding: 5px 10px;
+        border-radius: 20px;
+        background: #17a2b8;
+        color: white;
+    }
+
+    .tiempo.alerta {
+        background: #fd7e14;
+    }
+
+    .tiempo.critico {
+        background: #dc3545;
+        animation: blink 0.5s infinite;
+    }
+
+    .tiempo.trabajando {
+        background: #dc3545;
+    }
+
+    .tiempo.listo {
+        background: #28a745;
+    }
+
+    @@keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .orden-info {
+        color: #aaa;
+        margin-bottom: 10px;
+    }
+
+    .motivo-consulta {
+        color: #17a2b8;
+        font-style: italic;
+        padding: 8px;
+        background: rgba(23, 162, 184, 0.1);
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+
+    .orden-detalles {
+        margin-bottom: 15px;
+    }
+
+    .detalle-item {
+        padding: 5px 10px;
+        margin-bottom: 3px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 5px;
+        font-size: 0.95rem;
+    }
+
+    .detalle-item.repuesto {
+        border-left: 3px solid #007bff;
+    }
+
+    .detalle-item.manoobra {
+        border-left: 3px solid #ffc107;
+    }
+
+    .detalle-item.servicio {
+        border-left: 3px solid #17a2b8;
+    }
+
+    .detalle-item.completado {
+        opacity: 0.7;
+        text-decoration: line-through;
+    }
+
+    .detalle-item .estado-icono {
+        margin-right: 5px;
+    }
+
+    .orden-totales {
+        background: rgba(255,255,255,0.05);
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+
+    .orden-actions {
+        margin-top: 10px;
+    }
+
+    .orden-actions .btn {
+        font-size: 1rem;
+        padding: 10px;
+    }
+
+    .sin-ordenes {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 200px;
+        color: #666;
+    }
+
+    .sin-ordenes i {
+        font-size: 3rem;
+        margin-bottom: 10px;
+    }
+
+    /* Scrollbar personalizado */
+    .columna-body::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .columna-body::-webkit-scrollbar-track {
+        background: #0f3460;
+    }
+
+    .columna-body::-webkit-scrollbar-thumb {
+        background: #e94560;
+        border-radius: 4px;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public int IdSucursal { get; set; }
+
+    // Timer para actualización automática
+    private Timer? _timer;
+    private bool _disposed = false;
+    private bool _sonidoActivo = true;
+    private int _filtroMecanico = 0;
+
+    // Listas de órdenes por estado
+    private List<OrdenTrabajo> _ordenesRecepcion = new();
+    private List<OrdenTrabajo> _ordenesEnProceso = new();
+    private List<OrdenTrabajo> _ordenesTerminados = new();
+
+    // Mecánicos y bahías
+    private List<Usuario> _mecanicos = new();
+    private List<Mesa> _bahiasDisponibles = new();
+
+    // Modal asignar
+    private bool _mostrarModalAsignar = false;
+    private OrdenTrabajo? _ordenSeleccionada;
+    private int _mecanicoSeleccionado = 0;
+    private int _bahiaSeleccionada = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarMecanicos();
+        await CargarBahias();
+        await CargarOrdenes();
+
+        // Iniciar timer de actualización (cada 10 segundos)
+        _timer = new Timer(10000);
+        _timer.Elapsed += async (s, e) => await ActualizarAsync();
+        _timer.Start();
+    }
+
+    private async Task CargarMecanicos()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _mecanicos = await ctx.Usuarios
+            .Include(u => u.Rol)
+            .Where(u => u.Estado_Usu && (u.Rol != null && (u.Rol.NombreRol == "Mecánico" || u.Rol.NombreRol == "Técnico" || u.Rol.NombreRol == "Administrador")))
+            .OrderBy(u => u.Nombres)
+            .ToListAsync();
+    }
+
+    private async Task CargarBahias()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _bahiasDisponibles = await ctx.Mesas
+            .Where(m => m.Activa && m.Tipo == "Bahía" && m.Estado == "Libre")
+            .OrderBy(m => m.Orden)
+            .ThenBy(m => m.Numero)
+            .ToListAsync();
+    }
+
+    private async Task CargarOrdenes()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+
+        var query = ctx.OrdenesTrabajo
+            .Include(o => o.Vehiculo)
+            .Include(o => o.Cliente)
+            .Include(o => o.Bahia)
+            .Include(o => o.Detalles)
+            .Where(o => o.Estado != "Entregado" && o.Estado != "Cancelado");
+
+        if (IdSucursal > 0)
+            query = query.Where(o => o.IdSucursal == IdSucursal);
+
+        if (_filtroMecanico > 0)
+            query = query.Where(o => o.IdMecanico == _filtroMecanico);
+
+        var ordenes = await query.OrderBy(o => o.FechaCreacion).ToListAsync();
+
+        _ordenesRecepcion = ordenes
+            .Where(o => o.Estado == "Recepcion" || o.Estado == "Diagnostico" || o.Estado == "Aprobado")
+            .ToList();
+
+        _ordenesEnProceso = ordenes
+            .Where(o => o.Estado == "EnProceso" || o.Estado == "Pausado")
+            .OrderByDescending(o => o.Prioridad == "Urgente")
+            .ToList();
+
+        _ordenesTerminados = ordenes
+            .Where(o => o.Estado == "Terminado")
+            .OrderByDescending(o => o.FechaFinTrabajo)
+            .ToList();
+    }
+
+    private async Task ActualizarAsync()
+    {
+        if (_disposed) return;
+
+        try
+        {
+            await CargarOrdenes();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    private void IniciarTrabajo(OrdenTrabajo orden)
+    {
+        _ordenSeleccionada = orden;
+        _mecanicoSeleccionado = orden.IdMecanico ?? 0;
+        _bahiaSeleccionada = orden.IdMesa ?? 0;
+        _mostrarModalAsignar = true;
+    }
+
+    private async Task ConfirmarInicioTrabajo()
+    {
+        if (_ordenSeleccionada == null || _mecanicoSeleccionado == 0) return;
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var orden = await ctx.OrdenesTrabajo.FindAsync(_ordenSeleccionada.IdOrdenTrabajo);
+        if (orden == null) return;
+
+        orden.Estado = "EnProceso";
+        orden.FechaInicioTrabajo = DateTime.Now;
+        orden.IdMecanico = _mecanicoSeleccionado;
+        var mec = _mecanicos.FirstOrDefault(m => m.Id_Usu == _mecanicoSeleccionado);
+        orden.NombreMecanico = mec != null ? $"{mec.Nombres} {mec.Apellidos}" : null;
+        orden.IdMesa = _bahiaSeleccionada > 0 ? _bahiaSeleccionada : null;
+        orden.FechaModificacion = DateTime.Now;
+
+        // Marcar bahía como ocupada
+        if (_bahiaSeleccionada > 0)
+        {
+            var bahia = await ctx.Mesas.FindAsync(_bahiaSeleccionada);
+            if (bahia != null)
+            {
+                bahia.Estado = "Ocupada";
+                bahia.FechaModificacion = DateTime.Now;
+            }
+        }
+
+        await ctx.SaveChangesAsync();
+        CerrarModal();
+        await CargarOrdenes();
+        await CargarBahias();
+    }
+
+    private async Task PausarTrabajo(OrdenTrabajo orden)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var o = await ctx.OrdenesTrabajo.FindAsync(orden.IdOrdenTrabajo);
+        if (o == null) return;
+
+        o.Estado = "Pausado";
+        o.FechaModificacion = DateTime.Now;
+        await ctx.SaveChangesAsync();
+        await CargarOrdenes();
+    }
+
+    private async Task FinalizarTrabajo(OrdenTrabajo orden)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var o = await ctx.OrdenesTrabajo
+            .Include(x => x.Detalles)
+            .FirstOrDefaultAsync(x => x.IdOrdenTrabajo == orden.IdOrdenTrabajo);
+        if (o == null) return;
+
+        o.Estado = "Terminado";
+        o.FechaFinTrabajo = DateTime.Now;
+        o.FechaModificacion = DateTime.Now;
+
+        // Marcar todos los detalles como completados
+        if (o.Detalles != null)
+        {
+            foreach (var det in o.Detalles.Where(d => d.Estado != "Cancelado"))
+            {
+                det.Estado = "Completado";
+                det.FechaFin = DateTime.Now;
+            }
+        }
+
+        // Liberar bahía
+        if (o.IdMesa.HasValue)
+        {
+            var bahia = await ctx.Mesas.FindAsync(o.IdMesa);
+            if (bahia != null)
+            {
+                bahia.Estado = "Libre";
+                bahia.FechaModificacion = DateTime.Now;
+            }
+        }
+
+        await ctx.SaveChangesAsync();
+        await CargarOrdenes();
+        await CargarBahias();
+    }
+
+    private async Task MarcarEntregado(OrdenTrabajo orden)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var o = await ctx.OrdenesTrabajo.FindAsync(orden.IdOrdenTrabajo);
+        if (o == null) return;
+
+        o.Estado = "Entregado";
+        o.FechaEntrega = DateTime.Now;
+        o.FechaModificacion = DateTime.Now;
+        await ctx.SaveChangesAsync();
+        await CargarOrdenes();
+    }
+
+    private void CerrarModal()
+    {
+        _mostrarModalAsignar = false;
+        _ordenSeleccionada = null;
+        _mecanicoSeleccionado = 0;
+        _bahiaSeleccionada = 0;
+    }
+
+    private void ToggleSonido()
+    {
+        _sonidoActivo = !_sonidoActivo;
+    }
+
+    private string GetClaseTiempo(TimeSpan? tiempo)
+    {
+        if (tiempo == null) return "";
+        if (tiempo.Value.TotalHours >= 24) return "critico";
+        if (tiempo.Value.TotalHours >= 4) return "alerta";
+        return "";
+    }
+
+    private string FormatearTiempoTrabajo(DateTime? inicio)
+    {
+        if (!inicio.HasValue) return "-";
+        var tiempo = DateTime.Now - inicio.Value;
+        if (tiempo.TotalHours >= 1)
+            return $"{(int)tiempo.TotalHours}h {tiempo.Minutes}m";
+        return $"{tiempo.Minutes}m";
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+}

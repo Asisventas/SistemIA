@@ -75,9 +75,22 @@ else
                 }
 
                 <div class="ticket-tipo-doc">
-                    @(_caja?.TipoFacturacion == "ELECTRONICA"
-                        ? "FACTURA ELECTRÓNICA"
-                        : (_venta.TipoDocumento?.ToUpper() ?? "FACTURA"))
+                    @{
+                        var condVenta = _tipoPago?.Nombre?.ToUpper() ?? "";
+                        var esRemision = condVenta.Contains("REMISIÓN") || condVenta.Contains("REMISION");
+                    }
+                    @if (esRemision)
+                    {
+                        @condVenta
+                    }
+                    else if (_caja?.TipoFacturacion == "ELECTRONICA")
+                    {
+                        @("FACTURA ELECTRÓNICA")
+                    }
+                    else
+                    {
+                        @(_venta.TipoDocumento?.ToUpper() ?? "FACTURA")
+                    }
                 </div>
             </div>
 
@@ -267,8 +280,10 @@ else
     /// </summary>
     private object BuildTicketData()
     {
-        var esFacturaElectronica = _caja?.TipoFacturacion == "ELECTRONICA";
-        var tipoDocumento = esFacturaElectronica ? "FACTURA ELECTRÓNICA" : (_venta?.TipoDocumento?.ToUpper() ?? "FACTURA");
+        var condVenta = _tipoPago?.Nombre?.ToUpper() ?? "";
+        var esRemision = condVenta.Contains("REMISIÓN") || condVenta.Contains("REMISION");
+        var esFacturaElectronica = !esRemision && _caja?.TipoFacturacion == "ELECTRONICA";
+        var tipoDocumento = esRemision ? condVenta : (esFacturaElectronica ? "FACTURA ELECTRÓNICA" : (_venta?.TipoDocumento?.ToUpper() ?? "FACTURA"));
         
         return new
         {
@@ -306,7 +321,7 @@ else
             
             // === DATOS DEL CLIENTE ===
             cliente = _cliente?.RazonSocial ?? "",
-            clienteRuc = _cliente?.RUC ?? "",
+            clienteRuc = FormatearRucConDv(_cliente?.RUC, _cliente?.DV),
             clienteDireccion = _cliente?.Direccion ?? "",
             clienteTelefono = _cliente?.Telefono ?? "",
             
@@ -370,7 +385,11 @@ else
     private string FormatearRucConDv(string? ruc, int? dv)
     {
         if (string.IsNullOrEmpty(ruc)) return "";
-        return dv.HasValue ? $"{ruc}-{dv}" : ruc;
+        
+        // Si el RUC ya tiene guión, extraer solo la parte numérica
+        var rucLimpio = ruc.Contains('-') ? ruc.Split('-')[0] : ruc;
+        
+        return dv.HasValue ? $"{rucLimpio}-{dv}" : rucLimpio;
     }
     
     private string ConvertirNumeroALetras(decimal numero)
@@ -555,7 +574,10 @@ else
         if (!string.IsNullOrWhiteSpace(_sociedad?.Telefono))
             foreach (var line in Wrap($"Tel: {_sociedad.Telefono}", width)) sb.AppendLine(line);
 
-        foreach (var line in Wrap(_caja?.TipoFacturacion == "ELECTRONICA" ? "FACTURA ELECTRONICA" : (_venta?.TipoDocumento?.ToUpper() ?? "FACTURA"), width))
+        var condVentaEsc = _tipoPago?.Nombre?.ToUpper() ?? "";
+        var esRemisionEsc = condVentaEsc.Contains("REMISIÓN") || condVentaEsc.Contains("REMISION");
+        var tipoDocEsc = esRemisionEsc ? condVentaEsc : (_caja?.TipoFacturacion == "ELECTRONICA" ? "FACTURA ELECTRONICA" : (_venta?.TipoDocumento?.ToUpper() ?? "FACTURA"));
+        foreach (var line in Wrap(tipoDocEsc, width))
         {
             BoldOn();
             sb.AppendLine(line);

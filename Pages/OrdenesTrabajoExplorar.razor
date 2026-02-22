@@ -1,0 +1,309 @@
+@page "/ordenes-trabajo/explorar"
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+
+<PageTitle>Explorador de Órdenes de Trabajo - SistemIA</PageTitle>
+
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-clipboard-check text-info me-2"></i>
+            Explorador de Órdenes de Trabajo
+        </h3>
+        <div class="text-muted">
+            <i class="bi bi-clock me-1"></i>
+            Total: <span class="fw-bold">@_ordenes.Count</span> orden(es)
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros de Búsqueda</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Desde</label>
+                    <input type="date" class="form-control" @bind="_fechaDesde" @bind:after="BuscarAsync" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Hasta</label>
+                    <input type="date" class="form-control" @bind="_fechaHasta" @bind:after="BuscarAsync" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Estado</label>
+                    <select class="form-select" @bind="_filtroEstado" @bind:after="BuscarAsync">
+                        <option value="">Todos</option>
+                        <option value="Recepcion">📥 Recepción</option>
+                        <option value="Diagnostico">🔍 Diagnóstico</option>
+                        <option value="Presupuestado">📋 Presupuestado</option>
+                        <option value="Aprobado">✅ Aprobado</option>
+                        <option value="EnProceso">🔧 En Proceso</option>
+                        <option value="Pausado">⏸️ Pausado</option>
+                        <option value="Terminado">✔️ Terminado</option>
+                        <option value="Entregado">🚗 Entregado</option>
+                        <option value="activos">-- Activos --</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Mecánico</label>
+                    <select class="form-select" @bind="_filtroMecanico" @bind:after="BuscarAsync">
+                        <option value="0">Todos</option>
+                        @foreach (var m in _mecanicos)
+                        {
+                            <option value="@m.Id_Usu">@m.Nombres @m.Apellidos</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Buscar</label>
+                    <input type="text" class="form-control" placeholder="Matrícula, cliente..." 
+                           @bind="_filtroTexto" @bind:event="oninput" @onkeyup="BuscarAsync" />
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" @onclick="@(() => Nav.NavigateTo("/ordenes-trabajo"))">
+                        <i class="bi bi-plus-lg me-1"></i>Nueva Orden
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen de Estados -->
+    <div class="row g-2 mb-3">
+        <div class="col">
+            <div class="card bg-info text-white">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-4 fw-bold">@_conteoRecepcion</div>
+                    <small>Recepción</small>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card bg-secondary text-white">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-4 fw-bold">@_conteoPresupuestado</div>
+                    <small>Presupuestados</small>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card bg-danger text-white">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-4 fw-bold">@_conteoEnProceso</div>
+                    <small>En Proceso</small>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card bg-success text-white">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-4 fw-bold">@_conteoTerminado</div>
+                    <small>Terminados</small>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card bg-dark text-white">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-4 fw-bold">@_conteoEntregado</div>
+                    <small>Entregados</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resultados -->
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 100px">Orden</th>
+                        <th style="width: 100px">Matrícula</th>
+                        <th>Vehículo / Cliente</th>
+                        <th>Trabajos</th>
+                        <th>Mecánico</th>
+                        <th style="width: 100px">Estado</th>
+                        <th class="text-end">Total</th>
+                        <th style="width: 100px" class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_cargando)
+                    {
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span class="ms-2">Cargando...</span>
+                            </td>
+                        </tr>
+                    }
+                    else if (!_ordenes.Any())
+                    {
+                        <tr>
+                            <td colspan="8" class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No se encontraron órdenes de trabajo
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var o in _ordenes)
+                        {
+                            <tr class="@(o.Prioridad == "Urgente" ? "table-danger" : "")">
+                                <td>
+                                    <span class="badge bg-secondary">@o.CodigoOrden</span>
+                                    <small class="d-block text-muted">@o.FechaCreacion.ToString("dd/MM")</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-warning text-dark">@o.Vehiculo?.Matricula</span>
+                                </td>
+                                <td>
+                                    <div>
+                                        <strong>@o.Vehiculo?.Marca @o.Vehiculo?.Modelo</strong>
+                                        @if (o.Vehiculo?.Anio.HasValue == true)
+                                        {
+                                            <small class="text-muted">(@o.Vehiculo.Anio)</small>
+                                        }
+                                    </div>
+                                    <small class="text-muted">@(o.Cliente?.RazonSocial ?? "Sin cliente")</small>
+                                </td>
+                                <td>
+                                    <small>@(o.MotivoConsulta?.Length > 40 ? o.MotivoConsulta.Substring(0, 40) + "..." : o.MotivoConsulta)</small>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(o.NombreMecanico))
+                                    {
+                                        <span>@o.NombreMecanico</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Sin asignar</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge bg-@o.ColorEstado">@o.EstadoTexto</span>
+                                    @if (o.Prioridad == "Urgente")
+                                    {
+                                        <span class="badge bg-danger ms-1">🚨</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <strong>Gs @o.Total.ToString("N0")</strong>
+                                    @if (o.SaldoPendiente > 0 && o.Total > 0)
+                                    {
+                                        <small class="d-block text-warning">Pend: @o.SaldoPendiente.ToString("N0")</small>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" title="Editar"
+                                                @onclick="@(() => Nav.NavigateTo($"/ordenes-trabajo/{o.IdOrdenTrabajo}"))">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        @if (o.Estado == "Terminado")
+                                        {
+                                            <button class="btn btn-outline-success" title="Facturar"
+                                                    @onclick="@(() => Nav.NavigateTo($"/ventas?ordenTrabajo={o.IdOrdenTrabajo}"))">
+                                                <i class="bi bi-receipt"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _cargando = true;
+    private List<OrdenTrabajo> _ordenes = new();
+    private List<Usuario> _mecanicos = new();
+
+    // Filtros
+    private DateTime _fechaDesde = DateTime.Today.AddDays(-30);
+    private DateTime _fechaHasta = DateTime.Today;
+    private string _filtroEstado = "activos";
+    private int _filtroMecanico = 0;
+    private string _filtroTexto = "";
+
+    // Conteos
+    private int _conteoRecepcion = 0;
+    private int _conteoPresupuestado = 0;
+    private int _conteoEnProceso = 0;
+    private int _conteoTerminado = 0;
+    private int _conteoEntregado = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarMecanicosAsync();
+        await BuscarAsync();
+    }
+
+    private async Task CargarMecanicosAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _mecanicos = await ctx.Usuarios
+            .Include(u => u.Rol)
+            .Where(u => u.Estado_Usu && u.Rol != null &&
+                        (u.Rol.NombreRol == "Mecánico" || u.Rol.NombreRol == "Técnico" || u.Rol.NombreRol == "Administrador"))
+            .OrderBy(u => u.Nombres)
+            .ToListAsync();
+    }
+
+    private async Task BuscarAsync()
+    {
+        _cargando = true;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+
+        // Conteos generales (últimos 30 días)
+        var baseQuery = ctx.OrdenesTrabajo.Where(o => o.FechaCreacion >= _fechaDesde.Date);
+        _conteoRecepcion = await baseQuery.CountAsync(o => o.Estado == "Recepcion" || o.Estado == "Diagnostico");
+        _conteoPresupuestado = await baseQuery.CountAsync(o => o.Estado == "Presupuestado" || o.Estado == "Aprobado");
+        _conteoEnProceso = await baseQuery.CountAsync(o => o.Estado == "EnProceso" || o.Estado == "Pausado");
+        _conteoTerminado = await baseQuery.CountAsync(o => o.Estado == "Terminado");
+        _conteoEntregado = await baseQuery.CountAsync(o => o.Estado == "Entregado");
+
+        // Consulta principal
+        var query = ctx.OrdenesTrabajo
+            .Include(o => o.Vehiculo)
+            .Include(o => o.Cliente)
+            .Where(o => o.FechaCreacion >= _fechaDesde.Date && o.FechaCreacion <= _fechaHasta.Date.AddDays(1));
+
+        // Filtro estado
+        if (_filtroEstado == "activos")
+            query = query.Where(o => o.Estado != "Entregado" && o.Estado != "Cancelado");
+        else if (!string.IsNullOrEmpty(_filtroEstado))
+            query = query.Where(o => o.Estado == _filtroEstado);
+
+        // Filtro mecánico
+        if (_filtroMecanico > 0)
+            query = query.Where(o => o.IdMecanico == _filtroMecanico);
+
+        // Filtro texto
+        if (!string.IsNullOrWhiteSpace(_filtroTexto))
+        {
+            var texto = _filtroTexto.ToLower().Trim();
+            query = query.Where(o =>
+                (o.Vehiculo != null && o.Vehiculo.Matricula != null && o.Vehiculo.Matricula.ToLower().Contains(texto)) ||
+                (o.Cliente != null && o.Cliente.RazonSocial.ToLower().Contains(texto)) ||
+                (o.CodigoOrden != null && o.CodigoOrden.ToLower().Contains(texto)));
+        }
+
+        _ordenes = await query
+            .OrderByDescending(o => o.FechaCreacion)
+            .Take(200)
+            .ToListAsync();
+
+        _cargando = false;
+    }
+}

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Fondo circular -->
+  <circle cx="50" cy="50" r="48" fill="#4caf50" stroke="#fff" stroke-width="2"/>
+  
+  <!-- Bicicleta simplificada -->
+  <g fill="#ffffff" stroke="#fff" stroke-width="2">
+    <!-- Ruedas -->
+    <circle cx="25" cy="68" r="12" fill="none"/>
+    <circle cx="75" cy="68" r="12" fill="none"/>
+    <circle cx="25" cy="68" r="4" fill="#fff"/>
+    <circle cx="75" cy="68" r="4" fill="#fff"/>
+    
+    <!-- Marco -->
+    <line x1="25" y1="68" x2="50" y2="50"/>
+    <line x1="50" y1="50" x2="75" y2="68"/>
+    <line x1="50" y1="50" x2="50" y2="35"/>
+    <line x1="50" y1="68" x2="25" y2="68"/>
+    <line x1="50" y1="68" x2="50" y2="50"/>
+  </g>
+  
+  <!-- Mochila delivery -->
+  <rect x="38" y="20" width="24" height="28" rx="4" fill="#fff" stroke="none"/>
+  <line x1="38" y1="30" x2="62" y2="30" stroke="#4caf50" stroke-width="2"/>
+  
+  <!-- Ciclista -->
+  <circle cx="50" cy="12" r="6" fill="#fff"/>
+</svg>

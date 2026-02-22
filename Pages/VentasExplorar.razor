@@ -57,6 +57,16 @@
         </select>
       </div>
       <div class="col-md-2">
+        <label class="form-label small text-muted">Condición</label>
+        <select class="form-select" @bind="filtroTipoPago">
+          <option value="">Todas</option>
+          @foreach (var tp in _tiposPago)
+          {
+            <option value="@tp.IdTipoPago">@tp.Nombre</option>
+          }
+        </select>
+      </div>
+      <div class="col-md-2">
         <label class="form-label small text-muted">Estado SIFEN</label>
         <select class="form-select" @bind="filtroEstadoSifen">
           <option value="">Todos</option>
@@ -65,6 +75,14 @@
           <option value="ACEPTADO">Aceptado</option>
           <option value="RECHAZADO">Rechazado</option>
           <option value="CANCELADO">Cancelado</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Suscripción</label>
+        <select class="form-select" @bind="filtroSuscripcion">
+          <option value="">Todas</option>
+          <option value="SI">Solo suscripciones</option>
+          <option value="NO">Sin suscripción</option>
         </select>
       </div>
       <div class="col-auto d-flex align-items-end">
@@ -213,6 +231,12 @@
                     <i class="bi bi-cash-stack me-1"></i>Caja
                   </span>
                 }
+                @if (v.EsSuscripcion)
+                {
+                  <span class="badge bg-info text-dark" title="Factura de suscripción">
+                    <i class="bi bi-arrow-repeat me-1"></i>Suscripción
+                  </span>
+                }
                 
                 @if (!string.IsNullOrWhiteSpace(v.EstadoSifen))
                 {
@@ -258,6 +282,9 @@
                   <a class="btn btn-outline-primary" title="Imprimir A4" href="/ventas/imprimir/@v.IdVenta" target="_blank"><i class="bi bi-printer"></i></a>
                   <button class="btn btn-outline-info" title="Vista Previa Ticket" @onclick="() => AbrirVistaPrevia(v.IdVenta)"><i class="bi bi-receipt"></i></button>
                 </div>
+                @* Botones SIFEN - Solo mostrar si la caja está en modo Factura Electrónica *@
+                @if (v.EsFacturaElectronica)
+                {
                 <div class="btn-group btn-group-sm" role="group">
                   @if (!string.IsNullOrWhiteSpace(v.CDC))
                   {
@@ -277,6 +304,7 @@
                     }
                   </button>
                 </div>
+                }
                 <div class="btn-group btn-group-sm" role="group">
                   @if (v.TieneComposicion)
                   {
@@ -315,6 +343,35 @@
           Limpiar Filtros
         </button>
       </div>
+    </div>
+  }
+  @if (TotalPaginas > 1)
+  {
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <small class="text-muted">Mostrando @((paginaActual - 1) * registrosPorPagina + 1)-@Math.Min(paginaActual * registrosPorPagina, totalRegistros) de @totalRegistros</small>
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+            <button class="page-link" @onclick="() => IrPagina(1)" disabled="@(paginaActual == 1)"><i class="bi bi-chevron-double-left"></i></button>
+          </li>
+          <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+            <button class="page-link" @onclick="() => IrPagina(paginaActual - 1)" disabled="@(paginaActual == 1)"><i class="bi bi-chevron-left"></i></button>
+          </li>
+          @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+          {
+            var pag = i;
+            <li class="page-item @(pag == paginaActual ? "active" : "")">
+              <button class="page-link" @onclick="() => IrPagina(pag)">@pag</button>
+            </li>
+          }
+          <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+            <button class="page-link" @onclick="() => IrPagina(paginaActual + 1)" disabled="@(paginaActual == TotalPaginas)"><i class="bi bi-chevron-right"></i></button>
+          </li>
+          <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+            <button class="page-link" @onclick="() => IrPagina(TotalPaginas)" disabled="@(paginaActual == TotalPaginas)"><i class="bi bi-chevron-double-right"></i></button>
+          </li>
+        </ul>
+      </nav>
     </div>
   }
 </div>
@@ -675,10 +732,19 @@
   private string filtroCliente = string.Empty;
   private string filtroEstado = string.Empty;
   private string filtroEstadoSifen = string.Empty;
+  private string filtroSuscripcion = string.Empty;
+  private string filtroTipoPago = string.Empty;
   private DateTime? filtroDesde;
   private DateTime? filtroHasta;
   private List<ItemVenta> ventas = new();
+  private List<TipoPago> _tiposPago = new();
   private string? _formatoImpresion = null;
+  
+  // Paginación
+  private int paginaActual = 1;
+  private int registrosPorPagina = 100;
+  private int totalRegistros = 0;
+  private int TotalPaginas => (int)Math.Ceiling(totalRegistros / (double)registrosPorPagina);
   
   // Variables para modal de vista previa ticket
   private bool _mostrarVistaPrevia = false;
@@ -729,10 +795,14 @@
     var caja = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
     _formatoImpresion = caja?.FormatoImpresion;
     
+    // Cargar tipos de pago (condiciones de venta)
+    _tiposPago = await ctx.TiposPago.AsNoTracking().Where(t => t.Activo == true).OrderBy(t => t.Nombre).ToListAsync();
+    
     // Usar fecha de caja como predeterminada
     var fechaCaja = caja?.FechaActualCaja ?? DateTime.Today;
     filtroDesde = fechaCaja;
     filtroHasta = fechaCaja;
+    paginaActual = 1;  // Resetear página al iniciar
     
     await Buscar();
   }
@@ -802,6 +872,11 @@
       var totalIva5 = detalles.Sum(x => x.IVA5);
 
       string FormatearImporte(decimal v) => venta.EsMonedaExtranjera == true ? v.ToString("N2") : v.ToString("N0");
+      
+      // Remisiones (interna o normal) NO son factura electrónica
+      var condVenta = tipoPago?.Nombre?.ToUpper() ?? "";
+      var esRemision = condVenta.Contains("REMISIÓN") || condVenta.Contains("REMISION");
+      var tipoDocTicket = esRemision ? condVenta : (caja?.TipoFacturacion == "ELECTRONICA" ? "FACTURA ELECTRÓNICA" : (venta.TipoDocumento?.ToUpper() ?? "FACTURA"));
 
       var ticketData = new
       {
@@ -809,7 +884,7 @@
         ruc = sociedad?.RUC ?? "",
         direccion = sociedad?.Direccion ?? "",
         telefono = sociedad?.Telefono ?? "",
-        tipoDoc = caja?.TipoFacturacion == "ELECTRONICA" ? "FACTURA ELECTRÓNICA" : (venta.TipoDocumento?.ToUpper() ?? "FACTURA"),
+        tipoDoc = tipoDocTicket,
         numero = venta.NumeroFactura ?? "",
         fecha = venta.Fecha.ToString("dd/MM/yyyy HH:mm"),
         timbrado = venta.Timbrado ?? "",
@@ -897,7 +972,9 @@
               v.Timbrado, v.Total,
               Moneda = m != null ? m.CodigoISO : (v.SimboloMoneda ?? "PYG"),
               Cambio = v.CambioDelDia,
-              v.Estado, v.EstadoSifen, v.CDC, v.IdLote, v.UrlQrSifen
+              v.Estado, v.EstadoSifen, v.CDC, v.IdLote, v.UrlQrSifen,
+              v.IdSuscripcion, v.IdTipoPago,
+              TipoFacturacion = v.Caja != null ? v.Caja.TipoFacturacion : null  // Para determinar si es FE o Autoimpresor
             };
     
     // Filtro por ID interno
@@ -912,6 +989,19 @@
     if (!string.IsNullOrWhiteSpace(filtroEstado))
       q = q.Where(x => x.Estado == filtroEstado);
     
+    // Filtro por Tipo de Pago (Condición de Venta)
+    if (!string.IsNullOrWhiteSpace(filtroTipoPago) && int.TryParse(filtroTipoPago, out var idTipoPago))
+      q = q.Where(x => x.IdTipoPago == idTipoPago);
+    
+    // Filtro por Suscripción
+    if (!string.IsNullOrWhiteSpace(filtroSuscripcion))
+    {
+      if (filtroSuscripcion == "SI")
+        q = q.Where(x => x.IdSuscripcion != null);
+      else if (filtroSuscripcion == "NO")
+        q = q.Where(x => x.IdSuscripcion == null);
+    }
+
     // Filtro por Estado SIFEN
     if (!string.IsNullOrWhiteSpace(filtroEstadoSifen))
     {
@@ -921,7 +1011,15 @@
         q = q.Where(x => x.EstadoSifen == filtroEstadoSifen);
     }
 
-    var data = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdVenta).Take(500).ToListAsync();
+    // Contar total para paginación
+    totalRegistros = await q.CountAsync();
+    
+    // Aplicar paginación
+    var data = await q.OrderByDescending(x => x.Fecha)
+      .ThenByDescending(x => x.IdVenta)
+      .Skip((paginaActual - 1) * registrosPorPagina)
+      .Take(registrosPorPagina)
+      .ToListAsync();
     
     // Obtener IDs de ventas que tienen composición de caja
     var idsVentas = data.Select(x => x.IdVenta).ToList();
@@ -944,6 +1042,9 @@
         totalGs = Math.Round(x.Total * cambio, 0);
         totalUsd = x.Total;
       }
+      // Determinar si es Factura Electrónica según TipoFacturacion de la Caja
+      var tipoFact = (x.TipoFacturacion ?? "").ToUpper().Trim();
+      var esFE = tipoFact.Contains("ELECTR") || tipoFact == "FE" || tipoFact == "ELECTRONICA";
       return new ItemVenta {
         IdVenta = x.IdVenta,
         Fecha = x.Fecha,
@@ -961,9 +1062,20 @@
         CDC = x.CDC ?? string.Empty,
         IdLote = x.IdLote ?? string.Empty,
         UrlQrSifen = x.UrlQrSifen ?? string.Empty,
-        TieneComposicion = setComposicion.Contains(x.IdVenta)
+        TieneComposicion = setComposicion.Contains(x.IdVenta),
+        EsFacturaElectronica = esFE,
+        EsSuscripcion = x.IdSuscripcion.HasValue
       };
     }).ToList();
+  }
+  
+  private async Task IrPagina(int pagina)
+  {
+    if (pagina >= 1 && pagina <= TotalPaginas)
+    {
+      paginaActual = pagina;
+      await Buscar();
+    }
   }
 
   private async Task Limpiar()
@@ -972,6 +1084,9 @@
     filtroCliente = string.Empty;
     filtroEstado = string.Empty;
     filtroEstadoSifen = string.Empty;
+    filtroSuscripcion = string.Empty;
+    filtroTipoPago = string.Empty;
+    paginaActual = 1;  // Resetear página al limpiar
     
     // Obtener fecha de caja para resetear filtros
     await using var ctx = await DbFactory.CreateDbContextAsync();
@@ -1043,7 +1158,10 @@
       // Enviar evento de cancelación
       var resultadoSifen = await EventoSifen.EnviarCancelacionAsync(id, motivo);
       
-      if (!resultadoSifen.Exito)
+      // 4003 = "CDC ya se encuentra con el mismo evento solicitado" (ya fue cancelado antes en SIFEN)
+      bool yaCanceladoEnSifen = resultadoSifen.Codigo == "4003";
+      
+      if (!resultadoSifen.Exito && !yaCanceladoEnSifen)
       {
         await JS.InvokeVoidAsync("alert", 
           $"❌ Error al enviar cancelación a SIFEN:\n\n" +
@@ -1053,11 +1171,29 @@
         return;
       }
       
-      // SIFEN aceptó la cancelación, continuar con anulación local
-      await JS.InvokeVoidAsync("alert", 
-        $"✅ Cancelación SIFEN exitosa\n\n" +
-        $"Código: {resultadoSifen.Codigo}\n\n" +
-        "Procediendo a anular la venta en el sistema...");
+      if (yaCanceladoEnSifen)
+      {
+        // Actualizar EstadoSifen localmente ya que SIFEN confirma que está cancelado
+        venta.EstadoSifen = "CANCELADO";
+        venta.MensajeSifen = "Cancelado previamente en SIFEN (código 4003)";
+        await ctx.SaveChangesAsync();
+        
+        await JS.InvokeVoidAsync("mostrarToastProgreso", 
+          "Esta factura ya estaba cancelada en SIFEN.\n\nProcediendo a anular la venta en el sistema...", 
+          3000, "info");
+        await Task.Delay(3200);
+      }
+      else
+      {
+        // SIFEN aceptó la cancelación, continuar con anulación local
+        await JS.InvokeVoidAsync("mostrarToastProgreso", 
+          $"Cancelación SIFEN exitosa\n\nCódigo: {resultadoSifen.Codigo}\n\nProcediendo a anular la venta en el sistema...", 
+          3000, "success");
+        await Task.Delay(3200);
+      }
+      
+      // Recargar la venta porque EventoSifenService actualizó EstadoSifen en otro contexto
+      await ctx.Entry(venta).ReloadAsync();
     }
     
     // Verificar si tiene cobros de cuotas (ventas a crédito) - solo cobros CONFIRMADOS bloquean
@@ -1165,8 +1301,8 @@
     
     await ctx.SaveChangesAsync();
     
-    // Mostrar mensaje de éxito
-    await JS.InvokeVoidAsync("alert", $"✅ Venta #{id} anulada correctamente.\n\nEl stock fue devuelto al inventario.");
+    // Mostrar toast de éxito (no bloquea)
+    await JS.InvokeVoidAsync("mostrarToastProgreso", $"Venta #{id} anulada correctamente.\n\nEl stock fue devuelto al inventario.", 3000, "success");
     
     await Buscar();
     StateHasChanged();
@@ -1403,8 +1539,50 @@
       // Eliminar la venta
       ctx.Ventas.Remove(venta);
 
+      // ========================================================================
+      // RETROCEDER CONTADOR DE CAJA SI ES LA ÚLTIMA FACTURA
+      // Verifica si la venta eliminada es la última para esa caja/timbrado/serie
+      // y retrocede el contador FacturaInicial para reutilizar el número
+      // ========================================================================
+      bool retrocedioContador = false;
+      if (venta.IdCaja > 0 && !string.IsNullOrEmpty(venta.NumeroFactura))
+      {
+        // Buscar el máximo NumeroFactura RESTANTE para la misma caja/timbrado/serie
+        // (excluyendo la venta que estamos eliminando)
+        var maxFacturaRestante = await ctx.Ventas
+          .Where(v => v.IdCaja == venta.IdCaja 
+                   && v.Timbrado == venta.Timbrado 
+                   && v.Serie == venta.Serie
+                   && v.IdVenta != id)  // Excluir la que vamos a eliminar
+          .OrderByDescending(v => v.NumeroFactura)
+          .Select(v => v.NumeroFactura)
+          .FirstOrDefaultAsync();
+        
+        // Si no hay ninguna venta restante, o la máxima restante es menor al que eliminamos
+        // significa que estamos eliminando la última
+        if (string.IsNullOrEmpty(maxFacturaRestante) || 
+            string.Compare(venta.NumeroFactura, maxFacturaRestante, StringComparison.Ordinal) > 0)
+        {
+          // Cargar la caja para actualizar su contador
+          var cajaActualizar = await ctx.Cajas.FindAsync(venta.IdCaja);
+          if (cajaActualizar != null && 
+              cajaActualizar.Timbrado == venta.Timbrado && 
+              cajaActualizar.Serie == venta.Serie)
+          {
+            // Retroceder el contador al número de la venta eliminada
+            // (así la próxima venta usará este mismo número)
+            cajaActualizar.FacturaInicial = venta.NumeroFactura;
+            retrocedioContador = true;
+          }
+        }
+      }
+
       await ctx.SaveChangesAsync();
-      await JS.InvokeVoidAsync("alert", $"Venta #{id} eliminada correctamente.");
+      
+      var msgExtra = retrocedioContador 
+        ? $"\n\nEl número de factura {venta.Establecimiento}-{venta.PuntoExpedicion}-{venta.NumeroFactura} quedó disponible para la próxima venta."
+        : "";
+      await JS.InvokeVoidAsync("alert", $"Venta #{id} eliminada correctamente.{msgExtra}");
       await Buscar();
     }
     catch (Exception ex)
@@ -1936,5 +2114,7 @@
   public string? IdLote { get; set; } = string.Empty;
   public string? UrlQrSifen { get; set; } = string.Empty;
   public bool TieneComposicion { get; set; }
+  public bool EsFacturaElectronica { get; set; }  // Si la caja está en modo Factura Electrónica
+  public bool EsSuscripcion { get; set; }
   }
 }

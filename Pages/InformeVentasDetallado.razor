@@ -72,6 +72,24 @@
         <label class="form-label">Turno hasta</label>
         <input class="form-control" type="number" @bind-value="fTurnoHasta" @bind-value:event="oninput" />
       </div>
+      <div class="col-md-2">
+        <label class="form-label">Suscripción</label>
+        <select class="form-select" @bind="fSuscripcion">
+          <option value="">Todas</option>
+          <option value="SI">Solo suscripciones</option>
+          <option value="NO">Sin suscripción</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Condición</label>
+        <select class="form-select" @bind="fTipoPago">
+          <option value="">Todas</option>
+          @foreach (var tp in tiposPago)
+          {
+            <option value="@tp.IdTipoPago">@tp.Nombre</option>
+          }
+        </select>
+      </div>
       <div class="col-md-2 d-flex gap-2 justify-content-end">
         <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
         <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
@@ -129,6 +147,10 @@
                 <td>
                   <div class="fw-semibold">@r.Cliente</div>
                   <div class="small text-muted">RUC: @r.Ruc</div>
+                  @if (r.EsSuscripcion)
+                  {
+                    <span class="badge bg-info text-dark"><i class="bi bi-arrow-repeat me-1"></i>Suscripción</span>
+                  }
                 </td>
                 <td>
                   <div class="fw-semibold">@r.Producto</div>
@@ -213,8 +235,11 @@
   private int? fCajaHasta;
   private int? fTurnoDesde;
   private int? fTurnoHasta;
+  private string fSuscripcion = string.Empty;
+  private string fTipoPago = string.Empty;
 
   private List<SistemIA.Models.Moneda> monedas = new();
+  private List<SistemIA.Models.TipoPago> tiposPago = new();
   private List<Fila> filas = new();
   private decimal tcUsdHoy = 6300m; // Tipo de cambio USD del día
 
@@ -238,6 +263,7 @@
     fHasta = fechaCaja;
     
     monedas = await ctx.Monedas.AsNoTracking().OrderBy(m=>m.CodigoISO).ToListAsync();
+    tiposPago = await ctx.TiposPago.AsNoTracking().Where(t => t.Activo == true).OrderBy(t => t.Nombre).ToListAsync();
     
     // Obtener tipo de cambio USD del día
     var tcHoy = await ctx.TiposCambio.AsNoTracking()
@@ -289,6 +315,7 @@
               IdProductoLote = d.IdProductoLote,
               // ========== FIN CAMPOS LOTE ==========
               p.Descripcion, p.CodigoInterno,
+              v.IdSuscripcion, v.IdTipoPago,
               Usuario = (u != null ? u.UsuarioNombre : (v.Vendedor ?? ""))
             };
 
@@ -329,6 +356,17 @@
     if (fCajaHasta.HasValue) q = q.Where(x => (x.IdCaja ?? int.MaxValue) <= fCajaHasta.Value);
     if (fTurnoDesde.HasValue) q = q.Where(x => (x.Turno ?? int.MinValue) >= fTurnoDesde.Value);
     if (fTurnoHasta.HasValue) q = q.Where(x => (x.Turno ?? int.MaxValue) <= fTurnoHasta.Value);
+    if (!string.IsNullOrWhiteSpace(fSuscripcion))
+    {
+      if (fSuscripcion == "SI")
+        q = q.Where(x => x.IdSuscripcion != null);
+      else if (fSuscripcion == "NO")
+        q = q.Where(x => x.IdSuscripcion == null);
+    }
+    
+    // Filtro por Tipo de Pago (Condición de Venta)
+    if (!string.IsNullOrWhiteSpace(fTipoPago) && int.TryParse(fTipoPago, out var idTipoPago))
+      q = q.Where(x => x.IdTipoPago == idTipoPago);
 
     var data = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdVenta).Take(5000).ToListAsync();
 
@@ -391,7 +429,8 @@
         ModoIngreso = x.ModoIngresoPersistido ?? "unidad",
         CantidadPorPaquete = cantPaqInt,
         // Campos de lote
-        NumeroLote = x.NumeroLote
+        NumeroLote = x.NumeroLote,
+        EsSuscripcion = x.IdSuscripcion.HasValue
       };
     }).ToList();
     
@@ -638,6 +677,7 @@
     // Campos para lote
     public string? NumeroLote { get; set; }
     public DateTime? FechaVencimiento { get; set; }
+    public bool EsSuscripcion { get; set; }
   }
 
   // ========== MÉTODOS PARA ENVÍO POR CORREO (PDF) ==========
@@ -659,6 +699,7 @@
     if (fCajaHasta.HasValue) filtros.Add($"Caja hasta: {fCajaHasta}");
     if (fTurnoDesde.HasValue) filtros.Add($"Turno desde: {fTurnoDesde}");
     if (fTurnoHasta.HasValue) filtros.Add($"Turno hasta: {fTurnoHasta}");
+    if (!string.IsNullOrWhiteSpace(fSuscripcion)) filtros.Add($"Suscripción: {fSuscripcion}");
     return string.Join(" | ", filtros);
   }
 

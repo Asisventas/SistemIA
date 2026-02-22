@@ -2,10 +2,13 @@
 @using Microsoft.EntityFrameworkCore
 @using SistemIA.Models
 @using SistemIA.Services
+@using ClosedXML.Excel
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject ILoteService LoteService
+@inject ISucursalProvider SucursalProvider
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 
 <PageProtection Modulo="/inventario/lotes" Permiso="VIEW">
 
@@ -23,8 +26,8 @@
     </div>
 
     <!-- Filtros -->
-    <div class="card mb-3 shadow-sm">
-        <div class="card-header bg-light py-2">
+    <div class="card mb-3 shadow-sm" style="background: var(--bg-surface);">
+        <div class="card-header py-2" style="background: var(--bar-bg);">
             <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros de Búsqueda</h6>
         </div>
         <div class="card-body">
@@ -80,7 +83,7 @@
     <!-- Resumen -->
     <div class="row g-3 mb-3">
         <div class="col-md-3">
-            <div class="card border-primary h-100">
+            <div class="card border-primary h-100" style="background: var(--bg-surface);">
                 <div class="card-body py-2 text-center">
                     <div class="text-muted small">Total Lotes</div>
                     <div class="fs-4 fw-bold text-primary">@_lotes.Count</div>
@@ -88,7 +91,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-success h-100">
+            <div class="card border-success h-100" style="background: var(--bg-surface);">
                 <div class="card-body py-2 text-center">
                     <div class="text-muted small">Con Stock</div>
                     <div class="fs-4 fw-bold text-success">@_lotes.Count(l => l.Stock > 0)</div>
@@ -96,7 +99,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-warning h-100">
+            <div class="card border-warning h-100" style="background: var(--bg-surface);">
                 <div class="card-body py-2 text-center">
                     <div class="text-muted small">Próximos a Vencer</div>
                     <div class="fs-4 fw-bold text-warning">@_lotes.Count(l => l.FechaVencimiento.HasValue && l.FechaVencimiento.Value <= DateTime.Today.AddDays(30) && l.FechaVencimiento.Value > DateTime.Today)</div>
@@ -104,7 +107,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-danger h-100">
+            <div class="card border-danger h-100" style="background: var(--bg-surface);">
                 <div class="card-body py-2 text-center">
                     <div class="text-muted small">Vencidos</div>
                     <div class="fs-4 fw-bold text-danger">@_lotes.Count(l => l.FechaVencimiento.HasValue && l.FechaVencimiento.Value < DateTime.Today)</div>
@@ -114,15 +117,25 @@
     </div>
 
     <!-- Tabla de Lotes -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-white border-bottom py-2">
+    <div class="card shadow-sm" style="background: var(--bg-surface);">
+        <div class="card-header border-bottom py-2" style="background: var(--bg-surface);">
             <div class="d-flex justify-content-between align-items-center">
                 <h6 class="mb-0"><i class="bi bi-table me-2"></i>Listado de Lotes</h6>
-                <div>
-                    <button class="btn btn-sm btn-outline-success me-2" @onclick="ExportarExcel" title="Exportar a Excel">
+                <div class="d-flex gap-1 align-items-center">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ExportarCsv" title="Exportar a CSV">
+                        <i class="bi bi-filetype-csv"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" @onclick="ExportarExcel" title="Exportar a Excel">
                         <i class="bi bi-file-earmark-excel"></i>
                     </button>
-                    <button class="btn btn-sm btn-primary" @onclick="() => _mostrarModalNuevo = true">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="Imprimir" title="Imprimir">
+                        <i class="bi bi-printer"></i>
+                    </button>
+                    <EnviarInformeCorreo 
+                        TituloInforme="Gestión de Lotes"
+                        OnGenerarHtml="GenerarTablaHtml"
+                        FiltrosAplicados="@ObtenerFiltrosTexto()" />
+                    <button class="btn btn-sm btn-primary ms-2" @onclick="() => _mostrarModalNuevo = true">
                         <i class="bi bi-plus-lg me-1"></i>Nuevo Lote
                     </button>
                 </div>
@@ -130,15 +143,27 @@
         </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
+                <thead style="background: var(--bar-bg); color: var(--text-primary);">
                     <tr>
                         <th style="width: 5%"><i class="bi bi-hash"></i></th>
-                        <th style="width: 25%">Producto</th>
-                        <th style="width: 12%">Nro. Lote</th>
-                        <th style="width: 10%">Depósito</th>
-                        <th style="width: 10%" class="text-end">Stock</th>
-                        <th style="width: 10%">Vencimiento</th>
-                        <th style="width: 10%">Fecha Ingreso</th>
+                        <th style="width: 25%; cursor:pointer;" @onclick='() => OrdenarPor("producto")' class="user-select-none">
+                            Producto @IconoOrden("producto")
+                        </th>
+                        <th style="width: 12%; cursor:pointer;" @onclick='() => OrdenarPor("lote")' class="user-select-none">
+                            Nro. Lote @IconoOrden("lote")
+                        </th>
+                        <th style="width: 10%; cursor:pointer;" @onclick='() => OrdenarPor("deposito")' class="user-select-none">
+                            Depósito @IconoOrden("deposito")
+                        </th>
+                        <th style="width: 10%; cursor:pointer;" class="text-end user-select-none" @onclick='() => OrdenarPor("stock")'>
+                            Stock @IconoOrden("stock")
+                        </th>
+                        <th style="width: 10%; cursor:pointer;" @onclick='() => OrdenarPor("vencimiento")' class="user-select-none">
+                            Vencimiento @IconoOrden("vencimiento")
+                        </th>
+                        <th style="width: 10%; cursor:pointer;" @onclick='() => OrdenarPor("ingreso")' class="user-select-none">
+                            Fecha Ingreso @IconoOrden("ingreso")
+                        </th>
                         <th style="width: 8%" class="text-center">Estado</th>
                         <th style="width: 10%" class="text-center">Acciones</th>
                     </tr>
@@ -226,7 +251,7 @@
 {
     <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
+            <div class="modal-content" style="background: var(--bg-surface); color: var(--text-primary);">
                 <div class="modal-header bg-primary text-white py-2">
                     <h5 class="modal-title">
                         <i class="bi bi-box-seam me-2"></i>
@@ -242,11 +267,12 @@
                                disabled="@(_loteEditando != null)" />
                         @if (_productosEncontrados.Any() && _loteEditando == null)
                         {
-                            <div class="list-group mt-1 shadow-sm" style="max-height: 200px; overflow-y: auto;">
+                            <div class="list-group mt-1 shadow-sm" style="max-height: 200px; overflow-y: auto; background: var(--bg-surface);">
                                 @foreach (var prod in _productosEncontrados.Take(10))
                                 {
-                                    <button type="button" class="list-group-item list-group-item-action py-1"
-                                            @onclick="() => SeleccionarProducto(prod)">
+                                    <button type="button" class="list-group-item list-group-item-action py-1" style="background: var(--bg-surface); color: var(--text-primary);"
+                                            @onclick="() => SeleccionarProducto(prod)"
+                                            onmouseover="this.style.background='var(--bar-bg)'" onmouseout="this.style.background='var(--bg-surface)'">
                                         <div class="d-flex justify-content-between">
                                             <span>@prod.Descripcion</span>
                                             <small class="text-muted">@prod.CodigoBarras</small>
@@ -316,7 +342,7 @@
 {
     <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
+            <div class="modal-content" style="background: var(--bg-surface); color: var(--text-primary);">
                 <div class="modal-header bg-danger text-white py-2">
                     <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Confirmar Eliminación</h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="() => _loteEliminar = null"></button>
@@ -356,6 +382,10 @@
     private int _filtroDeposito;
     private string _filtroEstado = "";
     private string _filtroVencimiento = "";
+    
+    // Ordenamiento
+    private string _columnaOrden = "producto";
+    private bool _ordenAscendente = true;
     
     // Nuevo lote
     private string _busquedaProducto = "";
@@ -453,9 +483,57 @@
                 break;
         }
 
-        _lotes = await query.OrderBy(l => l.FechaVencimiento).ThenBy(l => l.Producto!.Descripcion).ToListAsync();
+        _lotes = await query.ToListAsync();
+        AplicarOrdenamiento();
         _cargando = false;
         StateHasChanged();
+    }
+
+    private void AplicarOrdenamiento()
+    {
+        _lotes = _columnaOrden switch
+        {
+            "producto" => _ordenAscendente 
+                ? _lotes.OrderBy(l => l.Producto?.Descripcion ?? "").ToList()
+                : _lotes.OrderByDescending(l => l.Producto?.Descripcion ?? "").ToList(),
+            "lote" => _ordenAscendente
+                ? _lotes.OrderBy(l => l.NumeroLote).ToList()
+                : _lotes.OrderByDescending(l => l.NumeroLote).ToList(),
+            "deposito" => _ordenAscendente
+                ? _lotes.OrderBy(l => l.Deposito?.Nombre ?? "").ToList()
+                : _lotes.OrderByDescending(l => l.Deposito?.Nombre ?? "").ToList(),
+            "stock" => _ordenAscendente
+                ? _lotes.OrderBy(l => l.Stock).ToList()
+                : _lotes.OrderByDescending(l => l.Stock).ToList(),
+            "vencimiento" => _ordenAscendente
+                ? _lotes.OrderBy(l => l.FechaVencimiento ?? DateTime.MaxValue).ToList()
+                : _lotes.OrderByDescending(l => l.FechaVencimiento ?? DateTime.MinValue).ToList(),
+            "ingreso" => _ordenAscendente
+                ? _lotes.OrderBy(l => l.FechaIngreso).ToList()
+                : _lotes.OrderByDescending(l => l.FechaIngreso).ToList(),
+            _ => _lotes.OrderBy(l => l.Producto?.Descripcion ?? "").ToList()
+        };
+    }
+
+    private void OrdenarPor(string columna)
+    {
+        if (_columnaOrden == columna)
+            _ordenAscendente = !_ordenAscendente;
+        else
+        {
+            _columnaOrden = columna;
+            _ordenAscendente = true;
+        }
+        AplicarOrdenamiento();
+    }
+
+    private MarkupString IconoOrden(string columna)
+    {
+        if (_columnaOrden != columna)
+            return new MarkupString("<i class='bi bi-chevron-expand text-muted ms-1' style='font-size:10px;'></i>");
+        return _ordenAscendente
+            ? new MarkupString("<i class='bi bi-caret-up-fill text-primary ms-1'></i>")
+            : new MarkupString("<i class='bi bi-caret-down-fill text-primary ms-1'></i>");
     }
 
     private void LimpiarFiltros()
@@ -637,9 +715,260 @@
         Nav.NavigateTo($"/inventario/movimientos-lote/{lote.IdProductoLote}");
     }
 
+    private string ObtenerFiltrosTexto()
+    {
+        var filtros = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_filtroProducto)) filtros.Add($"Producto: {_filtroProducto}");
+        if (!string.IsNullOrWhiteSpace(_filtroLote)) filtros.Add($"Lote: {_filtroLote}");
+        if (_filtroDeposito > 0) filtros.Add($"Depósito: {_depositos.FirstOrDefault(d => d.IdDeposito == _filtroDeposito)?.Nombre}");
+        if (!string.IsNullOrWhiteSpace(_filtroEstado)) filtros.Add($"Estado: {_filtroEstado}");
+        if (!string.IsNullOrWhiteSpace(_filtroVencimiento)) filtros.Add($"Vencimiento: {_filtroVencimiento}");
+        return filtros.Any() ? string.Join(" | ", filtros) : "Sin filtros";
+    }
+
+    private async Task ExportarCsv()
+    {
+        if (!_lotes.Any()) return;
+        var sep = ';';
+        var sb = new System.Text.StringBuilder();
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var usuario = auth.User?.Identity?.Name ?? "";
+        var suc = SucursalProvider.GetSucursalNombre() ?? "";
+        sb.AppendLine($"Generado={DateTime.Now:yyyy-MM-dd HH:mm};Usuario={usuario};Sucursal={suc}");
+        sb.AppendLine(string.Join(sep, new[] { "Nro", "Código", "Producto", "Número Lote", "Depósito", "Stock", "Stock Inicial", "Fecha Vencimiento", "Días p/Venc.", "Fecha Ingreso", "Costo Unitario", "Estado" }));
+        int n = 0;
+        foreach (var l in _lotes)
+        {
+            var dias = l.FechaVencimiento.HasValue ? (int)(l.FechaVencimiento.Value - DateTime.Today).TotalDays : 0;
+            var estado = ObtenerEstadoLote(l);
+            string[] cols = new[]
+            {
+                (++n).ToString(),
+                l.Producto?.CodigoBarras ?? l.Producto?.CodigoInterno ?? "",
+                l.Producto?.Descripcion ?? "",
+                l.NumeroLote,
+                l.Deposito?.Nombre ?? "",
+                l.Stock.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                l.StockInicial.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                l.FechaVencimiento?.ToString("yyyy-MM-dd") ?? "",
+                l.FechaVencimiento.HasValue ? dias.ToString() : "",
+                l.FechaIngreso.ToString("yyyy-MM-dd"),
+                (l.CostoUnitario ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                estado.Texto
+            };
+            var line = string.Join(sep, cols.Select(v => !string.IsNullOrEmpty(v) && (v.Contains(sep) || v.Contains('"') || v.Contains('\n')) ? $"\"{v.Replace("\"", "\"\"")}\"" : v ?? ""));
+            sb.AppendLine(line);
+        }
+        var utf8bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        var bytes = utf8bom.GetBytes(sb.ToString());
+        var b64 = Convert.ToBase64String(bytes);
+        var file = $"Lotes_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+        await JS.InvokeVoidAsync("downloadFile", b64, file, "text/csv;charset=utf-8");
+    }
+
     private async Task ExportarExcel()
     {
-        // TODO: Implementar exportación a Excel
-        await JS.InvokeVoidAsync("alert", "Funcionalidad en desarrollo");
+        if (!_lotes.Any()) return;
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var usuario = auth.User?.Identity?.Name ?? "";
+        var suc = SucursalProvider.GetSucursalNombre() ?? "";
+
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("Lotes");
+        int row = 1;
+        ws.Cell(row, 1).Value = "Generado"; ws.Cell(row, 2).Value = DateTime.Now; ws.Cell(row, 2).Style.DateFormat.Format = "yyyy-MM-dd HH:mm"; row++;
+        ws.Cell(row, 1).Value = "Usuario"; ws.Cell(row, 2).Value = usuario; row++;
+        ws.Cell(row, 1).Value = "Sucursal"; ws.Cell(row, 2).Value = suc; row++;
+        ws.Cell(row, 1).Value = "Filtros"; ws.Cell(row, 2).Value = ObtenerFiltrosTexto(); row += 2;
+
+        var headers = new[] { "#", "Código", "Producto", "Lote", "Depósito", "Stock", "Stock Inicial", "Fecha Venc.", "Días p/Venc.", "Fecha Ingreso", "Costo Unit.", "Estado" };
+        for (int c = 0; c < headers.Length; c++) ws.Cell(row, c + 1).Value = headers[c];
+        ws.Range(row, 1, row, headers.Length).Style.Font.Bold = true;
+        ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.LightGray;
+        row++;
+
+        int n = 0;
+        decimal totalStock = 0, totalStockInicial = 0, totalValor = 0;
+        foreach (var l in _lotes)
+        {
+            var dias = l.FechaVencimiento.HasValue ? (int)(l.FechaVencimiento.Value - DateTime.Today).TotalDays : 0;
+            var estado = ObtenerEstadoLote(l);
+            
+            ws.Cell(row, 1).Value = ++n;
+            ws.Cell(row, 2).Value = l.Producto?.CodigoBarras ?? l.Producto?.CodigoInterno ?? "";
+            ws.Cell(row, 3).Value = l.Producto?.Descripcion ?? "";
+            ws.Cell(row, 4).Value = l.NumeroLote;
+            ws.Cell(row, 5).Value = l.Deposito?.Nombre ?? "";
+            ws.Cell(row, 6).Value = l.Stock; ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 7).Value = l.StockInicial; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+            if (l.FechaVencimiento.HasValue)
+            {
+                ws.Cell(row, 8).Value = l.FechaVencimiento.Value;
+                ws.Cell(row, 8).Style.DateFormat.Format = "dd/MM/yyyy";
+                ws.Cell(row, 9).Value = dias;
+            }
+            ws.Cell(row, 10).Value = l.FechaIngreso; ws.Cell(row, 10).Style.DateFormat.Format = "dd/MM/yyyy";
+            ws.Cell(row, 11).Value = l.CostoUnitario ?? 0; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0";
+            ws.Cell(row, 12).Value = estado.Texto;
+            
+            // Resaltar según estado
+            if (estado.Texto == "Vencido")
+                ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.LightCoral;
+            else if (estado.Texto == "Próximo")
+                ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.LightYellow;
+            
+            totalStock += l.Stock;
+            totalStockInicial += l.StockInicial;
+            totalValor += (l.CostoUnitario ?? 0) * l.Stock;
+            row++;
+        }
+
+        // Totales
+        ws.Cell(row, 5).Value = "Totales"; ws.Cell(row, 5).Style.Font.Bold = true;
+        ws.Cell(row, 6).Value = totalStock; ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 6).Style.Font.Bold = true;
+        ws.Cell(row, 7).Value = totalStockInicial; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 7).Style.Font.Bold = true;
+        ws.Cell(row, 11).Value = totalValor; ws.Cell(row, 11).Style.NumberFormat.Format = "#,##0"; ws.Cell(row, 11).Style.Font.Bold = true;
+        
+        ws.Columns().AdjustToContents();
+        using var ms = new System.IO.MemoryStream();
+        wb.SaveAs(ms);
+        var b64 = Convert.ToBase64String(ms.ToArray());
+        var file = $"Lotes_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        await JS.InvokeVoidAsync("downloadFile", b64, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task Imprimir()
+    {
+        if (!_lotes.Any()) return;
+        
+        var head = new System.Text.StringBuilder();
+        head.AppendLine("<meta charset=\"utf-8\"/>");
+        head.AppendLine("<title>Gestión de Lotes</title>");
+        head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+        head.AppendLine("<style>");
+        head.AppendLine("@media print { @page { size: A4 landscape; margin: 10mm 10mm; } }");
+        head.AppendLine("body{font-size:9px;color:#111;}");
+        head.AppendLine(".factura-header{display:flex;align-items:center;gap:16px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:12px;}");
+        head.AppendLine(".factura-header .logo{max-width:120px;max-height:60px;object-fit:contain;display:block;border-radius:6px;border:1px solid #e5e7eb;background:#fff;padding:6px;}");
+        head.AppendLine(".factura-header .logo-wrap{width:140px;display:flex;align-items:center;justify-content:center;}");
+        head.AppendLine(".factura-header .empresa h2{margin:0;font-size:18px;}");
+        head.AppendLine(".factura-header .empresa .small{color:#555;}");
+        head.AppendLine(".tabla th,.tabla td{padding:.2rem .3rem;border-bottom:1px solid #e5e7eb;vertical-align:top;font-size:8px;}");
+        head.AppendLine(".right{text-align:right}");
+        head.AppendLine(".center{text-align:center}");
+        head.AppendLine(".muted{color:#666}");
+        head.AppendLine(".badge{font-size:8px;padding:2px 5px;}");
+        head.AppendLine(".vencido{background-color:#f8d7da !important;}");
+        head.AppendLine(".proximo-vencer{background-color:#fff3cd !important;}");
+        head.AppendLine("</style>");
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+        var sucIdSel = SucursalProvider.GetSucursalId();
+        if (sucIdSel.HasValue)
+        {
+            var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+            if (s2 != null) suc = s2;
+        }
+        string empresa = suc?.NombreEmpresa ?? "Empresa";
+        string sucursal = suc?.NombreSucursal ?? "Sucursal";
+        string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : "";
+        string? logoDataUri = null;
+        if (suc?.Logo != null && suc.Logo.Length > 0) logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<div class=\"container-fluid\">");
+        sb.AppendLine("  <div class=\"factura-header\">");
+        sb.AppendLine("    <div class=\"logo-wrap\">");
+        if (!string.IsNullOrEmpty(logoDataUri)) sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+        else sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:10px;color:#999;min-height:40px;min-width:100px;\">LOGO</div>");
+        sb.AppendLine("    </div>");
+        sb.AppendLine("    <div class=\"empresa\">");
+        sb.AppendLine($"      <h2>{empresa}</h2>");
+        sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+        sb.AppendLine($"      <div class=\"small\">{sucursal}</div>");
+        sb.AppendLine("    </div>");
+        sb.AppendLine("    <div class=\"ms-auto text-end\">");
+        sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:18px\">Gestión de Lotes</div>");
+        sb.AppendLine($"      <div>Fecha: {DateTime.Now:dd/MM/yyyy HH:mm}</div>");
+        sb.AppendLine($"      <div class=\"small muted\">{System.Net.WebUtility.HtmlEncode(ObtenerFiltrosTexto())}</div>");
+        sb.AppendLine("    </div>");
+        sb.AppendLine("  </div>");
+
+        sb.AppendLine("  <table class=\"table table-sm tabla\">");
+        sb.AppendLine("    <thead><tr><th>#</th><th>Producto</th><th>Lote</th><th>Depósito</th><th class='right'>Stock</th><th class='right'>Stock Inic.</th><th class='center'>Vencimiento</th><th class='center'>Días</th><th>Ingreso</th><th class='right'>Costo</th><th class='center'>Estado</th></tr></thead>");
+        sb.AppendLine("    <tbody>");
+        int n = 0;
+        decimal totalStock = 0, totalStockInicial = 0, totalValor = 0;
+        foreach (var l in _lotes)
+        {
+            var dias = l.FechaVencimiento.HasValue ? (int)(l.FechaVencimiento.Value - DateTime.Today).TotalDays : 0;
+            var estado = ObtenerEstadoLote(l);
+            var rowClass = estado.Texto == "Vencido" ? "vencido" : (estado.Texto == "Próximo" ? "proximo-vencer" : "");
+            var vencStr = l.FechaVencimiento?.ToString("dd/MM/yy") ?? "-";
+            var diasStr = l.FechaVencimiento.HasValue ? (dias < 0 ? $"Venc. {Math.Abs(dias)}d" : $"{dias}d") : "-";
+            sb.AppendLine($"      <tr class='{rowClass}'><td>{++n}</td><td>{System.Net.WebUtility.HtmlEncode(l.Producto?.Descripcion ?? "")}<br/><small class='muted'>{System.Net.WebUtility.HtmlEncode(l.Producto?.CodigoBarras ?? l.Producto?.CodigoInterno ?? "")}</small></td><td>{System.Net.WebUtility.HtmlEncode(l.NumeroLote)}</td><td>{System.Net.WebUtility.HtmlEncode(l.Deposito?.Nombre ?? "")}</td><td class='right'>{l.Stock:N2}</td><td class='right'>{l.StockInicial:N2}</td><td class='center'>{vencStr}</td><td class='center'>{diasStr}</td><td>{l.FechaIngreso:dd/MM/yy}</td><td class='right'>{(l.CostoUnitario ?? 0):N0}</td><td class='center'>{estado.Texto}</td></tr>");
+            totalStock += l.Stock;
+            totalStockInicial += l.StockInicial;
+            totalValor += (l.CostoUnitario ?? 0) * l.Stock;
+        }
+        sb.AppendLine("    </tbody>");
+        sb.AppendLine($"    <tfoot><tr><th colspan='4' class='right'>Totales</th><th class='right'>{totalStock:N2}</th><th class='right'>{totalStockInicial:N2}</th><th colspan='3'></th><th class='right'>{totalValor:N0}</th><th></th></tr></tfoot>");
+        sb.AppendLine("  </table>");
+        sb.AppendLine($"  <div class='small muted mt-2'>Total: {_lotes.Count} lotes</div>");
+        sb.AppendLine("</div>");
+
+        await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+
+    private Task<string> GenerarTablaHtml()
+    {
+        if (!_lotes.Any()) return Task.FromResult("<p>Sin datos para mostrar.</p>");
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<table style='width:100%;border-collapse:collapse;font-size:11px;'>");
+        sb.AppendLine("<thead><tr style='background:#f0f0f0;'>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>#</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Producto</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Lote</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;'>Depósito</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Stock</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:center;'>Vencimiento</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:center;'>Días</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:right;'>Costo</th>");
+        sb.AppendLine("<th style='border:1px solid #ddd;padding:5px;text-align:center;'>Estado</th>");
+        sb.AppendLine("</tr></thead><tbody>");
+        int n = 0;
+        decimal totalStock = 0, totalValor = 0;
+        foreach (var l in _lotes)
+        {
+            var dias = l.FechaVencimiento.HasValue ? (int)(l.FechaVencimiento.Value - DateTime.Today).TotalDays : 0;
+            var estado = ObtenerEstadoLote(l);
+            var rowStyle = estado.Texto == "Vencido" ? "background:#f8d7da;" : (estado.Texto == "Próximo" ? "background:#fff3cd;" : "");
+            var vencStr = l.FechaVencimiento?.ToString("dd/MM/yy") ?? "-";
+            var diasStr = l.FechaVencimiento.HasValue ? dias.ToString() : "-";
+            sb.AppendLine($"<tr style='{rowStyle}'>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{++n}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(l.Producto?.Descripcion ?? "")}<br/><small style='color:#666;'>{System.Net.WebUtility.HtmlEncode(l.Producto?.CodigoBarras ?? l.Producto?.CodigoInterno ?? "")}</small></td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(l.NumeroLote)}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'>{System.Net.WebUtility.HtmlEncode(l.Deposito?.Nombre ?? "")}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{l.Stock:N2}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:center;'>{vencStr}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:center;'>{diasStr}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{(l.CostoUnitario ?? 0):N0}</td>");
+            sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:center;'>{estado.Texto}</td>");
+            sb.AppendLine("</tr>");
+            totalStock += l.Stock;
+            totalValor += (l.CostoUnitario ?? 0) * l.Stock;
+        }
+        sb.AppendLine("</tbody><tfoot>");
+        sb.AppendLine($"<tr style='background:#f0f0f0;font-weight:bold;'>");
+        sb.AppendLine($"<td colspan='4' style='border:1px solid #ddd;padding:4px;text-align:right;'>Totales</td>");
+        sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{totalStock:N2}</td>");
+        sb.AppendLine($"<td colspan='2' style='border:1px solid #ddd;padding:4px;'></td>");
+        sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;text-align:right;'>{totalValor:N0}</td>");
+        sb.AppendLine($"<td style='border:1px solid #ddd;padding:4px;'></td>");
+        sb.AppendLine("</tr></tfoot></table>");
+        return Task.FromResult(sb.ToString());
     }
 }
+

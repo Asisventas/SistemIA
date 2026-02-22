@@ -1,0 +1,802 @@
+@page "/mesas"
+@page "/mesas/{IdMesa:int}"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+
+<PageProtection Modulo="/mesas" Permiso="VIEW">
+
+<div class="container-fluid">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi @_iconoEspacio text-primary me-2"></i>
+            @(_editando ? (_mesa.IdMesa == 0 ? $"Nuevo/a {_terminoEspacio}" : $"Editar {_terminoEspacio}") : $"Administrar {_terminoEspacioPlural}")
+        </h3>
+        <div class="d-flex gap-2">
+            @if (!_editando)
+            {
+                <a href="/mesas/panel" class="btn btn-success">
+                    <i class="bi bi-grid-3x3-gap me-1"></i> Ver Panel
+                </a>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_mensaje))
+    {
+        <div class="alert @(_esError ? "alert-danger" : "alert-success") alert-dismissible fade show">
+            @_mensaje
+            <button type="button" class="btn-close" @onclick="() => _mensaje = null"></button>
+        </div>
+    }
+
+    @if (_editando)
+    {
+        <!-- Formulario de edición -->
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-pencil-square me-2"></i>
+                            Datos de @_terminoEspacio
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <!-- Columna izquierda -->
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Número/Código <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" @bind="_mesa.Numero" maxlength="20" />
+                                    <div class="form-text">Ej: "1", "2", "VIP-1", "Cancha A"</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Nombre (opcional)</label>
+                                    <input type="text" class="form-control" @bind="_mesa.Nombre" maxlength="100" />
+                                    <div class="form-text">Nombre descriptivo, ej: "Mesa del fondo"</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Tipo</label>
+                                    <select class="form-select" @bind="_mesa.Tipo">
+                                        <option value="Mesa">Mesa</option>
+                                        <option value="Delivery">Delivery</option>
+                                        <option value="Cancha">Cancha</option>
+                                        <option value="Sala">Sala</option>
+                                        <option value="Terraza">Terraza</option>
+                                        <option value="Box">Box/Privado</option>
+                                        <option value="Barra">Barra</option>
+                                        <option value="Otro">Otro</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Zona/Sector</label>
+                                    <input type="text" class="form-control" @bind="_mesa.Zona" 
+                                           list="zonas-list" maxlength="50" />
+                                    <datalist id="zonas-list">
+                                        @foreach (var zona in _zonasExistentes)
+                                        {
+                                            <option value="@zona" />
+                                        }
+                                    </datalist>
+                                    <div class="form-text">Ej: "Interior", "Terraza", "Planta Alta"</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Capacidad (personas)</label>
+                                    <input type="number" class="form-control" @bind="_mesa.Capacidad" min="1" max="100" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Descripción</label>
+                                    <textarea class="form-control" @bind="_mesa.Descripcion" rows="2" maxlength="500"></textarea>
+                                </div>
+                            </div>
+
+                            <!-- Columna derecha -->
+                            <div class="col-md-6">
+                                <h6 class="mb-3 text-muted"><i class="bi bi-palette me-1"></i> Visualización en Panel</h6>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Posición X</label>
+                                        <input type="number" class="form-control" @bind="_mesa.PosicionX" min="0" />
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Posición Y</label>
+                                        <input type="number" class="form-control" @bind="_mesa.PosicionY" min="0" />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Ancho (px)</label>
+                                        <input type="number" class="form-control" @bind="_mesa.Ancho" min="50" max="300" />
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Alto (px)</label>
+                                        <input type="number" class="form-control" @bind="_mesa.Alto" min="50" max="300" />
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Forma</label>
+                                    <select class="form-select" @bind="_mesa.Forma">
+                                        <option value="Cuadrado">Cuadrado</option>
+                                        <option value="Circulo">Círculo</option>
+                                        <option value="Rectangulo">Rectángulo</option>
+                                    </select>
+                                </div>
+
+                                <!-- Selector de Imagen de Fondo - Filtrado por tipo -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-image me-1"></i> 
+                                        Imagen de Fondo
+                                        <span class="badge bg-secondary ms-1">@_mesa.Tipo</span>
+                                    </label>
+                                    <div class="row g-2" style="max-height: 200px; overflow-y: auto;">
+                                        @foreach (var img in ObtenerImagenesFiltradas())
+                                        {
+                                            <div class="col-4">
+                                                <div class="card @(_mesa.ImagenUrl == img.Url ? "border-primary border-2" : "") h-100" 
+                                                     style="cursor: pointer; transition: transform 0.15s;" 
+                                                     @onclick="() => SeleccionarImagen(img.Url)">
+                                                    <div class="card-body p-1 text-center d-flex flex-column align-items-center justify-content-center">
+                                                        <img src="@img.Url" alt="@img.Nombre" 
+                                                             style="width: 55px; height: 55px; object-fit: contain;" />
+                                                        <div class="small text-truncate w-100" style="font-size: 0.65rem;">@img.Nombre</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                        <div class="col-4">
+                                            <div class="card @(string.IsNullOrEmpty(_mesa.ImagenUrl) ? "border-primary border-2" : "") h-100" 
+                                                 style="cursor: pointer;" 
+                                                 @onclick="() => SeleccionarImagen(null)">
+                                                <div class="card-body p-1 text-center d-flex flex-column align-items-center justify-content-center">
+                                                    <i class="bi bi-x-circle text-muted" style="font-size: 2.5rem;"></i>
+                                                    <div class="small" style="font-size: 0.65rem;">Sin imagen</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    @if (_mesa.Tipo == "Delivery")
+                                    {
+                                        <div class="form-text text-info">
+                                            <i class="bi bi-info-circle me-1"></i>
+                                            Las imágenes de delivery se mostrarán como fondo en el panel
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Icono Bootstrap</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">
+                                            <i class="bi @(_mesa.Icono ?? "bi-table")"></i>
+                                        </span>
+                                        <input type="text" class="form-control" @bind="_mesa.Icono" placeholder="bi-table" />
+                                    </div>
+                                    <div class="form-text">
+                                        <a href="https://icons.getbootstrap.com/" target="_blank">Ver iconos disponibles</a>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-4">
+                                        <label class="form-label small">Color Libre</label>
+                                        <input type="color" class="form-control form-control-color w-100" @bind="_mesa.ColorLibre" />
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Color Ocupada</label>
+                                        <input type="color" class="form-control form-control-color w-100" @bind="_mesa.ColorOcupada" />
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Color Reservada</label>
+                                        <input type="color" class="form-control form-control-color w-100" @bind="_mesa.ColorReservada" />
+                                    </div>
+                                </div>
+
+                                <!-- Configuración para canchas -->
+                                @if (_mesa.Tipo == "Cancha" || _mesa.Tipo == "Sala")
+                                {
+                                    <hr />
+                                    <h6 class="mb-3 text-muted"><i class="bi bi-clock me-1"></i> Cobro por Tiempo</h6>
+                                    
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" @bind="_mesa.CobraPorTiempo" id="cobraPorTiempo" />
+                                        <label class="form-check-label" for="cobraPorTiempo">
+                                            Cobrar por hora de uso
+                                        </label>
+                                    </div>
+
+                                    @if (_mesa.CobraPorTiempo)
+                                    {
+                                        <div class="mb-3">
+                                            <label class="form-label">Tarifa por Hora (Gs.)</label>
+                                            <input type="number" class="form-control" @bind="_mesa.TarifaPorHora" min="0" step="1000" />
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label class="form-label">Tiempo Mínimo (minutos)</label>
+                                            <input type="number" class="form-control" @bind="_mesa.TiempoMinimoMinutos" min="15" step="15" />
+                                        </div>
+                                    }
+                                }
+
+                                <hr />
+                                <div class="row">
+                                    <div class="col-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" @bind="_mesa.Activa" id="activa" />
+                                            <label class="form-check-label" for="activa">Mesa Activa</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Orden</label>
+                                        <input type="number" class="form-control form-control-sm" @bind="_mesa.Orden" min="0" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer d-flex justify-content-between">
+                        <button class="btn btn-outline-secondary" @onclick="Cancelar">
+                            <i class="bi bi-x-lg me-1"></i> Cancelar
+                        </button>
+                        <button class="btn btn-success" @onclick="Guardar" disabled="@_guardando">
+                            @if (_guardando)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-check-lg me-1"></i> Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vista previa -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-eye me-2"></i>Vista Previa</h6>
+                    </div>
+                    <div class="card-body bg-light" style="min-height: 200px; position: relative;">
+                        <div class="@(_mesa.Forma.ToLower())"
+                             style="@ObtenerEstiloVistaPrevia()">
+                            <div class="text-center" style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
+                                @if (!string.IsNullOrEmpty(_mesa.Icono))
+                                {
+                                    <i class="bi @_mesa.Icono d-block" style="font-size: 1.5rem;"></i>
+                                }
+                                <span>@_mesa.Numero</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Lista de mesas -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Lista de @_terminoEspacioPlural</h5>
+                <button class="btn btn-primary btn-sm" @onclick="NuevaMesa">
+                    <i class="bi bi-plus-lg me-1"></i> Nuevo/a @_terminoEspacio
+                </button>
+            </div>
+            <div class="card-body p-0">
+                @if (_mesas.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:60px">Vista</th>
+                                    <th>Número</th>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th>Zona</th>
+                                    <th class="text-center">Capacidad</th>
+                                    <th class="text-center">Estado</th>
+                                    <th class="text-center">Activa</th>
+                                    <th style="width:120px" class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var mesa in _mesas)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div style="width:40px; height:40px; background-color: @mesa.ColorLibre;
+                                                        border-radius: @(mesa.Forma == "Circulo" ? "50%" : "6px");
+                                                        display: flex; align-items: center; justify-content: center;
+                                                        color: white; font-size: 0.75rem; font-weight: bold;">
+                                                @if (!string.IsNullOrEmpty(mesa.Icono))
+                                                {
+                                                    <i class="bi @mesa.Icono"></i>
+                                                }
+                                                else
+                                                {
+                                                    @mesa.Numero
+                                                }
+                                            </div>
+                                        </td>
+                                        <td><strong>@mesa.Numero</strong></td>
+                                        <td>@(mesa.Nombre ?? "-")</td>
+                                        <td>
+                                            <span class="badge bg-secondary">@mesa.Tipo</span>
+                                        </td>
+                                        <td>@(mesa.Zona ?? "-")</td>
+                                        <td class="text-center">
+                                            <i class="bi bi-people me-1"></i>@mesa.Capacidad
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge" style="background-color: @mesa.ColorActual">
+                                                @mesa.Estado
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            @if (mesa.Activa)
+                                            {
+                                                <i class="bi bi-check-circle-fill text-success"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-x-circle-fill text-danger"></i>
+                                            }
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary" @onclick="() => Editar(mesa)" title="Editar">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger" @onclick="() => ConfirmarEliminar(mesa)" title="Eliminar">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox display-4"></i>
+                        <p class="mt-2">No hay mesas configuradas</p>
+                        <button class="btn btn-primary" @onclick="NuevaMesa">
+                            <i class="bi bi-plus-lg me-1"></i> Crear Primera Mesa
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+</PageProtection>
+
+@code {
+    [Parameter] public int? IdMesa { get; set; }
+
+    private List<Mesa> _mesas = new();
+    private List<string> _zonasExistentes = new();
+    private Mesa _mesa = new();
+    private bool _editando = false;
+    private bool _guardando = false;
+    private string? _mensaje;
+    private bool _esError;
+    private int _idSucursal = 1;
+    
+    // ========== TIPO DE NEGOCIO ==========
+    private Models.ConfiguracionSistema? _config;
+    private string _tipoNegocio = "Restaurante";
+    
+    private string _terminoEspacio => _tipoNegocio switch
+    {
+        "Complejo" => "Cancha",
+        "Taller" => "Bahía",
+        _ => "Mesa"
+    };
+    private string _terminoEspacioPlural => _tipoNegocio switch
+    {
+        "Complejo" => "Canchas",
+        "Taller" => "Bahías",
+        _ => "Mesas"
+    };
+    private string _iconoEspacio => _tipoNegocio switch
+    {
+        "Complejo" => "bi-dribbble",
+        "Taller" => "bi-wrench",
+        _ => "bi-table"
+    };
+    private string _tipoDefault => _tipoNegocio switch
+    {
+        "Complejo" => "Cancha",
+        "Taller" => "Bahia",
+        _ => "Mesa"
+    };
+
+    // Imágenes disponibles para mesas, canchas y delivery
+    private readonly List<(string Url, string Nombre, string Tipo)> _imagenesDisponibles = new()
+    {
+        // Mesas
+        ("/images/mesas/mesa-redonda.svg", "Mesa Redonda", "Mesa"),
+        ("/images/mesas/mesa-cuadrada.svg", "Mesa Cuadrada", "Mesa"),
+        ("/images/mesas/mesa-rectangular.svg", "Mesa Rectangular", "Mesa"),
+        ("/images/mesas/mesa-vip.svg", "Mesa VIP", "Mesa"),
+        ("/images/mesas/barra.svg", "Barra", "Barra"),
+        ("/images/mesas/terraza.svg", "Terraza", "Terraza"),
+        ("/images/mesas/sala-privada.svg", "Sala Privada", "Sala"),
+        // Canchas
+        ("/images/mesas/cancha-futbol5.svg", "Fútbol 5", "Cancha"),
+        ("/images/mesas/cancha-basquet.svg", "Básquet", "Cancha"),
+        ("/images/mesas/cancha-voley.svg", "Vóley", "Cancha"),
+        ("/images/mesas/cancha-tenis.svg", "Tenis", "Cancha"),
+        ("/images/mesas/mesa-pingpong.svg", "Ping Pong", "Cancha"),
+        ("/images/mesas/mesa-pool.svg", "Pool/Billar", "Cancha"),
+        // Delivery
+        ("/images/mesas/delivery-moto.svg", "Moto", "Delivery"),
+        ("/images/mesas/delivery-bici.svg", "Bicicleta", "Delivery"),
+        ("/images/mesas/delivery-auto.svg", "Auto", "Delivery"),
+        ("/images/mesas/delivery-bolsa.svg", "Bolsa", "Delivery"),
+        ("/images/mesas/delivery-app.svg", "App", "Delivery"),
+        ("/images/mesas/delivery-rappi.svg", "Rappi", "Delivery"),
+        ("/images/mesas/delivery-pedidosya.svg", "PedidosYa", "Delivery"),
+        ("/images/mesas/delivery-uber.svg", "Uber Eats", "Delivery")
+    };
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar configuración para determinar tipo de negocio
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _config = await db.ConfiguracionSistema.AsNoTracking().FirstOrDefaultAsync();
+        _tipoNegocio = _config?.TipoNegocioMesas ?? "Restaurante";
+        
+        await CargarMesas();
+
+        if (IdMesa.HasValue && IdMesa.Value > 0)
+        {
+            var mesa = _mesas.FirstOrDefault(m => m.IdMesa == IdMesa.Value);
+            if (mesa != null)
+            {
+                Editar(mesa);
+            }
+        }
+    }
+
+    private async Task CargarMesas()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        
+        _mesas = await db.Mesas
+            .Where(m => m.IdSucursal == _idSucursal)
+            .OrderBy(m => m.Orden)
+            .ThenBy(m => m.Numero)
+            .ToListAsync();
+
+        _zonasExistentes = _mesas
+            .Where(m => !string.IsNullOrEmpty(m.Zona))
+            .Select(m => m.Zona!)
+            .Distinct()
+            .OrderBy(z => z)
+            .ToList();
+    }
+
+    private void NuevaMesa()
+    {
+        _mesa = new Mesa
+        {
+            IdSucursal = _idSucursal,
+            Numero = (_mesas.Count + 1).ToString(),
+            Tipo = _tipoDefault, // Tipo por defecto según tipo de negocio
+            Capacidad = 4,
+            Ancho = 100,
+            Alto = 100,
+            Forma = "Cuadrado",
+            ColorLibre = "#28a745",
+            ColorOcupada = "#dc3545",
+            ColorReservada = "#ffc107",
+            Estado = "Libre",
+            Activa = true,
+            PosicionX = (_mesas.Count % 5) * 120,
+            PosicionY = (_mesas.Count / 5) * 120
+        };
+        _editando = true;
+        _mensaje = null;
+    }
+
+    private void Editar(Mesa mesa)
+    {
+        _mesa = new Mesa
+        {
+            IdMesa = mesa.IdMesa,
+            IdSucursal = mesa.IdSucursal,
+            Numero = mesa.Numero,
+            Nombre = mesa.Nombre,
+            Descripcion = mesa.Descripcion,
+            Tipo = mesa.Tipo,
+            Zona = mesa.Zona,
+            Capacidad = mesa.Capacidad,
+            PosicionX = mesa.PosicionX,
+            PosicionY = mesa.PosicionY,
+            Ancho = mesa.Ancho,
+            Alto = mesa.Alto,
+            Forma = mesa.Forma,
+            ColorLibre = mesa.ColorLibre,
+            ColorOcupada = mesa.ColorOcupada,
+            ColorReservada = mesa.ColorReservada,
+            ImagenUrl = mesa.ImagenUrl,
+            Icono = mesa.Icono,
+            CobraPorTiempo = mesa.CobraPorTiempo,
+            TarifaPorHora = mesa.TarifaPorHora,
+            TiempoMinimoMinutos = mesa.TiempoMinimoMinutos,
+            Estado = mesa.Estado,
+            Activa = mesa.Activa,
+            Orden = mesa.Orden
+        };
+        _editando = true;
+        _mensaje = null;
+    }
+
+    private void SeleccionarImagen(string? url)
+    {
+        _mesa.ImagenUrl = url;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Filtra las imágenes según el tipo de mesa seleccionado.
+    /// Muestra las imágenes del tipo actual + algunas genéricas.
+    /// </summary>
+    private IEnumerable<(string Url, string Nombre, string Tipo)> ObtenerImagenesFiltradas()
+    {
+        var tipo = _mesa.Tipo;
+        
+        // Para Delivery mostrar solo imágenes de delivery
+        if (tipo == "Delivery")
+        {
+            return _imagenesDisponibles.Where(i => i.Tipo == "Delivery");
+        }
+        
+        // Para Canchas mostrar solo imágenes de cancha
+        if (tipo == "Cancha")
+        {
+            return _imagenesDisponibles.Where(i => i.Tipo == "Cancha");
+        }
+        
+        // Para otros tipos, mostrar mesas + el tipo específico si tiene
+        return _imagenesDisponibles.Where(i => 
+            i.Tipo == "Mesa" || 
+            i.Tipo == tipo ||
+            i.Tipo == "Barra" ||
+            i.Tipo == "Terraza" ||
+            i.Tipo == "Sala"
+        );
+    }
+
+    private string ObtenerEstiloVistaPrevia()
+    {
+        // Para Rectángulo usar proporción 2:1, para Cuadrado usar proporción 1:1
+        int ancho = _mesa.Ancho;
+        int alto = _mesa.Alto;
+        
+        if (_mesa.Forma == "Rectangulo")
+        {
+            // Forzar proporción rectangular (más ancho que alto)
+            alto = (int)(ancho * 0.6);
+        }
+        else if (_mesa.Forma == "Cuadrado")
+        {
+            // Forzar proporción cuadrada
+            alto = ancho;
+        }
+        
+        var estilo = $"width: {ancho}px; height: {alto}px; background-color: {_mesa.ColorLibre};";
+        
+        if (!string.IsNullOrEmpty(_mesa.ImagenUrl))
+        {
+            estilo += $" background-image: url('{_mesa.ImagenUrl}'); background-size: cover; background-position: center;";
+        }
+        
+        estilo += " display: flex; align-items: center; justify-content: center;";
+        estilo += " color: white; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);";
+        estilo += $" border-radius: {(_mesa.Forma == "Circulo" ? "50%" : "8px")};";
+        estilo += " box-shadow: 0 2px 8px rgba(0,0,0,0.15); margin: auto; overflow: hidden;";
+        
+        return estilo;
+    }
+
+    private void Cancelar()
+    {
+        _editando = false;
+        _mensaje = null;
+        if (IdMesa.HasValue)
+        {
+            Nav.NavigateTo("/mesas");
+        }
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(_mesa.Numero))
+        {
+            _mensaje = "❌ El número/código es obligatorio";
+            _esError = true;
+            return;
+        }
+
+        _guardando = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Verificar número único en la sucursal
+            var existe = await db.Mesas.AnyAsync(m => 
+                m.IdSucursal == _mesa.IdSucursal && 
+                m.Numero == _mesa.Numero && 
+                m.IdMesa != _mesa.IdMesa);
+
+            if (existe)
+            {
+                _mensaje = "❌ Ya existe una mesa con ese número en esta sucursal";
+                _esError = true;
+                return;
+            }
+
+            if (_mesa.IdMesa == 0)
+            {
+                // Nueva mesa
+                _mesa.FechaCreacion = DateTime.Now;
+                db.Mesas.Add(_mesa);
+            }
+            else
+            {
+                // Actualizar existente
+                var mesaDb = await db.Mesas.FindAsync(_mesa.IdMesa);
+                if (mesaDb == null)
+                {
+                    _mensaje = "❌ No se encontró la mesa";
+                    _esError = true;
+                    return;
+                }
+
+                mesaDb.Numero = _mesa.Numero;
+                mesaDb.Nombre = _mesa.Nombre;
+                mesaDb.Descripcion = _mesa.Descripcion;
+                mesaDb.Tipo = _mesa.Tipo;
+                mesaDb.Zona = _mesa.Zona;
+                mesaDb.Capacidad = _mesa.Capacidad;
+                mesaDb.PosicionX = _mesa.PosicionX;
+                mesaDb.PosicionY = _mesa.PosicionY;
+                mesaDb.Ancho = _mesa.Ancho;
+                mesaDb.Alto = _mesa.Alto;
+                mesaDb.Forma = _mesa.Forma;
+                mesaDb.ColorLibre = _mesa.ColorLibre;
+                mesaDb.ColorOcupada = _mesa.ColorOcupada;
+                mesaDb.ColorReservada = _mesa.ColorReservada;
+                mesaDb.ImagenUrl = _mesa.ImagenUrl;
+                mesaDb.Icono = _mesa.Icono;
+                mesaDb.CobraPorTiempo = _mesa.CobraPorTiempo;
+                mesaDb.TarifaPorHora = _mesa.TarifaPorHora;
+                mesaDb.TiempoMinimoMinutos = _mesa.TiempoMinimoMinutos;
+                mesaDb.Estado = _mesa.Estado;
+                mesaDb.Activa = _mesa.Activa;
+                mesaDb.Orden = _mesa.Orden;
+                mesaDb.FechaModificacion = DateTime.Now;
+            }
+
+            await db.SaveChangesAsync();
+
+            _mensaje = "✅ Mesa guardada correctamente";
+            _esError = false;
+            _editando = false;
+
+            await CargarMesas();
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error al guardar: {ex.Message}";
+            _esError = true;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task ConfirmarEliminar(Mesa mesa)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        
+        // Verificar si tiene pedidos históricos
+        var tienePedidosHistoricos = await db.Pedidos.AnyAsync(p => p.IdMesa == mesa.IdMesa);
+        var tieneReservasHistoricas = await db.Reservas.AnyAsync(r => r.IdMesa == mesa.IdMesa);
+        
+        if (tienePedidosHistoricos || tieneReservasHistoricas)
+        {
+            // Tiene historial - preguntar si desactivar o eliminar todo
+            var opcion = await JS.InvokeAsync<bool>("confirm", 
+                $"La mesa '{mesa.TextoMostrar}' tiene historial de pedidos o reservas.\n\n" +
+                "¿Desea DESACTIVARLA en lugar de eliminarla?\n\n" +
+                "• Aceptar = Desactivar (conserva historial)\n" +
+                "• Cancelar = No hacer nada");
+            
+            if (opcion)
+            {
+                await DesactivarMesa(mesa);
+            }
+        }
+        else
+        {
+            // No tiene historial - eliminar directamente
+            var confirmar = await JS.InvokeAsync<bool>("confirm", 
+                $"¿Eliminar la mesa '{mesa.TextoMostrar}'?\n\nEsta acción no se puede deshacer.");
+            if (confirmar)
+            {
+                await Eliminar(mesa);
+            }
+        }
+    }
+    
+    private async Task DesactivarMesa(Mesa mesa)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var mesaDb = await db.Mesas.FindAsync(mesa.IdMesa);
+            if (mesaDb != null)
+            {
+                mesaDb.Activa = false;
+                await db.SaveChangesAsync();
+                _mensaje = $"✅ Mesa '{mesa.TextoMostrar}' desactivada. Ya no aparecerá en el panel.";
+                _esError = false;
+                await CargarMesas();
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensaje = $"❌ Error al desactivar: {ex.Message}";
+            _esError = true;
+        }
+    }
+
+    private async Task Eliminar(Mesa mesa)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            db.Mesas.Remove(mesa);
+            await db.SaveChangesAsync();
+
+            _mensaje = "✅ Mesa eliminada correctamente";
+            _esError = false;
+
+            await CargarMesas();
+        }
+        catch (Exception ex)
+        {
+            var detalle = ex.InnerException?.Message ?? ex.Message;
+            _mensaje = $"❌ Error al eliminar: {detalle}";
+            _esError = true;
+        }
+    }
+}

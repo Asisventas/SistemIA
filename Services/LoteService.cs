@@ -76,6 +76,12 @@ namespace SistemIA.Services
         /// Revierte un movimiento de lote (para anulaciones).
         /// </summary>
         Task<bool> RevertirMovimientoAsync(string tipoDocumento, int idDocumento, string? usuario);
+        
+        /// <summary>
+        /// Obtiene un lote existente por número o crea uno nuevo si no existe.
+        /// Usado en transferencias para replicar el lote en el depósito destino.
+        /// </summary>
+        Task<ProductoLote> ObtenerOCrearLoteAsync(int idProducto, int idDeposito, string numeroLote, DateTime? fechaVencimiento);
     }
 
     public class LoteService : ILoteService
@@ -318,6 +324,46 @@ namespace SistemIA.Services
                 .FirstOrDefaultAsync(l => l.IdProducto == idProducto 
                                        && l.IdDeposito == idDeposito 
                                        && l.NumeroLote == numeroLote);
+        }
+        
+        /// <summary>
+        /// Obtiene un lote existente por número o crea uno nuevo si no existe.
+        /// Usado principalmente en transferencias para replicar el lote en el depósito destino.
+        /// El stock inicial es 0 porque se incrementará después con AjustarStockAsync.
+        /// </summary>
+        public async Task<ProductoLote> ObtenerOCrearLoteAsync(int idProducto, int idDeposito, string numeroLote, DateTime? fechaVencimiento)
+        {
+            // Primero buscar si ya existe el lote en el depósito destino
+            var loteExistente = await BuscarLotePorNumeroAsync(idProducto, idDeposito, numeroLote);
+            
+            if (loteExistente != null)
+            {
+                // Si existe pero está inactivo o agotado, reactivarlo
+                if (loteExistente.Estado != "Activo")
+                {
+                    await using var ctx = await _contextFactory.CreateDbContextAsync();
+                    var lote = await ctx.ProductosLotes.FindAsync(loteExistente.IdProductoLote);
+                    if (lote != null)
+                    {
+                        lote.Estado = "Activo";
+                        await ctx.SaveChangesAsync();
+                    }
+                }
+                return loteExistente;
+            }
+            
+            // No existe, crear nuevo lote con stock 0 (se incrementará después)
+            return await CrearLoteAsync(
+                idProducto: idProducto,
+                idDeposito: idDeposito,
+                numeroLote: numeroLote,
+                fechaVencimiento: fechaVencimiento,
+                stockInicial: 0, // El stock se incrementará después con AjustarStockAsync
+                costoUnitario: null, // Se puede actualizar después si se necesita
+                idCompra: null,
+                idCompraDetalle: null,
+                usuario: "Transferencia"
+            );
         }
 
         /// <summary>

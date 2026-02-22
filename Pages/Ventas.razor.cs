@@ -25,6 +25,7 @@ public partial class Ventas
     [Inject] public Sifen SifenService { get; set; } = default!;
     [Inject] public DescuentoService DescuentoService { get; set; } = default!;
     [Inject] public ICorreoService CorreoService { get; set; } = default!;
+    [Inject] public ICorreoColaService CorreoColaService { get; set; } = default!;
     [Inject] public PdfFacturaService PdfService { get; set; } = default!;
     [Inject] public ITrackingService TrackingService { get; set; } = default!;
     [Inject] public AuditoriaService AuditoriaService { get; set; } = default!;
@@ -35,6 +36,33 @@ public partial class Ventas
 
     [SupplyParameterFromQuery(Name = "id")]
     public int? VentaId { get; set; }
+    
+    // ========== PARÁMETROS PARA MESAS/PEDIDOS ==========
+    [SupplyParameterFromQuery(Name = "idPedido")]
+    public int? IdPedido { get; set; }
+    
+    [SupplyParameterFromQuery(Name = "items")]
+    public string? ItemsPedido { get; set; }  // IDs de PedidoDetalle separados por coma
+    
+    [SupplyParameterFromQuery(Name = "modal")]
+    public int? ModoModal { get; set; }  // 1 = abierto desde modal de mesas
+    
+    [SupplyParameterFromQuery(Name = "suscripcion")]
+    public int? ModoSuscripcion { get; set; }  // 1 = creando factura plantilla para suscripción
+    
+    [SupplyParameterFromQuery(Name = "idCliente")]
+    public int? IdClienteParam { get; set; }  // Cliente preseleccionado
+    
+    // Almacenar los IDs de PedidoDetalle que se van a facturar
+    protected List<int> _idsPedidoDetalleAFacturar { get; set; } = new();
+    protected bool EsModoModal => ModoModal == 1;
+    protected bool EsModoSuscripcion => ModoSuscripcion == 1;
+    
+    // Información del pedido (para mostrar pagos anteriores)
+    protected decimal _totalPedido = 0;
+    protected decimal _montoPagadoPedido = 0;
+    protected decimal _montoSenaReserva = 0; // Seña pagada de la reserva
+    protected decimal _pendientePedido => _totalPedido - _montoPagadoPedido - _montoSenaReserva;
     
     // Modo solo visualización (cuando se accede con ?id=X desde el explorador)
     protected bool ModoSoloVista { get; set; }
@@ -60,6 +88,7 @@ public partial class Ventas
     // Descuento por ítem
     protected decimal NuevoDetalleDescuentoPorcentaje { get; set; } = 0;
     protected string? ErrorDescuento { get; set; }
+    protected string? ErrorStock { get; set; } // Error de stock insuficiente
     protected decimal PrecioOriginalSinDescuento { get; set; } = 0; // Para validar vs precio de costo
 
     // Catálogos mínimos
@@ -71,6 +100,7 @@ public partial class Ventas
     protected List<TipoPago> TiposPago { get; set; } = new();
     protected List<TipoDocumentoOperacion> TiposDocumento { get; set; } = new();
     private HashSet<int> _tiposServicioIds = new(); // IDs de TiposItem que son servicios (no controlan stock)
+    private HashSet<int> _tiposGastoIds = new(); // IDs de TiposItem que son gastos (NO se pueden vender)
     private Dictionary<int, decimal> _stocksPorProducto = new(); // Stock total por producto (suma de depósitos)
     protected bool MostrarSugProductos { get; set; }
     protected bool MostrarSugClientes { get; set; }
@@ -175,9 +205,10 @@ public partial class Ventas
             // En modo paquete, mostrar el precio del paquete completo
             if (ModoIngresoVenta == "paquete" && cantPorPaq > 1)
             {
-                return NuevoDetalle.PrecioUnitario * cantPorPaq;
+                // Redondear a 2 decimales para mostrar limpio en UI
+                return Math.Round(NuevoDetalle.PrecioUnitario * cantPorPaq, 2);
             }
-            return NuevoDetalle.PrecioUnitario;
+            return Math.Round(NuevoDetalle.PrecioUnitario, 2);
         }
         set
         {
@@ -221,6 +252,10 @@ public partial class Ventas
     // UI: Vista Previa del Ticket (después de guardar)
     private bool _mostrarVistaPrevia;
     private int _idVentaParaVistaPrevia;
+
+    // Modo suscripción: factura plantilla ya creada
+    private bool _suscripcionCompletada;
+    private int _idVentaSuscripcionCreada;
     
     // SIFEN: Tipo de facturación de la caja (ELECTRONICA o AUTOIMPRESOR)
     private string _tipoFacturacionCaja = "ELECTRONICA";
@@ -298,6 +333,13 @@ public partial class Ventas
     // Configuración del sistema para descuentos
     protected bool PermitirVenderConDescuento { get; set; } = false;
     protected decimal? PorcentajeDescuentoMaximo { get; set; }
+    
+    // ========== CONFIGURACIÓN DE CÓDIGO DE BARRAS ==========
+    /// <summary>
+    /// Si es true, al escanear un código de barras el producto se agrega directamente con cantidad 1.
+    /// Si es false, el producto se selecciona en el formulario para modificar cantidad/descuento antes de agregar.
+    /// </summary>
+    protected bool AgregarProductoAlEscanear { get; set; } = true;
     
     /// <summary>
     /// Determina si el producto seleccionado permite descuento.
@@ -653,6 +695,7 @@ public partial class Ventas
                 ModoFarmaciaActivo = configSistema.FarmaciaModoActivo;
                 MostrarPrecioMinisterio = configSistema.FarmaciaModoActivo && configSistema.FarmaciaMostrarPrecioMinisterio;
                 DescuentoBasadoEnPrecioMinisterio = configSistema.FarmaciaModoActivo && configSistema.FarmaciaDescuentoBasadoEnPrecioMinisterio;
+                AgregarProductoAlEscanear = configSistema.AgregarProductoAlEscanear;
             }
         }
         catch { /* Si no existe la tabla, usa valores por defecto */ }
@@ -730,6 +773,9 @@ public partial class Ventas
         // Cargar IDs de tipos que son servicios (no controlan stock)
         _tiposServicioIds = (await ctx.TiposItem.AsNoTracking().Where(t => t.EsServicio).Select(t => t.IdTipoItem).ToListAsync()).ToHashSet();
         
+        // Cargar IDs de tipos que son gastos (NO se pueden vender)
+        _tiposGastoIds = (await ctx.TiposItem.AsNoTracking().Where(t => t.EsGasto).Select(t => t.IdTipoItem).ToListAsync()).ToHashSet();
+        
         // Filtrar REMISION INTERNA
         TiposDocumento = TiposDocumento.Where(t => !string.Equals(t.Nombre?.Trim(), "REMISION INTERNA", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(QuitarDiacriticos(t.Nombre)?.Trim(), "REMISION INTERNA", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -771,12 +817,28 @@ public partial class Ventas
         {
             await CargarPresupuesto(PresupuestoId.Value);
         }
+        
+        // Si hay parámetro idPedido, cargar los items del pedido para facturar
+        if (IdPedido.HasValue && IdPedido.Value > 0)
+        {
+            await CargarItemsPedidoAsync(IdPedido.Value, ItemsPedido);
+        }
 
         // Si hay parámetro id (venta existente), cargar la venta en modo solo vista
         if (VentaId.HasValue && VentaId.Value > 0)
         {
             await CargarVentaExistente(VentaId.Value);
             ModoSoloVista = true;
+        }
+
+        // Si hay parámetro idCliente (desde suscripciones), preseleccionar el cliente
+        if (IdClienteParam.HasValue && IdClienteParam.Value > 0)
+        {
+            var clientePresel = Clientes.FirstOrDefault(c => c.IdCliente == IdClienteParam.Value);
+            if (clientePresel != null)
+            {
+                await OnClienteSuggestionMouseDownAsync(clientePresel);
+            }
         }
 
         SucursalNombreUI = SucursalProvider.GetSucursalNombre();
@@ -850,7 +912,10 @@ public partial class Ventas
             CajaSeleccionadaId = caja.IdCaja; // Inicializar el selector
             CajaNombreUI = caja.Nombre ?? $"Caja {caja.IdCaja}";
             FechaCajaUI = (caja.FechaActualCaja ?? DateTime.Today).ToString("dd/MM/yyyy");
-            Cab.Fecha = caja.FechaActualCaja ?? DateTime.Today;
+            // Combinar fecha de caja con hora actual del sistema
+            var fechaCaja = caja.FechaActualCaja ?? DateTime.Today;
+            var horaActual = DateTime.Now.TimeOfDay;
+            Cab.Fecha = fechaCaja.Date.Add(horaActual);
         }
         string? ult = null;
         try
@@ -897,7 +962,10 @@ public partial class Ventas
         CajaNombreUI = caja.Nombre ?? $"Caja {caja.IdCaja}";
         FechaCajaUI = (caja.FechaActualCaja ?? DateTime.Today).ToString("dd/MM/yyyy");
         TurnoUI = caja.TurnoActual;
-        Cab.Fecha = caja.FechaActualCaja ?? DateTime.Today;
+        // Combinar fecha de caja con hora actual del sistema
+        var fechaCajaLocal = caja.FechaActualCaja ?? DateTime.Today;
+        var horaActualLocal = DateTime.Now.TimeOfDay;
+        Cab.Fecha = fechaCajaLocal.Date.Add(horaActualLocal);
         
         // Actualizar numeración según el tipo de documento
         var esRemision = EsRemisionNombre(Cab.TipoDocumento);
@@ -1056,7 +1124,9 @@ public partial class Ventas
         CajaIdUI = caja?.IdCaja;
         CajaNombreUI = caja?.Nombre ?? (caja != null ? $"Caja {caja.IdCaja}" : null);
         FechaCajaUI = (fechaCaja).ToString("dd/MM/yyyy");
-        Cab.Fecha = fechaCaja;
+        // Combinar fecha de caja con hora actual del sistema
+        var horaActualSistema = DateTime.Now.TimeOfDay;
+        Cab.Fecha = fechaCaja.Date.Add(horaActualSistema);
         if (caja != null)
         {
             var siguiente = (num + 1).ToString("D7");
@@ -1068,9 +1138,12 @@ public partial class Ventas
             else columnaActualizar = "FacturaInicial";
             
             var fechaCajaDb = caja.FechaActualCaja ?? DateTime.Today;
+            // Suppress warning: columnaActualizar is from a controlled set of column names, not user input
+            #pragma warning disable EF1002
             await ctx.Database.ExecuteSqlRawAsync(
                 $"UPDATE Cajas SET {columnaActualizar} = {{0}}, FechaActualCaja = {{1}} WHERE id_caja = {{2}}",
                 siguiente, fechaCajaDb, caja.IdCaja);
+            #pragma warning restore EF1002
             
             // Detach la entidad para evitar conflictos en futuras operaciones
             ctx.Entry(caja).State = EntityState.Detached;
@@ -1274,6 +1347,11 @@ public partial class Ventas
                 siguienteCodigo = ultimoCodigo + 1;
             }
             
+            // Determinar tipo de contribuyente por longitud del RUC:
+            // RUC con 8 dígitos = Persona Jurídica (ej: 80033703)
+            // RUC con 7 dígitos o menos = Persona Física (ej: 4637249)
+            int tipoContribuyente = rucSinGuion.Length == 8 ? 2 : 1; // 2=Jurídica, 1=Física
+            
             var nuevoCliente = new Cliente
             {
                 CodigoCliente = siguienteCodigo.ToString().PadLeft(6, '0'),
@@ -1288,7 +1366,7 @@ public partial class Ventas
                 NaturalezaReceptor = 1, // 1 = Contribuyente (tiene RUC)
                 TipoDocumentoIdentidadSifen = null, // Contribuyentes NO usan tipo doc identidad, usan RUC
                 NumeroDocumentoIdentidad = null, // Contribuyentes NO usan número doc identidad, usan RUC
-                IdTipoContribuyente = 1, // 1 = Persona Física por defecto (también usado como TipoContribuyenteReceptor en XML SIFEN)
+                IdTipoContribuyente = tipoContribuyente, // 1=Física (≤7 dígitos), 2=Jurídica (8 dígitos)
                 // TipoOperacion según RUC: >= 50M = B2B, < 50M = B2C
                 TipoOperacion = (long.TryParse(rucSinGuion, out var rucNum) && rucNum >= 50_000_000) ? "1" : "2",
                 PermiteCredito = false,
@@ -1397,9 +1475,11 @@ public partial class Ventas
     protected void AplicarFiltroProductos()
     {
         var texto = (BuscarProducto ?? string.Empty).Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(texto)) { ProductosFiltrados = new(Productos); MostrarSugProductos = false; StateHasChanged(); return; }
+        // Excluir productos de tipo Gasto de la lista base (NO se pueden vender)
+        var productosVendibles = Productos.Where(p => !_tiposGastoIds.Contains(p.TipoItem)).ToList();
+        if (string.IsNullOrWhiteSpace(texto)) { ProductosFiltrados = new(productosVendibles); MostrarSugProductos = false; StateHasChanged(); return; }
         // Incluir código interno y código de barras
-        ProductosFiltrados = Productos.Where(p =>
+        ProductosFiltrados = productosVendibles.Where(p =>
             (p.Descripcion ?? string.Empty).ToLowerInvariant().Contains(texto)
             || (p.CodigoInterno ?? string.Empty).ToLowerInvariant().Contains(texto)
             || (p.CodigoBarras ?? string.Empty).ToLowerInvariant().Contains(texto)
@@ -1425,8 +1505,20 @@ public partial class Ventas
             
             if (productoExacto != null)
             {
-                // Es un código de barras escaneado - agregar directamente
-                await AgregarProductoEscaneadoAsync(productoExacto);
+                // Es un código de barras escaneado
+                if (AgregarProductoAlEscanear)
+                {
+                    // Comportamiento anterior: agregar directamente con cantidad 1
+                    await AgregarProductoEscaneadoAsync(productoExacto);
+                }
+                else
+                {
+                    // Nuevo comportamiento: seleccionar el producto para permitir edición
+                    // (el usuario podrá modificar cantidad, descuento, etc. antes de agregar)
+                    await SeleccionarProductoAsync(productoExacto);
+                    BuscarProducto = productoExacto.Descripcion ?? string.Empty;
+                    MostrarSugProductos = false;
+                }
                 return;
             }
             
@@ -1456,6 +1548,17 @@ public partial class Ventas
             return;
         }
         
+        // Verificar si es un producto de tipo GASTO (no se puede vender)
+        bool esGasto = _tiposGastoIds.Contains(p.TipoItem);
+        if (esGasto)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ El producto '{p.Descripcion}' es de tipo GASTO y no puede venderse.\n\nLos productos de tipo Gasto solo pueden registrarse en Compras.");
+            BuscarProducto = string.Empty;
+            MostrarSugProductos = false;
+            StateHasChanged();
+            return;
+        }
+        
         // Verificar stock (solo para productos físicos, no servicios)
         bool esServicio = _tiposServicioIds.Contains(p.TipoItem);
         if (p.Stock <= 0 && !esServicio)
@@ -1468,8 +1571,8 @@ public partial class Ventas
             return;
         }
         
-        // Verificar si es producto controlado con receta
-        if (p.ControladoReceta)
+        // Verificar si es producto controlado con receta (solo en modo farmacia)
+        if (ModoFarmaciaActivo && p.ControladoReceta)
         {
             var yaRegistrado = _recetasPendientes.Any(r => r.IdProducto == p.IdProducto);
             if (!yaRegistrado)
@@ -1624,6 +1727,18 @@ public partial class Ventas
             return;
         }
         
+        // Verificar si es un producto de tipo GASTO (no se puede vender)
+        bool esGasto = _tiposGastoIds.Contains(p.TipoItem);
+        if (esGasto)
+        {
+            await JS.InvokeVoidAsync("alert", $"❌ El producto '{p.Descripcion}' es de tipo GASTO y no puede venderse.\n\nLos productos de tipo Gasto solo pueden registrarse en Compras.");
+            BuscarProducto = string.Empty;
+            MostrarSugProductos = false;
+            StateHasChanged();
+            _ = Task.Run(async () => { await Task.Delay(150); _mouseDownEnSugerenciaProducto = false; });
+            return;
+        }
+        
         // Verificar stock cero SOLO si NO es un servicio
         bool esServicio = _tiposServicioIds.Contains(p.TipoItem);
         if (p.Stock <= 0 && !esServicio)
@@ -1663,20 +1778,79 @@ public partial class Ventas
     /// <summary>
     /// Cierra el modal de vista previa del ticket
     /// </summary>
-    private void CerrarVistaPrevia()
+    private async Task CerrarVistaPrevia()
     {
+        var idVentaCerrada = _idVentaParaVistaPrevia;
         _mostrarVistaPrevia = false;
         _idVentaParaVistaPrevia = 0;
+
+        // En modo suscripción, mostrar pantalla de completado y notificar al padre
+        if (EsModoSuscripcion && idVentaCerrada > 0)
+        {
+            _suscripcionCompletada = true;
+            _idVentaSuscripcionCreada = idVentaCerrada;
+            try
+            {
+                await JS.InvokeVoidAsync("window.parent.postMessage", 
+                    new { tipo = "ventaSuscripcionCreada", idVenta = idVentaCerrada, impreso = false }, "*");
+            }
+            catch { /* Ignorar si no está en iframe */ }
+            return; // No mostrar el form vacío
+        }
+
+        // En modo modal (mesas), notificar al padre
+        if (EsModoModal && idVentaCerrada > 0)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("window.parent.postMessage", 
+                    new { tipo = "ventaGuardada", idVenta = idVentaCerrada, idPedido = IdPedido }, "*");
+            }
+            catch { /* Ignorar si no está en iframe */ }
+        }
     }
 
     /// <summary>
     /// Se ejecuta cuando se completa la impresión desde la vista previa
     /// </summary>
-    private void OnImprimirCompletado()
+    private async Task OnImprimirCompletado()
     {
         Console.WriteLine($"[Ventas] Impresión completada para venta: {_idVentaParaVistaPrevia}");
-        // Opcionalmente cerrar el modal automáticamente
-        // _mostrarVistaPrevia = false;
+        
+        // En modo suscripción, notificar al padre
+        if (EsModoSuscripcion)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("window.parent.postMessage", 
+                    new { tipo = "ventaSuscripcionCreada", idVenta = _idVentaParaVistaPrevia, impreso = true }, "*");
+            }
+            catch { /* Ignorar */ }
+        }
+        
+        // En modo modal (mesas), notificar al padre y cerrar
+        if (EsModoModal)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("window.parent.postMessage", 
+                    new { tipo = "ventaModalCerrar", idVenta = _idVentaParaVistaPrevia, impreso = true }, "*");
+            }
+            catch { /* Ignorar si no está en iframe */ }
+        }
+    }
+
+    /// <summary>
+    /// Botón "Cerrar" en pantalla de suscripción completada - intenta cerrar/notificar al padre
+    /// </summary>
+    private async Task NotificarYCerrarSuscripcion()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("window.parent.postMessage", 
+                new { tipo = "ventaSuscripcionCreada", idVenta = _idVentaSuscripcionCreada, impreso = true }, "*");
+        }
+        catch { /* Ignorar */ }
     }
 
     private async Task SeleccionarProductoAsync(Producto p)
@@ -1718,6 +1892,7 @@ public partial class Ventas
         PrecioOriginalSinDescuento = NuevoDetalle.PrecioUnitario;
         NuevoDetalleDescuentoPorcentaje = 0; // Reset descuento al seleccionar nuevo producto
         ErrorDescuento = null;
+        ErrorStock = null; // Limpiar error de stock al seleccionar nuevo producto
         
         // ========== CARGAR INFO DE DESCUENTO DEL PRODUCTO ==========
         // Obtener información completa de descuento configurado
@@ -1797,9 +1972,9 @@ public partial class Ventas
     {
         if (NuevoDetalle.IdProducto <= 0 || NuevoDetalle.Cantidad <= 0) return;
         
-        // Verificar si el producto es controlado con receta
+        // Verificar si el producto es controlado con receta (solo en modo farmacia)
         var productoActual = Productos.FirstOrDefault(x => x.IdProducto == NuevoDetalle.IdProducto);
-        if (productoActual != null && productoActual.ControladoReceta)
+        if (ModoFarmaciaActivo && productoActual != null && productoActual.ControladoReceta)
         {
             // Verificar si ya tiene receta registrada para este producto
             var yaRegistrado = _recetasPendientes.Any(r => r.IdProducto == NuevoDetalle.IdProducto);
@@ -1823,6 +1998,7 @@ public partial class Ventas
     private async Task AgregarDetalleInternoAsync()
     {
         if (NuevoDetalle.IdProducto <= 0 || NuevoDetalle.Cantidad <= 0) return;
+        ErrorStock = null; // Limpiar error previo
         
         // Obtener producto para validar si permite decimal
         var productoValidar = Productos.FirstOrDefault(x => x.IdProducto == NuevoDetalle.IdProducto);
@@ -1830,6 +2006,39 @@ public partial class Ventas
         {
             // Si no permite decimal, redondear a entero (hacia arriba)
             NuevoDetalle.Cantidad = Math.Ceiling(NuevoDetalle.Cantidad);
+        }
+        
+        // ========== VALIDAR STOCK SUFICIENTE ==========
+        // Si no es servicio, validar que haya stock suficiente
+        if (productoValidar != null && !_tiposServicioIds.Contains(productoValidar.TipoItem))
+        {
+            // Calcular cantidad en unidades requeridas
+            decimal cantidadUnidadesRequeridas = NuevoDetalle.Cantidad;
+            if (ModoIngresoVenta == "paquete" && (_cantidadPorPaqueteActual ?? 1) > 1)
+            {
+                cantidadUnidadesRequeridas = _cantidadIngresadaVenta * (_cantidadPorPaqueteActual ?? 1);
+            }
+            
+            // Sumar cantidad ya agregada del mismo producto en la venta actual
+            decimal cantidadYaEnVenta = Detalles
+                .Where(d => d.IdProducto == productoValidar.IdProducto)
+                .Sum(d => {
+                    if (d.ModoIngresoPersistido == "paquete" && (d.CantidadPorPaqueteMomento ?? 1) > 1)
+                        return d.Cantidad * (d.CantidadPorPaqueteMomento ?? 1);
+                    return d.Cantidad;
+                });
+            
+            decimal stockDisponible = productoValidar.Stock - cantidadYaEnVenta;
+            
+            if (cantidadUnidadesRequeridas > stockDisponible)
+            {
+                int maxPaquetes = (int)Math.Floor(stockDisponible / (_cantidadPorPaqueteActual ?? 1));
+                ErrorStock = ModoIngresoVenta == "paquete" && (_cantidadPorPaqueteActual ?? 1) > 1
+                    ? $"Stock insuficiente. Disponible: {stockDisponible:N0} unidades ({maxPaquetes} {_nombreUnidadVenta.ToLower()}(s) completo(s))"
+                    : $"Stock insuficiente. Disponible: {stockDisponible:N0} unidades";
+                Console.WriteLine($"[ValidarStock] ERROR: Requiere {cantidadUnidadesRequeridas}, Stock: {productoValidar.Stock}, YaEnVenta: {cantidadYaEnVenta}, Disponible: {stockDisponible}");
+                return;
+            }
         }
         
         // Verificar si el producto ya está en la lista CON EL MISMO MODO DE INGRESO
@@ -1887,6 +2096,7 @@ public partial class Ventas
             
             RecalcularTotales();
             NuevoDetalle = new VentaDetalle { Cantidad = 1, PrecioUnitario = 0 };
+            ErrorStock = null; // Limpiar error después de agregar exitosamente
             BuscarProducto = string.Empty; MostrarSugProductos = false;
             await Task.CompletedTask;
             return;
@@ -1963,6 +2173,7 @@ public partial class Ventas
         NuevoDetalleDescuentoPorcentaje = 0; // Reset descuento
         PrecioOriginalSinDescuento = 0;
         ErrorDescuento = null;
+        ErrorStock = null; // Limpiar error de stock después de agregar
         BuscarProducto = string.Empty; MostrarSugProductos = false;
         await Task.CompletedTask;
     }
@@ -2280,6 +2491,14 @@ public partial class Ventas
             return;
         }
         
+        // Validar que no se facture más del pendiente del pedido
+        if (IdPedido.HasValue && _pendientePedido > 0 && Cab.Total > _pendientePedido + 1m) // +1 tolerancia redondeo
+        {
+            MensajeAdvertencia = $"⚠️ No puede facturar más del saldo pendiente del pedido. Pendiente: {_pendientePedido:N0} Gs, Total factura: {Cab.Total:N0} Gs.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        
         // Validar composición de caja para ventas al contado (no crédito ni remisión)
         var esPresupuestoValidacion = string.Equals(Cab.TipoIngreso, "PRESUPUESTO", StringComparison.OrdinalIgnoreCase);
         var esRemisionValidacion = Cab.TipoDocumento?.ToUpperInvariant().Contains("REMISION") ?? false;
@@ -2479,6 +2698,69 @@ public partial class Ventas
                     ctx.VentasDetalles.Add(d);
                 }
                 await ctx.SaveChangesAsync();
+                
+                // *** MARCAR ITEMS DE PEDIDO COMO FACTURADOS (SI VIENEN DE MESAS) ***
+                // IMPORTANTE: Solo marcar como facturados los items cuyo IdProducto 
+                // COINCIDA con los productos realmente vendidos (en caso de que el usuario
+                // haya cambiado productos en la venta)
+                if (_idsPedidoDetalleAFacturar.Any() && IdPedido.HasValue)
+                {
+                    // Obtener los IdProducto que realmente se vendieron
+                    var productosVendidos = Detalles.Select(d => d.IdProducto).ToHashSet();
+                    
+                    var itemsPedido = await ctx.PedidosDetalles
+                        .Where(pd => _idsPedidoDetalleAFacturar.Contains(pd.IdPedidoDetalle))
+                        .ToListAsync();
+                    
+                    var itemsFacturados = 0;
+                    decimal totalFacturado = 0;
+                    foreach (var item in itemsPedido)
+                    {
+                        // Solo marcar si el producto del pedido está en la venta
+                        if (productosVendidos.Contains(item.IdProducto))
+                        {
+                            item.Facturado = true;
+                            item.IdVenta = Cab.IdVenta;
+                            totalFacturado += item.Importe;
+                            itemsFacturados++;
+                        }
+                    }
+                    
+                    // Actualizar MontoPagado del pedido con el total facturado
+                    var pedido = await ctx.Pedidos.FindAsync(IdPedido.Value);
+                    if (pedido != null)
+                    {
+                        pedido.MontoPagado += totalFacturado;
+                        Console.WriteLine($"[Ventas] Pedido #{IdPedido}: MontoPagado actualizado a {pedido.MontoPagado:N0} (+{totalFacturado:N0})");
+                    }
+                    
+                    await ctx.SaveChangesAsync();
+                    
+                    Console.WriteLine($"[Ventas] Marcados {itemsFacturados} de {itemsPedido.Count} items de pedido como facturados. IdVenta={Cab.IdVenta}");
+                    _idsPedidoDetalleAFacturar.Clear();
+                    
+                    // Notificar al padre (MesasPanel) si está en modo modal
+                    if (EsModoModal)
+                    {
+                        try
+                        {
+                            await JS.InvokeVoidAsync("window.parent.postMessage", 
+                                new { tipo = "ventaGuardada", idVenta = Cab.IdVenta, idPedido = IdPedido }, "*");
+                        }
+                        catch { /* Ignorar si no está en iframe */ }
+                    }
+                    
+                    // Notificar al padre si es modo suscripción
+                    if (EsModoSuscripcion)
+                    {
+                        try
+                        {
+                            await JS.InvokeVoidAsync("window.parent.postMessage", 
+                                new { tipo = "ventaSuscripcionCreada", idVenta = Cab.IdVenta, idCliente = Cab.IdCliente }, "*");
+                        }
+                        catch { /* Ignorar si no está en iframe */ }
+                    }
+                }
 
                 // *** GUARDAR RECETAS MÉDICAS SI HAY PRODUCTOS CONTROLADOS ***
                 if (_recetasPendientes.Any())
@@ -2542,6 +2824,54 @@ public partial class Ventas
                             acumulado += monto;
                         }
                         await ctx.SaveChangesAsync();
+
+                        // *** CREAR VentaPago (E7) PARA SIFEN - CONDICIÓN CRÉDITO ***
+                        var vpCredito = await ctx.VentasPagos
+                            .Include(x => x.Detalles!)
+                            .Include(x => x.Cuotas!)
+                            .FirstOrDefaultAsync(x => x.IdVenta == Cab.IdVenta);
+                        if (vpCredito == null)
+                        {
+                            vpCredito = new VentaPago
+                            {
+                                IdVenta = Cab.IdVenta,
+                                CondicionOperacion = 2, // Crédito
+                                IdMoneda = Cab.IdMoneda,
+                                TipoCambio = Cab.CambioDelDia,
+                                ImporteTotal = Cab.Total
+                            };
+                            ctx.VentasPagos.Add(vpCredito);
+                            await ctx.SaveChangesAsync();
+                        }
+                        else
+                        {
+                            vpCredito.CondicionOperacion = 2;
+                            vpCredito.IdMoneda = Cab.IdMoneda;
+                            vpCredito.TipoCambio = Cab.CambioDelDia;
+                            vpCredito.ImporteTotal = Cab.Total;
+                            // Limpiar cuotas anteriores
+                            if (vpCredito.Cuotas != null && vpCredito.Cuotas.Count > 0)
+                                ctx.RemoveRange(vpCredito.Cuotas);
+                            await ctx.SaveChangesAsync();
+                        }
+
+                        // Generar cuotas SIFEN (VentaCuota) espejo de CuentaPorCobrarCuota
+                        var acumuladoCuota2 = 0m;
+                        for (int i = 1; i <= numeroCuotasCredito; i++)
+                        {
+                            var montoCuota = (i == numeroCuotasCredito) ? (Cab.Total - acumuladoCuota2) : montoPorCuota;
+                            var fechaVcto = fechaPrimerVencimiento.AddDays((i - 1) * plazoDias);
+                            ctx.Add(new VentaCuota
+                            {
+                                IdVentaPago = vpCredito.IdVentaPago,
+                                NumeroCuota = i,
+                                MontoCuota = montoCuota,
+                                FechaVencimiento = fechaVcto
+                            });
+                            acumuladoCuota2 += montoCuota;
+                        }
+                        await ctx.SaveChangesAsync();
+                        Console.WriteLine($"[Ventas] VentaPago crédito creado para venta {Cab.IdVenta} con {numeroCuotasCredito} cuota(s)");
                     }
                 }
 
@@ -3092,13 +3422,97 @@ public partial class Ventas
             else
             {
                 Console.WriteLine($"[Ventas] ❌ Error al enviar correo: {resultado.Mensaje}");
+                // Encolar para reintento cuando vuelva la conexión
+                await EncolarCorreoFacturaAsync(idVenta, cliente.Email, pdfBytes, nombreArchivo, sucursalId, resultado.Mensaje);
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Ventas] Error al enviar factura por correo: {ex.Message}");
-            // No interrumpir el flujo principal por un error de correo
+            // Detectar si es error de conexión para encolar
+            var esErrorConexion = ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("network", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("unable to connect", StringComparison.OrdinalIgnoreCase)
+                || ex.InnerException?.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) == true;
+            
+            if (esErrorConexion)
+            {
+                Console.WriteLine($"[Ventas] Detectado error de conexión, encolando correo para reintento...");
+                try
+                {
+                    await using var ctxCola = await DbFactory.CreateDbContextAsync();
+                    var clienteCola = await ctxCola.Clientes.AsNoTracking()
+                        .FirstOrDefaultAsync(c => c.IdCliente == idCliente.Value);
+                    var ventaCola = await ctxCola.Ventas.AsNoTracking()
+                        .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+                    if (clienteCola != null && ventaCola != null)
+                    {
+                        var pdfBytesCola = await PdfService.GenerarPdfFactura(idVenta);
+                        var numFactura = ventaCola.NumeroFactura ?? $"Venta-{idVenta}";
+                        var archivo = $"Factura_{numFactura.Replace("-", "_").Replace(" ", "_")}.pdf";
+                        await EncolarCorreoFacturaAsync(idVenta, clienteCola.Email!, pdfBytesCola, archivo, sucursalId, ex.Message);
+                    }
+                }
+                catch (Exception exCola)
+                {
+                    Console.WriteLine($"[Ventas] Error al encolar correo: {exCola.Message}");
+                }
+            }
         }
+    }
+
+    /// <summary>
+    /// Encola el correo de factura para reintento posterior cuando falla por conexión.
+    /// </summary>
+    private async Task EncolarCorreoFacturaAsync(int idVenta, string email, byte[] pdfBytes, string nombreArchivo, int sucursalId, string errorOriginal)
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var venta = await ctx.Ventas.Include(v => v.Cliente).AsNoTracking()
+                .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+            var sucursal = await ctx.Sucursal.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == sucursalId);
+
+            var numeroFactura = venta?.NumeroFactura ?? $"Venta-{idVenta}";
+            var asunto = $"Factura Electrónica {numeroFactura} - {sucursal?.NombreEmpresa ?? ""}";
+            var cuerpoHtml = GenerarHtmlFacturaParaCola(venta, sucursal, numeroFactura);
+
+            var adjuntos = new List<(string nombre, byte[] contenido, string mimeType)>
+            {
+                (nombreArchivo, pdfBytes, "application/pdf")
+            };
+
+            var idCola = await CorreoColaService.EncolarCorreoAsync(
+                email, asunto, cuerpoHtml, sucursalId, 
+                "FacturaElectronica", idVenta, adjuntos);
+
+            Console.WriteLine($"[Ventas] 📧 Correo de factura {numeroFactura} encolado (ID: {idCola}) para reintento. Error original: {errorOriginal}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Ventas] Error al encolar correo de factura: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Genera el HTML del correo de factura para la cola (versión simplificada)
+    /// </summary>
+    private string GenerarHtmlFacturaParaCola(Venta? venta, Sucursal? sucursal, string numeroFactura)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("<!DOCTYPE html><html><head><meta charset='utf-8'></head><body style='font-family:Arial,sans-serif;'>");
+        sb.AppendLine("<div style='max-width:600px;margin:0 auto;padding:20px;'>");
+        sb.AppendLine($"<h2 style='color:#0066cc;'>Factura Electrónica {numeroFactura}</h2>");
+        sb.AppendLine($"<p>Estimado/a <strong>{venta?.Cliente?.RazonSocial ?? "Cliente"}</strong>,</p>");
+        sb.AppendLine("<p>Adjuntamos a este correo su Factura Electrónica en formato PDF.</p>");
+        sb.AppendLine("<p>Puede verificar la autenticidad de este documento en el portal de SIFEN del Ministerio de Hacienda.</p>");
+        sb.AppendLine("<p>Gracias por su preferencia.</p>");
+        sb.AppendLine("<hr style='border:1px solid #eee;margin:20px 0;'/>");
+        sb.AppendLine($"<p style='color:#666;font-size:12px;'>{sucursal?.NombreEmpresa ?? ""} - RUC: {sucursal?.RUC ?? ""}-{sucursal?.DV}</p>");
+        sb.AppendLine("</div></body></html>");
+        return sb.ToString();
     }
 
     /// <summary>
@@ -3902,6 +4316,152 @@ public partial class Ventas
     }
 
     /// <summary>
+    /// Carga los items de un pedido de mesa para facturarlos.
+    /// Los items seleccionados se marcarán como Facturado=true al guardar la venta.
+    /// </summary>
+    private async Task CargarItemsPedidoAsync(int idPedido, string? itemsIds)
+    {
+        Console.WriteLine($"[Ventas] CargarItemsPedidoAsync: idPedido={idPedido}, itemsIds={itemsIds}");
+        
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        
+        // Cargar el pedido con su reserva (si tiene)
+        var pedido = await ctx.Pedidos
+            .Include(p => p.Cliente)
+            .Include(p => p.Mesa)
+            .Include(p => p.Reserva)  // Incluir la reserva para obtener la seña
+            .FirstOrDefaultAsync(p => p.IdPedido == idPedido);
+        
+        if (pedido == null)
+        {
+            Console.WriteLine($"[Ventas] Pedido #{idPedido} no encontrado");
+            return;
+        }
+        
+        // Parsear los IDs de los items seleccionados (si vienen)
+        _idsPedidoDetalleAFacturar = string.IsNullOrWhiteSpace(itemsIds) 
+            ? new List<int>()
+            : itemsIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => int.TryParse(s.Trim(), out var id) ? id : 0)
+                .Where(id => id > 0)
+                .ToList();
+        
+        // Cargar los detalles - si hay IDs específicos, solo esos; si no, todos los no facturados
+        List<PedidoDetalle> detallesPedido;
+        if (_idsPedidoDetalleAFacturar.Any())
+        {
+            detallesPedido = await ctx.PedidosDetalles
+                .Include(d => d.Producto)
+                .ThenInclude(p => p.TipoIva)
+                .Where(d => _idsPedidoDetalleAFacturar.Contains(d.IdPedidoDetalle) && !d.Facturado)
+                .ToListAsync();
+        }
+        else
+        {
+            // Cargar TODOS los items no facturados del pedido
+            detallesPedido = await ctx.PedidosDetalles
+                .Include(d => d.Producto)
+                .ThenInclude(p => p.TipoIva)
+                .Where(d => d.IdPedido == idPedido && !d.Facturado)
+                .ToListAsync();
+            
+            // Guardar los IDs para marcarlos como facturados después
+            _idsPedidoDetalleAFacturar = detallesPedido.Select(d => d.IdPedidoDetalle).ToList();
+        }
+        
+        Console.WriteLine($"[Ventas] Detalles cargados: {detallesPedido.Count}");
+        
+        if (!detallesPedido.Any())
+        {
+            Console.WriteLine($"[Ventas] No hay items para facturar en pedido #{idPedido}");
+            return;
+        }
+        
+        // Asignar cliente del pedido si existe
+        if (pedido.IdCliente.HasValue && pedido.IdCliente > 0)
+        {
+            Cab.IdCliente = pedido.IdCliente;
+            var cliente = Clientes.FirstOrDefault(c => c.IdCliente == pedido.IdCliente);
+            if (cliente != null)
+            {
+                ClienteSeleccionadoLabel = $"{cliente.RazonSocial} (RUC: {cliente.RUC}-{cliente.DV})";
+            }
+        }
+        
+        // Referencia al pedido (máx 20 chars)
+        var mesaRef = pedido.Mesa?.Nombre ?? $"M{pedido.IdMesa}";
+        if (mesaRef.Length > 10) mesaRef = mesaRef.Substring(0, 10);
+        Cab.NroPedido = $"{mesaRef}-P{pedido.IdPedido}";
+        Cab.IdPedido = pedido.IdPedido; // FK para sumar ventas del pedido
+
+        // Calcular monto ya pagado/facturado:
+        // 1. MontoPagado del pedido (consumiciones, anticipos)
+        // 2. Suma de ventas anteriores vinculadas a este pedido
+        // 3. Seña pagada de la reserva (si tiene)
+        _totalPedido = pedido.Total;
+        var ventasAnteriores = await ctx.Ventas
+            .Where(v => v.IdPedido == pedido.IdPedido && v.Estado != "Anulada")
+            .SumAsync(v => v.Total);
+        _montoPagadoPedido = pedido.MontoPagado + ventasAnteriores;
+        
+        // Cargar seña de la reserva si existe y está pagada
+        _montoSenaReserva = 0;
+        if (pedido.IdReserva.HasValue && pedido.Reserva != null && pedido.Reserva.SenaPagada && pedido.Reserva.MontoSena.HasValue)
+        {
+            _montoSenaReserva = pedido.Reserva.MontoSena.Value;
+            Console.WriteLine($"[Ventas] Reserva #{pedido.IdReserva}: Seña pagada={_montoSenaReserva:N0}");
+        }
+        
+        Console.WriteLine($"[Ventas] Pedido #{pedido.IdPedido}: Total={_totalPedido:N0}, MontoPagadoPedido={pedido.MontoPagado:N0}, VentasAnt={ventasAnteriores:N0}, Seña={_montoSenaReserva:N0}, Pendiente={_pendientePedido:N0}");
+        
+        // Agregar detalles al documento de venta
+        Detalles.Clear();
+        foreach (var det in detallesPedido)
+        {
+            if (det.Producto == null) continue;
+            
+            var nuevoDetalle = new VentaDetalle
+            {
+                IdProducto = det.IdProducto,
+                Cantidad = det.Cantidad,
+                PrecioUnitario = det.PrecioUnitario,
+                Importe = det.Cantidad * det.PrecioUnitario,
+                IdTipoIva = det.Producto.IdTipoIva,
+                CostoUnitario = det.Producto.CostoUnitarioGs,
+                PrecioMinisterio = det.Producto.PrecioMinisterio
+            };
+            
+            // Calcular IVA según el tipo
+            var tipoIva = det.Producto.TipoIva;
+            if (tipoIva != null)
+            {
+                if (tipoIva.Porcentaje == 10)
+                {
+                    nuevoDetalle.Grabado10 = nuevoDetalle.Importe / 1.10m;
+                    nuevoDetalle.IVA10 = nuevoDetalle.Importe - nuevoDetalle.Grabado10;
+                }
+                else if (tipoIva.Porcentaje == 5)
+                {
+                    nuevoDetalle.Grabado5 = nuevoDetalle.Importe / 1.05m;
+                    nuevoDetalle.IVA5 = nuevoDetalle.Importe - nuevoDetalle.Grabado5;
+                }
+                else
+                {
+                    nuevoDetalle.Exenta = nuevoDetalle.Importe;
+                }
+            }
+            
+            Detalles.Add(nuevoDetalle);
+        }
+        
+        // Recalcular totales
+        RecalcularTotales();
+        
+        StateHasChanged();
+    }
+
+    /// <summary>
     /// Carga una venta existente para visualización (modo solo vista).
     /// No permite modificaciones.
     /// </summary>
@@ -4236,26 +4796,35 @@ public partial class Ventas
                 string tipoOperacion = _nuevoCliEsRucEncontrado 
                     ? ((long.TryParse(_nuevoCliRuc.Trim(), out var rucNum) && rucNum >= 50_000_000) ? "1" : "2") // B2B o B2C
                     : "2"; // No contribuyente siempre es B2C
+                
+                // Determinar tipo de contribuyente por longitud del RUC:
+                // RUC con 8 dígitos = Persona Jurídica (ej: 80033703)
+                // RUC con 7 dígitos o menos = Persona Física (ej: 4637249)
+                int tipoContribuyente = 1; // Por defecto Persona Física
+                if (_nuevoCliEsRucEncontrado && _nuevoCliRuc.Trim().Length == 8)
+                {
+                    tipoContribuyente = 2; // Persona Jurídica (8 dígitos)
+                }
 
                 // Crear el nuevo cliente con campos mínimos y valores por defecto
                 var nuevoCliente = new Cliente
                 {
                     CodigoCliente = siguienteCodigo.ToString().PadLeft(6, '0'),
                     RazonSocial = _nuevoCliRazonSocial.Trim(),
-                    RUC = _nuevoCliEsRucEncontrado ? _nuevoCliRuc.Trim() : null, // Solo guardar RUC si es contribuyente
+                    RUC = _nuevoCliRuc.Trim(), // Siempre guardar el número (RUC o CI) - campo requerido
                     DV = _nuevoCliDv,
                     NumeroDocumento = _nuevoCliRuc.Trim(), // Requerido por BD
-                    TipoDocumento = _nuevoCliTipoDocumento, // RU o CI según detección
+                    TipoDocumento = _nuevoCliTipoDocumento ?? "RU", // RU o CI según detección - campo requerido
                     Telefono = string.IsNullOrWhiteSpace(_nuevoCliTelefono) ? null : _nuevoCliTelefono.Trim(),
                     Email = string.IsNullOrWhiteSpace(_nuevoCliEmail) ? null : _nuevoCliEmail.Trim(),
                     Estado = true,
                     FechaAlta = DateTime.Now,
                     // Campos SIFEN según si es contribuyente o no
-                    CodigoPais = "PRY", // Paraguay por defecto
+                    CodigoPais = "PRY", // Paraguay por defecto - campo requerido
                     NaturalezaReceptor = naturalezaReceptor,
                     TipoDocumentoIdentidadSifen = tipoDocIdentidad,
                     NumeroDocumentoIdentidad = numeroDocIdentidad,
-                    IdTipoContribuyente = _nuevoCliEsRucEncontrado ? 1 : 1, // 1 = Persona Física por defecto (usado como TipoContribuyenteReceptor en XML SIFEN)
+                    IdTipoContribuyente = tipoContribuyente, // 1=Física (≤7 dígitos), 2=Jurídica (8 dígitos)
                     TipoOperacion = tipoOperacion,
                     Saldo = 0,
                     PermiteCredito = false,

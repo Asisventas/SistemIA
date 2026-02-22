@@ -28,7 +28,9 @@ namespace SistemIA.Models
         [StringLength(50)]
         public string? NumeroDocumento { get; set; }
 
+        [NotMapped]
         public TiposDocumentosIdentidad? TipoDocumentoIdentidad { get; set; }
+        [NotMapped]
         public TiposContribuyentes? TipoContribuyente { get; set; }
 
         [Required]
@@ -180,6 +182,195 @@ namespace SistemIA.Models
         [StringLength(20)]
         public string? NumeroDocumentoIdentidad { get; set; }
 
-       
+        // ========== CONFIGURACIÓN SOPORTE REMOTO (VPN) ==========
+        
+        /// <summary>
+        /// Indica si este cliente tiene habilitado el acceso remoto para soporte
+        /// </summary>
+        public bool HabilitadoSoporteRemoto { get; set; } = false;
+
+        /// <summary>
+        /// IP asignada en la VPN PPTP (ej: 192.168.89.10)
+        /// Cada cliente tiene una IP fija para identificarlo
+        /// </summary>
+        [StringLength(15)]
+        public string? IpVpnAsignada { get; set; }
+
+        /// <summary>
+        /// Puerto donde corre SistemIA en el cliente (default: 5095)
+        /// </summary>
+        public int? PuertoSistema { get; set; } = 5095;
+
+        /// <summary>
+        /// Ruta de instalación de SistemIA en el cliente
+        /// (ej: C:\SistemIA o C:\Program Files\SistemIA)
+        /// </summary>
+        [StringLength(255)]
+        public string? RutaCarpetaSistema { get; set; }
+
+        /// <summary>
+        /// Nombre del servicio Windows si está instalado como servicio
+        /// (ej: SistemIA.Service)
+        /// </summary>
+        [StringLength(100)]
+        public string? NombreServicioWindows { get; set; }
+
+        /// <summary>
+        /// Cadena de conexión a la base de datos del cliente (encriptada/ofuscada)
+        /// Solo para consultas de soporte
+        /// </summary>
+        [StringLength(500)]
+        public string? CadenaConexionBD { get; set; }
+
+        /// <summary>
+        /// Notas adicionales para acceso remoto
+        /// </summary>
+        [StringLength(1000)]
+        public string? NotasAccesoRemoto { get; set; }
+
+        /// <summary>
+        /// Última fecha de conexión remota exitosa
+        /// </summary>
+        public DateTime? UltimaConexionRemota { get; set; }
+
+        // ========== GIMNASIO ==========
+
+        /// <summary>
+        /// Indica si el cliente es miembro del gimnasio
+        /// </summary>
+        public bool EsMiembroGimnasio { get; set; } = false;
+
+        /// <summary>
+        /// Código de cliente para gimnasio (opcional, para uso manual)
+        /// </summary>
+        [StringLength(20)]
+        public string? CodigoGimnasio { get; set; }
+
+        /// <summary>
+        /// Embedding facial para reconocimiento (128 floats = 512 bytes)
+        /// </summary>
+        public byte[]? EmbeddingFacialGimnasio { get; set; }
+
+        /// <summary>
+        /// Fecha de captura del embedding facial
+        /// </summary>
+        public DateTime? FechaCaptuaFacial { get; set; }
+
+        /// <summary>
+        /// Foto del cliente para verificación en gimnasio
+        /// </summary>
+        public byte[]? FotoGimnasio { get; set; }
+
+        /// <summary>
+        /// Fecha de alta como miembro del gimnasio
+        /// </summary>
+        public DateTime? FechaAltaGimnasio { get; set; }
+
+        /// <summary>
+        /// Objetivo fitness del cliente (ej: Pérdida de peso, Ganancia muscular, Mantenimiento)
+        /// </summary>
+        [StringLength(100)]
+        public string? ObjetivoFitness { get; set; }
+
+        /// <summary>
+        /// Condiciones médicas a considerar
+        /// </summary>
+        [StringLength(500)]
+        public string? CondicionesMedicas { get; set; }
+
+        /// <summary>
+        /// Contacto de emergencia
+        /// </summary>
+        [StringLength(100)]
+        public string? ContactoEmergencia { get; set; }
+
+        /// <summary>
+        /// Teléfono de contacto de emergencia
+        /// </summary>
+        [StringLength(20)]
+        public string? TelefonoEmergencia { get; set; }
+
+        /// <summary>
+        /// Nota/mensaje personalizado de bienvenida para este cliente
+        /// </summary>
+        [StringLength(200)]
+        public string? MensajeBienvenidaPersonalizado { get; set; }
+
+        /// <summary>
+        /// Total de visitas históricas al gimnasio
+        /// </summary>
+        public int TotalVisitasGimnasio { get; set; } = 0;
+
+        /// <summary>
+        /// Fecha de última visita al gimnasio
+        /// </summary>
+        public DateTime? FechaUltimaVisitaGimnasio { get; set; }
+
+        // ========== UBICACIÓN GPS (GOOGLE MAPS) ==========
+
+        /// <summary>
+        /// Latitud de la ubicación del cliente (Google Maps)
+        /// </summary>
+        [Column(TypeName = "decimal(10,7)")]
+        public decimal? Latitud { get; set; }
+
+        /// <summary>
+        /// Longitud de la ubicación del cliente (Google Maps)
+        /// </summary>
+        [Column(TypeName = "decimal(10,7)")]
+        public decimal? Longitud { get; set; }
+
+        /// <summary>
+        /// Dirección completa formateada para GPS
+        /// </summary>
+        [StringLength(500)]
+        public string? DireccionCompleta { get; set; }
+
+        /// <summary>
+        /// Color asignado al cliente en calendario/agenda (hexadecimal)
+        /// </summary>
+        [StringLength(20)]
+        public string? ColorAgenda { get; set; }
+
+        /// <summary>
+        /// Genera la URL de Google Maps basada en las coordenadas o dirección
+        /// </summary>
+        [NotMapped]
+        public string UrlGoogleMaps
+        {
+            get
+            {
+                if (Latitud.HasValue && Longitud.HasValue)
+                {
+                    return $"https://www.google.com/maps?q={Latitud.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{Longitud.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                }
+                else if (!string.IsNullOrEmpty(DireccionCompleta))
+                {
+                    return $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(DireccionCompleta)}";
+                }
+                else if (!string.IsNullOrEmpty(Direccion))
+                {
+                    return $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(Direccion)}";
+                }
+                return string.Empty;
+            }
+        }
+
+        // ========== PROPIEDADES DE NAVEGACIÓN GIMNASIO ==========
+
+        /// <summary>
+        /// Historial de membresías del cliente
+        /// </summary>
+        public virtual ICollection<Gimnasio.MembresiaCliente>? Membresias { get; set; }
+
+        /// <summary>
+        /// Historial de accesos al gimnasio
+        /// </summary>
+        public virtual ICollection<Gimnasio.AccesoGimnasio>? AccesosGimnasio { get; set; }
+
+        /// <summary>
+        /// Citas asociadas a este cliente
+        /// </summary>
+        public virtual ICollection<CitaAgenda>? CitasAgenda { get; set; }
     }
 }

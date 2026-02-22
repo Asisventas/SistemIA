@@ -77,6 +77,16 @@
         <label class="form-label">Turno hasta</label>
         <input class="form-control" type="number" @bind-value="fTurnoHasta" @bind-value:event="oninput" />
       </div>
+      <div class="col-md-2">
+        <label class="form-label">Condición</label>
+        <select class="form-select" @bind="fTipoPago">
+          <option value="">Todas</option>
+          @foreach (var tp in tiposPago)
+          {
+            <option value="@tp.IdTipoPago">@tp.Nombre</option>
+          }
+        </select>
+      </div>
       <div class="col-md-2 d-flex gap-2 justify-content-end">
         <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
         <button class="btn btn-outline-success" title="Exportar CSV" @onclick="Exportar"><i class="bi bi-filetype-csv"></i></button>
@@ -211,8 +221,10 @@
   private int? fCajaHasta;
   private int? fTurnoDesde;
   private int? fTurnoHasta;
+  private string fTipoPago = string.Empty;
 
   private List<SistemIA.Models.Moneda> monedas = new();
+  private List<SistemIA.Models.TipoPago> tiposPago = new();
   private List<Fila> filas = new();
   private decimal tcUsdHoy = 6300m; // Tipo de cambio USD del día
 
@@ -236,6 +248,7 @@
     fHasta = fechaCaja;
     
     monedas = await ctx.Monedas.AsNoTracking().OrderBy(m=>m.CodigoISO).ToListAsync();
+    tiposPago = await ctx.TiposPago.AsNoTracking().Where(t => t.Activo == true).OrderBy(t => t.Nombre).ToListAsync();
     
     // Obtener tipo de cambio USD del día
     var tcHoy = await ctx.TiposCambio.AsNoTracking()
@@ -271,6 +284,7 @@
               Cambio = (decimal?)v.CambioDelDia,
               v.Total,
               Condicion = v.FormaPago ?? v.CodigoCondicion ?? "",
+              v.IdTipoPago,
               v.Estado,
               v.EstadoSifen,
               TipoFacturacion = caja != null ? caja.TipoFacturacion : null,
@@ -314,6 +328,10 @@
     if (fCajaHasta.HasValue) q = q.Where(x => (x.IdCaja ?? int.MaxValue) <= fCajaHasta.Value);
     if (fTurnoDesde.HasValue) q = q.Where(x => (x.Turno ?? int.MinValue) >= fTurnoDesde.Value);
     if (fTurnoHasta.HasValue) q = q.Where(x => (x.Turno ?? int.MaxValue) <= fTurnoHasta.Value);
+    
+    // Filtro por Tipo de Pago (Condición de Venta)
+    if (!string.IsNullOrWhiteSpace(fTipoPago) && int.TryParse(fTipoPago, out var idTipoPago))
+      q = q.Where(x => x.IdTipoPago == idTipoPago);
 
     var data = await q.OrderByDescending(x => x.Fecha).ThenByDescending(x => x.IdVenta).Take(5000).ToListAsync();
 

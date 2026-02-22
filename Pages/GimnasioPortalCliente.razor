@@ -1,0 +1,1288 @@
+@page "/gimnasio/mi-portal"
+@page "/gimnasio/mi-portal/{IdCliente:int}"
+@using SistemIA.Models
+@using SistemIA.Models.Gimnasio
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext _db
+@inject NavigationManager Nav
+@using System.Globalization
+
+<PageTitle>Mi Portal - Gimnasio</PageTitle>
+
+<div class="portal-gimnasio">
+    @if (_cargando)
+    {
+        <div class="d-flex justify-content-center align-items-center" style="min-height: 400px;">
+            <div class="text-center">
+                <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+                <p class="text-muted">Cargando tu portal...</p>
+            </div>
+        </div>
+    }
+    else if (_cliente == null)
+    {
+        <!-- Vista para cliente no autenticado -->
+        <div class="container py-5">
+            <div class="row justify-content-center">
+                <div class="col-lg-6 col-md-8">
+                    <div class="card shadow-lg border-0">
+                        <div class="card-body p-5 text-center">
+                            <div class="mb-4">
+                                <i class="bi bi-person-badge display-1 text-primary"></i>
+                            </div>
+                            <h2 class="fw-bold mb-3">Portal del Cliente</h2>
+                            <p class="text-muted mb-4">
+                                Accede a tu portal para ver tu membresía, rutinas, progreso y más.
+                            </p>
+                            
+                            <div class="mb-4">
+                                <input type="text" class="form-control form-control-lg text-center mb-3" 
+                                       placeholder="Ingresa tu cédula o RUC" 
+                                       @bind="_cedulaBusqueda" @bind:event="oninput" />
+                                <button class="btn btn-primary btn-lg w-100" @onclick="BuscarCliente">
+                                    <i class="bi bi-box-arrow-in-right me-2"></i>Ingresar
+                                </button>
+                            </div>
+                            
+                            <hr class="my-4">
+                            
+                            <p class="text-muted mb-3">¿No eres miembro aún?</p>
+                            <button class="btn btn-outline-success" @onclick="() => _mostrarRegistro = true">
+                                <i class="bi bi-person-plus me-2"></i>Registrarme Ahora
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Dashboard del Cliente -->
+        <div class="container-fluid py-3 py-md-4">
+            <!-- Header con saludo -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+                        <div>
+                            <h2 class="fw-bold mb-1">
+                                <i class="bi bi-person-circle text-primary me-2"></i>
+                                ¡Hola, @_cliente.RazonSocial!
+                            </h2>
+                            <p class="text-muted mb-0">Bienvenido a tu portal de gimnasio</p>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="CerrarSesion">
+                                <i class="bi bi-box-arrow-left me-1"></i>Salir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tarjetas de resumen -->
+            <div class="row g-3 mb-4">
+                <!-- Estado de Membresía -->
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="card h-100 shadow-sm border-0 @GetEstadoMembresiaClass()">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <span class="badge @GetEstadoMembresiaBadge() fs-6">
+                                    @GetEstadoMembresiaTexto()
+                                </span>
+                                <i class="bi bi-credit-card-2-front fs-3 text-muted opacity-50"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Membresía</h6>
+                            <h4 class="fw-bold mb-0">@(_membresiaActiva?.Producto?.Descripcion ?? "Sin membresía")</h4>
+                            @if (_membresiaActiva != null)
+                            {
+                                <small class="@GetEstadoMembresiaTextClass()">
+                                    Vence: @_membresiaActiva.FechaVencimiento.ToString("dd/MM/yyyy")
+                                </small>
+                            }
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Próxima Clase -->
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <span class="badge bg-info fs-6">
+                                    <i class="bi bi-calendar-check me-1"></i>Próxima
+                                </span>
+                                <i class="bi bi-calendar3 fs-3 text-info opacity-50"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Próxima Clase</h6>
+                            @if (_proximaReserva != null)
+                            {
+                                <h4 class="fw-bold mb-0">@_proximaReserva.Horario?.Clase?.Nombre</h4>
+                                <small class="text-muted">
+                                    @_proximaReserva.FechaReserva.ToString("ddd dd MMM") - @(_proximaReserva.Horario?.HoraInicio != null ? ((TimeSpan)_proximaReserva.Horario.HoraInicio).ToString(@"hh\:mm") : "")
+                                </small>
+                            }
+                            else
+                            {
+                                <h5 class="text-muted mb-0">Sin reservas</h5>
+                                <small class="text-muted">Reserva una clase</small>
+                            }
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Entrenos del Mes -->
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <span class="badge bg-success fs-6">
+                                    <i class="bi bi-activity me-1"></i>Este Mes
+                                </span>
+                                <i class="bi bi-lightning-charge fs-3 text-success opacity-50"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Entrenamientos</h6>
+                            <h4 class="fw-bold mb-0">@_sesionesEsteMes sesiones</h4>
+                            <small class="text-muted">
+                                @_caloriasEsteMes.ToString("N0") cal quemadas
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Accesos del Mes -->
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <span class="badge bg-primary fs-6">
+                                    <i class="bi bi-door-open me-1"></i>Accesos
+                                </span>
+                                <i class="bi bi-qr-code-scan fs-3 text-primary opacity-50"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Accesos Este Mes</h6>
+                            <h4 class="fw-bold mb-0">@_accesosEsteMes veces</h4>
+                            <small class="text-muted">
+                                Último: @(_ultimoAcceso?.ToString("dd/MM HH:mm") ?? "N/A")
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Navegación en pestañas (Mobile-friendly) -->
+            <ul class="nav nav-pills nav-fill mb-4 bg-light rounded-3 p-2" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link @(_seccionActiva == "membresias" ? "active" : "")" 
+                            @onclick='() => _seccionActiva = "membresias"'>
+                        <i class="bi bi-credit-card d-block d-md-inline mb-1 mb-md-0 me-md-1"></i>
+                        <span class="d-none d-sm-inline">Membresía</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(_seccionActiva == "rutinas" ? "active" : "")" 
+                            @onclick='() => _seccionActiva = "rutinas"'>
+                        <i class="bi bi-list-check d-block d-md-inline mb-1 mb-md-0 me-md-1"></i>
+                        <span class="d-none d-sm-inline">Rutinas</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(_seccionActiva == "progreso" ? "active" : "")" 
+                            @onclick='() => _seccionActiva = "progreso"'>
+                        <i class="bi bi-graph-up d-block d-md-inline mb-1 mb-md-0 me-md-1"></i>
+                        <span class="d-none d-sm-inline">Progreso</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(_seccionActiva == "pagos" ? "active" : "")" 
+                            @onclick='() => _seccionActiva = "pagos"'>
+                        <i class="bi bi-receipt d-block d-md-inline mb-1 mb-md-0 me-md-1"></i>
+                        <span class="d-none d-sm-inline">Pagos</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(_seccionActiva == "tarjetas" ? "active" : "")" 
+                            @onclick='() => _seccionActiva = "tarjetas"'>
+                        <i class="bi bi-wallet d-block d-md-inline mb-1 mb-md-0 me-md-1"></i>
+                        <span class="d-none d-sm-inline">Tarjetas</span>
+                    </button>
+                </li>
+            </ul>
+            
+            <!-- Contenido de las secciones -->
+            <div class="tab-content">
+                @switch (_seccionActiva)
+                {
+                    case "membresias":
+                        @RenderMembresias()
+                        break;
+                    case "rutinas":
+                        @RenderRutinas()
+                        break;
+                    case "progreso":
+                        @RenderProgreso()
+                        break;
+                    case "pagos":
+                        @RenderPagos()
+                        break;
+                    case "tarjetas":
+                        @RenderTarjetas()
+                        break;
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Modal de Membresías Disponibles -->
+@if (_mostrarPlanes)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-credit-card-2-front me-2"></i>Membresías Disponibles
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarPlanes = false"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_productosMembresia.Count == 0)
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            No hay membresías disponibles. Contacte al gimnasio para más información.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="row g-4">
+                            @foreach (var prod in _productosMembresia)
+                            {
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card h-100 border-2 shadow-sm" style="border-color: @(prod.ColorMembresia ?? "#3498db")">
+                                        <div class="card-header text-white text-center py-3" style="background-color: @(prod.ColorMembresia ?? "#3498db")">
+                                            <i class="bi bi-star-fill me-2"></i>
+                                            <strong>@prod.Descripcion</strong>
+                                        </div>
+                                        <div class="card-body text-center">
+                                            <h2 class="fw-bold mb-0" style="color: @(prod.ColorMembresia ?? "#3498db")">
+                                                Gs @prod.PrecioUnitarioGs.ToString("N0")
+                                            </h2>
+                                            <p class="text-muted">por @(prod.DuracionDiasMembresia ?? 30) días</p>
+                                            
+                                            <hr/>
+                                            <ul class="list-unstyled text-start mb-4">
+                                                @if (prod.AccesoTodasAreasMembresia)
+                                                {
+                                                    <li><i class="bi bi-check-circle-fill text-success me-2"></i>Acceso a todas las áreas</li>
+                                                }
+                                                @if (prod.ClasesIncluidasMembresia == -1)
+                                                {
+                                                    <li><i class="bi bi-check-circle-fill text-success me-2"></i>Clases grupales ilimitadas</li>
+                                                }
+                                                else if (prod.ClasesIncluidasMembresia > 0)
+                                                {
+                                                    <li><i class="bi bi-check-circle-fill text-success me-2"></i>@prod.ClasesIncluidasMembresia clases grupales</li>
+                                                }
+                                                @if (prod.IncluyePTMembresia)
+                                                {
+                                                    <li><i class="bi bi-check-circle-fill text-success me-2"></i>@prod.SesionesPTMembresia sesiones con entrenador</li>
+                                                }
+                                                @if (prod.DiasGraciaMembresia > 0)
+                                                {
+                                                    <li><i class="bi bi-check-circle-fill text-success me-2"></i>@prod.DiasGraciaMembresia días de gracia</li>
+                                                }
+                                                @if (prod.PermiteCongelarMembresia)
+                                                {
+                                                    <li><i class="bi bi-check-circle-fill text-success me-2"></i>Permite congelar hasta @(prod.DiasMaxCongelarMembresia ?? 15) días</li>
+                                                }
+                                            </ul>
+                                        </div>
+                                        <div class="card-footer bg-transparent text-center">
+                                            <small class="text-muted">
+                                                <i class="bi bi-info-circle me-1"></i>
+                                                Consulta en recepción para adquirir esta membresía
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _mostrarPlanes = false">
+                        <i class="bi bi-x-lg me-1"></i>Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal de Registro Rápido -->
+@if (_mostrarRegistro)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-plus me-2"></i>Registro de Nuevo Miembro
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _mostrarRegistro = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre Completo <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_nuevoCliente.RazonSocial" placeholder="Ej: Juan Pérez" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Cédula o RUC <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_cedulaRegistro" placeholder="Ej: 1234567" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" @bind="_nuevoCliente.Email" placeholder="tucorreo@ejemplo.com" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Teléfono</label>
+                            <input type="tel" class="form-control" @bind="_nuevoCliente.Telefono" placeholder="0981 123 456" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha de Nacimiento</label>
+                            <input type="date" class="form-control" @bind="_fechaNacimientoRegistro" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sexo</label>
+                            <select class="form-select" @bind="_sexoRegistro">
+                                <option value="">Seleccionar...</option>
+                                <option value="M">Masculino</option>
+                                <option value="F">Femenino</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Dirección</label>
+                            <input type="text" class="form-control" @bind="_nuevoCliente.Direccion" placeholder="Dirección completa" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Membresía</label>
+                            <select class="form-select" @bind="_productoSeleccionadoRegistro">
+                                <option value="0">Sin membresía por ahora</option>
+                                @foreach (var prod in _productosMembresia)
+                                {
+                                    <option value="@prod.IdProducto">@prod.Descripcion - Gs @prod.PrecioUnitarioGs.ToString("N0") / @(prod.DuracionDiasMembresia ?? 30) días</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(_mensajeRegistro))
+                    {
+                        <div class="alert @(_registroExitoso ? "alert-success" : "alert-danger") mt-3">
+                            @_mensajeRegistro
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="() => _mostrarRegistro = false">
+                        Cancelar
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="RegistrarNuevoCliente" disabled="@_guardandoRegistro">
+                        @if (_guardandoRegistro)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Registrarme
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int IdCliente { get; set; }
+    
+    // Estado general
+    private bool _cargando = true;
+    private Cliente? _cliente;
+    private string _seccionActiva = "membresias";
+    private string _cedulaBusqueda = "";
+    
+    // Datos de membresía
+    private MembresiaCliente? _membresiaActiva;
+    private List<MembresiaCliente> _historialMembresias = new();
+    
+    // Datos de clases y reservas
+    private ReservaClase? _proximaReserva;
+    
+    // Estadísticas
+    private int _sesionesEsteMes;
+    private int _caloriasEsteMes;
+    private int _accesosEsteMes;
+    private DateTime? _ultimoAcceso;
+    
+    // Rutinas
+    private List<RutinaGimnasio> _rutinas = new();
+    
+    // Progreso
+    private List<ProgresoCliente> _progresos = new();
+    
+    // Pagos y facturas
+    private List<Venta> _facturas = new();
+    
+    // Tarjetas de pago
+    private List<TarjetaPagoCliente> _tarjetas = new();
+    
+    // Registro de nuevo cliente
+    private bool _mostrarRegistro = false;
+    private bool _mostrarPlanes = false;
+    private Cliente _nuevoCliente = new();
+    private string _cedulaRegistro = "";
+    private DateTime? _fechaNacimientoRegistro;
+    private string _sexoRegistro = "";
+    private int _productoSeleccionadoRegistro;
+    private List<Producto> _productosMembresia = new();
+    private string _mensajeRegistro = "";
+    private bool _registroExitoso = false;
+    private bool _guardandoRegistro = false;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarPlanesDisponibles();
+        
+        if (IdCliente > 0)
+        {
+            await CargarDatosCliente(IdCliente);
+        }
+        
+        _cargando = false;
+    }
+    
+    private async Task CargarPlanesDisponibles()
+    {
+        _productosMembresia = await _db.Productos
+            .Where(p => p.EsMembresia && p.Activo)
+            .OrderBy(p => p.PrecioUnitarioGs)
+            .ToListAsync();
+    }
+    
+    private async Task BuscarCliente()
+    {
+        if (string.IsNullOrWhiteSpace(_cedulaBusqueda)) return;
+        
+        _cargando = true;
+        
+        var cedula = _cedulaBusqueda.Trim().Replace(".", "").Replace("-", "");
+        var cliente = await _db.Clientes
+            .FirstOrDefaultAsync(c => c.RUC == cedula || c.NumeroDocumento == cedula || c.RUC == _cedulaBusqueda.Trim());
+        
+        if (cliente != null)
+        {
+            await CargarDatosCliente(cliente.IdCliente);
+        }
+        else
+        {
+            _cliente = null;
+            _cedulaBusqueda = "";
+            // Mostrar mensaje de no encontrado
+        }
+        
+        _cargando = false;
+    }
+    
+    private async Task CargarDatosCliente(int idCliente)
+    {
+        _cliente = await _db.Clientes.FindAsync(idCliente);
+        if (_cliente == null) return;
+        
+        var hoy = DateTime.Today;
+        var inicioMes = new DateTime(hoy.Year, hoy.Month, 1);
+        
+        // Cargar membresía activa
+        _membresiaActiva = await _db.MembresiasClientes
+            .Include(m => m.Producto)
+            .Where(m => m.IdCliente == idCliente && m.Estado == "Activa" && m.FechaVencimiento >= hoy)
+            .OrderByDescending(m => m.FechaVencimiento)
+            .FirstOrDefaultAsync();
+        
+        // Historial de membresías
+        _historialMembresias = await _db.MembresiasClientes
+            .Include(m => m.Producto)
+            .Where(m => m.IdCliente == idCliente)
+            .OrderByDescending(m => m.FechaInicio)
+            .Take(10)
+            .ToListAsync();
+        
+        // Próxima reserva
+        _proximaReserva = await _db.ReservasClases
+            .Include(r => r.Horario)
+                .ThenInclude(h => h!.Clase)
+            .Where(r => r.IdCliente == idCliente && r.FechaReserva >= hoy && r.Estado == "Confirmada")
+            .OrderBy(r => r.FechaReserva)
+            .ThenBy(r => r.Horario!.HoraInicio)
+            .FirstOrDefaultAsync();
+        
+        // Sesiones del mes
+        var sesiones = await _db.SesionesEntrenamiento
+            .Where(s => s.IdCliente == idCliente && s.FechaHoraInicio >= inicioMes)
+            .ToListAsync();
+        _sesionesEsteMes = sesiones.Count;
+        _caloriasEsteMes = sesiones.Sum(s => s.CaloriasQuemadas ?? 0);
+        
+        // Accesos del mes
+        _accesosEsteMes = await _db.AccesosGimnasio
+            .Where(a => a.IdCliente == idCliente && a.FechaHora >= inicioMes)
+            .CountAsync();
+        
+        _ultimoAcceso = await _db.AccesosGimnasio
+            .Where(a => a.IdCliente == idCliente)
+            .OrderByDescending(a => a.FechaHora)
+            .Select(a => a.FechaHora)
+            .FirstOrDefaultAsync();
+        _ultimoAcceso = _ultimoAcceso == default ? null : _ultimoAcceso;
+        
+        // Cargar datos de las secciones segun la activa
+        await CargarSeccionActual();
+    }
+    
+    private async Task CargarSeccionActual()
+    {
+        if (_cliente == null) return;
+        
+        switch (_seccionActiva)
+        {
+            case "rutinas":
+                _rutinas = await _db.RutinasGimnasio
+                    .Include(r => r.Ejercicios.OrderBy(e => e.Orden))
+                    .Where(r => r.IdCliente == _cliente.IdCliente && r.Estado != "Eliminada")
+                    .OrderByDescending(r => r.FechaCreacion)
+                    .ToListAsync();
+                break;
+                
+            case "progreso":
+                _progresos = await _db.ProgresosCliente
+                    .Where(p => p.IdCliente == _cliente.IdCliente)
+                    .OrderByDescending(p => p.FechaRegistro)
+                    .Take(20)
+                    .ToListAsync();
+                break;
+                
+            case "pagos":
+                _facturas = await _db.Ventas
+                    .Where(v => v.IdCliente == _cliente.IdCliente && v.Estado == "Confirmada")
+                    .OrderByDescending(v => v.Fecha)
+                    .Take(20)
+                    .ToListAsync();
+                break;
+                
+            case "tarjetas":
+                _tarjetas = await _db.TarjetasPagoCliente
+                    .Where(t => t.IdCliente == _cliente.IdCliente && t.Activa)
+                    .OrderByDescending(t => t.EsPredeterminada)
+                    .ThenByDescending(t => t.FechaRegistro)
+                    .ToListAsync();
+                break;
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void CerrarSesion()
+    {
+        _cliente = null;
+        _cedulaBusqueda = "";
+        _membresiaActiva = null;
+        _seccionActiva = "membresias";
+        Nav.NavigateTo("/gimnasio/mi-portal");
+    }
+    
+    // Métodos auxiliares para estado de membresía
+    private string GetEstadoMembresiaClass()
+    {
+        if (_membresiaActiva == null) return "bg-light";
+        var diasRestantes = (_membresiaActiva.FechaVencimiento - DateTime.Today).Days;
+        if (diasRestantes < 0) return "border-start border-danger border-4";
+        if (diasRestantes <= 7) return "border-start border-warning border-4";
+        return "border-start border-success border-4";
+    }
+    
+    private string GetEstadoMembresiaBadge()
+    {
+        if (_membresiaActiva == null) return "bg-secondary";
+        var diasRestantes = (_membresiaActiva.FechaVencimiento - DateTime.Today).Days;
+        if (diasRestantes < 0) return "bg-danger";
+        if (diasRestantes <= 7) return "bg-warning text-dark";
+        return "bg-success";
+    }
+    
+    private string GetEstadoMembresiaTexto()
+    {
+        if (_membresiaActiva == null) return "Sin Membresía";
+        var diasRestantes = (_membresiaActiva.FechaVencimiento - DateTime.Today).Days;
+        if (diasRestantes < 0) return "Vencida";
+        if (diasRestantes <= 7) return $"Vence en {diasRestantes} días";
+        return "Activa";
+    }
+    
+    private string GetEstadoMembresiaTextClass()
+    {
+        if (_membresiaActiva == null) return "text-muted";
+        var diasRestantes = (_membresiaActiva.FechaVencimiento - DateTime.Today).Days;
+        if (diasRestantes < 0) return "text-danger fw-bold";
+        if (diasRestantes <= 7) return "text-warning fw-bold";
+        return "text-success";
+    }
+    
+    // Registro de nuevo cliente
+    private async Task RegistrarNuevoCliente()
+    {
+        _mensajeRegistro = "";
+        
+        if (string.IsNullOrWhiteSpace(_nuevoCliente.RazonSocial))
+        {
+            _mensajeRegistro = "El nombre es obligatorio";
+            _registroExitoso = false;
+            return;
+        }
+        
+        if (string.IsNullOrWhiteSpace(_cedulaRegistro))
+        {
+            _mensajeRegistro = "La cédula o RUC es obligatorio";
+            _registroExitoso = false;
+            return;
+        }
+        
+        // Verificar si ya existe
+        var cedula = _cedulaRegistro.Trim().Replace(".", "").Replace("-", "");
+        var existente = await _db.Clientes.AnyAsync(c => c.RUC == cedula || c.NumeroDocumento == cedula);
+        if (existente)
+        {
+            _mensajeRegistro = "Ya existe un cliente con esa cédula/RUC. Intenta ingresar con tu documento.";
+            _registroExitoso = false;
+            return;
+        }
+        
+        _guardandoRegistro = true;
+        
+        try
+        {
+            // Crear el cliente
+            var cliente = new Cliente
+            {
+                RazonSocial = _nuevoCliente.RazonSocial.Trim(),
+                RUC = cedula,
+                TipoDocumento = "CI",
+                NumeroDocumento = cedula,
+                DV = 0,
+                Email = _nuevoCliente.Email?.Trim(),
+                Telefono = _nuevoCliente.Telefono?.Trim(),
+                Direccion = _nuevoCliente.Direccion?.Trim(),
+                FechaAlta = DateTime.Now,
+                Estado = true,
+                IdTipoContribuyente = 1
+            };
+            
+            _db.Clientes.Add(cliente);
+            await _db.SaveChangesAsync();
+            
+            // Si seleccionó un producto membresía, crear la membresía
+            if (_productoSeleccionadoRegistro > 0)
+            {
+                var producto = await _db.Productos.FindAsync(_productoSeleccionadoRegistro);
+                if (producto != null && producto.EsMembresia)
+                {
+                    var membresia = new MembresiaCliente
+                    {
+                        IdCliente = cliente.IdCliente,
+                        IdSucursal = 1, // Sucursal principal
+                        IdProducto = producto.IdProducto,
+                        FechaInicio = DateTime.Today,
+                        FechaVencimiento = DateTime.Today.AddDays(producto.DuracionDiasMembresia ?? 30),
+                        MontoTotal = producto.PrecioUnitarioGs,
+                        MontoPagado = 0,
+                        SaldoPendiente = producto.PrecioUnitarioGs,
+                        Estado = "PendientePago",
+                        EstadoPago = "Pendiente"
+                    };
+                    _db.MembresiasClientes.Add(membresia);
+                    await _db.SaveChangesAsync();
+                }
+            }
+            
+            _registroExitoso = true;
+            _mensajeRegistro = "¡Registro exitoso! Redirigiendo a tu portal...";
+            
+            StateHasChanged();
+            await Task.Delay(1500);
+            
+            // Cargar el portal del nuevo cliente
+            _mostrarRegistro = false;
+            await CargarDatosCliente(cliente.IdCliente);
+        }
+        catch (Exception ex)
+        {
+            _mensajeRegistro = $"Error al registrar: {ex.Message}";
+            _registroExitoso = false;
+        }
+        finally
+        {
+            _guardandoRegistro = false;
+        }
+    }
+    
+    // Render fragments para cada sección
+    private RenderFragment RenderMembresias() => __builder =>
+    {
+        <div class="row g-4">
+            <!-- Membresía Actual -->
+            <div class="col-12 col-lg-5">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-credit-card me-2"></i>Mi Membresía Actual</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (_membresiaActiva != null)
+                        {
+                            <div class="text-center mb-4">
+                                <div class="display-5 fw-bold text-primary mb-2">
+                                    @_membresiaActiva.Producto?.Descripcion
+                                </div>
+                                <span class="badge @GetEstadoMembresiaBadge() fs-5 px-3 py-2">
+                                    @GetEstadoMembresiaTexto()
+                                </span>
+                            </div>
+                            
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <div class="border rounded p-3 text-center bg-light">
+                                        <small class="text-muted d-block">Inicio</small>
+                                        <strong>@_membresiaActiva.FechaInicio.ToString("dd/MM/yyyy")</strong>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="border rounded p-3 text-center bg-light">
+                                        <small class="text-muted d-block">Vencimiento</small>
+                                        <strong class="@GetEstadoMembresiaTextClass()">
+                                            @_membresiaActiva.FechaVencimiento.ToString("dd/MM/yyyy")
+                                        </strong>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <hr class="my-4">
+                            
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary" @onclick="() => _mostrarPlanes = true">
+                                    <i class="bi bi-arrow-repeat me-2"></i>Renovar Membresía
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-center py-4">
+                                <i class="bi bi-credit-card-2-front display-3 text-muted mb-3 d-block"></i>
+                                <h5 class="text-muted">No tienes membresía activa</h5>
+                                <p class="text-muted">Adquiere una membresía para disfrutar de todos los beneficios</p>
+                                <button class="btn btn-primary" @onclick="() => _mostrarPlanes = true">
+                                    <i class="bi bi-cart-plus me-2"></i>Ver Membresías Disponibles
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Historial de Membresías -->
+            <div class="col-12 col-lg-7">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historial de Membresías</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (_historialMembresias.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Plan</th>
+                                            <th>Período</th>
+                                            <th>Precio</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var membresia in _historialMembresias)
+                                        {
+                                            <tr>
+                                                <td><strong>@membresia.Producto?.Descripcion</strong></td>
+                                                <td>
+                                                    <small>
+                                                        @membresia.FechaInicio.ToString("dd/MM/yy") - 
+                                                        @membresia.FechaVencimiento.ToString("dd/MM/yy")
+                                                    </small>
+                                                </td>
+                                                <td>Gs @membresia.MontoTotal.ToString("N0")</td>
+                                                <td>
+                                                    <span class="badge @(membresia.Estado == "Activa" ? "bg-success" : "bg-secondary")">
+                                                        @membresia.Estado
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-1"></i>
+                                <p class="mb-0 mt-2">Sin historial de membresías</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+    
+    private RenderFragment RenderRutinas() => __builder =>
+    {
+        <div class="row g-4">
+            @if (_rutinas.Any())
+            {
+                foreach (var rutina in _rutinas)
+                {
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-clipboard-check me-1 text-primary"></i>
+                                    @rutina.Nombre
+                                </h6>
+                                <span class="badge @(rutina.Estado == "Activa" ? "bg-success" : "bg-secondary")">
+                                    @rutina.Estado
+                                </span>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="badge bg-light text-dark">
+                                        <i class="bi bi-activity me-1"></i>@rutina.Tipo
+                                    </span>
+                                    <span class="badge bg-light text-dark">
+                                        <i class="bi bi-speedometer2 me-1"></i>@rutina.NivelDificultad
+                                    </span>
+                                </div>
+                                <p class="text-muted small mb-3">@rutina.Descripcion</p>
+                                
+                                <div class="mb-3">
+                                    <small class="text-muted">
+                                        <i class="bi bi-clock me-1"></i>@rutina.DuracionMinutos min |
+                                        <i class="bi bi-list-ol me-1"></i>@rutina.Ejercicios.Count ejercicios
+                                    </small>
+                                </div>
+                                
+                                @if (rutina.DiasRecomendados != null)
+                                {
+                                    <div class="mb-3">
+                                        <small class="text-muted">
+                                            <i class="bi bi-calendar-week me-1"></i>@rutina.DiasRecomendados
+                                        </small>
+                                    </div>
+                                }
+                                
+                                <hr>
+                                
+                                <h6 class="small fw-bold mb-2">Ejercicios:</h6>
+                                <ul class="list-unstyled small mb-0">
+                                    @foreach (var ejercicio in rutina.Ejercicios.Take(4))
+                                    {
+                                        <li class="mb-1">
+                                            <i class="bi bi-check-circle text-success me-1"></i>
+                                            @ejercicio.NombreEjercicio 
+                                            <span class="text-muted">(@ejercicio.Series x @ejercicio.Repeticiones)</span>
+                                        </li>
+                                    }
+                                    @if (rutina.Ejercicios.Count > 4)
+                                    {
+                                        <li class="text-muted">+ @(rutina.Ejercicios.Count - 4) más...</li>
+                                    }
+                                </ul>
+                            </div>
+                            <div class="card-footer bg-white">
+                                <button class="btn btn-outline-primary btn-sm w-100">
+                                    <i class="bi bi-play-fill me-1"></i>Iniciar Entrenamiento
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-body text-center py-5">
+                            <i class="bi bi-clipboard2-x display-3 text-muted d-block mb-3"></i>
+                            <h5 class="text-muted">No tienes rutinas asignadas</h5>
+                            <p class="text-muted">Solicita a tu entrenador que te asigne una rutina personalizada</p>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    };
+    
+    private RenderFragment RenderProgreso() => __builder =>
+    {
+        <div class="row g-4">
+            <!-- Gráfico de peso -->
+            <div class="col-12 col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Evolución de Peso</h5>
+                        <select class="form-select form-select-sm w-auto">
+                            <option>Últimos 3 meses</option>
+                            <option>Últimos 6 meses</option>
+                            <option>Este año</option>
+                        </select>
+                    </div>
+                    <div class="card-body">
+                        @if (_progresos.Any(p => p.PesoKg.HasValue))
+                        {
+                            <div class="chart-container" style="position: relative; height: 300px;">
+                                <!-- Aquí iría un gráfico con Chart.js o similar -->
+                                <canvas id="chartPeso"></canvas>
+                            </div>
+                            
+                            <!-- Resumen temporal sin gráfico -->
+                            <div class="row g-3 mt-2">
+                                @foreach (var progreso in _progresos.Where(p => p.PesoKg.HasValue).Take(6))
+                                {
+                                    <div class="col-6 col-md-4 col-lg-2">
+                                        <div class="border rounded p-2 text-center bg-light">
+                                            <small class="text-muted d-block">@progreso.FechaRegistro.ToString("dd/MM")</small>
+                                            <strong class="text-primary">@progreso.PesoKg?.ToString("N1") kg</strong>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-center py-5 text-muted">
+                                <i class="bi bi-graph-up fs-1"></i>
+                                <p class="mb-0 mt-2">Sin datos de peso registrados</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Últimas medidas -->
+            <div class="col-12 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-rulers me-2"></i>Últimas Medidas</h5>
+                    </div>
+                    <div class="card-body">
+                        @{
+                            var ultimoProgreso = _progresos.FirstOrDefault();
+                        }
+                        @if (ultimoProgreso != null)
+                        {
+                            <div class="list-group list-group-flush">
+                                <div class="list-group-item d-flex justify-content-between px-0">
+                                    <span><i class="bi bi-person me-2"></i>IMC</span>
+                                    <strong>@(ultimoProgreso.IMC?.ToString("N1") ?? "-")</strong>
+                                </div>
+                                <div class="list-group-item d-flex justify-content-between px-0">
+                                    <span><i class="bi bi-droplet me-2"></i>% Grasa</span>
+                                    <strong>@(ultimoProgreso.PorcentajeGrasa?.ToString("N1") ?? "-")%</strong>
+                                </div>
+                                <div class="list-group-item d-flex justify-content-between px-0">
+                                    <span><i class="bi bi-lightning me-2"></i>% Músculo</span>
+                                    <strong>@(ultimoProgreso.PorcentajeMusculo?.ToString("N1") ?? "-")%</strong>
+                                </div>
+                                <div class="list-group-item d-flex justify-content-between px-0">
+                                    <span><i class="bi bi-heart me-2"></i>Pecho</span>
+                                    <strong>@(ultimoProgreso.MedidaPecho?.ToString("N1") ?? "-") cm</strong>
+                                </div>
+                                <div class="list-group-item d-flex justify-content-between px-0">
+                                    <span><i class="bi bi-vinyl me-2"></i>Cintura</span>
+                                    <strong>@(ultimoProgreso.MedidaCintura?.ToString("N1") ?? "-") cm</strong>
+                                </div>
+                                <div class="list-group-item d-flex justify-content-between px-0">
+                                    <span><i class="bi bi-circle me-2"></i>Cadera</span>
+                                    <strong>@(ultimoProgreso.MedidaCadera?.ToString("N1") ?? "-") cm</strong>
+                                </div>
+                            </div>
+                            <small class="text-muted d-block mt-3">
+                                <i class="bi bi-calendar me-1"></i>
+                                Última actualización: @ultimoProgreso.FechaRegistro.ToString("dd/MM/yyyy")
+                            </small>
+                        }
+                        else
+                        {
+                            <div class="text-center py-4 text-muted">
+                                <i class="bi bi-rulers fs-1"></i>
+                                <p class="mb-0 mt-2">Sin medidas registradas</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Historial de progreso -->
+            <div class="col-12">
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-table me-2"></i>Historial de Mediciones</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (_progresos.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th class="text-end">Peso</th>
+                                            <th class="text-end">IMC</th>
+                                            <th class="text-end">% Grasa</th>
+                                            <th class="text-end">% Músculo</th>
+                                            <th class="text-end">Pecho</th>
+                                            <th class="text-end">Cintura</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var p in _progresos.Take(10))
+                                        {
+                                            <tr>
+                                                <td>@p.FechaRegistro.ToString("dd/MM/yyyy")</td>
+                                                <td class="text-end">@(p.PesoKg?.ToString("N1") ?? "-") kg</td>
+                                                <td class="text-end">@(p.IMC?.ToString("N1") ?? "-")</td>
+                                                <td class="text-end">@(p.PorcentajeGrasa?.ToString("N1") ?? "-")%</td>
+                                                <td class="text-end">@(p.PorcentajeMusculo?.ToString("N1") ?? "-")%</td>
+                                                <td class="text-end">@(p.MedidaPecho?.ToString("N1") ?? "-")</td>
+                                                <td class="text-end">@(p.MedidaCintura?.ToString("N1") ?? "-")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-1"></i>
+                                <p class="mb-0 mt-2">Sin historial de mediciones</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+    
+    private RenderFragment RenderPagos() => __builder =>
+    {
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Mis Facturas</h5>
+                <span class="badge bg-primary">@_facturas.Count facturas</span>
+            </div>
+            <div class="card-body p-0">
+                @if (_facturas.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Nº Factura</th>
+                                    <th class="text-end">Total</th>
+                                    <th>Estado</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var factura in _facturas)
+                                {
+                                    <tr>
+                                        <td>@factura.Fecha.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <strong>@factura.Establecimiento-@factura.PuntoExpedicion-@(factura.NumeroFactura ?? "0000000")</strong>
+                                        </td>
+                                        <td class="text-end fw-bold">Gs @factura.Total.ToString("N0")</td>
+                                        <td>
+                                            <span class="badge @(factura.EstadoSifen == "ACEPTADO" ? "bg-success" : "bg-info")">
+                                                @(factura.EstadoSifen ?? "Emitida")
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="btn-group btn-group-sm">
+                                                <a href="/ventas/imprimir/@factura.IdVenta" target="_blank" 
+                                                   class="btn btn-outline-primary" title="Ver factura">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                                <a href="/api/facturas/@factura.IdVenta/pdf" target="_blank" 
+                                                   class="btn btn-outline-success" title="Descargar PDF">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-receipt-cutoff display-3 d-block mb-3"></i>
+                        <h5>No tienes facturas registradas</h5>
+                        <p>Las facturas de tus membresías aparecerán aquí</p>
+                    </div>
+                }
+            </div>
+        </div>
+    };
+    
+    private RenderFragment RenderTarjetas() => __builder =>
+    {
+        <div class="row g-4">
+            <!-- Lista de tarjetas -->
+            <div class="col-12 col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-credit-card-2-back me-2"></i>Mis Tarjetas de Pago</h5>
+                        <button class="btn btn-primary btn-sm">
+                            <i class="bi bi-plus-lg me-1"></i>Agregar Tarjeta
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        @if (_tarjetas.Any())
+                        {
+                            <div class="row g-3">
+                                @foreach (var tarjeta in _tarjetas)
+                                {
+                                    <div class="col-12 col-md-6">
+                                        <div class="card @(tarjeta.EsPredeterminada ? "border-primary" : "")">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                                    <div>
+                                                        <i class="bi @GetIconoMarcaTarjeta(tarjeta.MarcaTarjeta) fs-2 text-primary"></i>
+                                                    </div>
+                                                    @if (tarjeta.EsPredeterminada)
+                                                    {
+                                                        <span class="badge bg-primary">Predeterminada</span>
+                                                    }
+                                                </div>
+                                                
+                                                <div class="mb-2">
+                                                    <strong class="fs-5">•••• •••• •••• @tarjeta.Ultimos4Digitos</strong>
+                                                </div>
+                                                
+                                                <div class="d-flex justify-content-between text-muted small">
+                                                    <span>@tarjeta.NombreTitular</span>
+                                                    <span>@tarjeta.MesExpiracion.ToString("D2")/@(tarjeta.AnioExpiracion % 100)</span>
+                                                </div>
+                                                
+                                                <hr>
+                                                
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <small class="text-muted">
+                                                        <i class="bi bi-shield-check me-1"></i>
+                                                        @(tarjeta.PermiteCobrosAutomaticos ? "Cobros automáticos activos" : "Manual")
+                                                    </small>
+                                                    <div class="btn-group btn-group-sm">
+                                                        @if (!tarjeta.EsPredeterminada)
+                                                        {
+                                                            <button class="btn btn-outline-primary" title="Hacer predeterminada">
+                                                                <i class="bi bi-star"></i>
+                                                            </button>
+                                                        }
+                                                        <button class="btn btn-outline-danger" title="Eliminar">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-center py-5 text-muted">
+                                <i class="bi bi-credit-card display-3 d-block mb-3"></i>
+                                <h5>No tienes tarjetas guardadas</h5>
+                                <p>Agrega una tarjeta para realizar pagos rápidos y automatizar tus renovaciones</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Info de pagos automáticos -->
+            <div class="col-12 col-lg-4">
+                <div class="card shadow-sm bg-light border-0">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3">
+                            <i class="bi bi-info-circle me-2 text-info"></i>
+                            Pagos Automáticos
+                        </h6>
+                        <p class="small text-muted mb-3">
+                            Con los pagos automáticos activos, tu membresía se renovará automáticamente 
+                            al vencer, sin que tengas que preocuparte por nada.
+                        </p>
+                        <ul class="small text-muted ps-3 mb-3">
+                            <li>Tu tarjeta predeterminada será usada</li>
+                            <li>Recibirás un email de confirmación</li>
+                            <li>Puedes cancelar cuando quieras</li>
+                        </ul>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoRenewal" 
+                                   checked="@(_tarjetas.Any(t => t.PermiteCobrosAutomaticos))">
+                            <label class="form-check-label small" for="autoRenewal">
+                                Activar renovación automática
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card shadow-sm mt-3">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3">
+                            <i class="bi bi-shield-lock me-2 text-success"></i>
+                            Seguridad
+                        </h6>
+                        <p class="small text-muted mb-0">
+                            Tus datos de tarjeta están protegidos con encriptación de grado bancario. 
+                            Nunca almacenamos tu número completo de tarjeta.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+    
+    private string GetIconoMarcaTarjeta(string marca)
+    {
+        return marca?.ToLower() switch
+        {
+            "visa" => "bi-credit-card-2-front",
+            "mastercard" => "bi-credit-card-2-back",
+            "amex" => "bi-credit-card",
+            _ => "bi-credit-card"
+        };
+    }
+}

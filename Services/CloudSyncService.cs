@@ -1663,6 +1663,7 @@ public class CloudSyncBackgroundService : BackgroundService
 
         var ahora = DateTime.Now;
         bool debeEjecutar = false;
+        string motivoEjecucion = "";
 
         // Tipo de programación: Intervalo (cada X horas) o Horario (hora fija)
         if (config.TipoProgramacion == "Intervalo")
@@ -1670,36 +1671,54 @@ public class CloudSyncBackgroundService : BackgroundService
             if (config.UltimoBackupExitoso == null)
             {
                 debeEjecutar = true;
+                motivoEjecucion = "Primer backup (sin historial)";
             }
             else
             {
                 var tiempoTranscurrido = ahora - config.UltimoBackupExitoso.Value;
                 debeEjecutar = tiempoTranscurrido.TotalHours >= config.IntervaloHoras;
+                if (debeEjecutar) motivoEjecucion = $"Intervalo cumplido ({tiempoTranscurrido.TotalHours:F1} horas)";
             }
         }
         else // Horario fijo
         {
             if (config.HoraBackup.HasValue)
             {
-                var horaActual = ahora.TimeOfDay;
-                var diferencia = Math.Abs((horaActual - config.HoraBackup.Value).TotalMinutes);
+                // Verificar día de la semana
+                var diasPermitidos = (config.DiasBackup ?? "1,2,3,4,5")
+                    .Split(',')
+                    .Select(d => int.TryParse(d.Trim(), out var n) ? n : -1)
+                    .Where(n => n >= 0 && n <= 7)
+                    .ToList();
 
-                if (diferencia <= 1)
+                var diaActual = (int)ahora.DayOfWeek;
+                if (diaActual == 0) diaActual = 7;
+
+                // Solo verificar si hoy es un día permitido
+                if (diasPermitidos.Contains(diaActual))
                 {
                     // Verificar que no se haya ejecutado hoy
-                    if (config.UltimoBackupExitoso == null || config.UltimoBackupExitoso.Value.Date < ahora.Date)
+                    bool yaSePerdioHoy = config.UltimoBackupExitoso == null || config.UltimoBackupExitoso.Value.Date < ahora.Date;
+                    
+                    if (yaSePerdioHoy)
                     {
-                        // Verificar día de la semana
-                        var diasPermitidos = (config.DiasBackup ?? "1,2,3,4,5")
-                            .Split(',')
-                            .Select(d => int.TryParse(d.Trim(), out var n) ? n : -1)
-                            .Where(n => n >= 0 && n <= 7)
-                            .ToList();
+                        var horaActual = ahora.TimeOfDay;
+                        var diferencia = (horaActual - config.HoraBackup.Value).TotalMinutes;
 
-                        var diaActual = (int)ahora.DayOfWeek;
-                        if (diaActual == 0) diaActual = 7;
-
-                        debeEjecutar = diasPermitidos.Contains(diaActual);
+                        // Caso 1: Estamos en la ventana exacta (±1 minuto de la hora programada)
+                        if (Math.Abs(diferencia) <= 1)
+                        {
+                            debeEjecutar = true;
+                            motivoEjecucion = "Hora programada";
+                        }
+                        // Caso 2: Ya pasó la hora programada (RECUPERACIÓN) - ejecutar inmediatamente
+                        // Solo recuperar si han pasado entre 1 y 120 minutos desde la hora programada
+                        else if (diferencia > 1 && diferencia <= 120)
+                        {
+                            debeEjecutar = true;
+                            motivoEjecucion = $"Recuperación de backup perdido (pasaron {diferencia:F0} min)";
+                            _logger.LogWarning("⚠️ Backup programado no se ejecutó a las {HoraProgramada:hh\\:mm}, ejecutando recuperación...", config.HoraBackup.Value);
+                        }
                     }
                 }
             }
@@ -1707,7 +1726,7 @@ public class CloudSyncBackgroundService : BackgroundService
 
         if (debeEjecutar)
         {
-            _logger.LogInformation("⏰ Iniciando backup programado automático...");
+            _logger.LogInformation("⏰ Iniciando backup automático - Motivo: {Motivo}", motivoEjecucion);
             await EjecutarBackupYSincronizarAsync(scope.ServiceProvider, config, stoppingToken);
         }
 
@@ -1739,20 +1758,32 @@ public class CloudSyncBackgroundService : BackgroundService
 
             _logger.LogInformation("✅ Backup creado: {Path}", resultado.BackupPath);
 
-            // 2. Buscar y eliminar backup existente en la nube
+            // 2. Buscar y eliminar TODOS los backups existentes en la nube (evitar duplicados)
             var archivosRemotos = await cloudSyncService.ListarArchivosRemotosAsync();
             var nombreArchivo = Path.GetFileName(resultado.BackupPath);
-            var backupExistente = archivosRemotos?.FirstOrDefault(a =>
-                a.Name?.Equals(nombreArchivo, StringComparison.OrdinalIgnoreCase) == true);
+            
+            // Buscar TODOS los archivos que coincidan con el nombre del backup (pueden haber duplicados)
+            var backupsExistentes = archivosRemotos?
+                .Where(a => a.Name?.Equals(nombreArchivo, StringComparison.OrdinalIgnoreCase) == true ||
+                           a.Name?.Equals("SistemIA_CloudSync_Backup.bak", StringComparison.OrdinalIgnoreCase) == true)
+                .ToList() ?? new List<CloudSyncFileInfo>();
 
-            if (backupExistente != null && !string.IsNullOrEmpty(backupExistente.Id))
+            if (backupsExistentes.Any())
             {
-                _logger.LogInformation("🗑️ Eliminando backup anterior de la nube: {Name}", backupExistente.Name);
-                await cloudSyncService.EliminarArchivoRemotoAsync(backupExistente.Id);
+                _logger.LogInformation("🗑️ Eliminando {Count} backup(s) anterior(es) de la nube", backupsExistentes.Count);
+                
+                foreach (var backup in backupsExistentes)
+                {
+                    if (!string.IsNullOrEmpty(backup.Id))
+                    {
+                        _logger.LogInformation("  - Eliminando: {Name} (ID: {Id})", backup.Name, backup.Id);
+                        await cloudSyncService.EliminarArchivoRemotoAsync(backup.Id);
+                    }
+                }
             }
 
-            // 3. Subir nuevo backup
-            _logger.LogInformation("☁️ Subiendo backup a la nube...");
+            // 3. Subir nuevo backup comprimido
+            _logger.LogInformation("☁️ Subiendo backup comprimido a la nube...");
             var (exito, mensaje, idRemoto) = await cloudSyncService.SubirArchivoParaleloAsync(
                 resultado.BackupPath!,
                 null  // Sin callback de progreso para backup automático

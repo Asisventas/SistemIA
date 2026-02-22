@@ -1,26 +1,49 @@
-{
+﻿{
+  "Version": "1.0.0",
+  "FechaGeneracion": "2026-02-21 15:14:42",
   "Instalacion": {
-    "RutaInstalacion": "C:\\SistemIA",
-    "NombreServicio": "SistemIA",
-    "DescripcionServicio": "Sistema de Gestión Empresarial SistemIA",
-    "PuertoHttp": 5095,
-    "PuertoHttps": 7060,
-    "InicioAutomatico": true
+    "ModoInstalacion": "Servidor",
+    "CrearAccesoDirecto": true,
+    "UsarMkcert": true,
+    "RutaInstalacion": "C:\\Sistema",
+    "NombreServicio": "SistemaPro",
+    "DescripcionServicio": "SistemaPro - Sistema de Gestión Empresarial",
+    "InicioAutomatico": true,
+    "Autostart": true,
+    "PuertoHttp": 5096,
+    "PuertoHttps": 7061
   },
   "BaseDatos": {
-    "Servidor": ".\\SQLEXPRESS",
-    "BaseDatos": "SistemIA_DB",
+    "Servidor": "GASPARINI\\SQL2022",
+    "NombreBD": "sistema",
+    "BaseDatos": "sistema",
     "Usuario": "sa",
+    "Contrasena": "",
     "Password": "",
+    "RestaurarBackup": true,
     "AutenticacionWindows": false,
     "TrustServerCertificate": true
   },
+  "Cliente": {
+    "ServidorRemoto": "",
+    "PuertoRemoto": 5095,
+    "UsarHttps": false
+  },
+  "Puertos": {
+    "HTTP": 5096,
+    "HTTPS": 7061
+  },
+  "Certificado": {
+    "TipoCertificado": "mkcert",
+    "Dominios": [
+      "localhost",
+      "sistemialocal"
+    ],
+    "ValidezAnios": 10
+  },
   "Sociedad": {
-    "Nombre": "Mi Empresa S.A.",
+    "Nombre": "Mi Empresa",
     "RUC": "80000000-0",
-    "Direccion": "Dirección de la empresa",
-    "Telefono": "",
-    "Email": "",
-    "Ciudad": "Asunción"
+    "Direccion": ""
   }
 }

@@ -387,21 +387,35 @@ namespace SistemIA.Services
             }
             else if (pagos.E7.iCondOpe == 2 && pagos.E7.gPagCred != null)
             {
+                var tieneCuotas = pagos.E7.gPagCred.gCuotas.Any();
                 var gPagCred = new XElement(NsSifen + "gPagCred",
-                    new XElement(NsSifen + "iCondCred", 1),
-                    new XElement(NsSifen + "dDCondCred", "Plazo"),
-                    new XElement(NsSifen + "dPlazoCre", pagos.E7.gPagCred.gCuotas.Any() ? (pagos.E7.gPagCred.gCuotas.Max(c => (c.dFeFinCuo - DateTime.Today).Days)) : 30)
+                    new XElement(NsSifen + "iCondCred", tieneCuotas ? 2 : 1),
+                    new XElement(NsSifen + "dDCondCred", tieneCuotas ? "Cuota" : "Plazo")
                 );
-                if (pagos.E7.gPagCred.dAnticipo.HasValue)
-                    gPagCred.Add(new XElement(NsSifen + "dAnticipo", Math.Round(pagos.E7.gPagCred.dAnticipo.Value, 0).ToString("0", CultureInfo.InvariantCulture)));
-                foreach (var cuo in pagos.E7.gPagCred.gCuotas)
+                if (!tieneCuotas)
                 {
-                    var gCuota = new XElement(NsSifen + "gCuotas",
-                        new XElement(NsSifen + "cMoneCuo", cuo.cMoneCuo),
-                        new XElement(NsSifen + "dMonCuota", Math.Round(cuo.dMonCuota, 0).ToString("0", CultureInfo.InvariantCulture)),
-                        new XElement(NsSifen + "dFeFinCuo", cuo.dFeFinCuo.ToString("yyyy-MM-dd"))
-                    );
-                    gPagCred.Add(gCuota);
+                    // iCondCred=1 (Plazo): solo se informa dPlazoCre, sin gCuotas
+                    gPagCred.Add(new XElement(NsSifen + "dPlazoCre", "30 dias"));
+                }
+                else
+                {
+                    // iCondCred=2 (Cuota): dCuotas + gCuotas, sin dPlazoCre
+                    gPagCred.Add(new XElement(NsSifen + "dCuotas", pagos.E7.gPagCred.gCuotas.Count));
+                }
+                if (pagos.E7.gPagCred.dAnticipo.HasValue && pagos.E7.gPagCred.dAnticipo.Value > 0)
+                    gPagCred.Add(new XElement(NsSifen + "dMonEnt", Math.Round(pagos.E7.gPagCred.dAnticipo.Value, 0).ToString("0", CultureInfo.InvariantCulture)));
+                if (tieneCuotas)
+                {
+                    foreach (var cuo in pagos.E7.gPagCred.gCuotas)
+                    {
+                        var gCuota = new XElement(NsSifen + "gCuotas",
+                            new XElement(NsSifen + "cMoneCuo", cuo.cMoneCuo),
+                            new XElement(NsSifen + "dDMoneCuo", cuo.dDMoneCuo),
+                            new XElement(NsSifen + "dMonCuota", Math.Round(cuo.dMonCuota, 0).ToString("0", CultureInfo.InvariantCulture)),
+                            new XElement(NsSifen + "dVencCuo", cuo.dVencCuo.ToString("yyyy-MM-dd"))
+                        );
+                        gPagCred.Add(gCuota);
+                    }
                 }
                 gCamCond.Add(gPagCred);
             }

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Barra de bar con detalles -->
+  <defs>
+    <linearGradient id="barWood" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A2C2A"/>
+      <stop offset="100%" style="stop-color:#2F1810"/>
+    </linearGradient>
+    <linearGradient id="marbleTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2F2F2F"/>
+      <stop offset="50%" style="stop-color:#1A1A1A"/>
+      <stop offset="100%" style="stop-color:#2F2F2F"/>
+    </linearGradient>
+  </defs>
+  <!-- Estructura de la barra -->
+  <rect x="10" y="80" width="180" height="110" rx="5" fill="url(#barWood)"/>
+  <!-- Superficie de mármol negro -->
+  <rect x="5" y="70" width="190" height="25" rx="3" fill="url(#marbleTop)" stroke="#444" stroke-width="2"/>
+  <!-- Detalles de madera -->
+  <line x1="10" y1="110" x2="190" y2="110" stroke="#3A2320" stroke-width="2"/>
+  <line x1="10" y1="140" x2="190" y2="140" stroke="#3A2320" stroke-width="2"/>
+  <line x1="10" y1="170" x2="190" y2="170" stroke="#3A2320" stroke-width="2"/>
+  <!-- Bancos (siluetas) -->
+  <ellipse cx="50" cy="50" rx="18" ry="8" fill="#4A4A4A"/>
+  <rect x="46" y="50" width="8" height="25" fill="#4A4A4A"/>
+  <ellipse cx="100" cy="50" rx="18" ry="8" fill="#4A4A4A"/>
+  <rect x="96" y="50" width="8" height="25" fill="#4A4A4A"/>
+  <ellipse cx="150" cy="50" rx="18" ry="8" fill="#4A4A4A"/>
+  <rect x="146" y="50" width="8" height="25" fill="#4A4A4A"/>
+  <!-- Copas decorativas -->
+  <text x="30" y="88" font-size="16">🍷</text>
+  <text x="90" y="88" font-size="16">🍸</text>
+  <text x="150" y="88" font-size="16">🍺</text>
+</svg>

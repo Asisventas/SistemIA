@@ -1,0 +1,257 @@
+@page "/vehiculos/explorar"
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject NavigationManager Nav
+
+<PageTitle>Explorador de Vehículos - SistemIA</PageTitle>
+
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-car-front-fill text-warning me-2"></i>
+            Explorador de Vehículos
+        </h3>
+        <div class="text-muted">
+            <i class="bi bi-clock me-1"></i>
+            Total: <span class="fw-bold">@_vehiculos.Count</span> vehículo(s)
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros de Búsqueda</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Buscar</label>
+                    <input type="text" class="form-control" placeholder="Matrícula, marca, modelo..." 
+                           @bind="_filtroTexto" @bind:event="oninput" @onkeyup="BuscarAsync" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Cliente</label>
+                    <select class="form-select" @bind="_filtroCliente" @bind:after="BuscarAsync">
+                        <option value="0">Todos</option>
+                        @foreach (var c in _clientes)
+                        {
+                            <option value="@c.IdCliente">@c.RazonSocial</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Tipo</label>
+                    <select class="form-select" @bind="_filtroTipo" @bind:after="BuscarAsync">
+                        <option value="">Todos</option>
+                        <option value="Automóvil">Automóvil</option>
+                        <option value="Camioneta">Camioneta</option>
+                        <option value="SUV">SUV</option>
+                        <option value="Camión">Camión</option>
+                        <option value="Motocicleta">Motocicleta</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Estado</label>
+                    <select class="form-select" @bind="_filtroEstado" @bind:after="BuscarAsync">
+                        <option value="activos">Activos</option>
+                        <option value="inactivos">Inactivos</option>
+                        <option value="todos">Todos</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" @onclick="@(() => Nav.NavigateTo("/vehiculos"))">
+                        <i class="bi bi-plus-lg me-1"></i>Nuevo
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resultados -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-table me-2"></i>Resultados</h6>
+                <small class="text-muted">Mostrando @_vehiculos.Count vehículo(s)</small>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 120px">Matrícula</th>
+                        <th>Vehículo</th>
+                        <th>Cliente</th>
+                        <th>Km</th>
+                        <th>Servicios</th>
+                        <th style="width: 100px" class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_cargando)
+                    {
+                        <tr>
+                            <td colspan="6" class="text-center py-4">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span class="ms-2">Cargando...</span>
+                            </td>
+                        </tr>
+                    }
+                    else if (!_vehiculos.Any())
+                    {
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No se encontraron vehículos
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var v in _vehiculos)
+                        {
+                            <tr class="@(!v.Activo ? "table-secondary" : "")">
+                                <td>
+                                    <span class="badge bg-warning text-dark fs-6">@v.Matricula</span>
+                                </td>
+                                <td>
+                                    <div>
+                                        <strong>@v.Marca @v.Modelo</strong>
+                                        @if (v.Anio.HasValue)
+                                        {
+                                            <span class="text-muted">(@v.Anio)</span>
+                                        }
+                                    </div>
+                                    <small class="text-muted">
+                                        @v.TipoVehiculo @(string.IsNullOrEmpty(v.Color) ? "" : $"• {v.Color}")
+                                        @(string.IsNullOrEmpty(v.TipoCombustible) ? "" : $"• {v.TipoCombustible}")
+                                    </small>
+                                </td>
+                                <td>
+                                    @if (v.Cliente != null)
+                                    {
+                                        <span>@v.Cliente.RazonSocial</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Sin cliente</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (v.KilometrajeActual.HasValue)
+                                    {
+                                        <span>@v.KilometrajeActual.Value.ToString("N0") km</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (v.OrdenesTrabajo?.Any() == true)
+                                    {
+                                        <span class="badge bg-info">@v.OrdenesTrabajo.Count servicios</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Sin servicios</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" title="Editar"
+                                                @onclick="@(() => Nav.NavigateTo($"/vehiculos/{v.IdVehiculo}"))">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-success" title="Nueva Orden de Trabajo"
+                                                @onclick="() => CrearOrdenTrabajo(v.IdVehiculo)">
+                                            <i class="bi bi-plus-circle"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _cargando = true;
+    private List<Vehiculo> _vehiculos = new();
+    private List<Cliente> _clientes = new();
+
+    // Filtros
+    private string _filtroTexto = "";
+    private int _filtroCliente = 0;
+    private string _filtroTipo = "";
+    private string _filtroEstado = "activos";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarClientesAsync();
+        await BuscarAsync();
+    }
+
+    private async Task CargarClientesAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _clientes = await ctx.Clientes
+            .Where(c => c.Estado == true)
+            .OrderBy(c => c.RazonSocial)
+            .Take(500)
+            .ToListAsync();
+    }
+
+    private async Task BuscarAsync()
+    {
+        _cargando = true;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+
+        var query = ctx.Vehiculos
+            .Include(v => v.Cliente)
+            .Include(v => v.OrdenesTrabajo)
+            .AsQueryable();
+
+        // Filtro estado
+        if (_filtroEstado == "activos")
+            query = query.Where(v => v.Activo);
+        else if (_filtroEstado == "inactivos")
+            query = query.Where(v => !v.Activo);
+
+        // Filtro cliente
+        if (_filtroCliente > 0)
+            query = query.Where(v => v.IdCliente == _filtroCliente);
+
+        // Filtro tipo
+        if (!string.IsNullOrEmpty(_filtroTipo))
+            query = query.Where(v => v.TipoVehiculo == _filtroTipo);
+
+        // Filtro texto
+        if (!string.IsNullOrWhiteSpace(_filtroTexto))
+        {
+            var texto = _filtroTexto.ToLower().Trim();
+            query = query.Where(v => 
+                (v.Matricula != null && v.Matricula.ToLower().Contains(texto)) ||
+                (v.Marca != null && v.Marca.ToLower().Contains(texto)) ||
+                (v.Modelo != null && v.Modelo.ToLower().Contains(texto)) ||
+                (v.NumeroChasis != null && v.NumeroChasis.ToLower().Contains(texto)));
+        }
+
+        _vehiculos = await query
+            .OrderByDescending(v => v.FechaCreacion)
+            .Take(200)
+            .ToListAsync();
+
+        _cargando = false;
+    }
+
+    private void CrearOrdenTrabajo(int idVehiculo)
+    {
+        Nav.NavigateTo($"/ordenes-trabajo?vehiculo={idVehiculo}");
+    }
+}

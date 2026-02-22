@@ -54,6 +54,16 @@
                     <option value="Anulada">Anuladas</option>
                 </select>
             </div>
+            <div class="col-md-2">
+                <label class="form-label">Condición</label>
+                <select class="form-select" @bind="fTipoPago">
+                    <option value="">Todas</option>
+                    @foreach (var tp in tiposPago)
+                    {
+                        <option value="@tp.IdTipoPago">@tp.Nombre</option>
+                    }
+                </select>
+            </div>
             <div class="col-md-2 d-flex gap-2 justify-content-end flex-wrap">
                 <button class="btn btn-primary" @onclick="Buscar"><i class="bi bi-search"></i> Buscar</button>
                 <button class="btn btn-outline-success" title="Exportar CSV" @onclick="ExportarCsv"><i class="bi bi-filetype-csv"></i></button>
@@ -277,11 +287,13 @@ else
     private int fIdClasificacion = 0;
     private int fIdCaja = 0;
     private string? fEstado;
+    private string fTipoPago = string.Empty;
 
     private bool cargando = false;
     private bool mostrarDetalle = false;
     private List<Clasificacion> clasificaciones = new();
     private List<Caja> cajas = new();
+    private List<TipoPago> tiposPago = new();
     private List<ResumenClasificacion> resumenClasificacion = new();
     private List<DetalleProducto> detalleProductos = new();
     private decimal totalGeneral = 0;
@@ -312,6 +324,11 @@ else
 
         cajas = await ctx.Cajas.AsNoTracking()
             .OrderBy(c => c.IdCaja)
+            .ToListAsync();
+        
+        tiposPago = await ctx.TiposPago.AsNoTracking()
+            .Where(t => t.Activo == true)
+            .OrderBy(t => t.Nombre)
             .ToListAsync();
 
         await Buscar();
@@ -344,6 +361,7 @@ else
                             v.Estado,
                             v.IdCaja,
                             v.IdSucursal,
+                            v.IdTipoPago,
                             d.IdProducto,
                             d.Cantidad,
                             d.PrecioUnitario,
@@ -368,6 +386,10 @@ else
                 query = query.Where(x => x.Estado == fEstado);
             else
                 query = query.Where(x => x.Estado != "Anulada"); // Por defecto excluir anuladas
+            
+            // Filtro por Tipo de Pago (Condición de Venta)
+            if (!string.IsNullOrWhiteSpace(fTipoPago) && int.TryParse(fTipoPago, out var idTipoPago))
+                query = query.Where(x => x.IdTipoPago == idTipoPago);
 
             var data = await query.ToListAsync();
 

@@ -182,38 +182,38 @@ else
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-3">
-                    <div class="card bg-success text-white h-100">
+                    <div class="card bg-success text-white h-100 cursor-pointer" @onclick="MostrarDesgloseVentasContado" title="Clic para ver detalle">
                         <div class="card-body text-center">
                             <h6 class="card-title">Ventas Contado</h6>
                             <h4 class="mb-0">@resumen.TotalVentasContado.ToString("N0") ₲</h4>
-                            <small>@resumen.CantVentasContado operaciones</small>
+                            <small>@resumen.CantVentasContado operaciones <i class="bi bi-search ms-1"></i></small>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card bg-primary text-white h-100">
+                    <div class="card bg-primary text-white h-100 cursor-pointer" @onclick="MostrarDesgloseVentasCredito" title="Clic para ver detalle">
                         <div class="card-body text-center">
                             <h6 class="card-title">Ventas Crédito</h6>
                             <h4 class="mb-0">@resumen.TotalVentasCredito.ToString("N0") ₲</h4>
-                            <small>@resumen.CantVentasCredito operaciones</small>
+                            <small>@resumen.CantVentasCredito operaciones <i class="bi bi-search ms-1"></i></small>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card bg-info text-white h-100">
+                    <div class="card bg-info text-white h-100 cursor-pointer" @onclick="MostrarDesgloseCobros" title="Clic para ver detalle">
                         <div class="card-body text-center">
                             <h6 class="card-title">Cobros Crédito</h6>
                             <h4 class="mb-0">@resumen.TotalCobrosCredito.ToString("N0") ₲</h4>
-                            <small>@resumen.CantCobros operaciones</small>
+                            <small>@resumen.CantCobros operaciones <i class="bi bi-search ms-1"></i></small>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card bg-danger text-white h-100">
+                    <div class="card bg-danger text-white h-100 cursor-pointer" @onclick="MostrarDesgloseAnulaciones" title="Clic para ver detalle">
                         <div class="card-body text-center">
                             <h6 class="card-title">Anulaciones</h6>
                             <h4 class="mb-0">@resumen.TotalAnulaciones.ToString("N0") ₲</h4>
-                            <small>@resumen.CantAnulaciones operaciones</small>
+                            <small>@resumen.CantAnulaciones operaciones <i class="bi bi-search ms-1"></i></small>
                         </div>
                     </div>
                 </div>
@@ -226,11 +226,11 @@ else
                     @if (resumen.CantNotasCredito > 0)
                     {
                         <div class="col-md-3">
-                            <div class="card border-warning h-100">
+                            <div class="card border-warning h-100 cursor-pointer" @onclick="MostrarDesgloseNCVentas" title="Clic para ver detalle">
                                 <div class="card-body text-center">
                                     <h6 class="card-title text-warning"><i class="bi bi-receipt-cutoff me-1"></i>NC Ventas</h6>
                                     <h4 class="mb-0 text-warning">-@resumen.TotalNotasCredito.ToString("N0") ₲</h4>
-                                    <small class="text-muted">@resumen.CantNotasCredito NC (devoluciones)</small>
+                                    <small class="text-muted">@resumen.CantNotasCredito NC (devoluciones) <i class="bi bi-search ms-1"></i></small>
                                 </div>
                             </div>
                         </div>
@@ -238,11 +238,11 @@ else
                     @if (resumen.CantComprasEfectivo > 0)
                     {
                         <div class="col-md-3">
-                            <div class="card border-danger h-100">
+                            <div class="card border-danger h-100 cursor-pointer" @onclick="MostrarDesgloseComprasEfectivo" title="Clic para ver detalle">
                                 <div class="card-body text-center">
                                     <h6 class="card-title text-danger"><i class="bi bi-bag-dash me-1"></i>Compras Efectivo</h6>
                                     <h4 class="mb-0 text-danger">-@resumen.TotalComprasEfectivo.ToString("N0") ₲</h4>
-                                    <small class="text-muted">@resumen.CantComprasEfectivo compras (egresos)</small>
+                                    <small class="text-muted">@resumen.CantComprasEfectivo compras (egresos) <i class="bi bi-search ms-1"></i></small>
                                 </div>
                             </div>
                         </div>
@@ -250,11 +250,11 @@ else
                     @if (resumen.CantNCCompras > 0)
                     {
                         <div class="col-md-3">
-                            <div class="card border-success h-100">
+                            <div class="card border-success h-100 cursor-pointer" @onclick="MostrarDesgloseNCCompras" title="Clic para ver detalle">
                                 <div class="card-body text-center">
                                     <h6 class="card-title text-success"><i class="bi bi-receipt me-1"></i>NC Compras</h6>
                                     <h4 class="mb-0 text-success">+@resumen.TotalNCCompras.ToString("N0") ₲</h4>
-                                    <small class="text-muted">@resumen.CantNCCompras NC (crédito proveedor)</small>
+                                    <small class="text-muted">@resumen.CantNCCompras NC (crédito proveedor) <i class="bi bi-search ms-1"></i></small>
                                 </div>
                             </div>
                         </div>
@@ -395,6 +395,206 @@ else
     </div>
 }
 
+@* ========== MODAL DESGLOSE DE OPERACIONES ========== *@
+@if (_mostrarModalDesglose)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header @ObtenerClaseHeaderDesglose()">
+                    <h5 class="modal-title"><i class="bi @ObtenerIconoDesglose() me-2"></i>@_tituloDesglose</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalDesglose"></button>
+                </div>
+                <div class="modal-body p-0">
+                    @switch (_tipoDesglose)
+                    {
+                        case "VentasContado":
+                        case "VentasCredito":
+                        case "Anulaciones":
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th style="width:8%">#</th>
+                                        <th style="width:12%">Número</th>
+                                        <th>Cliente</th>
+                                        <th style="width:12%">Hora</th>
+                                        <th class="text-end" style="width:18%">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        var ventas = _tipoDesglose switch
+                                        {
+                                            "VentasContado" => _ventasContadoLista,
+                                            "VentasCredito" => _ventasCreditoLista,
+                                            "Anulaciones" => _anulacionesLista,
+                                            _ => new List<Venta>()
+                                        };
+                                    }
+                                    @foreach (var v in ventas)
+                                    {
+                                        <tr>
+                                            <td class="text-muted">@v.IdVenta</td>
+                                            <td><span class="badge bg-secondary">@v.Establecimiento-@v.PuntoExpedicion-@v.NumeroFactura</span></td>
+                                            <td>@(v.Cliente?.NombreFantasia ?? v.Cliente?.RazonSocial ?? "-")</td>
+                                            <td>@v.Fecha.ToString("HH:mm")</td>
+                                            <td class="text-end fw-bold">@v.Total.ToString("N0") ₲</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-secondary">
+                                    <tr class="fw-bold">
+                                        <td colspan="4">TOTAL (@ventas.Count operaciones)</td>
+                                        <td class="text-end">@ventas.Sum(v => v.Total).ToString("N0") ₲</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            break;
+                            
+                        case "Cobros":
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th style="width:8%">#</th>
+                                        <th>Cliente</th>
+                                        <th style="width:15%">Factura</th>
+                                        <th style="width:12%">Hora</th>
+                                        <th class="text-end" style="width:18%">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var c in _cobrosLista)
+                                    {
+                                        <tr>
+                                            <td class="text-muted">@c.IdCobro</td>
+                                            <td>@(c.Cliente?.NombreFantasia ?? c.Cliente?.RazonSocial ?? "-")</td>
+                                            <td><span class="badge bg-info">@(c.CuentaPorCobrar?.Venta?.NumeroFactura ?? c.NumeroRecibo ?? "-")</span></td>
+                                            <td>@c.FechaCobro.ToString("HH:mm")</td>
+                                            <td class="text-end fw-bold">@c.MontoTotal.ToString("N0") ₲</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-secondary">
+                                    <tr class="fw-bold">
+                                        <td colspan="4">TOTAL (@_cobrosLista.Count cobros)</td>
+                                        <td class="text-end">@_cobrosLista.Sum(c => c.MontoTotal).ToString("N0") ₲</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            break;
+                            
+                        case "NCVentas":
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th style="width:8%">#</th>
+                                        <th style="width:15%">Número</th>
+                                        <th>Cliente</th>
+                                        <th style="width:12%">Hora</th>
+                                        <th class="text-end" style="width:18%">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var nc in _ncVentasLista)
+                                    {
+                                        <tr>
+                                            <td class="text-muted">@nc.IdNotaCreditoVenta</td>
+                                            <td><span class="badge bg-warning text-dark">@nc.Establecimiento-@nc.PuntoExpedicion-@nc.NumeroNota.ToString("D7")</span></td>
+                                            <td>@(nc.Cliente?.NombreFantasia ?? nc.Cliente?.RazonSocial ?? "-")</td>
+                                            <td>@nc.Fecha.ToString("HH:mm")</td>
+                                            <td class="text-end fw-bold text-warning">-@nc.Total.ToString("N0") ₲</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-secondary">
+                                    <tr class="fw-bold">
+                                        <td colspan="4">TOTAL (@_ncVentasLista.Count NC)</td>
+                                        <td class="text-end text-warning">-@_ncVentasLista.Sum(nc => nc.Total).ToString("N0") ₲</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            break;
+                            
+                        case "NCCompras":
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th style="width:8%">#</th>
+                                        <th style="width:15%">Número</th>
+                                        <th>Proveedor</th>
+                                        <th style="width:12%">Hora</th>
+                                        <th class="text-end" style="width:18%">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var nc in _ncComprasLista)
+                                    {
+                                        <tr>
+                                            <td class="text-muted">@nc.IdNotaCreditoCompra</td>
+                                            <td><span class="badge bg-success">@nc.NumeroNota</span></td>
+                                            <td>@(nc.Proveedor?.RazonSocial ?? "-")</td>
+                                            <td>@nc.Fecha.ToString("HH:mm")</td>
+                                            <td class="text-end fw-bold text-success">+@nc.Total.ToString("N0") ₲</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-secondary">
+                                    <tr class="fw-bold">
+                                        <td colspan="4">TOTAL (@_ncComprasLista.Count NC)</td>
+                                        <td class="text-end text-success">+@_ncComprasLista.Sum(nc => nc.Total).ToString("N0") ₲</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            break;
+                            
+                        case "ComprasEfectivo":
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th style="width:8%">#</th>
+                                        <th style="width:15%">Número</th>
+                                        <th>Proveedor</th>
+                                        <th style="width:12%">Hora</th>
+                                        <th class="text-end" style="width:18%">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var comp in _comprasEfectivoLista)
+                                    {
+                                        <tr>
+                                            <td class="text-muted">@comp.IdCompra</td>
+                                            <td><span class="badge bg-danger">@comp.NumeroFactura</span></td>
+                                            <td>@(comp.Proveedor?.RazonSocial ?? "-")</td>
+                                            <td>@comp.Fecha.ToString("HH:mm")</td>
+                                            <td class="text-end fw-bold text-danger">-@comp.Total.ToString("N0") ₲</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-secondary">
+                                    <tr class="fw-bold">
+                                        <td colspan="4">TOTAL (@_comprasEfectivoLista.Count compras)</td>
+                                        <td class="text-end text-danger">-@_comprasEfectivoLista.Sum(c => c.Total).ToString("N0") ₲</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            break;
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalDesglose">
+                        <i class="bi bi-x-lg me-1"></i>Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .cursor-pointer { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+    .cursor-pointer:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+</style>
+
 </PageProtection>
 
 @code {
@@ -418,6 +618,20 @@ else
 
     private ResumenTurno resumen = new();
     private List<Models.EntregaCaja> entregas = new();
+    
+    // ========== DESGLOSE DE OPERACIONES ==========
+    private List<Venta> _ventasContadoLista = new();
+    private List<Venta> _ventasCreditoLista = new();
+    private List<Venta> _anulacionesLista = new();
+    private List<CobroCuota> _cobrosLista = new();
+    private List<NotaCreditoVenta> _ncVentasLista = new();
+    private List<NotaCreditoCompra> _ncComprasLista = new();
+    private List<Compra> _comprasEfectivoLista = new();
+    
+    // Modal de desglose
+    private bool _mostrarModalDesglose = false;
+    private string _tituloDesglose = "";
+    private string _tipoDesglose = ""; // VentasContado, VentasCredito, Cobros, Anulaciones, NCVentas, NCCompras, ComprasEfectivo
 
     protected override async Task OnInitializedAsync()
     {
@@ -500,10 +714,12 @@ else
         var turnoActual = caja.TurnoActual ?? 1;
         var idCaja = caja.IdCaja;
 
-        // Buscar ventas del día para ESTA CAJA y ESTE TURNO específico
+        // Buscar ventas del día para ESTA CAJA y ESTE TURNO específico (incluyendo cliente para desglose)
         var ventas = await ctx.Ventas
             .AsNoTracking()
+            .Include(v => v.Cliente)
             .Where(v => v.Fecha.Date == fechaCaja.Date && v.IdCaja == idCaja && v.Turno == turnoActual)
+            .OrderBy(v => v.NumeroFactura)
             .ToListAsync();
 
         // Ventas contado (no anuladas)
@@ -513,6 +729,7 @@ else
         
         resumen.CantVentasContado = ventasContado.Count;
         resumen.TotalVentasContado = ventasContado.Sum(v => v.Total);
+        _ventasContadoLista = ventasContado; // Guardar para desglose
 
         // Ventas crédito (no anuladas)
         var ventasCredito = ventas.Where(v => 
@@ -521,6 +738,7 @@ else
         
         resumen.CantVentasCredito = ventasCredito.Count;
         resumen.TotalVentasCredito = ventasCredito.Sum(v => v.Total);
+        _ventasCreditoLista = ventasCredito; // Guardar para desglose
 
         // Anulaciones
         var anuladas = ventas.Where(v => 
@@ -528,54 +746,69 @@ else
         
         resumen.CantAnulaciones = anuladas.Count;
         resumen.TotalAnulaciones = anuladas.Sum(v => v.Total);
+        _anulacionesLista = anuladas; // Guardar para desglose
 
-        // Cobros de crédito del día para ESTA CAJA y ESTE TURNO
+        // Cobros de crédito del día para ESTA CAJA y ESTE TURNO (incluyendo cliente y cuenta/venta)
         var cobros = await ctx.CobrosCuotas
             .AsNoTracking()
+            .Include(c => c.Cliente)
+            .Include(c => c.CuentaPorCobrar)
+                .ThenInclude(cpc => cpc!.Venta)
             .Where(c => c.FechaCobro.Date == fechaCaja.Date && c.IdCaja == idCaja && c.Turno == turnoActual)
+            .OrderBy(c => c.IdCobro)
             .ToListAsync();
         
         resumen.CantCobros = cobros.Count;
         resumen.TotalCobrosCredito = cobros.Sum(c => c.MontoTotal);
+        _cobrosLista = cobros; // Guardar para desglose
         
         // Notas de Crédito del turno (confirmadas, no anuladas)
         // Estas representan devoluciones o descuentos que SALEN de la caja
         var notasCredito = await ctx.NotasCreditoVentas
             .AsNoTracking()
+            .Include(nc => nc.Cliente)
             .Where(nc => nc.Fecha.Date == fechaCaja.Date 
                       && nc.IdCaja == idCaja 
                       && nc.Turno == turnoActual.ToString()
                       && nc.Estado == "Confirmada")
+            .OrderBy(nc => nc.NumeroNota)
             .ToListAsync();
         
         resumen.CantNotasCredito = notasCredito.Count;
         resumen.TotalNotasCredito = notasCredito.Sum(nc => nc.Total);
+        _ncVentasLista = notasCredito; // Guardar para desglose
 
         // Notas de Crédito de Compras del turno (crédito del proveedor - reduce egresos)
         var ncCompras = await ctx.NotasCreditoCompras
             .AsNoTracking()
+            .Include(nc => nc.Proveedor)
             .Where(nc => nc.Fecha.Date == fechaCaja.Date 
                       && nc.IdCaja == idCaja 
                       && nc.Turno == turnoActual
                       && nc.Estado == "Confirmada")
+            .OrderBy(nc => nc.IdNotaCreditoCompra)
             .ToListAsync();
         
         resumen.CantNCCompras = ncCompras.Count;
         resumen.TotalNCCompras = ncCompras.Sum(nc => nc.Total);
+        _ncComprasLista = ncCompras; // Guardar para desglose
 
         // Compras en efectivo del turno (egresos de caja)
         // Filtrar por MedioPago = EFECTIVO (campo del selector en pantalla de compras)
         var comprasEfectivo = await ctx.Compras
             .AsNoTracking()
+            .Include(c => c.Proveedor)
             .Where(c => c.Fecha.Date == fechaCaja.Date 
                      && c.IdCaja == idCaja 
                      && c.Turno == turnoActual
                      && c.Estado != "Anulado"
                      && (c.MedioPago == "EFECTIVO" || c.MedioPago == "Efectivo" || string.IsNullOrEmpty(c.MedioPago)))
+            .OrderBy(c => c.IdCompra)
             .ToListAsync();
         
         resumen.CantComprasEfectivo = comprasEfectivo.Count;
         resumen.TotalComprasEfectivo = comprasEfectivo.Sum(c => c.Total);
+        _comprasEfectivoLista = comprasEfectivo; // Guardar para desglose
 
         // Calcular totales por medio de pago desde ComposicionCajaDetalle
         var idsVentasContado = ventasContado.Select(v => v.IdVenta).ToList();
@@ -1294,5 +1527,68 @@ else
         sb.AppendLine("<div class='center small'>Firma Receptor</div>");
 
         await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+    }
+    
+    // ========== MÉTODOS PARA DESGLOSE DE OPERACIONES ==========
+    
+    // Métodos individuales para evitar problemas de comillas en Razor
+    private void MostrarDesgloseVentasContado() => MostrarDesglose("VentasContado");
+    private void MostrarDesgloseVentasCredito() => MostrarDesglose("VentasCredito");
+    private void MostrarDesgloseCobros() => MostrarDesglose("Cobros");
+    private void MostrarDesgloseAnulaciones() => MostrarDesglose("Anulaciones");
+    private void MostrarDesgloseNCVentas() => MostrarDesglose("NCVentas");
+    private void MostrarDesgloseNCCompras() => MostrarDesglose("NCCompras");
+    private void MostrarDesgloseComprasEfectivo() => MostrarDesglose("ComprasEfectivo");
+    
+    private void MostrarDesglose(string tipo)
+    {
+        _tipoDesglose = tipo;
+        _tituloDesglose = tipo switch
+        {
+            "VentasContado" => $"Ventas Contado - {resumen.CantVentasContado} operaciones",
+            "VentasCredito" => $"Ventas Crédito - {resumen.CantVentasCredito} operaciones",
+            "Anulaciones" => $"Ventas Anuladas - {resumen.CantAnulaciones} operaciones",
+            "Cobros" => $"Cobros de Crédito - {resumen.CantCobros} operaciones",
+            "NCVentas" => $"Notas de Crédito Ventas - {resumen.CantNotasCredito} NC",
+            "NCCompras" => $"Notas de Crédito Compras - {resumen.CantNCCompras} NC",
+            "ComprasEfectivo" => $"Compras en Efectivo - {resumen.CantComprasEfectivo} compras",
+            _ => "Detalle"
+        };
+        _mostrarModalDesglose = true;
+    }
+    
+    private void CerrarModalDesglose()
+    {
+        _mostrarModalDesglose = false;
+    }
+    
+    private string ObtenerClaseHeaderDesglose()
+    {
+        return _tipoDesglose switch
+        {
+            "VentasContado" => "bg-success text-white",
+            "VentasCredito" => "bg-primary text-white",
+            "Cobros" => "bg-info text-white",
+            "Anulaciones" => "bg-danger text-white",
+            "NCVentas" => "bg-warning text-dark",
+            "NCCompras" => "bg-success text-white",
+            "ComprasEfectivo" => "bg-danger text-white",
+            _ => "bg-secondary text-white"
+        };
+    }
+    
+    private string ObtenerIconoDesglose()
+    {
+        return _tipoDesglose switch
+        {
+            "VentasContado" => "bi-cash-stack",
+            "VentasCredito" => "bi-credit-card",
+            "Cobros" => "bi-wallet2",
+            "Anulaciones" => "bi-x-circle",
+            "NCVentas" => "bi-receipt-cutoff",
+            "NCCompras" => "bi-receipt",
+            "ComprasEfectivo" => "bi-bag-dash",
+            _ => "bi-list"
+        };
     }
 }

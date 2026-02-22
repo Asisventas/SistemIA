@@ -1,0 +1,1003 @@
+@page "/suscripciones"
+@page "/suscripciones/{IdSuscripcionParam:int}"
+
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Models.Suscripciones
+@using SistemIA.Services
+@implements IDisposable
+
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IFacturacionAutomaticaService FacturacionService
+
+<PageTitle>Suscripciones de Clientes - SistemIA</PageTitle>
+
+<PageProtection Modulo="/suscripciones" Permiso="VIEW">
+
+<div class="container-fluid py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-calendar-check text-primary me-2"></i>
+            Suscripciones de Clientes
+        </h3>
+        <button class="btn btn-primary" @onclick="NuevaSuscripcion">
+            <i class="bi bi-plus-lg me-1"></i>Nueva Suscripción
+        </button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-light py-2">
+            <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros</h6>
+        </div>
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted mb-1">Cliente</label>
+                    <input type="text" class="form-control form-control-sm" @bind="_filtroCliente" 
+                           placeholder="Nombre o RUC" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Estado</label>
+                    <select class="form-select form-select-sm" @bind="_filtroEstado">
+                        <option value="">Todos</option>
+                        <option value="Activa">Activa</option>
+                        <option value="Pausada">Pausada</option>
+                        <option value="Cancelada">Cancelada</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Período</label>
+                    <select class="form-select form-select-sm" @bind="_filtroPeriodo">
+                        <option value="">Todos</option>
+                        <option value="Mensual">Mensual</option>
+                        <option value="Bimestral">Bimestral</option>
+                        <option value="Trimestral">Trimestral</option>
+                        <option value="Semestral">Semestral</option>
+                        <option value="Anual">Anual</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-outline-primary btn-sm w-100" @onclick="Buscar">
+                        <i class="bi bi-search me-1"></i>Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Suscripciones -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-table me-2"></i>Suscripciones</h6>
+            <small class="text-muted">@_suscripciones.Count registro(s)</small>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:5%">#</th>
+                        <th>Cliente</th>
+                        <th>Productos</th>
+                        <th class="text-end">Monto</th>
+                        <th class="text-center">Período</th>
+                        <th class="text-center">Próxima</th>
+                        <th class="text-center">Hora</th>
+                        <th class="text-center">Estado</th>
+                        <th style="width:15%" class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_cargando)
+                    {
+                        <tr><td colspan="9" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>
+                    }
+                    else if (!_suscripciones.Any())
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No se encontraron suscripciones
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var sus in _suscripciones)
+                        {
+                            var diasRestantes = sus.FechaProximaFactura.HasValue ? 
+                                (sus.FechaProximaFactura.Value - DateTime.Today).Days : 999;
+                            <tr class="@(diasRestantes <= 0 ? "table-warning" : "")">
+                                <td>@sus.IdSuscripcion</td>
+                                <td>
+                                    <div class="fw-medium">@sus.Cliente?.RazonSocial</div>
+                                    <small class="text-muted">@sus.Cliente?.RUC</small>
+                                </td>
+                                <td>
+                                    @if (sus.VentaReferencia != null)
+                                    {
+                                        <small>Venta #@sus.IdVentaReferencia</small>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">@sus.Producto?.Descripcion</span>
+                                    }
+                                </td>
+                                <td class="text-end fw-medium">
+                                    @if (sus.VentaReferencia != null)
+                                    {
+                                        @:Gs @sus.VentaReferencia.Total.ToString("N0")
+                                    }
+                                    else
+                                    {
+                                        @:Gs @((sus.MontoFacturar * sus.Cantidad).ToString("N0"))
+                                    }
+                                </td>
+                                <td class="text-center"><span class="badge bg-info">@sus.TipoPeriodo</span></td>
+                                <td class="text-center">
+                                    @if (sus.FechaProximaFactura.HasValue)
+                                    {
+                                        <span class="@(diasRestantes <= 0 ? "text-danger fw-bold" : diasRestantes <= 3 ? "text-warning" : "")">
+                                            @sus.FechaProximaFactura.Value.ToString("dd/MM")
+                                        </span>
+                                        @if (diasRestantes <= 0)
+                                        {
+                                            <span class="badge bg-danger ms-1">Pendiente</span>
+                                        }
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <small>@(sus.HoraFacturacion?.ToString(@"hh\:mm") ?? "08:00")</small>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-@(sus.Estado == "Activa" ? "success" : sus.Estado == "Pausada" ? "warning" : "secondary")">
+                                        @sus.Estado
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" title="Editar" @onclick="() => EditarSuscripcion(sus)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-info" title="Ver factura plantilla" 
+                                                @onclick="() => VerVentaReferencia(sus)" disabled="@(sus.IdVentaReferencia == null)">
+                                            <i class="bi bi-receipt"></i>
+                                        </button>
+                                        <button class="btn btn-outline-success" title="Generar factura ahora" 
+                                                @onclick="() => GenerarFacturaManual(sus)" disabled="@(sus.Estado != "Activa")">
+                                            <i class="bi bi-lightning"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" title="Eliminar" @onclick="() => EliminarSuscripcion(sus)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========== MODAL CREAR/EDITAR SUSCRIPCIÓN ========== -->
+@if (_mostrarModalConfig)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-calendar-check me-2"></i>
+                        @(_suscripcionEdit.IdSuscripcion == 0 ? "Nueva Suscripción" : "Editar Suscripción")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalConfig"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <!-- Cliente (solo lectura si viene de venta) -->
+                        <div class="col-12">
+                            <label class="form-label fw-bold">Cliente</label>
+                            @if (_clienteEdit != null)
+                            {
+                                <div class="alert alert-info py-2 mb-0">
+                                    <strong>@_clienteEdit.RazonSocial</strong> - @_clienteEdit.RUC
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="position-relative">
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                        <input type="text" class="form-control" 
+                                               @bind="_busquedaCliente" @bind:event="oninput"
+                                               @onkeyup="BuscarClienteKeyUp"
+                                               @onfocus="() => { if (_clientesFiltrados.Any()) _mostrarSugClientes = true; }"
+                                               @onblur="OnClienteBlur"
+                                               placeholder="Buscar por nombre, RUC o ID..."
+                                               autocomplete="off" />
+                                    </div>
+                                    @if (_mostrarSugClientes && _clientesFiltrados.Any())
+                                    {
+                                        <div class="list-group position-absolute w-100 shadow" style="z-index: 1050; max-height: 250px; overflow-y: auto;">
+                                            @foreach (var cli in _clientesFiltrados.Take(15))
+                                            {
+                                                <button type="button" class="list-group-item list-group-item-action py-2"
+                                                        @onmousedown="() => SeleccionarCliente(cli)" @onmousedown:preventDefault>
+                                                    <div class="fw-semibold">@cli.RazonSocial</div>
+                                                    <small class="text-muted">RUC: @cli.RUC@(cli.DV != null ? $"-{cli.DV}" : "") | ID: @cli.IdCliente</small>
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Factura de Referencia -->
+                        <div class="col-12">
+                            <label class="form-label fw-bold">Factura Plantilla</label>
+                            @if (_suscripcionEdit.IdVentaReferencia.HasValue && _ventaReferencia != null)
+                            {
+                                <div class="card border-success">
+                                    <div class="card-header bg-success text-white py-2">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span><i class="bi bi-check-circle me-2"></i>Primera factura generada - Venta #@_ventaReferencia.IdVenta</span>
+                                            <div>
+                                                <button class="btn btn-sm btn-outline-light me-1" @onclick="VerVentaReferenciaEdit" title="Ver factura completa">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-light me-1" @onclick="EliminarPlantilla" title="Eliminar plantilla (desvincular)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-warning" @onclick="CambiarPlantilla" title="Cambiar por otra factura">
+                                                    <i class="bi bi-arrow-repeat me-1"></i>Cambiar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body py-2">
+                                        <table class="table table-sm mb-0">
+                                            <tbody>
+                                                @foreach (var det in _detallesVentaRef)
+                                                {
+                                                    <tr>
+                                                        <td>@det.Cantidad x @det.Producto?.Descripcion</td>
+                                                        <td class="text-end">Gs @det.Importe.ToString("N0")</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                            <tfoot class="table-light">
+                                                <tr>
+                                                    <th>TOTAL</th>
+                                                    <th class="text-end">Gs @_ventaReferencia.Total.ToString("N0")</th>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                        <small class="text-muted"><i class="bi bi-info-circle me-1"></i>Esta factura ya fue emitida. Las siguientes se generarán con los mismos productos y precios.</small>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-info py-2 mb-2">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    <small>Al crear la factura plantilla se genera <strong>la primera factura</strong> de esta suscripción. Las siguientes facturas se generarán automáticamente según el período configurado.</small>
+                                </div>
+                                <div class="d-grid">
+                                    <button class="btn btn-outline-primary" @onclick="AbrirModalVenta" disabled="@(_clienteEdit == null)">
+                                        <i class="bi bi-plus-circle me-2"></i>Crear Primera Factura (Plantilla)
+                                    </button>
+                                </div>
+                                <small class="text-muted">Los productos, precios y condiciones de esta factura se repetirán en las siguientes</small>
+                            }
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <!-- Configuración de recurrencia -->
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Período</label>
+                            <select class="form-select" @bind="_suscripcionEdit.TipoPeriodo">
+                                <option value="Mensual">Mensual</option>
+                                <option value="Bimestral">Bimestral</option>
+                                <option value="Trimestral">Trimestral</option>
+                                <option value="Semestral">Semestral</option>
+                                <option value="Anual">Anual</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Día del mes</label>
+                            <select class="form-select" @bind="_suscripcionEdit.DiaFacturacion">
+                                @for (int i = 1; i <= 28; i++)
+                                {
+                                    <option value="@i">Día @i</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Hora de facturación</label>
+                            <input type="time" class="form-control" 
+                                   value="@(_suscripcionEdit.HoraFacturacion?.ToString(@"hh\:mm") ?? "08:00")"
+                                   @onchange="@(e => _suscripcionEdit.HoraFacturacion = TimeSpan.TryParse(e.Value?.ToString(), out var t) ? t : TimeSpan.FromHours(8))" />
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Primera factura</label>
+                            <input type="date" class="form-control" @bind="_suscripcionEdit.FechaProximaFactura" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Fecha fin (opcional)</label>
+                            <input type="date" class="form-control" @bind="_suscripcionEdit.FechaFin" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Estado</label>
+                            <select class="form-select" @bind="_suscripcionEdit.Estado">
+                                <option value="Activa">Activa</option>
+                                <option value="Pausada">Pausada</option>
+                                <option value="Cancelada">Cancelada</option>
+                            </select>
+                        </div>
+
+                        <!-- Caja -->
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Caja para facturar</label>
+                            <select class="form-select" @bind="_suscripcionEdit.IdCaja">
+                                <option value="">-- Automática --</option>
+                                @foreach (var caja in _cajas)
+                                {
+                                    <option value="@caja.IdCaja">@caja.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Hora envío correo</label>
+                            <input type="time" class="form-control" 
+                                   value="@(_suscripcionEdit.HoraEnvioCorreo?.ToString(@"hh\:mm") ?? "09:00")"
+                                   @onchange="@(e => _suscripcionEdit.HoraEnvioCorreo = TimeSpan.TryParse(e.Value?.ToString(), out var t) ? t : TimeSpan.FromHours(9))" />
+                        </div>
+
+                        <!-- Opciones -->
+                        <div class="col-12">
+                            <div class="form-check form-check-inline">
+                                <input type="checkbox" class="form-check-input" id="chkActiva" @bind="_suscripcionEdit.FacturacionActiva" />
+                                <label class="form-check-label" for="chkActiva">Facturación activa</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input type="checkbox" class="form-check-input" id="chkCorreo" @bind="_suscripcionEdit.EnviarCorreoFactura" />
+                                <label class="form-check-label" for="chkCorreo">Enviar por correo</label>
+                            </div>
+                        </div>
+
+                        <!-- Observaciones -->
+                        <div class="col-12">
+                            <label class="form-label small text-muted">Observaciones</label>
+                            <textarea class="form-control" rows="2" @bind="_suscripcionEdit.Observaciones"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModalConfig">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="GuardarSuscripcion" disabled="@_guardando">
+                        @if (_guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ========== MODAL IFRAME VENTAS ========== -->
+@if (_mostrarModalVenta)
+{
+    <div class="modal-ventas-overlay" @onclick="CerrarModalVenta">
+        <div class="modal-ventas-container" @onclick:stopPropagation="true">
+            <div class="modal-ventas-header">
+                <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Crear Primera Factura de Suscripción</h5>
+                <button class="btn btn-sm btn-outline-light" @onclick="CerrarModalVenta">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="modal-ventas-body">
+                <iframe src="/ventas?modal=1&idCliente=@(_clienteEdit?.IdCliente ?? 0)&suscripcion=1" 
+                        style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+    </div>
+}
+
+</PageProtection>
+
+<style>
+    .modal-ventas-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 1060;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .modal-ventas-container {
+        width: 95%;
+        height: 90%;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    .modal-ventas-header {
+        background: var(--bs-primary);
+        color: white;
+        padding: 0.75rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .modal-ventas-body {
+        flex: 1;
+        overflow: hidden;
+    }
+</style>
+
+@code {
+    [Parameter] public int? IdSuscripcionParam { get; set; }
+    [CascadingParameter] public int IdSucursal { get; set; }
+
+    // Listado
+    private List<SuscripcionCliente> _suscripciones = new();
+    private bool _cargando = true;
+    private string _filtroCliente = "";
+    private string _filtroEstado = "";
+    private string _filtroPeriodo = "";
+
+    // Modal configuración
+    private bool _mostrarModalConfig = false;
+    private bool _guardando = false;
+    private SuscripcionCliente _suscripcionEdit = new();
+    private Cliente? _clienteEdit;
+    private Venta? _ventaReferencia;
+    private List<VentaDetalle> _detallesVentaRef = new();
+    private List<Cliente> _clientesFiltrados = new();
+    private string _busquedaCliente = "";
+    private List<Caja> _cajas = new();
+
+    // Modal venta
+    private bool _mostrarModalVenta = false;
+    
+    // Referencia para JS interop
+    private DotNetObjectReference<SuscripcionesClientes>? _objRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _objRef = DotNetObjectReference.Create(this);
+        OnVentaSuscripcionCreada += async (idVenta) => await ManejarVentaCreada(idVenta);
+        await CargarCajas();
+        await Buscar();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _objRef != null)
+        {
+            // Registrar listener de postMessage usando referencia de instancia (más confiable que método estático)
+            await JS.InvokeVoidAsync("registrarSuscripcionesListener", _objRef);
+        }
+    }
+
+    /// <summary>
+    /// Llamado desde JS cuando el iframe envía postMessage de venta creada.
+    /// Usa referencia de instancia (DotNetObjectReference) - más confiable que método estático.
+    /// </summary>
+    [JSInvokable("ManejarVentaDesdeJS")]
+    public async Task ManejarVentaDesdeJS(int idVenta)
+    {
+        Console.WriteLine($"[Suscripciones] ManejarVentaDesdeJS invocado con idVenta: {idVenta}");
+        await ManejarVentaCreada(idVenta);
+    }
+    
+    public void Dispose()
+    {
+        OnVentaSuscripcionCreada = null; // Limpiar eventos
+        _objRef?.Dispose();
+    }
+
+    private async Task CargarCajas()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _cajas = await db.Cajas
+            .Where(c => IdSucursal <= 0 || c.IdSucursal == IdSucursal)
+            .OrderBy(c => c.Nombre)
+            .ToListAsync();
+    }
+
+    private async Task Buscar()
+    {
+        _cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var query = db.SuscripcionesClientes
+                .Include(s => s.Cliente)
+                .Include(s => s.Producto)
+                .Include(s => s.VentaReferencia)
+                .AsQueryable();
+
+            if (IdSucursal > 0)
+                query = query.Where(s => s.IdSucursal == IdSucursal);
+
+            if (!string.IsNullOrWhiteSpace(_filtroCliente))
+                query = query.Where(s => s.Cliente!.RazonSocial.Contains(_filtroCliente) || 
+                                         s.Cliente.RUC.Contains(_filtroCliente));
+
+            if (!string.IsNullOrWhiteSpace(_filtroEstado))
+                query = query.Where(s => s.Estado == _filtroEstado);
+
+            if (!string.IsNullOrWhiteSpace(_filtroPeriodo))
+                query = query.Where(s => s.TipoPeriodo == _filtroPeriodo);
+
+            _suscripciones = await query
+                .OrderBy(s => s.FechaProximaFactura)
+                .ToListAsync();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void NuevaSuscripcion()
+    {
+        _suscripcionEdit = new SuscripcionCliente
+        {
+            IdSucursal = IdSucursal > 0 ? IdSucursal : 1,
+            FechaInicio = DateTime.Today,
+            FechaProximaFactura = DateTime.Today,
+            DiaFacturacion = DateTime.Today.Day,
+            TipoPeriodo = "Mensual",
+            HoraFacturacion = TimeSpan.FromHours(8),
+            HoraEnvioCorreo = TimeSpan.FromHours(9),
+            Estado = "Activa",
+            FacturacionActiva = true,
+            EnviarCorreoFactura = true
+        };
+        _clienteEdit = null;
+        _ventaReferencia = null;
+        _detallesVentaRef.Clear();
+        _clientesFiltrados.Clear();
+        _busquedaCliente = "";
+        _mostrarModalConfig = true;
+    }
+
+    private async Task EditarSuscripcion(SuscripcionCliente sus)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _suscripcionEdit = await db.SuscripcionesClientes
+            .Include(s => s.Cliente)
+            .Include(s => s.VentaReferencia)
+            .FirstOrDefaultAsync(s => s.IdSuscripcion == sus.IdSuscripcion) ?? new();
+
+        _clienteEdit = _suscripcionEdit.Cliente;
+        _ventaReferencia = _suscripcionEdit.VentaReferencia;
+        
+        // Cargar detalles de la venta de referencia si existe
+        if (_ventaReferencia != null)
+        {
+            _detallesVentaRef = await db.VentasDetalles
+                .Include(d => d.Producto)
+                .Where(d => d.IdVenta == _ventaReferencia.IdVenta)
+                .ToListAsync();
+        }
+        
+        _mostrarModalConfig = true;
+    }
+
+    private void CerrarModalConfig()
+    {
+        _mostrarModalConfig = false;
+    }
+
+    // ========== BÚSQUEDA DE CLIENTE (autocomplete) ==========
+    private bool _mostrarSugClientes = false;
+    private CancellationTokenSource? _buscarClienteCts;
+
+    private async Task BuscarClienteKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            _mostrarSugClientes = false;
+            return;
+        }
+        if (e.Key == "Enter" && _clientesFiltrados.Any())
+        {
+            SeleccionarCliente(_clientesFiltrados.First());
+            return;
+        }
+
+        // Cancelar búsqueda anterior y hacer nueva
+        _buscarClienteCts?.Cancel();
+        _buscarClienteCts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(200, _buscarClienteCts.Token);
+            await BuscarClientesAsync(_buscarClienteCts.Token);
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task BuscarClientesAsync(CancellationToken ct)
+    {
+        var texto = (_busquedaCliente ?? "").Trim();
+        if (texto.Length < 2)
+        {
+            _clientesFiltrados.Clear();
+            _mostrarSugClientes = false;
+            return;
+        }
+
+        var textoLower = texto.ToLowerInvariant();
+        var digitos = new string(texto.Where(char.IsDigit).ToArray());
+        int.TryParse(digitos, out var idBuscado);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _clientesFiltrados = await db.Clientes
+            .AsNoTracking()
+            .Where(c => c.RazonSocial.ToLower().Contains(textoLower)
+                        || (!string.IsNullOrEmpty(digitos) && c.RUC.Contains(digitos))
+                        || (idBuscado > 0 && c.IdCliente == idBuscado))
+            .OrderBy(c => c.RazonSocial)
+            .Take(15)
+            .ToListAsync(ct);
+
+        _mostrarSugClientes = _clientesFiltrados.Any();
+    }
+
+    private void SeleccionarCliente(Cliente cli)
+    {
+        _clienteEdit = cli;
+        _suscripcionEdit.IdCliente = cli.IdCliente;
+        _clientesFiltrados.Clear();
+        _busquedaCliente = "";
+        _mostrarSugClientes = false;
+    }
+
+    private async Task OnClienteBlur(FocusEventArgs e)
+    {
+        await Task.Delay(200);
+        _mostrarSugClientes = false;
+    }
+
+    // ========== MODAL VENTA ==========
+    private DateTime _fechaAperturaModalVenta;
+    private int _ultimoIdVentaAlAbrir; // Para detectar ventas nuevas
+
+    private async Task AbrirModalVenta()
+    {
+        _fechaAperturaModalVenta = DateTime.Now;
+        
+        // Guardar el último IdVenta global para saber si se creó una nueva
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _ultimoIdVentaAlAbrir = await db.Ventas.AsNoTracking()
+            .OrderByDescending(v => v.IdVenta)
+            .Select(v => v.IdVenta)
+            .FirstOrDefaultAsync();
+        
+        _mostrarModalVenta = true;
+    }
+
+    /// <summary>
+    /// Cierra el modal iframe de ventas. Si se creó una venta mientras estaba abierto,
+    /// la detecta automáticamente desde la BD (no depende de postMessage).
+    /// </summary>
+    private async Task CerrarModalVenta()
+    {
+        _mostrarModalVenta = false;
+        await InvokeAsync(StateHasChanged); // Cerrar el modal inmediatamente (UI rápida)
+
+        // Si la plantilla ya está vinculada (por postMessage o previamente), no buscar
+        if (_suscripcionEdit.IdVentaReferencia != null && _suscripcionEdit.IdVentaReferencia > 0)
+            return;
+
+        // Buscar en BD si se creó una venta para este cliente DESPUÉS de abrir el modal
+        if (_clienteEdit != null && _ultimoIdVentaAlAbrir > 0)
+        {
+            try
+            {
+                await using var db = await DbFactory.CreateDbContextAsync();
+                var ventaNueva = await db.Ventas
+                    .Where(v => v.IdCliente == _clienteEdit.IdCliente
+                             && v.IdVenta > _ultimoIdVentaAlAbrir
+                             && (v.Estado == "Confirmada" || v.Estado == "Confirmado" || v.Estado == "Borrador"))
+                    .OrderByDescending(v => v.IdVenta)
+                    .FirstOrDefaultAsync();
+
+                if (ventaNueva != null)
+                {
+                    Console.WriteLine($"[Suscripciones] Venta #{ventaNueva.IdVenta} detectada al cerrar modal (creada después de #{_ultimoIdVentaAlAbrir})");
+                    await ManejarVentaCreada(ventaNueva.IdVenta);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Suscripciones] Error buscando venta reciente: {ex.Message}");
+            }
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // Recibe el ID de venta creada desde el iframe
+    // Este método se llama desde JavaScript global
+    private static event Action<int>? OnVentaSuscripcionCreada;
+    private static int _ultimaVentaCreada;
+    
+    [JSInvokable("RecibirVentaSuscripcionGlobal")]
+    public static void RecibirVentaSuscripcionGlobal(int idVenta)
+    {
+        _ultimaVentaCreada = idVenta;
+        OnVentaSuscripcionCreada?.Invoke(idVenta);
+    }
+    
+    private async Task ManejarVentaCreada(int idVenta)
+    {
+        // Cargar la venta creada
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _ventaReferencia = await db.Ventas
+            .Include(v => v.Cliente)
+            .FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+        
+        if (_ventaReferencia != null)
+        {
+            _suscripcionEdit.IdVentaReferencia = idVenta;
+            _clienteEdit = _ventaReferencia.Cliente;
+            _suscripcionEdit.IdCliente = _ventaReferencia.IdCliente ?? 0;
+            _suscripcionEdit.CondicionPago = _ventaReferencia.IdTipoPago.HasValue ? "Crédito" : "Contado";
+            _suscripcionEdit.MontoFacturar = _ventaReferencia.Total;
+            
+            // Cargar detalles por separado
+            _detallesVentaRef = await db.VentasDetalles
+                .Include(d => d.Producto)
+                .Where(d => d.IdVenta == idVenta)
+                .ToListAsync();
+        }
+        
+        // Cerrar modal iframe de ventas
+        _mostrarModalVenta = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void QuitarVentaReferencia()
+    {
+        _suscripcionEdit.IdVentaReferencia = null;
+        _ventaReferencia = null;
+        _detallesVentaRef.Clear();
+    }
+
+    /// <summary>
+    /// Elimina la plantilla vinculada (desvincula la venta de la suscripción).
+    /// La venta emitida NO se elimina, solo se desvincula.
+    /// </summary>
+    private async Task EliminarPlantilla()
+    {
+        if (_ventaReferencia == null) return;
+
+        if (!await JS.InvokeAsync<bool>("confirm", 
+            $"¿Eliminar la plantilla vinculada (Venta #{_ventaReferencia.IdVenta})?\n\n" +
+            "⚠️ La factura ya emitida NO se elimina, solo se desvincula de esta suscripción.\n" +
+            "Podrá crear una nueva plantilla después."))
+            return;
+
+        // Desvincular IdSuscripcion de la venta en BD si ya estaba guardada
+        if (_suscripcionEdit.IdSuscripcion > 0 && _ventaReferencia.IdSuscripcion == _suscripcionEdit.IdSuscripcion)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var venta = await db.Ventas.FindAsync(_ventaReferencia.IdVenta);
+            if (venta != null)
+            {
+                venta.IdSuscripcion = null;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        QuitarVentaReferencia();
+        StateHasChanged();
+    }
+    
+    private async Task CambiarPlantilla()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", 
+            "¿Desea crear una nueva factura plantilla?\n\n" +
+            "⚠️ La factura anterior (#" + _ventaReferencia?.IdVenta + ") ya fue emitida y NO se eliminará.\n" +
+            "Se creará una NUEVA factura que servirá como plantilla para las siguientes."))
+            return;
+        
+        // Desvincular la venta anterior si estaba en BD
+        if (_suscripcionEdit.IdSuscripcion > 0 && _ventaReferencia != null)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var ventaAnterior = await db.Ventas.FindAsync(_ventaReferencia.IdVenta);
+            if (ventaAnterior != null && ventaAnterior.IdSuscripcion == _suscripcionEdit.IdSuscripcion)
+            {
+                ventaAnterior.IdSuscripcion = null;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        QuitarVentaReferencia();
+        await AbrirModalVenta();
+    }
+    
+    private void VerVentaReferenciaEdit()
+    {
+        if (_ventaReferencia != null)
+        {
+            Nav.NavigateTo($"/ventas?id={_ventaReferencia.IdVenta}", forceLoad: true);
+        }
+    }
+
+    private async Task VerVentaReferencia(SuscripcionCliente sus)
+    {
+        if (sus.IdVentaReferencia.HasValue)
+        {
+            Nav.NavigateTo($"/ventas?id={sus.IdVentaReferencia.Value}");
+        }
+    }
+
+    private async Task GenerarFacturaManual(SuscripcionCliente sus)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Generar factura ahora para {sus.Cliente?.RazonSocial}?"))
+            return;
+
+        try
+        {
+            var resultado = await FacturacionService.GenerarFacturaAsync(sus.IdSuscripcion);
+            if (resultado.Exito)
+            {
+                await JS.InvokeVoidAsync("alert", $"✅ Factura generada exitosamente.\n\nNº: {resultado.NumeroFactura}\nVenta ID: {resultado.IdVenta}");
+                await Buscar(); // Refrescar listado
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"❌ Error: {resultado.Mensaje}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task EliminarSuscripcion(SuscripcionCliente sus)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar suscripción de {sus.Cliente?.RazonSocial}? Se eliminarán también los registros de facturas automáticas asociadas."))
+            return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.SuscripcionesClientes.FindAsync(sus.IdSuscripcion);
+        if (entity != null)
+        {
+            // Eliminar facturas automáticas asociadas (FK)
+            var facturasAuto = await db.FacturasAutomaticas
+                .Where(f => f.IdSuscripcion == sus.IdSuscripcion)
+                .ToListAsync();
+            if (facturasAuto.Any())
+                db.FacturasAutomaticas.RemoveRange(facturasAuto);
+
+            // Desvincular ventas que referencian esta suscripción
+            var ventasVinculadas = await db.Ventas
+                .Where(v => v.IdSuscripcion == sus.IdSuscripcion)
+                .ToListAsync();
+            foreach (var v in ventasVinculadas)
+                v.IdSuscripcion = null;
+
+            db.SuscripcionesClientes.Remove(entity);
+            await db.SaveChangesAsync();
+            await Buscar();
+        }
+    }
+
+    private async Task GuardarSuscripcion()
+    {
+        if (_clienteEdit == null)
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar un cliente");
+            return;
+        }
+
+        if (_suscripcionEdit.IdVentaReferencia == null && (_suscripcionEdit.IdProducto == null || _suscripcionEdit.IdProducto <= 0))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe crear una factura plantilla o seleccionar un producto");
+            return;
+        }
+
+        _guardando = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            _suscripcionEdit.IdCliente = _clienteEdit.IdCliente;
+            _suscripcionEdit.FechaInicio = _suscripcionEdit.FechaProximaFactura ?? DateTime.Today;
+
+            bool esNueva = _suscripcionEdit.IdSuscripcion == 0;
+            if (esNueva)
+            {
+                db.SuscripcionesClientes.Add(_suscripcionEdit);
+            }
+            else
+            {
+                _suscripcionEdit.FechaModificacion = DateTime.Now;
+                db.SuscripcionesClientes.Update(_suscripcionEdit);
+            }
+
+            await db.SaveChangesAsync();
+
+            // === VINCULAR la venta de referencia con la suscripción ===
+            if (_suscripcionEdit.IdVentaReferencia.HasValue)
+            {
+                var ventaRef = await db.Ventas.FindAsync(_suscripcionEdit.IdVentaReferencia.Value);
+                if (ventaRef != null && ventaRef.IdSuscripcion != _suscripcionEdit.IdSuscripcion)
+                {
+                    ventaRef.IdSuscripcion = _suscripcionEdit.IdSuscripcion;
+                    await db.SaveChangesAsync();
+                }
+
+                // Registrar como primera factura en FacturasAutomaticas si es nueva suscripción
+                if (esNueva)
+                {
+                    var yaExiste = await db.FacturasAutomaticas
+                        .AnyAsync(f => f.IdSuscripcion == _suscripcionEdit.IdSuscripcion && f.IdVenta == _suscripcionEdit.IdVentaReferencia);
+                    if (!yaExiste)
+                    {
+                        var fechaInicio = _suscripcionEdit.FechaInicio;
+                        var meses = _suscripcionEdit.ObtenerMesesPeriodo();
+                        db.FacturasAutomaticas.Add(new Models.Suscripciones.FacturaAutomatica
+                        {
+                            IdSuscripcion = _suscripcionEdit.IdSuscripcion,
+                            IdSucursal = _suscripcionEdit.IdSucursal,
+                            IdCliente = _suscripcionEdit.IdCliente,
+                            IdVenta = _suscripcionEdit.IdVentaReferencia.Value,
+                            FechaGeneracion = DateTime.Now,
+                            PeriodoFacturado = $"{fechaInicio:MM/yyyy}",
+                            FechaInicioPeriodo = fechaInicio,
+                            FechaFinPeriodo = fechaInicio.AddMonths(meses).AddDays(-1),
+                            MontoFacturado = ventaRef?.Total ?? _suscripcionEdit.MontoFacturar,
+                            EstadoFactura = "Generada",
+                            NumeroFactura = ventaRef?.NumeroFactura
+                        });
+                        _suscripcionEdit.TotalFacturasGeneradas = 1;
+                        _suscripcionEdit.FechaUltimaFactura = DateTime.Now;
+                        _suscripcionEdit.FechaProximaFactura = _suscripcionEdit.CalcularProximaFechaFactura(fechaInicio);
+                        db.SuscripcionesClientes.Update(_suscripcionEdit);
+                        await db.SaveChangesAsync();
+                    }
+                }
+            }
+
+            _mostrarModalConfig = false;
+            await Buscar();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}");
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+}

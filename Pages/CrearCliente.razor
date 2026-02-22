@@ -92,7 +92,7 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">País</label>
-                                <InputSelect @bind-Value="cliente.CodigoPais" class="form-select">
+                                <InputSelect @bind-Value="cliente.CodigoPais" @bind-Value:after="OnPaisChanged" class="form-select">
                                     <option value="">-- Seleccione --</option>
                                     @foreach (var pais in paises)
                                     {
@@ -148,7 +148,7 @@
                             </div>
                             <div class="col-md-6">
                                 <div class="form-check form-switch">
-                                    <InputCheckbox @bind-Value="cliente.EsExtranjero" class="form-check-input" id="chkExtranjero" />
+                                    <InputCheckbox @bind-Value="cliente.EsExtranjero" @bind-Value:after="OnExtranjeroChanged" class="form-check-input" id="chkExtranjero" />
                                     <label class="form-check-label" for="chkExtranjero">¿Extranjero?</label>
                                 </div>
                             </div>
@@ -433,6 +433,82 @@
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Cuando cambia el país, configurar automáticamente EsExtranjero y campos SIFEN
+    /// </summary>
+    private Task OnPaisChanged()
+    {
+        if (cliente != null)
+        {
+            cliente.EsExtranjero = !string.IsNullOrEmpty(cliente.CodigoPais) && cliente.CodigoPais != "PRY";
+            ConfigurarCamposSifenExtranjero();
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Cuando cambia el checkbox de Extranjero manualmente
+    /// </summary>
+    private Task OnExtranjeroChanged()
+    {
+        if (cliente != null)
+        {
+            ConfigurarCamposSifenExtranjero();
+            
+            // Si se marca como extranjero pero el país es Paraguay o vacío, limpiar país
+            if (cliente.EsExtranjero && (string.IsNullOrEmpty(cliente.CodigoPais) || cliente.CodigoPais == "PRY"))
+            {
+                cliente.CodigoPais = ""; // Limpiar para que el usuario seleccione el país correcto
+            }
+            // Si se desmarca extranjero, establecer Paraguay
+            else if (!cliente.EsExtranjero)
+            {
+                cliente.CodigoPais = "PRY";
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Configura los campos SIFEN según si el cliente es extranjero o no
+    /// </summary>
+    private void ConfigurarCamposSifenExtranjero()
+    {
+        if (cliente == null) return;
+
+        if (cliente.EsExtranjero)
+        {
+            // Cliente Extranjero:
+            // - TipoOperacion = "4" (B2F - Venta a Extranjero)
+            // - NaturalezaReceptor = 2 (No contribuyente, porque no tiene RUC paraguayo)
+            // - TipoDocumentoIdentidadSifen = 3 (Pasaporte) por defecto si no está seteado
+            cliente.TipoOperacion = "4"; // B2F - Venta a Extranjero
+            cliente.NaturalezaReceptor = 2; // No contribuyente (sin RUC paraguayo)
+            
+            // Si no tiene tipo de documento, usar Pasaporte por defecto para extranjeros
+            if (!cliente.TipoDocumentoIdentidadSifen.HasValue || cliente.TipoDocumentoIdentidadSifen == 1)
+            {
+                cliente.TipoDocumentoIdentidadSifen = 3; // Pasaporte
+            }
+        }
+        else
+        {
+            // Cliente paraguayo - mantener configuración normal
+            // Si tiene RUC válido, será Contribuyente (1); si no, será No Contribuyente (2)
+            cliente.CodigoPais = "PRY";
+            
+            // Determinar TipoOperacion según valor del RUC si está disponible:
+            if (!string.IsNullOrWhiteSpace(cliente.RUC) && long.TryParse(cliente.RUC, out long rucNumerico))
+            {
+                cliente.TipoOperacion = rucNumerico >= 50_000_000 ? "1" : "2"; // 1=B2B, 2=B2C
+            }
+            else if (string.IsNullOrWhiteSpace(cliente.TipoOperacion))
+            {
+                cliente.TipoOperacion = "2"; // B2C por defecto para clientes sin RUC
+            }
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         using var context = await DbFactory.CreateDbContextAsync();
@@ -541,20 +617,46 @@
                             cliente.Estado = dDesEstCons.ToUpper().Contains("ACTIVO") || dCodEstCons == "ACT";
                         }
                         
-                        // Determinar tipo de contribuyente por el RUC
-                        // RUC con 8 dígitos suele ser persona jurídica
+                        // Determinar tipo de contribuyente por la longitud del RUC
+                        // RUC con 8 dígitos = Persona Jurídica (ej: 80033703)
+                        // RUC con 7 dígitos o menos = Persona Física (ej: 4637249)
                         if (!string.IsNullOrEmpty(cliente.RUC))
                         {
-                            if (cliente.RUC.Length >= 7)
+                            // Si el RUC fue encontrado en SIFEN, es un CONTRIBUYENTE (NaturalezaReceptor = 1)
+                            cliente.NaturalezaReceptor = 1; // Contribuyente (tiene RUC activo en SIFEN)
+                            
+                            // Determinar tipo: Persona Física o Jurídica según longitud del RUC
+                            if (cliente.RUC.Length == 8)
                             {
-                                cliente.IdTipoContribuyente = 2; // Persona Jurídica
-                                cliente.NaturalezaReceptor = 2;
+                                cliente.IdTipoContribuyente = 2; // Persona Jurídica (8 dígitos)
                             }
                             else
                             {
-                                cliente.IdTipoContribuyente = 1; // Persona Física
-                                cliente.NaturalezaReceptor = 1;
+                                cliente.IdTipoContribuyente = 1; // Persona Física (7 dígitos o menos)
                             }
+                            
+                            // Establecer TipoDocumento = RUC (ya que fue encontrado en SIFEN)
+                            cliente.TipoDocumento = "RU";
+                            cliente.NumeroDocumento = cliente.RUC;
+                            
+                            // Determinar TipoOperacion según valor del RUC:
+                            // RUC >= 50,000,000 = B2B (empresas y extranjeros)
+                            // RUC < 50,000,000 = B2C (personas físicas/clientes)
+                            if (long.TryParse(cliente.RUC, out long rucNumerico))
+                            {
+                                cliente.TipoOperacion = rucNumerico >= 50_000_000 ? "1" : "2"; // 1=B2B, 2=B2C
+                            }
+                            
+                            // Contribuyentes NO usan TipoDocumentoIdentidadSifen (usan RUC directamente)
+                            cliente.TipoDocumentoIdentidadSifen = null;
+                            cliente.NumeroDocumentoIdentidad = null;
+                            
+                            // Por defecto, es paraguayo (no extranjero)
+                            if (string.IsNullOrEmpty(cliente.CodigoPais))
+                            {
+                                cliente.CodigoPais = "PRY";
+                            }
+                            cliente.EsExtranjero = cliente.CodigoPais != "PRY";
                         }
                         
                         mensajeRuc = $"✓ {dRazCons?.Trim()} - {dDesEstCons}";

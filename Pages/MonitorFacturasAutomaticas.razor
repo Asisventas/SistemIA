@@ -1,0 +1,491 @@
+@page "/monitor-facturas-automaticas"
+
+@using Microsoft.EntityFrameworkCore
+@using SistemIA.Models
+@using SistemIA.Models.Suscripciones
+@using SistemIA.Services
+
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IFacturacionAutomaticaService FacturacionService
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Monitor de Facturas Automáticas - SistemIA</PageTitle>
+
+<PageProtection Modulo="/monitor-facturas-automaticas" Permiso="VIEW">
+
+<div class="container-fluid py-3">
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">
+            <i class="bi bi-speedometer2 text-primary me-2"></i>
+            Monitor de Facturas Automáticas
+        </h3>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary" @onclick="CargarDatos" disabled="@_cargando">
+                <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+            </button>
+            <button class="btn btn-success" @onclick="ProcesarPendientes" disabled="@_procesando">
+                @if (_procesando)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-play-fill me-1"></i>
+                }
+                Procesar Pendientes
+            </button>
+        </div>
+    </div>
+
+    <!-- Estadísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-1 opacity-75">Suscripciones Activas</h6>
+                            <h2 class="mb-0">@_estadisticas.TotalSuscripcionesActivas</h2>
+                        </div>
+                        <i class="bi bi-people fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-1 opacity-75">Pendientes Hoy</h6>
+                            <h2 class="mb-0">@_estadisticas.SuscripcionesPendientesHoy</h2>
+                        </div>
+                        <i class="bi bi-clock-history fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-1 opacity-75">Generadas Este Mes</h6>
+                            <h2 class="mb-0">@_estadisticas.TotalFacturasGeneradas</h2>
+                        </div>
+                        <i class="bi bi-check-circle fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-subtitle mb-1 opacity-75">Con Errores</h6>
+                            <h2 class="mb-0">@_estadisticas.TotalFacturasConError</h2>
+                        </div>
+                        <i class="bi bi-exclamation-triangle fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monto Total del Mes -->
+    <div class="card mb-4 shadow-sm border-start border-primary border-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h6 class="text-muted mb-0">Monto Total Generado Este Mes</h6>
+                    <h3 class="mb-0 text-primary">Gs @_estadisticas.TotalMonto.ToString("N0")</h3>
+                </div>
+                <div class="col-auto">
+                    <i class="bi bi-cash-stack text-primary fs-1"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-light py-2">
+            <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros</h6>
+        </div>
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Estado de Cobro</label>
+                    <select class="form-select form-select-sm" @bind="_filtroEstadoCobro" @bind:after="CargarDatos">
+                        <option value="">Todos</option>
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="Parcial">Parcial</option>
+                        <option value="Cobrado">Cobrado</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Estado Factura</label>
+                    <select class="form-select form-select-sm" @bind="_filtroEstadoFactura" @bind:after="CargarDatos">
+                        <option value="">Todos</option>
+                        <option value="Generada">Generada</option>
+                        <option value="ErrorGeneracion">Con Error</option>
+                        <option value="Anulada">Anulada</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Cantidad</label>
+                    <select class="form-select form-select-sm" @bind="_cantidadRegistros" @bind:after="CargarDatos">
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Próximas a Vencer -->
+        <div class="col-md-5">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-warning bg-opacity-25">
+                    <h6 class="mb-0"><i class="bi bi-calendar-event me-2"></i>Próximas a Generar (7 días)</h6>
+                </div>
+                <div class="card-body p-0">
+                    @if (_proximasSuscripciones.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var sus in _proximasSuscripciones)
+                            {
+                                var dias = (sus.FechaProximaFactura!.Value - DateTime.Today).Days;
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="fw-medium">@sus.Cliente?.RazonSocial</div>
+                                            <small class="text-muted">@sus.Producto?.Descripcion</small>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="fw-medium">Gs @((sus.MontoFacturar * sus.Cantidad).ToString("N0"))</div>
+                                            <span class="badge bg-@(dias == 0 ? "danger" : dias <= 2 ? "warning" : "info")">
+                                                @(dias == 0 ? "HOY" : dias == 1 ? "Mañana" : $"En {dias} días")
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-calendar-check fs-1 d-block mb-2"></i>
+                            Sin facturas próximas
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Últimas Facturas Generadas -->
+        <div class="col-md-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-success bg-opacity-25">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-receipt-cutoff me-2"></i>Últimas Facturas Generadas</h6>
+                        <a href="/suscripciones" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-gear"></i> Gestionar
+                        </a>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Cliente</th>
+                                <th>Período</th>
+                                <th class="text-end">Monto</th>
+                                <th class="text-center">Estado</th>
+                                <th class="text-center">Cobro</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_cargando)
+                            {
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="spinner-border text-primary spinner-border-sm"></div>
+                                    </td>
+                                </tr>
+                            }
+                            else if (!_ultimasFacturas.Any())
+                            {
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        Sin facturas generadas aún
+                                    </td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var f in _ultimasFacturas)
+                                {
+                                    <tr>
+                                        <td>
+                                            <small>@f.FechaCreacion.ToString("dd/MM/yyyy")</small><br />
+                                            <small class="text-muted">@f.FechaCreacion.ToString("HH:mm")</small>
+                                        </td>
+                                        <td>
+                                            <div class="fw-medium">@f.Suscripcion?.Cliente?.RazonSocial</div>
+                                            <small class="text-muted">@f.NumeroFactura</small>
+                                        </td>
+                                        <td><small>@f.PeriodoFacturado</small></td>
+                                        <td class="text-end fw-medium">Gs @f.MontoFacturado.ToString("N0")</td>
+                                        <td class="text-center">
+                                            @{
+                                                var colorFactura = f.EstadoFactura switch
+                                                {
+                                                    "Generada" => "success",
+                                                    "ErrorGeneracion" => "danger",
+                                                    "Anulada" => "secondary",
+                                                    _ => "warning"
+                                                };
+                                            }
+                                            <span class="badge bg-@colorFactura">@f.EstadoFactura</span>
+                                        </td>
+                                        <td class="text-center">
+                                            @{
+                                                var colorCobro = f.EstadoCobro switch
+                                                {
+                                                    "Cobrado" => "success",
+                                                    "Parcial" => "warning",
+                                                    _ => "secondary"
+                                                };
+                                            }
+                                            <span class="badge bg-@colorCobro">@f.EstadoCobro</span>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Facturas con Error -->
+    @if (_facturasConError.Any())
+    {
+        <div class="card shadow-sm border-danger">
+            <div class="card-header bg-danger text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Facturas con Errores</h6>
+                    <button class="btn btn-sm btn-light" @onclick="ReintentarTodas" disabled="@_reintentando">
+                        @if (_reintentando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-arrow-repeat me-1"></i>Reintentar Todas
+                    </button>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                            <th>Período</th>
+                            <th class="text-end">Monto</th>
+                            <th>Error</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in _facturasConError)
+                        {
+                            <tr>
+                                <td>@f.FechaCreacion.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@f.Suscripcion?.Cliente?.RazonSocial</td>
+                                <td>@f.PeriodoFacturado</td>
+                                <td class="text-end">Gs @f.MontoFacturado.ToString("N0")</td>
+                                <td>
+                                    <small class="text-danger">@(f.MensajeError ?? "Error desconocido")</small>
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => ReintentarUna(f)">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+</PageProtection>
+
+@code {
+    private int? _idSucursal;
+
+    private bool _cargando = true;
+    private bool _procesando = false;
+    private bool _reintentando = false;
+
+    // Filtros
+    private string _filtroEstadoCobro = "";
+    private string _filtroEstadoFactura = "";
+    private int _cantidadRegistros = 20;
+
+    private EstadisticasFacturacion _estadisticas = new();
+    private List<SuscripcionCliente> _proximasSuscripciones = new();
+    private List<FacturaAutomatica> _ultimasFacturas = new();
+    private List<FacturaAutomatica> _facturasConError = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _idSucursal = SucursalProvider.GetSucursalId(); // null = todas las sucursales
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        _cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            // Cargar estadísticas (null = todas las sucursales)
+            _estadisticas = await FacturacionService.ObtenerEstadisticasAsync(_idSucursal);
+
+            // Cargar próximas suscripciones
+            _proximasSuscripciones = await FacturacionService.ObtenerSuscripcionesProximasAsync(_idSucursal, 7);
+
+            // Cargar últimas facturas generadas
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            var query = db.FacturasAutomaticas
+                .Include(f => f.Suscripcion)
+                    .ThenInclude(s => s!.Cliente)
+                .Where(f => _idSucursal == null || f.Suscripcion!.IdSucursal == _idSucursal.Value);
+
+            // Aplicar filtro de estado de cobro
+            if (!string.IsNullOrWhiteSpace(_filtroEstadoCobro))
+                query = query.Where(f => f.EstadoCobro == _filtroEstadoCobro);
+
+            // Aplicar filtro de estado de factura
+            if (!string.IsNullOrWhiteSpace(_filtroEstadoFactura))
+                query = query.Where(f => f.EstadoFactura == _filtroEstadoFactura);
+
+            _ultimasFacturas = await query
+                .OrderByDescending(f => f.FechaCreacion)
+                .Take(_cantidadRegistros)
+                .ToListAsync();
+
+            // Cargar facturas con error
+            _facturasConError = await db.FacturasAutomaticas
+                .Include(f => f.Suscripcion)
+                    .ThenInclude(s => s!.Cliente)
+                .Where(f => (_idSucursal == null || f.Suscripcion!.IdSucursal == _idSucursal.Value) && f.EstadoFactura == "ErrorGeneracion")
+                .OrderByDescending(f => f.FechaCreacion)
+                .Take(20)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", ex.Message);
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task ProcesarPendientes()
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", "¿Procesar todas las suscripciones pendientes ahora?");
+        if (!confirmar) return;
+
+        _procesando = true;
+        StateHasChanged();
+
+        try
+        {
+            var resultado = await FacturacionService.ProcesarSuscripcionesPendientesAsync(_idSucursal);
+
+            var mensaje = $"Proceso completado:\n" +
+                         $"• Procesadas: {resultado.TotalProcesadas}\n" +
+                         $"• Exitosas: {resultado.Exitosas}\n" +
+                         $"• Con errores: {resultado.ConErrores}";
+
+            await JS.InvokeVoidAsync("alert", mensaje);
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al procesar: {ex.Message}");
+        }
+        finally
+        {
+            _procesando = false;
+        }
+    }
+
+    private async Task ReintentarTodas()
+    {
+        _reintentando = true;
+        StateHasChanged();
+
+        try
+        {
+            var resultado = await FacturacionService.ReintentarFacturasConErrorAsync(_idSucursal);
+            
+            var mensaje = $"Reintento completado:\n" +
+                         $"• Procesadas: {resultado.TotalProcesadas}\n" +
+                         $"• Exitosas: {resultado.Exitosas}\n" +
+                         $"• Aún con error: {resultado.ConErrores}";
+
+            await JS.InvokeVoidAsync("alert", mensaje);
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            _reintentando = false;
+        }
+    }
+
+    private async Task ReintentarUna(FacturaAutomatica factura)
+    {
+        try
+        {
+            var resultado = await FacturacionService.GenerarFacturaAsync(factura.IdSuscripcion);
+            
+            if (resultado.Exito)
+            {
+                await JS.InvokeVoidAsync("alert", "Factura generada exitosamente");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"Error: {resultado.Mensaje}");
+            }
+
+            await CargarDatos();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+}

@@ -1326,7 +1326,9 @@ namespace SistemIA.Models
                     .Replace("\n", "\\n")
                     .Replace("\t", "\\t");
 
-                return $"{{\"codigo\":\"{esc(codigo)}\",\"mensaje\":\"{esc(mensaje)}\",\"qr\":\"{esc(digestValue)}\",\"idLote\":\"{esc(idLote)}\",\"cdc\":\"{esc(cdc)}\",\"variante\":\"{esc(variante)}\",\"documento\":\"{esc(finalXml)}\",\"respuesta\":\"{esc(result)}\"}}";
+                // FIX 31-Ene-2026: Agregar xmlFirmado al JSON para que Program.cs pueda extraer dCarQR y guardar en XmlCDE
+                // xmlContent es el XML firmado que ya tiene el dCarQR con cHashQR correcto
+                return $"{{\"codigo\":\"{esc(codigo)}\",\"mensaje\":\"{esc(mensaje)}\",\"qr\":\"{esc(digestValue)}\",\"idLote\":\"{esc(idLote)}\",\"cdc\":\"{esc(cdc)}\",\"variante\":\"{esc(variante)}\",\"documento\":\"{esc(finalXml)}\",\"respuesta\":\"{esc(result)}\",\"xmlFirmado\":\"{esc(xmlContent)}\"}}";
             }
             catch (Exception ex)
             {

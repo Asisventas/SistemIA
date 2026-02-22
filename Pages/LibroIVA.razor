@@ -1,0 +1,1344 @@
+@page "/informes/libro-iva"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IDbContextFactory<SistemIA.Models.AppDbContext> DbFactory
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject SistemIA.Services.ISucursalProvider SucursalProvider
+@inject NavigationManager Nav
+@using ClosedXML.Excel
+
+<PageProtection Modulo="/informes/libro-iva" Permiso="VIEW">
+
+<h3 class="mb-3"><i class="bi bi-journal-bookmark-fill text-primary me-2"></i>Libro IVA Ventas y Compras</h3>
+
+<div class="card mb-3 shadow-sm">
+  <div class="card-header bg-light">
+    <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtros</h6>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Sucursal</label>
+        <select class="form-select form-select-sm" @bind="fIdSucursal">
+          <option value="0">Todas</option>
+          @foreach (var s in sucursales)
+          {
+            <option value="@s.Id">@s.NombreSucursal</option>
+          }
+        </select>
+      </div>
+      <div class="col-md-1">
+        <label class="form-label small text-muted">Caja Desde</label>
+        <input type="number" class="form-control form-control-sm" @bind="fCajaDesde" min="1" />
+      </div>
+      <div class="col-md-1">
+        <label class="form-label small text-muted">Caja Hasta</label>
+        <input type="number" class="form-control form-control-sm" @bind="fCajaHasta" min="1" />
+      </div>
+      <div class="col-md-1">
+        <label class="form-label small text-muted">Turno Desde</label>
+        <input type="number" class="form-control form-control-sm" @bind="fTurnoDesde" min="1" />
+      </div>
+      <div class="col-md-1">
+        <label class="form-label small text-muted">Turno Hasta</label>
+        <input type="number" class="form-control form-control-sm" @bind="fTurnoHasta" min="1" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Desde</label>
+        <input type="date" class="form-control form-control-sm" @bind="fDesde" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Hasta</label>
+        <input type="date" class="form-control form-control-sm" @bind="fHasta" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Timbrado</label>
+        <input class="form-control form-control-sm" placeholder="Nº Timbrado" @bind="fTimbrado" />
+      </div>
+    </div>
+    <div class="row g-3 mt-1 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Tipo Documento</label>
+        <select class="form-select form-select-sm" @bind="fTipoDocumento">
+          <option value="">TODAS</option>
+          <option value="FACTURA">FACTURA</option>
+          <option value="ELECTRONICA">FACTURA ELECTRÓNICA</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Condición</label>
+        <select class="form-select form-select-sm" @bind="fCondicion">
+          <option value="">Todas</option>
+          <option value="CONTADO">CONTADO</option>
+          <option value="CREDITO">CRÉDITO</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">RUC / Razón Social</label>
+        <input class="form-control form-control-sm" placeholder="Buscar..." @bind="fCliente" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">Ver</label>
+        <select class="form-select form-select-sm" @bind="fSeccion">
+          <option value="AMBOS">Ventas y Compras</option>
+          <option value="VENTAS">Solo Ventas</option>
+          <option value="COMPRAS">Solo Compras</option>
+        </select>
+      </div>
+      <div class="col-md-4 d-flex gap-2 justify-content-end">
+        <button class="btn btn-primary btn-sm" @onclick="Buscar"><i class="bi bi-search me-1"></i> Buscar</button>
+        <button class="btn btn-outline-success btn-sm" title="Exportar CSV" @onclick="ExportarCSV"><i class="bi bi-filetype-csv"></i></button>
+        <button class="btn btn-success btn-sm" title="Exportar Excel" @onclick="ExportarXlsx"><i class="bi bi-file-earmark-excel"></i></button>
+        <button class="btn btn-outline-secondary btn-sm" title="Imprimir" @onclick="Imprimir"><i class="bi bi-printer"></i></button>
+        <EnviarInformeCorreo 
+          TituloInforme="Libro IVA" 
+          OnGenerarHtml="GenerarHtmlCompleto" 
+          FiltrosAplicados="@ObtenerFiltrosTexto()" />
+      </div>
+    </div>
+  </div>
+</div>
+
+@* ========== SECCIÓN VENTAS ========== *@
+@if (fSeccion == "AMBOS" || fSeccion == "VENTAS")
+{
+<div class="card mb-3 shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center" style="background: rgba(25, 135, 84, 0.2);">
+    <h6 class="mb-0" style="color: var(--text-primary);"><i class="bi bi-graph-up-arrow me-2 text-success"></i>Ventas</h6>
+    <span class="badge bg-success">@filasVentas.Count registros</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+      <table class="table table-sm table-hover align-middle mb-0 small">
+        <thead class="position-sticky top-0" style="background: var(--bg-surface); z-index: 1;">
+          <tr>
+            <th>Tipo</th>
+            <th>Cond.</th>
+            <th>RUC</th>
+            <th>Nombre</th>
+            <th>Fecha</th>
+            <th>Timbrado</th>
+            <th>Factura</th>
+            <th class="text-end">Grab10</th>
+            <th class="text-end">IVA 10</th>
+            <th class="text-end">Grab5</th>
+            <th class="text-end">IVA5</th>
+            <th class="text-end">Exenta</th>
+            <th class="text-end">Total</th>
+            <th class="text-center" title="Imputa IVA">Iva</th>
+            <th class="text-center" title="Imputa IRE">Ire</th>
+            <th class="text-center" title="Imputa IRP">Irp</th>
+            <th>ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (!filasVentas.Any())
+          {
+            <tr><td colspan="17" class="text-muted text-center py-3">Sin resultados</td></tr>
+          }
+          else
+          {
+            @foreach (var r in filasVentas)
+            {
+              <tr>
+                <td>@r.TipoDoc</td>
+                <td>@r.Condicion</td>
+                <td>@r.RUC</td>
+                <td class="text-truncate" style="max-width: 180px;" title="@r.Nombre">@r.Nombre</td>
+                <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+                <td>@r.Timbrado</td>
+                <td>@r.NumeroFactura</td>
+                <td class="text-end">@r.Grabado10.ToString("N0")</td>
+                <td class="text-end text-success fw-semibold">@r.IVA10.ToString("N0")</td>
+                <td class="text-end">@r.Grabado5.ToString("N0")</td>
+                <td class="text-end text-info fw-semibold">@r.IVA5.ToString("N0")</td>
+                <td class="text-end">@r.Exenta.ToString("N0")</td>
+                <td class="text-end fw-bold">@r.Total.ToString("N0")</td>
+                <td class="text-center">@(r.ImputaIVA ? "S" : "N")</td>
+                <td class="text-center">@(r.ImputaIRE ? "S" : "N")</td>
+                <td class="text-center">@(r.ImputaIRP ? "S" : "N")</td>
+                <td>@r.Id</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer" style="background: var(--bg-surface);">
+    <div class="row">
+      <div class="col-md-4">
+        <div class="d-flex gap-3 flex-wrap align-items-center">
+          <span class="fw-semibold">Grab10:</span>
+          <span class="badge bg-secondary fs-6">@totalVentasGrab10.ToString("N0")</span>
+          <span class="text-success fw-semibold ms-2">IVA 10:</span>
+          <span class="badge bg-success fs-6">@totalVentasIVA10.ToString("N0")</span>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="d-flex gap-3 flex-wrap align-items-center">
+          <span class="fw-semibold">Grab5:</span>
+          <span class="badge bg-secondary fs-6">@totalVentasGrab5.ToString("N0")</span>
+          <span class="text-info fw-semibold ms-2">IVA 5:</span>
+          <span class="badge bg-info fs-6">@totalVentasIVA5.ToString("N0")</span>
+        </div>
+      </div>
+      <div class="col-md-4 text-end">
+        <span class="fw-semibold">Exenta:</span>
+        <span class="badge bg-warning text-dark fs-6">@totalVentasExenta.ToString("N0")</span>
+        <span class="fw-bold ms-3">TOTAL:</span>
+        <span class="badge bg-primary fs-6">@totalVentas.ToString("N0")</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+@* ========== SECCIÓN NC VENTAS ========== *@
+@if (filasNCVentas.Any())
+{
+<div class="card mb-3 shadow-sm border-warning">
+  <div class="card-header d-flex justify-content-between align-items-center" style="background: rgba(255, 193, 7, 0.15);">
+    <h6 class="mb-0" style="color: var(--text-primary);"><i class="bi bi-receipt-cutoff me-2" style="color: #ffc107;"></i>Notas de Crédito Ventas</h6>
+    <span class="badge bg-warning text-dark">@filasNCVentas.Count registros</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+      <table class="table table-sm table-hover align-middle mb-0 small">
+        <thead class="position-sticky top-0" style="background: var(--bg-surface); z-index: 1;">
+          <tr>
+            <th>Tipo</th>
+            <th>Cond.</th>
+            <th>RUC</th>
+            <th>Nombre</th>
+            <th>Fecha</th>
+            <th>Timbrado</th>
+            <th>Factura</th>
+            <th class="text-end">Grab10</th>
+            <th class="text-end">IVA 10</th>
+            <th class="text-end">Grab5</th>
+            <th class="text-end">IVA5</th>
+            <th class="text-end">Exenta</th>
+            <th class="text-end">Total</th>
+            <th class="text-center">Iva</th>
+            <th class="text-center">Ire</th>
+            <th class="text-center">Irp</th>
+            <th>ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var r in filasNCVentas)
+          {
+            <tr style="background: rgba(255, 193, 7, 0.08);">
+              <td>@r.TipoDoc</td>
+              <td>@r.Condicion</td>
+              <td>@r.RUC</td>
+              <td class="text-truncate" style="max-width: 180px;" title="@r.Nombre">@r.Nombre</td>
+              <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+              <td>@r.Timbrado</td>
+              <td>@r.NumeroFactura</td>
+              <td class="text-end">@r.Grabado10.ToString("N0")</td>
+              <td class="text-end text-danger fw-semibold">@r.IVA10.ToString("N0")</td>
+              <td class="text-end">@r.Grabado5.ToString("N0")</td>
+              <td class="text-end text-danger fw-semibold">@r.IVA5.ToString("N0")</td>
+              <td class="text-end">@r.Exenta.ToString("N0")</td>
+              <td class="text-end fw-bold text-danger">@r.Total.ToString("N0")</td>
+              <td class="text-center">@(r.ImputaIVA ? "S" : "N")</td>
+              <td class="text-center">@(r.ImputaIRE ? "S" : "N")</td>
+              <td class="text-center">@(r.ImputaIRP ? "S" : "N")</td>
+              <td>@r.Id</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer" style="background: rgba(255, 193, 7, 0.1);">
+    <div class="row">
+      <div class="col-md-4">
+        <span class="fw-semibold text-danger">(-) Grab10:</span>
+        <span class="badge bg-danger fs-6">@totalNCVentasGrab10.ToString("N0")</span>
+        <span class="fw-semibold text-danger ms-2">IVA 10:</span>
+        <span class="badge bg-danger fs-6">@totalNCVentasIVA10.ToString("N0")</span>
+      </div>
+      <div class="col-md-4">
+        <span class="fw-semibold text-danger">(-) Grab5:</span>
+        <span class="badge bg-danger fs-6">@totalNCVentasGrab5.ToString("N0")</span>
+        <span class="fw-semibold text-danger ms-2">IVA 5:</span>
+        <span class="badge bg-danger fs-6">@totalNCVentasIVA5.ToString("N0")</span>
+      </div>
+      <div class="col-md-4 text-end">
+        <span class="fw-bold text-danger">TOTAL NC:</span>
+        <span class="badge bg-danger fs-6">@totalNCVentas.ToString("N0")</span>
+      </div>
+    </div>
+  </div>
+</div>
+}
+}
+
+@* ========== SECCIÓN COMPRAS ========== *@
+@if (fSeccion == "AMBOS" || fSeccion == "COMPRAS")
+{
+<div class="card mb-3 shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center" style="background: rgba(13, 110, 253, 0.15);">
+    <h6 class="mb-0" style="color: var(--text-primary);"><i class="bi bi-cart3 me-2 text-primary"></i>Compras</h6>
+    <span class="badge bg-primary">@filasCompras.Count registros</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+      <table class="table table-sm table-hover align-middle mb-0 small">
+        <thead class="position-sticky top-0" style="background: var(--bg-surface); z-index: 1;">
+          <tr>
+            <th>Tipo</th>
+            <th>Cond.</th>
+            <th>RUC</th>
+            <th>Proveedor</th>
+            <th>Fecha</th>
+            <th>Timbrado</th>
+            <th>Factura</th>
+            <th class="text-end">Grab10</th>
+            <th class="text-end">IVA 10</th>
+            <th class="text-end">Grab5</th>
+            <th class="text-end">IVA5</th>
+            <th class="text-end">Exenta</th>
+            <th class="text-end">Total</th>
+            <th class="text-center" title="Imputa IVA">Iva</th>
+            <th class="text-center" title="Imputa IRE">Ire</th>
+            <th class="text-center" title="Imputa IRP">Irp</th>
+            <th>ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (!filasCompras.Any())
+          {
+            <tr><td colspan="17" class="text-muted text-center py-3">Sin resultados</td></tr>
+          }
+          else
+          {
+            @foreach (var r in filasCompras)
+            {
+              <tr>
+                <td>@r.TipoDoc</td>
+                <td>@r.Condicion</td>
+                <td>@r.RUC</td>
+                <td class="text-truncate" style="max-width: 180px;" title="@r.Nombre">@r.Nombre</td>
+                <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+                <td>@r.Timbrado</td>
+                <td>@r.NumeroFactura</td>
+                <td class="text-end">@r.Grabado10.ToString("N0")</td>
+                <td class="text-end text-success fw-semibold">@r.IVA10.ToString("N0")</td>
+                <td class="text-end">@r.Grabado5.ToString("N0")</td>
+                <td class="text-end text-info fw-semibold">@r.IVA5.ToString("N0")</td>
+                <td class="text-end">@r.Exenta.ToString("N0")</td>
+                <td class="text-end fw-bold">@r.Total.ToString("N0")</td>
+                <td class="text-center">@(r.ImputaIVA ? "S" : "N")</td>
+                <td class="text-center">@(r.ImputaIRE ? "S" : "N")</td>
+                <td class="text-center">@(r.ImputaIRP ? "S" : "N")</td>
+                <td>@r.Id</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer" style="background: var(--bg-surface);">
+    <div class="row">
+      <div class="col-md-4">
+        <div class="d-flex gap-3 flex-wrap align-items-center">
+          <span class="fw-semibold">Grab10:</span>
+          <span class="badge bg-secondary fs-6">@totalComprasGrab10.ToString("N0")</span>
+          <span class="text-success fw-semibold ms-2">IVA 10:</span>
+          <span class="badge bg-success fs-6">@totalComprasIVA10.ToString("N0")</span>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="d-flex gap-3 flex-wrap align-items-center">
+          <span class="fw-semibold">Grab5:</span>
+          <span class="badge bg-secondary fs-6">@totalComprasGrab5.ToString("N0")</span>
+          <span class="text-info fw-semibold ms-2">IVA 5:</span>
+          <span class="badge bg-info fs-6">@totalComprasIVA5.ToString("N0")</span>
+        </div>
+      </div>
+      <div class="col-md-4 text-end">
+        <span class="fw-semibold">Exenta:</span>
+        <span class="badge bg-warning text-dark fs-6">@totalComprasExenta.ToString("N0")</span>
+        <span class="fw-bold ms-3">TOTAL:</span>
+        <span class="badge bg-dark fs-6">@totalCompras.ToString("N0")</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+@* ========== SECCIÓN NC COMPRAS ========== *@
+@if (filasNCCompras.Any())
+{
+<div class="card mb-3 shadow-sm border-info">
+  <div class="card-header d-flex justify-content-between align-items-center" style="background: rgba(13, 202, 240, 0.15);">
+    <h6 class="mb-0" style="color: var(--text-primary);"><i class="bi bi-receipt-cutoff me-2 text-info"></i>Notas de Crédito Compras</h6>
+    <span class="badge bg-info text-dark">@filasNCCompras.Count registros</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+      <table class="table table-sm table-hover align-middle mb-0 small">
+        <thead class="position-sticky top-0" style="background: var(--bg-surface); z-index: 1;">
+          <tr>
+            <th>Tipo</th>
+            <th>Cond.</th>
+            <th>RUC</th>
+            <th>Proveedor</th>
+            <th>Fecha</th>
+            <th>Timbrado</th>
+            <th>Factura</th>
+            <th class="text-end">Grab10</th>
+            <th class="text-end">IVA 10</th>
+            <th class="text-end">Grab5</th>
+            <th class="text-end">IVA5</th>
+            <th class="text-end">Exenta</th>
+            <th class="text-end">Total</th>
+            <th class="text-center">Iva</th>
+            <th class="text-center">Ire</th>
+            <th class="text-center">Irp</th>
+            <th>ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var r in filasNCCompras)
+          {
+            <tr style="background: rgba(13, 202, 240, 0.08);">
+              <td>@r.TipoDoc</td>
+              <td>@r.Condicion</td>
+              <td>@r.RUC</td>
+              <td class="text-truncate" style="max-width: 180px;" title="@r.Nombre">@r.Nombre</td>
+              <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+              <td>@r.Timbrado</td>
+              <td>@r.NumeroFactura</td>
+              <td class="text-end">@r.Grabado10.ToString("N0")</td>
+              <td class="text-end text-danger fw-semibold">@r.IVA10.ToString("N0")</td>
+              <td class="text-end">@r.Grabado5.ToString("N0")</td>
+              <td class="text-end text-danger fw-semibold">@r.IVA5.ToString("N0")</td>
+              <td class="text-end">@r.Exenta.ToString("N0")</td>
+              <td class="text-end fw-bold text-danger">@r.Total.ToString("N0")</td>
+              <td class="text-center">@(r.ImputaIVA ? "S" : "N")</td>
+              <td class="text-center">@(r.ImputaIRE ? "S" : "N")</td>
+              <td class="text-center">@(r.ImputaIRP ? "S" : "N")</td>
+              <td>@r.Id</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer" style="background: rgba(13, 202, 240, 0.1);">
+    <div class="row">
+      <div class="col-md-4">
+        <span class="fw-semibold text-danger">(-) Grab10:</span>
+        <span class="badge bg-danger fs-6">@totalNCComprasGrab10.ToString("N0")</span>
+        <span class="fw-semibold text-danger ms-2">IVA 10:</span>
+        <span class="badge bg-danger fs-6">@totalNCComprasIVA10.ToString("N0")</span>
+      </div>
+      <div class="col-md-4">
+        <span class="fw-semibold text-danger">(-) Grab5:</span>
+        <span class="badge bg-danger fs-6">@totalNCComprasGrab5.ToString("N0")</span>
+        <span class="fw-semibold text-danger ms-2">IVA 5:</span>
+        <span class="badge bg-danger fs-6">@totalNCComprasIVA5.ToString("N0")</span>
+      </div>
+      <div class="col-md-4 text-end">
+        <span class="fw-bold text-danger">TOTAL NC:</span>
+        <span class="badge bg-danger fs-6">@totalNCCompras.ToString("N0")</span>
+      </div>
+    </div>
+  </div>
+</div>
+}
+}
+
+@* ========== RESUMEN FISCAL ========== *@
+<div class="card shadow-sm" style="border-color: var(--bar-border);">
+  <div class="card-header text-white" style="background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);">
+    <h6 class="mb-0"><i class="bi bi-calculator me-2"></i>Resumen Fiscal del Período</h6>
+  </div>
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-6">
+        <h6 class="text-success"><i class="bi bi-arrow-up-circle me-1"></i>DÉBITO FISCAL (Ventas)</h6>
+        <table class="table table-sm table-bordered mb-3">
+          <tr>
+            <td>IVA 10% Ventas</td>
+            <td class="text-end fw-semibold">@totalVentasIVA10.ToString("N0")</td>
+          </tr>
+          <tr>
+            <td>IVA 5% Ventas</td>
+            <td class="text-end fw-semibold">@totalVentasIVA5.ToString("N0")</td>
+          </tr>
+          <tr style="background: rgba(255, 193, 7, 0.15);">
+            <td>(-) IVA NC Ventas (10%)</td>
+            <td class="text-end text-danger fw-semibold">(@totalNCVentasIVA10.ToString("N0"))</td>
+          </tr>
+          <tr style="background: rgba(255, 193, 7, 0.15);">
+            <td>(-) IVA NC Ventas (5%)</td>
+            <td class="text-end text-danger fw-semibold">(@totalNCVentasIVA5.ToString("N0"))</td>
+          </tr>
+          <tr style="background: rgba(25, 135, 84, 0.2);">
+            <td class="fw-bold">TOTAL DÉBITO FISCAL</td>
+            <td class="text-end fw-bold fs-5 text-success">@((totalVentasIVA10 + totalVentasIVA5 - totalNCVentasIVA10 - totalNCVentasIVA5).ToString("N0"))</td>
+          </tr>
+        </table>
+      </div>
+      <div class="col-md-6">
+        <h6 class="text-primary"><i class="bi bi-arrow-down-circle me-1"></i>CRÉDITO FISCAL (Compras)</h6>
+        <table class="table table-sm table-bordered mb-3">
+          <tr>
+            <td>IVA 10% Compras</td>
+            <td class="text-end fw-semibold">@totalComprasIVA10.ToString("N0")</td>
+          </tr>
+          <tr>
+            <td>IVA 5% Compras</td>
+            <td class="text-end fw-semibold">@totalComprasIVA5.ToString("N0")</td>
+          </tr>
+          <tr style="background: rgba(13, 202, 240, 0.15);">
+            <td>(-) IVA NC Compras (10%)</td>
+            <td class="text-end text-danger fw-semibold">(@totalNCComprasIVA10.ToString("N0"))</td>
+          </tr>
+          <tr style="background: rgba(13, 202, 240, 0.15);">
+            <td>(-) IVA NC Compras (5%)</td>
+            <td class="text-end text-danger fw-semibold">(@totalNCComprasIVA5.ToString("N0"))</td>
+          </tr>
+          <tr style="background: rgba(13, 110, 253, 0.2);">
+            <td class="fw-bold">TOTAL CRÉDITO FISCAL</td>
+            <td class="text-end fw-bold fs-5 text-primary">@((totalComprasIVA10 + totalComprasIVA5 - totalNCComprasIVA10 - totalNCComprasIVA5).ToString("N0"))</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <hr />
+    <div class="row">
+      <div class="col-md-12">
+        @{
+          var debitoFiscal = (totalVentasIVA10 + totalVentasIVA5 - totalNCVentasIVA10 - totalNCVentasIVA5);
+          var creditoFiscal = (totalComprasIVA10 + totalComprasIVA5 - totalNCComprasIVA10 - totalNCComprasIVA5);
+          var saldoFiscal = debitoFiscal - creditoFiscal;
+        }
+        <div class="d-flex justify-content-center align-items-center gap-4 flex-wrap">
+          <div class="text-center p-3 rounded" style="background: rgba(25, 135, 84, 0.1);">
+            <span class="small" style="color: var(--text-muted);">Débito Fiscal</span>
+            <h4 class="text-success mb-0">@debitoFiscal.ToString("N0")</h4>
+          </div>
+          <div class="fs-3 fw-light">−</div>
+          <div class="text-center p-3 rounded" style="background: rgba(13, 110, 253, 0.1);">
+            <span class="small" style="color: var(--text-muted);">Crédito Fiscal</span>
+            <h4 class="text-primary mb-0">@creditoFiscal.ToString("N0")</h4>
+          </div>
+          <div class="fs-3 fw-light">=</div>
+          <div class="text-center p-3 rounded" style="background: @(saldoFiscal >= 0 ? "rgba(220, 53, 69, 0.15)" : "rgba(25, 135, 84, 0.15)");">
+            <span class="small" style="color: var(--text-muted);">Saldo a @(saldoFiscal >= 0 ? "Pagar" : "Favor")</span>
+            <h3 class="@(saldoFiscal >= 0 ? "text-danger" : "text-success") mb-0 fw-bold">@Math.Abs(saldoFiscal).ToString("N0")</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</PageProtection>
+
+@code {
+  // Filtros
+  private int fIdSucursal = 0;
+  private int? fCajaDesde;
+  private int? fCajaHasta;
+  private int? fTurnoDesde;
+  private int? fTurnoHasta;
+  private DateTime? fDesde;
+  private DateTime? fHasta;
+  private string? fTimbrado;
+  private string fTipoDocumento = "";
+  private string fCondicion = "";
+  private string? fCliente;
+  private string fSeccion = "AMBOS";
+
+  // Datos
+  private List<SistemIA.Models.Sucursal> sucursales = new();
+  private List<FilaLibroIVA> filasVentas = new();
+  private List<FilaLibroIVA> filasNCVentas = new();
+  private List<FilaLibroIVA> filasCompras = new();
+  private List<FilaLibroIVA> filasNCCompras = new();
+
+  // Totales Ventas
+  private decimal totalVentasGrab10, totalVentasIVA10, totalVentasGrab5, totalVentasIVA5, totalVentasExenta, totalVentas;
+  private decimal totalNCVentasGrab10, totalNCVentasIVA10, totalNCVentasGrab5, totalNCVentasIVA5, totalNCVentas;
+  
+  // Totales Compras
+  private decimal totalComprasGrab10, totalComprasIVA10, totalComprasGrab5, totalComprasIVA5, totalComprasExenta, totalCompras;
+  private decimal totalNCComprasGrab10, totalNCComprasIVA10, totalNCComprasGrab5, totalNCComprasIVA5, totalNCCompras;
+
+  // Datos empresa para impresión
+  private string empresaNombre = "";
+  private string empresaRUC = "";
+  private string? empresaLogo;
+  private string sucursalNombre = "";
+  private string? timbradoActual;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    
+    // Cargar sucursales
+    sucursales = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.NombreSucursal).ToListAsync();
+    
+    // Sucursal seleccionada
+    var sucId = SucursalProvider.GetSucursalId();
+    if (sucId.HasValue)
+    {
+      fIdSucursal = sucId.Value;
+      var suc = sucursales.FirstOrDefault(s => s.Id == sucId.Value);
+      if (suc != null)
+      {
+        empresaNombre = suc.NombreEmpresa ?? "";
+        sucursalNombre = suc.NombreSucursal ?? "";
+        empresaRUC = $"{suc.RUC}-{suc.DV}";
+        empresaLogo = suc.Logo != null ? Convert.ToBase64String(suc.Logo) : null;
+      }
+    }
+    
+    // Fecha por defecto: mes actual
+    var hoy = DateTime.Today;
+    fDesde = new DateTime(hoy.Year, hoy.Month, 1);
+    fHasta = fDesde.Value.AddMonths(1).AddDays(-1);
+    
+    // Timbrado actual de caja
+    var caja = await ctx.Cajas.AsNoTracking().FirstOrDefaultAsync(c => c.CajaActual == 1);
+    timbradoActual = caja?.Timbrado;
+    
+    await Buscar();
+  }
+
+  private async Task Buscar()
+  {
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    
+    // ========== VENTAS ==========
+    var qVentas = from v in ctx.Ventas.AsNoTracking()
+                  join d in ctx.VentasDetalles.AsNoTracking() on v.IdVenta equals d.IdVenta
+                  join cli in ctx.Clientes.AsNoTracking() on v.IdCliente equals cli.IdCliente into cliJoin
+                  from cli in cliJoin.DefaultIfEmpty()
+                  where v.Estado == "Confirmada" || v.Estado == "Confirmado"
+                  select new {
+                    v.IdVenta, v.Fecha, v.IdSucursal, v.IdCaja, v.Turno,
+                    v.Timbrado, v.Establecimiento, v.PuntoExpedicion, v.NumeroFactura,
+                    v.Total, v.FormaPago, v.CDC,
+                    RUC = cli != null ? (cli.RUC ?? "") : "",
+                    DV = cli != null ? cli.DV : 0,
+                    Nombre = cli != null ? (cli.RazonSocial ?? "") : "CONSUMIDOR FINAL",
+                    d.Grabado10, d.IVA10, d.Grabado5, d.IVA5, d.Exenta
+                  };
+
+    // Aplicar filtros
+    if (fIdSucursal > 0) qVentas = qVentas.Where(x => x.IdSucursal == fIdSucursal);
+    if (fCajaDesde.HasValue) qVentas = qVentas.Where(x => x.IdCaja >= fCajaDesde.Value);
+    if (fCajaHasta.HasValue) qVentas = qVentas.Where(x => x.IdCaja <= fCajaHasta.Value);
+    if (fTurnoDesde.HasValue) qVentas = qVentas.Where(x => x.Turno >= fTurnoDesde.Value);
+    if (fTurnoHasta.HasValue) qVentas = qVentas.Where(x => x.Turno <= fTurnoHasta.Value);
+    if (fDesde.HasValue) qVentas = qVentas.Where(x => x.Fecha >= fDesde.Value);
+    if (fHasta.HasValue) qVentas = qVentas.Where(x => x.Fecha < fHasta.Value.AddDays(1));
+    if (!string.IsNullOrWhiteSpace(fTimbrado)) qVentas = qVentas.Where(x => x.Timbrado == fTimbrado.Trim());
+    if (fTipoDocumento == "FACTURA") qVentas = qVentas.Where(x => string.IsNullOrEmpty(x.CDC));
+    if (fTipoDocumento == "ELECTRONICA") qVentas = qVentas.Where(x => !string.IsNullOrEmpty(x.CDC));
+    if (fCondicion == "CONTADO") qVentas = qVentas.Where(x => x.FormaPago == "Contado" || x.FormaPago == "CONTADO");
+    if (fCondicion == "CREDITO") qVentas = qVentas.Where(x => x.FormaPago == "Credito" || x.FormaPago == "CREDITO" || x.FormaPago == "Crédito");
+    if (!string.IsNullOrWhiteSpace(fCliente))
+    {
+      var txt = fCliente.Trim();
+      qVentas = qVentas.Where(x => x.RUC.Contains(txt) || x.Nombre.Contains(txt));
+    }
+
+    var ventasData = await qVentas.ToListAsync();
+    
+    // Agrupar por factura
+    filasVentas = ventasData
+      .GroupBy(x => x.IdVenta)
+      .Select(g => {
+        var first = g.First();
+        return new FilaLibroIVA {
+          Id = first.IdVenta,
+          TipoDoc = string.IsNullOrEmpty(first.CDC) ? "CONTADO" : "CONTADO",
+          Condicion = (first.FormaPago ?? "CONTADO").ToUpper().Contains("CRED") ? "RUC" : "RUC",
+          RUC = string.IsNullOrEmpty(first.RUC) ? "44444401-7" : $"{first.RUC}-{first.DV}",
+          Nombre = string.IsNullOrEmpty(first.Nombre) ? "CONSUMIDOR FINAL" : first.Nombre,
+          Fecha = first.Fecha,
+          Timbrado = first.Timbrado ?? "",
+          NumeroFactura = $"{first.Establecimiento}-{first.PuntoExpedicion}-{first.NumeroFactura}",
+          Grabado10 = g.Sum(x => x.Grabado10),
+          IVA10 = g.Sum(x => x.IVA10),
+          Grabado5 = g.Sum(x => x.Grabado5),
+          IVA5 = g.Sum(x => x.IVA5),
+          Exenta = g.Sum(x => x.Exenta),
+          Total = first.Total,
+          ImputaIVA = true,
+          ImputaIRE = false,
+          ImputaIRP = false
+        };
+      })
+      .OrderBy(x => x.Fecha).ThenBy(x => x.NumeroFactura)
+      .ToList();
+
+    // ========== NC VENTAS ==========
+    var qNCVentas = from nc in ctx.NotasCreditoVentas.AsNoTracking()
+                    join d in ctx.NotasCreditoVentasDetalles.AsNoTracking() on nc.IdNotaCredito equals d.IdNotaCredito
+                    join cli in ctx.Clientes.AsNoTracking() on nc.IdCliente equals cli.IdCliente into cliJoin
+                    from cli in cliJoin.DefaultIfEmpty()
+                    where nc.Estado == "Confirmada" || nc.Estado == "Confirmado"
+                    select new {
+                      nc.IdNotaCredito, nc.Fecha, nc.IdSucursal, nc.IdCaja, Turno = nc.Turno,
+                      nc.Timbrado, nc.Establecimiento, nc.PuntoExpedicion, Numero = nc.NumeroNota,
+                      nc.Total,
+                      RUC = cli != null ? (cli.RUC ?? "") : "",
+                      DV = cli != null ? cli.DV : 0,
+                      Nombre = cli != null ? (cli.RazonSocial ?? "") : "",
+                      d.Grabado10, d.IVA10, d.Grabado5, d.IVA5, d.Exenta
+                    };
+
+    if (fIdSucursal > 0) qNCVentas = qNCVentas.Where(x => x.IdSucursal == fIdSucursal);
+    if (fDesde.HasValue) qNCVentas = qNCVentas.Where(x => x.Fecha >= fDesde.Value);
+    if (fHasta.HasValue) qNCVentas = qNCVentas.Where(x => x.Fecha < fHasta.Value.AddDays(1));
+    if (!string.IsNullOrWhiteSpace(fTimbrado)) qNCVentas = qNCVentas.Where(x => x.Timbrado == fTimbrado.Trim());
+
+    var ncVentasData = await qNCVentas.ToListAsync();
+    
+    filasNCVentas = ncVentasData
+      .GroupBy(x => x.IdNotaCredito)
+      .Select(g => {
+        var first = g.First();
+        return new FilaLibroIVA {
+          Id = first.IdNotaCredito,
+          TipoDoc = "NC",
+          Condicion = "RUC",
+          RUC = $"{first.RUC}-{first.DV}",
+          Nombre = first.Nombre ?? "",
+          Fecha = first.Fecha,
+          Timbrado = first.Timbrado ?? "",
+          NumeroFactura = $"{first.Establecimiento}-{first.PuntoExpedicion}-{first.Numero:0000000}",
+          Grabado10 = g.Sum(x => x.Grabado10),
+          IVA10 = g.Sum(x => x.IVA10),
+          Grabado5 = g.Sum(x => x.Grabado5),
+          IVA5 = g.Sum(x => x.IVA5),
+          Exenta = g.Sum(x => x.Exenta),
+          Total = first.Total,
+          ImputaIVA = true,
+          ImputaIRE = false,
+          ImputaIRP = false
+        };
+      })
+      .OrderBy(x => x.Fecha)
+      .ToList();
+
+    // ========== COMPRAS ==========
+    var qCompras = from c in ctx.Compras.AsNoTracking()
+                   join d in ctx.ComprasDetalles.AsNoTracking() on c.IdCompra equals d.IdCompra
+                   join prov in ctx.ProveedoresSifen.AsNoTracking() on c.IdProveedor equals prov.IdProveedor into provJoin
+                   from prov in provJoin.DefaultIfEmpty()
+                   where c.Estado == "Confirmada" || c.Estado == "Confirmado"
+                   select new {
+                     c.IdCompra, c.Fecha, c.IdSucursal, c.IdCaja, c.Turno,
+                     c.Timbrado, c.Establecimiento, c.PuntoExpedicion, c.NumeroFactura,
+                     c.Total, c.FormaPago, c.EsFacturaElectronica,
+                     c.ImputarIVA, c.ImputarIRE, c.ImputarIRP,
+                     RUC = prov != null ? (prov.RUC ?? "") : "",
+                     DV = prov != null ? prov.DV : 0,
+                     Nombre = prov != null ? (prov.RazonSocial ?? "") : "",
+                     d.Grabado10, d.IVA10, d.Grabado5, d.IVA5, d.Exenta
+                   };
+
+    if (fIdSucursal > 0) qCompras = qCompras.Where(x => x.IdSucursal == fIdSucursal);
+    if (fCajaDesde.HasValue) qCompras = qCompras.Where(x => x.IdCaja >= fCajaDesde.Value);
+    if (fCajaHasta.HasValue) qCompras = qCompras.Where(x => x.IdCaja <= fCajaHasta.Value);
+    if (fTurnoDesde.HasValue) qCompras = qCompras.Where(x => x.Turno >= fTurnoDesde.Value);
+    if (fTurnoHasta.HasValue) qCompras = qCompras.Where(x => x.Turno <= fTurnoHasta.Value);
+    if (fDesde.HasValue) qCompras = qCompras.Where(x => x.Fecha >= fDesde.Value);
+    if (fHasta.HasValue) qCompras = qCompras.Where(x => x.Fecha < fHasta.Value.AddDays(1));
+    if (!string.IsNullOrWhiteSpace(fTimbrado)) qCompras = qCompras.Where(x => x.Timbrado == fTimbrado.Trim());
+    if (fTipoDocumento == "FACTURA") qCompras = qCompras.Where(x => x.EsFacturaElectronica != true);
+    if (fTipoDocumento == "ELECTRONICA") qCompras = qCompras.Where(x => x.EsFacturaElectronica == true);
+    if (fCondicion == "CONTADO") qCompras = qCompras.Where(x => x.FormaPago == "Contado" || x.FormaPago == "CONTADO");
+    if (fCondicion == "CREDITO") qCompras = qCompras.Where(x => x.FormaPago == "Credito" || x.FormaPago == "CREDITO" || x.FormaPago == "Crédito");
+    if (!string.IsNullOrWhiteSpace(fCliente))
+    {
+      var txt = fCliente.Trim();
+      qCompras = qCompras.Where(x => x.RUC.Contains(txt) || x.Nombre.Contains(txt));
+    }
+
+    var comprasData = await qCompras.ToListAsync();
+    
+    filasCompras = comprasData
+      .GroupBy(x => x.IdCompra)
+      .Select(g => {
+        var first = g.First();
+        return new FilaLibroIVA {
+          Id = first.IdCompra,
+          TipoDoc = (first.FormaPago ?? "CONTADO").ToUpper().Contains("CRED") ? "CREDITO" : "CONTADO",
+          Condicion = "RUC",
+          RUC = $"{first.RUC}-{first.DV}",
+          Nombre = first.Nombre ?? "",
+          Fecha = first.Fecha,
+          Timbrado = first.Timbrado ?? "",
+          NumeroFactura = $"{first.Establecimiento}-{first.PuntoExpedicion}-{first.NumeroFactura}",
+          Grabado10 = g.Sum(x => x.Grabado10),
+          IVA10 = g.Sum(x => x.IVA10),
+          Grabado5 = g.Sum(x => x.Grabado5),
+          IVA5 = g.Sum(x => x.IVA5),
+          Exenta = g.Sum(x => x.Exenta),
+          Total = first.Total,
+          ImputaIVA = first.ImputarIVA ?? false,
+          ImputaIRE = first.ImputarIRE ?? false,
+          ImputaIRP = first.ImputarIRP ?? false
+        };
+      })
+      .OrderBy(x => x.Fecha).ThenBy(x => x.NumeroFactura)
+      .ToList();
+
+    // ========== NC COMPRAS ==========
+    var qNCCompras = from nc in ctx.NotasCreditoCompras.AsNoTracking()
+                     join d in ctx.NotasCreditoComprasDetalles.AsNoTracking() on nc.IdNotaCreditoCompra equals d.IdNotaCreditoCompra
+                     join prov in ctx.ProveedoresSifen.AsNoTracking() on nc.IdProveedor equals prov.IdProveedor into provJoin
+                     from prov in provJoin.DefaultIfEmpty()
+                     where nc.Estado == "Confirmada" || nc.Estado == "Confirmado"
+                     select new {
+                       nc.IdNotaCreditoCompra, nc.Fecha, nc.IdSucursal, nc.IdCaja, nc.Turno,
+                       Timbrado = nc.TimbradoAsociado, nc.Establecimiento, nc.PuntoExpedicion, Numero = nc.NumeroNota,
+                       nc.Total, nc.ImputarIVA, nc.ImputarIRE, nc.ImputarIRP,
+                       RUC = prov != null ? (prov.RUC ?? "") : "",
+                       DV = prov != null ? prov.DV : 0,
+                       Nombre = prov != null ? (prov.RazonSocial ?? "") : "",
+                       d.Grabado10, d.IVA10, d.Grabado5, d.IVA5, d.Exenta
+                     };
+
+    if (fIdSucursal > 0) qNCCompras = qNCCompras.Where(x => x.IdSucursal == fIdSucursal);
+    if (fDesde.HasValue) qNCCompras = qNCCompras.Where(x => x.Fecha >= fDesde.Value);
+    if (fHasta.HasValue) qNCCompras = qNCCompras.Where(x => x.Fecha < fHasta.Value.AddDays(1));
+    if (!string.IsNullOrWhiteSpace(fTimbrado)) qNCCompras = qNCCompras.Where(x => x.Timbrado == fTimbrado.Trim());
+
+    var ncComprasData = await qNCCompras.ToListAsync();
+    
+    filasNCCompras = ncComprasData
+      .GroupBy(x => x.IdNotaCreditoCompra)
+      .Select(g => {
+        var first = g.First();
+        return new FilaLibroIVA {
+          Id = first.IdNotaCreditoCompra,
+          TipoDoc = "NC",
+          Condicion = "RUC",
+          RUC = $"{first.RUC}-{first.DV}",
+          Nombre = first.Nombre ?? "",
+          Fecha = first.Fecha,
+          Timbrado = first.Timbrado ?? "",
+          NumeroFactura = $"{first.Establecimiento}-{first.PuntoExpedicion}-{first.Numero:0000000}",
+          Grabado10 = g.Sum(x => x.Grabado10),
+          IVA10 = g.Sum(x => x.IVA10),
+          Grabado5 = g.Sum(x => x.Grabado5),
+          IVA5 = g.Sum(x => x.IVA5),
+          Exenta = g.Sum(x => x.Exenta),
+          Total = first.Total,
+          ImputaIVA = first.ImputarIVA ?? false,
+          ImputaIRE = first.ImputarIRE ?? false,
+          ImputaIRP = first.ImputarIRP ?? false
+        };
+      })
+      .OrderBy(x => x.Fecha)
+      .ToList();
+
+    // Calcular totales
+    CalcularTotales();
+  }
+
+  private void CalcularTotales()
+  {
+    // Ventas
+    totalVentasGrab10 = filasVentas.Sum(x => x.Grabado10);
+    totalVentasIVA10 = filasVentas.Sum(x => x.IVA10);
+    totalVentasGrab5 = filasVentas.Sum(x => x.Grabado5);
+    totalVentasIVA5 = filasVentas.Sum(x => x.IVA5);
+    totalVentasExenta = filasVentas.Sum(x => x.Exenta);
+    totalVentas = filasVentas.Sum(x => x.Total);
+    
+    // NC Ventas
+    totalNCVentasGrab10 = filasNCVentas.Sum(x => x.Grabado10);
+    totalNCVentasIVA10 = filasNCVentas.Sum(x => x.IVA10);
+    totalNCVentasGrab5 = filasNCVentas.Sum(x => x.Grabado5);
+    totalNCVentasIVA5 = filasNCVentas.Sum(x => x.IVA5);
+    totalNCVentas = filasNCVentas.Sum(x => x.Total);
+    
+    // Compras
+    totalComprasGrab10 = filasCompras.Sum(x => x.Grabado10);
+    totalComprasIVA10 = filasCompras.Sum(x => x.IVA10);
+    totalComprasGrab5 = filasCompras.Sum(x => x.Grabado5);
+    totalComprasIVA5 = filasCompras.Sum(x => x.IVA5);
+    totalComprasExenta = filasCompras.Sum(x => x.Exenta);
+    totalCompras = filasCompras.Sum(x => x.Total);
+    
+    // NC Compras
+    totalNCComprasGrab10 = filasNCCompras.Sum(x => x.Grabado10);
+    totalNCComprasIVA10 = filasNCCompras.Sum(x => x.IVA10);
+    totalNCComprasGrab5 = filasNCCompras.Sum(x => x.Grabado5);
+    totalNCComprasIVA5 = filasNCCompras.Sum(x => x.IVA5);
+    totalNCCompras = filasNCCompras.Sum(x => x.Total);
+  }
+
+  private string ObtenerFiltrosTexto()
+  {
+    var filtros = new List<string>();
+    if (fDesde.HasValue) filtros.Add($"Desde: {fDesde.Value:dd/MM/yyyy}");
+    if (fHasta.HasValue) filtros.Add($"Hasta: {fHasta.Value:dd/MM/yyyy}");
+    if (!string.IsNullOrEmpty(fTipoDocumento)) filtros.Add($"Tipo: {fTipoDocumento}");
+    if (!string.IsNullOrEmpty(fCondicion)) filtros.Add($"Condición: {fCondicion}");
+    if (!string.IsNullOrEmpty(fTimbrado)) filtros.Add($"Timbrado: {fTimbrado}");
+    return string.Join(" | ", filtros);
+  }
+
+  private async Task<string> GenerarHtmlCompleto()
+  {
+    return await GenerarHtmlInformeAsync();
+  }
+
+  private async Task<string> GenerarHtmlInformeAsync()
+  {
+    // Obtener datos de sucursal para el encabezado
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+    var sucIdSel = SucursalProvider.GetSucursalId();
+    if (sucIdSel.HasValue)
+    {
+      var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+      if (s2 != null) suc = s2;
+    }
+    string empresa = suc?.NombreEmpresa ?? empresaNombre;
+    string sucursalNombre = suc?.NombreSucursal ?? "Sucursal";
+    string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : empresaRUC;
+    string? logoDataUri = null;
+    if (suc?.Logo != null && suc.Logo.Length > 0)
+      logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<style>");
+    sb.AppendLine("body{font-family:Arial,sans-serif;font-size:8px;color:#111;margin:0;padding:8px;}");
+    sb.AppendLine("table{border-collapse:collapse;width:100%;margin-bottom:12px;}");
+    sb.AppendLine("th,td{border:1px solid #ccc;padding:3px 4px;text-align:left;}");
+    sb.AppendLine("th{background:#f0f0f0;font-weight:bold;}");
+    sb.AppendLine(".right{text-align:right;}");
+    sb.AppendLine(".center{text-align:center;}");
+    sb.AppendLine(".total-row{background:#d4edda;font-weight:bold;}");
+    sb.AppendLine(".nc-row{background:#fff3cd;}");
+    sb.AppendLine(".seccion-header{background:#e2e3e5;font-size:10px;font-weight:bold;padding:6px 8px;margin:10px 0 5px 0;border-radius:3px;}");
+    sb.AppendLine(".factura-header{display:flex;align-items:center;gap:12px;border-bottom:2px solid #333;padding-bottom:8px;margin-bottom:10px;}");
+    sb.AppendLine(".logo-wrap{width:100px;}");
+    sb.AppendLine(".logo{max-width:90px;max-height:50px;object-fit:contain;border:1px solid #ddd;border-radius:4px;background:#fff;padding:4px;}");
+    sb.AppendLine(".empresa h2{margin:0;font-size:14px;}");
+    sb.AppendLine(".empresa .small{font-size:9px;color:#555;}");
+    sb.AppendLine(".resumen-fiscal{width:45%;margin-top:15px;}");
+    sb.AppendLine(".resumen-fiscal td{padding:4px 8px;}");
+    sb.AppendLine("@media print{@page{size:A4 landscape;margin:8mm;}}");
+    sb.AppendLine("</style>");
+
+    // Encabezado con logo
+    sb.AppendLine("<div class=\"factura-header\">");
+    sb.AppendLine("  <div class=\"logo-wrap\">");
+    if (!string.IsNullOrEmpty(logoDataUri))
+      sb.AppendLine($"    <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+    else
+      sb.AppendLine("    <div class=\"logo\" style=\"font-size:9px;color:#999;text-align:center;padding:10px;\">LOGO</div>");
+    sb.AppendLine("  </div>");
+    sb.AppendLine("  <div class=\"empresa\">");
+    sb.AppendLine($"    <h2>{System.Net.WebUtility.HtmlEncode(empresa)}</h2>");
+    sb.AppendLine($"    <div class=\"small\">RUC: {ruc}</div>");
+    sb.AppendLine($"    <div class=\"small\">{System.Net.WebUtility.HtmlEncode(sucursalNombre)}</div>");
+    sb.AppendLine("  </div>");
+    sb.AppendLine("  <div style=\"margin-left:auto;text-align:right;\">");
+    sb.AppendLine("    <div style=\"font-size:14px;font-weight:bold;\">Libro IVA - Asisventas</div>");
+    sb.AppendLine($"    <div style=\"font-size:9px;\">Período: {fDesde:dd/MM/yyyy} al {fHasta:dd/MM/yyyy}</div>");
+    sb.AppendLine("  </div>");
+    sb.AppendLine("</div>");
+
+    // Ventas
+    if (fSeccion == "AMBOS" || fSeccion == "VENTAS")
+    {
+      sb.AppendLine("<div class=\"seccion-header\">VENTAS</div>");
+      sb.AppendLine("<table>");
+      sb.AppendLine("<thead><tr><th>Tipo</th><th>Cond.</th><th>RUC</th><th>Nombre</th><th>Fecha</th><th>Timbrado</th><th>Factura</th><th class='right'>Grab10</th><th class='right'>IVA10</th><th class='right'>Grab5</th><th class='right'>IVA5</th><th class='right'>Exenta</th><th class='right'>Total</th><th class='center'>Iva</th><th class='center'>Ire</th><th class='center'>Irp</th><th>ID</th></tr></thead>");
+      sb.AppendLine("<tbody>");
+      foreach (var r in filasVentas)
+      {
+        sb.AppendLine($"<tr><td>{r.TipoDoc}</td><td>{r.Condicion}</td><td>{r.RUC}</td><td>{System.Net.WebUtility.HtmlEncode(r.Nombre)}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{r.Timbrado}</td><td>{r.NumeroFactura}</td><td class='right'>{r.Grabado10:N0}</td><td class='right'>{r.IVA10:N0}</td><td class='right'>{r.Grabado5:N0}</td><td class='right'>{r.IVA5:N0}</td><td class='right'>{r.Exenta:N0}</td><td class='right'>{r.Total:N0}</td><td class='center'>{(r.ImputaIVA?"S":"N")}</td><td class='center'>{(r.ImputaIRE?"S":"N")}</td><td class='center'>{(r.ImputaIRP?"S":"N")}</td><td>{r.Id}</td></tr>");
+      }
+      sb.AppendLine("</tbody>");
+      sb.AppendLine($"<tfoot><tr class='total-row'><td colspan='7'>TOTALES VENTAS</td><td class='right'>{totalVentasGrab10:N0}</td><td class='right'>{totalVentasIVA10:N0}</td><td class='right'>{totalVentasGrab5:N0}</td><td class='right'>{totalVentasIVA5:N0}</td><td class='right'>{totalVentasExenta:N0}</td><td class='right'>{totalVentas:N0}</td><td colspan='4'></td></tr></tfoot>");
+      sb.AppendLine("</table>");
+
+      if (filasNCVentas.Any())
+      {
+        sb.AppendLine("<div class=\"seccion-header\">NOTAS DE CRÉDITO VENTAS</div>");
+        sb.AppendLine("<table>");
+        sb.AppendLine("<thead><tr><th>Tipo</th><th>Cond.</th><th>RUC</th><th>Nombre</th><th>Fecha</th><th>Timbrado</th><th>Factura</th><th class='right'>Grab10</th><th class='right'>IVA10</th><th class='right'>Grab5</th><th class='right'>IVA5</th><th class='right'>Exenta</th><th class='right'>Total</th><th class='center'>Iva</th><th class='center'>Ire</th><th class='center'>Irp</th><th>ID</th></tr></thead>");
+        sb.AppendLine("<tbody>");
+        foreach (var r in filasNCVentas)
+        {
+          sb.AppendLine($"<tr class='nc-row'><td>{r.TipoDoc}</td><td>{r.Condicion}</td><td>{r.RUC}</td><td>{System.Net.WebUtility.HtmlEncode(r.Nombre)}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{r.Timbrado}</td><td>{r.NumeroFactura}</td><td class='right'>{r.Grabado10:N0}</td><td class='right'>{r.IVA10:N0}</td><td class='right'>{r.Grabado5:N0}</td><td class='right'>{r.IVA5:N0}</td><td class='right'>{r.Exenta:N0}</td><td class='right'>{r.Total:N0}</td><td class='center'>{(r.ImputaIVA?"S":"N")}</td><td class='center'>{(r.ImputaIRE?"S":"N")}</td><td class='center'>{(r.ImputaIRP?"S":"N")}</td><td>{r.Id}</td></tr>");
+        }
+        sb.AppendLine("</tbody>");
+        sb.AppendLine($"<tfoot><tr class='total-row'><td colspan='7'>TOTALES NC VENTAS</td><td class='right'>{totalNCVentasGrab10:N0}</td><td class='right'>{totalNCVentasIVA10:N0}</td><td class='right'>{totalNCVentasGrab5:N0}</td><td class='right'>{totalNCVentasIVA5:N0}</td><td class='right'></td><td class='right'>{totalNCVentas:N0}</td><td colspan='4'></td></tr></tfoot>");
+        sb.AppendLine("</table>");
+      }
+    }
+
+    // Compras
+    if (fSeccion == "AMBOS" || fSeccion == "COMPRAS")
+    {
+      sb.AppendLine("<div class=\"seccion-header\">COMPRAS</div>");
+      sb.AppendLine("<table>");
+      sb.AppendLine("<thead><tr><th>Tipo</th><th>Cond.</th><th>RUC</th><th>Proveedor</th><th>Fecha</th><th>Timbrado</th><th>Factura</th><th class='right'>Grab10</th><th class='right'>IVA10</th><th class='right'>Grab5</th><th class='right'>IVA5</th><th class='right'>Exenta</th><th class='right'>Total</th><th class='center'>Iva</th><th class='center'>Ire</th><th class='center'>Irp</th><th>ID</th></tr></thead>");
+      sb.AppendLine("<tbody>");
+      foreach (var r in filasCompras)
+      {
+        sb.AppendLine($"<tr><td>{r.TipoDoc}</td><td>{r.Condicion}</td><td>{r.RUC}</td><td>{System.Net.WebUtility.HtmlEncode(r.Nombre)}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{r.Timbrado}</td><td>{r.NumeroFactura}</td><td class='right'>{r.Grabado10:N0}</td><td class='right'>{r.IVA10:N0}</td><td class='right'>{r.Grabado5:N0}</td><td class='right'>{r.IVA5:N0}</td><td class='right'>{r.Exenta:N0}</td><td class='right'>{r.Total:N0}</td><td class='center'>{(r.ImputaIVA?"S":"N")}</td><td class='center'>{(r.ImputaIRE?"S":"N")}</td><td class='center'>{(r.ImputaIRP?"S":"N")}</td><td>{r.Id}</td></tr>");
+      }
+      sb.AppendLine("</tbody>");
+      sb.AppendLine($"<tfoot><tr class='total-row'><td colspan='7'>TOTALES COMPRAS</td><td class='right'>{totalComprasGrab10:N0}</td><td class='right'>{totalComprasIVA10:N0}</td><td class='right'>{totalComprasGrab5:N0}</td><td class='right'>{totalComprasIVA5:N0}</td><td class='right'>{totalComprasExenta:N0}</td><td class='right'>{totalCompras:N0}</td><td colspan='4'></td></tr></tfoot>");
+      sb.AppendLine("</table>");
+
+      if (filasNCCompras.Any())
+      {
+        sb.AppendLine("<div class=\"seccion-header\">NOTAS DE CRÉDITO COMPRAS</div>");
+        sb.AppendLine("<table>");
+        sb.AppendLine("<thead><tr><th>Tipo</th><th>Cond.</th><th>RUC</th><th>Proveedor</th><th>Fecha</th><th>Timbrado</th><th>Factura</th><th class='right'>Grab10</th><th class='right'>IVA10</th><th class='right'>Grab5</th><th class='right'>IVA5</th><th class='right'>Exenta</th><th class='right'>Total</th><th class='center'>Iva</th><th class='center'>Ire</th><th class='center'>Irp</th><th>ID</th></tr></thead>");
+        sb.AppendLine("<tbody>");
+        foreach (var r in filasNCCompras)
+        {
+          sb.AppendLine($"<tr class='nc-row'><td>{r.TipoDoc}</td><td>{r.Condicion}</td><td>{r.RUC}</td><td>{System.Net.WebUtility.HtmlEncode(r.Nombre)}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{r.Timbrado}</td><td>{r.NumeroFactura}</td><td class='right'>{r.Grabado10:N0}</td><td class='right'>{r.IVA10:N0}</td><td class='right'>{r.Grabado5:N0}</td><td class='right'>{r.IVA5:N0}</td><td class='right'>{r.Exenta:N0}</td><td class='right'>{r.Total:N0}</td><td class='center'>{(r.ImputaIVA?"S":"N")}</td><td class='center'>{(r.ImputaIRE?"S":"N")}</td><td class='center'>{(r.ImputaIRP?"S":"N")}</td><td>{r.Id}</td></tr>");
+        }
+        sb.AppendLine("</tbody>");
+        sb.AppendLine($"<tfoot><tr class='total-row'><td colspan='7'>TOTALES NC COMPRAS</td><td class='right'>{totalNCComprasGrab10:N0}</td><td class='right'>{totalNCComprasIVA10:N0}</td><td class='right'>{totalNCComprasGrab5:N0}</td><td class='right'>{totalNCComprasIVA5:N0}</td><td class='right'></td><td class='right'>{totalNCCompras:N0}</td><td colspan='4'></td></tr></tfoot>");
+        sb.AppendLine("</table>");
+      }
+    }
+
+    // Resumen Fiscal
+    var debitoFiscal = (totalVentasIVA10 + totalVentasIVA5 - totalNCVentasIVA10 - totalNCVentasIVA5);
+    var creditoFiscal = (totalComprasIVA10 + totalComprasIVA5 - totalNCComprasIVA10 - totalNCComprasIVA5);
+    var saldoFiscal = debitoFiscal - creditoFiscal;
+    
+    sb.AppendLine("<div class=\"seccion-header\">RESUMEN FISCAL</div>");
+    sb.AppendLine("<table class=\"resumen-fiscal\">");
+    sb.AppendLine($"<tr><td style='width:70%'>DÉBITO FISCAL (IVA Ventas)</td><td class='right' style='font-weight:bold;'>{debitoFiscal:N0}</td></tr>");
+    sb.AppendLine($"<tr><td>CRÉDITO FISCAL (IVA Compras)</td><td class='right' style='font-weight:bold;'>{creditoFiscal:N0}</td></tr>");
+    sb.AppendLine($"<tr class='total-row'><td>SALDO A {(saldoFiscal >= 0 ? "PAGAR" : "FAVOR")}</td><td class='right'>{Math.Abs(saldoFiscal):N0}</td></tr>");
+    sb.AppendLine("</table>");
+
+    return sb.ToString();
+  }
+
+  private async Task Imprimir()
+  {
+    // Construir head para impresión
+    await using var ctx = await DbFactory.CreateDbContextAsync();
+    var suc = await ctx.Sucursal.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+    var sucIdSel = SucursalProvider.GetSucursalId();
+    if (sucIdSel.HasValue)
+    {
+      var s2 = await ctx.Sucursal.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucIdSel.Value);
+      if (s2 != null) suc = s2;
+    }
+    string empresa = suc?.NombreEmpresa ?? empresaNombre;
+    string sucursalNombre = suc?.NombreSucursal ?? "Sucursal";
+    string ruc = suc != null ? $"{suc.RUC}-{suc.DV}" : empresaRUC;
+    string? logoDataUri = null;
+    if (suc?.Logo != null && suc.Logo.Length > 0)
+      logoDataUri = $"data:image/png;base64,{Convert.ToBase64String(suc.Logo)}";
+
+    var head = new System.Text.StringBuilder();
+    head.AppendLine("<meta charset=\"utf-8\"/>");
+    head.AppendLine("<title>Libro IVA - Asisventas</title>");
+    head.AppendLine("<link rel=\"stylesheet\" href=\"/css/bootstrap/bootstrap.min.css\" />");
+    head.AppendLine("<style>");
+    head.AppendLine("@media print { @page { size: A4 landscape; margin: 8mm; } }");
+    head.AppendLine("body{font-size:8px;color:#111;}");
+    head.AppendLine(".factura-header{display:flex;align-items:center;gap:12px;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:10px;}");
+    head.AppendLine(".factura-header .logo{max-width:90px;max-height:50px;object-fit:contain;display:block;border-radius:4px;border:1px solid #ddd;background:#fff;padding:4px;}");
+    head.AppendLine(".factura-header .logo-wrap{width:100px;display:flex;align-items:center;justify-content:center;}");
+    head.AppendLine(".factura-header .empresa h2{margin:0;font-size:14px;}");
+    head.AppendLine(".factura-header .empresa .small{color:#555;font-size:9px;}");
+    head.AppendLine(".seccion-header{background:#e2e3e5;font-size:10px;font-weight:bold;padding:5px 8px;margin:8px 0 4px 0;border-radius:3px;}");
+    head.AppendLine(".tabla{font-size:8px;}");
+    head.AppendLine(".tabla th,.tabla td{padding:2px 3px;border:1px solid #ccc;vertical-align:top;}");
+    head.AppendLine(".tabla th{background:#f0f0f0;}");
+    head.AppendLine(".right{text-align:right}");
+    head.AppendLine(".center{text-align:center}");
+    head.AppendLine(".total-row{background:#d4edda;font-weight:bold;}");
+    head.AppendLine(".nc-row{background:#fff3cd;}");
+    head.AppendLine(".resumen-fiscal{width:40%;}");
+    head.AppendLine("</style>");
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("<div class=\"container-fluid\">");
+    
+    // Encabezado con logo
+    sb.AppendLine("  <div class=\"factura-header\">");
+    sb.AppendLine("    <div class=\"logo-wrap\">");
+    if (!string.IsNullOrEmpty(logoDataUri))
+      sb.AppendLine($"      <img class=\"logo\" src=\"{logoDataUri}\" alt=\"Logo\"/>");
+    else
+      sb.AppendLine("      <div class=\"logo d-flex align-items-center justify-content-center\" style=\"font-size:9px;color:#999;min-height:40px;min-width:80px;\">LOGO</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"empresa\">");
+    sb.AppendLine($"      <h2>{System.Net.WebUtility.HtmlEncode(empresa)}</h2>");
+    sb.AppendLine($"      <div class=\"small\">RUC: {ruc}</div>");
+    sb.AppendLine($"      <div class=\"small\">{System.Net.WebUtility.HtmlEncode(sucursalNombre)}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("    <div class=\"ms-auto text-end\">");
+    sb.AppendLine("      <div class=\"fw-bold\" style=\"font-size:16px\">Libro IVA - Asisventas</div>");
+    sb.AppendLine($"      <div>Período: {fDesde:dd/MM/yyyy} al {fHasta:dd/MM/yyyy}</div>");
+    sb.AppendLine("    </div>");
+    sb.AppendLine("  </div>");
+
+    // VENTAS
+    if (fSeccion == "AMBOS" || fSeccion == "VENTAS")
+    {
+      sb.AppendLine("  <div class=\"seccion-header\">VENTAS</div>");
+      sb.AppendLine("  <table class=\"table table-sm tabla mb-2\">");
+      sb.AppendLine("    <thead><tr><th>Tipo</th><th>Cond.</th><th>RUC</th><th>Nombre</th><th>Fecha</th><th>Timbrado</th><th>Factura</th><th class='right'>Grab10</th><th class='right'>IVA10</th><th class='right'>Grab5</th><th class='right'>IVA5</th><th class='right'>Exenta</th><th class='right'>Total</th><th class='center'>Iva</th><th class='center'>Ire</th><th class='center'>Irp</th><th>ID</th></tr></thead>");
+      sb.AppendLine("    <tbody>");
+      foreach (var r in filasVentas)
+      {
+        sb.AppendLine($"      <tr><td>{r.TipoDoc}</td><td>{r.Condicion}</td><td>{r.RUC}</td><td>{System.Net.WebUtility.HtmlEncode(r.Nombre)}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{r.Timbrado}</td><td>{r.NumeroFactura}</td><td class='right'>{r.Grabado10:N0}</td><td class='right'>{r.IVA10:N0}</td><td class='right'>{r.Grabado5:N0}</td><td class='right'>{r.IVA5:N0}</td><td class='right'>{r.Exenta:N0}</td><td class='right'>{r.Total:N0}</td><td class='center'>{(r.ImputaIVA?"S":"N")}</td><td class='center'>{(r.ImputaIRE?"S":"N")}</td><td class='center'>{(r.ImputaIRP?"S":"N")}</td><td>{r.Id}</td></tr>");
+      }
+      sb.AppendLine("    </tbody>");
+      sb.AppendLine($"    <tfoot><tr class='total-row'><td colspan='7'>TOTALES VENTAS</td><td class='right'>{totalVentasGrab10:N0}</td><td class='right'>{totalVentasIVA10:N0}</td><td class='right'>{totalVentasGrab5:N0}</td><td class='right'>{totalVentasIVA5:N0}</td><td class='right'>{totalVentasExenta:N0}</td><td class='right'>{totalVentas:N0}</td><td colspan='4'></td></tr></tfoot>");
+      sb.AppendLine("  </table>");
+
+      if (filasNCVentas.Any())
+      {
+        sb.AppendLine("  <div class=\"seccion-header\">NOTAS DE CRÉDITO VENTAS</div>");
+        sb.AppendLine("  <table class=\"table table-sm tabla mb-2\">");
+        sb.AppendLine("    <thead><tr><th>Tipo</th><th>Cond.</th><th>RUC</th><th>Nombre</th><th>Fecha</th><th>Timbrado</th><th>Factura</th><th class='right'>Grab10</th><th class='right'>IVA10</th><th class='right'>Grab5</th><th class='right'>IVA5</th><th class='right'>Exenta</th><th class='right'>Total</th><th class='center'>Iva</th><th class='center'>Ire</th><th class='center'>Irp</th><th>ID</th></tr></thead>");
+        sb.AppendLine("    <tbody>");
+        foreach (var r in filasNCVentas)
+        {
+          sb.AppendLine($"      <tr class='nc-row'><td>{r.TipoDoc}</td><td>{r.Condicion}</td><td>{r.RUC}</td><td>{System.Net.WebUtility.HtmlEncode(r.Nombre)}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{r.Timbrado}</td><td>{r.NumeroFactura}</td><td class='right'>{r.Grabado10:N0}</td><td class='right'>{r.IVA10:N0}</td><td class='right'>{r.Grabado5:N0}</td><td class='right'>{r.IVA5:N0}</td><td class='right'>{r.Exenta:N0}</td><td class='right'>{r.Total:N0}</td><td class='center'>{(r.ImputaIVA?"S":"N")}</td><td class='center'>{(r.ImputaIRE?"S":"N")}</td><td class='center'>{(r.ImputaIRP?"S":"N")}</td><td>{r.Id}</td></tr>");
+        }
+        sb.AppendLine("    </tbody>");
+        sb.AppendLine($"    <tfoot><tr class='total-row'><td colspan='7'>TOTALES NC VENTAS</td><td class='right'>{totalNCVentasGrab10:N0}</td><td class='right'>{totalNCVentasIVA10:N0}</td><td class='right'>{totalNCVentasGrab5:N0}</td><td class='right'>{totalNCVentasIVA5:N0}</td><td class='right'></td><td class='right'>{totalNCVentas:N0}</td><td colspan='4'></td></tr></tfoot>");
+        sb.AppendLine("  </table>");
+      }
+    }
+
+    // COMPRAS
+    if (fSeccion == "AMBOS" || fSeccion == "COMPRAS")
+    {
+      sb.AppendLine("  <div class=\"seccion-header\">COMPRAS</div>");
+      sb.AppendLine("  <table class=\"table table-sm tabla mb-2\">");
+      sb.AppendLine("    <thead><tr><th>Tipo</th><th>Cond.</th><th>RUC</th><th>Proveedor</th><th>Fecha</th><th>Timbrado</th><th>Factura</th><th class='right'>Grab10</th><th class='right'>IVA10</th><th class='right'>Grab5</th><th class='right'>IVA5</th><th class='right'>Exenta</th><th class='right'>Total</th><th class='center'>Iva</th><th class='center'>Ire</th><th class='center'>Irp</th><th>ID</th></tr></thead>");
+      sb.AppendLine("    <tbody>");
+      foreach (var r in filasCompras)
+      {
+        sb.AppendLine($"      <tr><td>{r.TipoDoc}</td><td>{r.Condicion}</td><td>{r.RUC}</td><td>{System.Net.WebUtility.HtmlEncode(r.Nombre)}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{r.Timbrado}</td><td>{r.NumeroFactura}</td><td class='right'>{r.Grabado10:N0}</td><td class='right'>{r.IVA10:N0}</td><td class='right'>{r.Grabado5:N0}</td><td class='right'>{r.IVA5:N0}</td><td class='right'>{r.Exenta:N0}</td><td class='right'>{r.Total:N0}</td><td class='center'>{(r.ImputaIVA?"S":"N")}</td><td class='center'>{(r.ImputaIRE?"S":"N")}</td><td class='center'>{(r.ImputaIRP?"S":"N")}</td><td>{r.Id}</td></tr>");
+      }
+      sb.AppendLine("    </tbody>");
+      sb.AppendLine($"    <tfoot><tr class='total-row'><td colspan='7'>TOTALES COMPRAS</td><td class='right'>{totalComprasGrab10:N0}</td><td class='right'>{totalComprasIVA10:N0}</td><td class='right'>{totalComprasGrab5:N0}</td><td class='right'>{totalComprasIVA5:N0}</td><td class='right'>{totalComprasExenta:N0}</td><td class='right'>{totalCompras:N0}</td><td colspan='4'></td></tr></tfoot>");
+      sb.AppendLine("  </table>");
+
+      if (filasNCCompras.Any())
+      {
+        sb.AppendLine("  <div class=\"seccion-header\">NOTAS DE CRÉDITO COMPRAS</div>");
+        sb.AppendLine("  <table class=\"table table-sm tabla mb-2\">");
+        sb.AppendLine("    <thead><tr><th>Tipo</th><th>Cond.</th><th>RUC</th><th>Proveedor</th><th>Fecha</th><th>Timbrado</th><th>Factura</th><th class='right'>Grab10</th><th class='right'>IVA10</th><th class='right'>Grab5</th><th class='right'>IVA5</th><th class='right'>Exenta</th><th class='right'>Total</th><th class='center'>Iva</th><th class='center'>Ire</th><th class='center'>Irp</th><th>ID</th></tr></thead>");
+        sb.AppendLine("    <tbody>");
+        foreach (var r in filasNCCompras)
+        {
+          sb.AppendLine($"      <tr class='nc-row'><td>{r.TipoDoc}</td><td>{r.Condicion}</td><td>{r.RUC}</td><td>{System.Net.WebUtility.HtmlEncode(r.Nombre)}</td><td>{r.Fecha:dd/MM/yyyy}</td><td>{r.Timbrado}</td><td>{r.NumeroFactura}</td><td class='right'>{r.Grabado10:N0}</td><td class='right'>{r.IVA10:N0}</td><td class='right'>{r.Grabado5:N0}</td><td class='right'>{r.IVA5:N0}</td><td class='right'>{r.Exenta:N0}</td><td class='right'>{r.Total:N0}</td><td class='center'>{(r.ImputaIVA?"S":"N")}</td><td class='center'>{(r.ImputaIRE?"S":"N")}</td><td class='center'>{(r.ImputaIRP?"S":"N")}</td><td>{r.Id}</td></tr>");
+        }
+        sb.AppendLine("    </tbody>");
+        sb.AppendLine($"    <tfoot><tr class='total-row'><td colspan='7'>TOTALES NC COMPRAS</td><td class='right'>{totalNCComprasGrab10:N0}</td><td class='right'>{totalNCComprasIVA10:N0}</td><td class='right'>{totalNCComprasGrab5:N0}</td><td class='right'>{totalNCComprasIVA5:N0}</td><td class='right'></td><td class='right'>{totalNCCompras:N0}</td><td colspan='4'></td></tr></tfoot>");
+        sb.AppendLine("  </table>");
+      }
+    }
+
+    // RESUMEN FISCAL
+    var debitoFiscal = (totalVentasIVA10 + totalVentasIVA5 - totalNCVentasIVA10 - totalNCVentasIVA5);
+    var creditoFiscal = (totalComprasIVA10 + totalComprasIVA5 - totalNCComprasIVA10 - totalNCComprasIVA5);
+    var saldoFiscal = debitoFiscal - creditoFiscal;
+
+    sb.AppendLine("  <div class=\"seccion-header\">RESUMEN FISCAL</div>");
+    sb.AppendLine("  <table class=\"table table-sm tabla resumen-fiscal\">");
+    sb.AppendLine($"    <tr><td>DÉBITO FISCAL (IVA Ventas)</td><td class='right' style='font-weight:bold;'>{debitoFiscal:N0}</td></tr>");
+    sb.AppendLine($"    <tr><td>CRÉDITO FISCAL (IVA Compras)</td><td class='right' style='font-weight:bold;'>{creditoFiscal:N0}</td></tr>");
+    sb.AppendLine($"    <tr class='total-row'><td>SALDO A {(saldoFiscal >= 0 ? "PAGAR" : "FAVOR")}</td><td class='right'>{Math.Abs(saldoFiscal):N0}</td></tr>");
+    sb.AppendLine("  </table>");
+
+    sb.AppendLine("</div>");
+
+    await JS.InvokeVoidAsync("printHtmlWithHead", head.ToString(), sb.ToString());
+  }
+
+  private async Task ExportarCSV()
+  {
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("Seccion;Tipo;Cond;RUC;Nombre;Fecha;Timbrado;Factura;Grab10;IVA10;Grab5;IVA5;Exenta;Total;Iva;Ire;Irp;ID");
+    
+    foreach (var r in filasVentas)
+      sb.AppendLine($"VENTAS;{r.TipoDoc};{r.Condicion};{r.RUC};\"{r.Nombre}\";{r.Fecha:dd/MM/yyyy};{r.Timbrado};{r.NumeroFactura};{r.Grabado10};{r.IVA10};{r.Grabado5};{r.IVA5};{r.Exenta};{r.Total};{(r.ImputaIVA?"S":"N")};{(r.ImputaIRE?"S":"N")};{(r.ImputaIRP?"S":"N")};{r.Id}");
+    
+    foreach (var r in filasNCVentas)
+      sb.AppendLine($"NC VENTAS;{r.TipoDoc};{r.Condicion};{r.RUC};\"{r.Nombre}\";{r.Fecha:dd/MM/yyyy};{r.Timbrado};{r.NumeroFactura};{r.Grabado10};{r.IVA10};{r.Grabado5};{r.IVA5};{r.Exenta};{r.Total};{(r.ImputaIVA?"S":"N")};{(r.ImputaIRE?"S":"N")};{(r.ImputaIRP?"S":"N")};{r.Id}");
+    
+    foreach (var r in filasCompras)
+      sb.AppendLine($"COMPRAS;{r.TipoDoc};{r.Condicion};{r.RUC};\"{r.Nombre}\";{r.Fecha:dd/MM/yyyy};{r.Timbrado};{r.NumeroFactura};{r.Grabado10};{r.IVA10};{r.Grabado5};{r.IVA5};{r.Exenta};{r.Total};{(r.ImputaIVA?"S":"N")};{(r.ImputaIRE?"S":"N")};{(r.ImputaIRP?"S":"N")};{r.Id}");
+    
+    foreach (var r in filasNCCompras)
+      sb.AppendLine($"NC COMPRAS;{r.TipoDoc};{r.Condicion};{r.RUC};\"{r.Nombre}\";{r.Fecha:dd/MM/yyyy};{r.Timbrado};{r.NumeroFactura};{r.Grabado10};{r.IVA10};{r.Grabado5};{r.IVA5};{r.Exenta};{r.Total};{(r.ImputaIVA?"S":"N")};{(r.ImputaIRE?"S":"N")};{(r.ImputaIRP?"S":"N")};{r.Id}");
+
+    var utf8bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    var bytes = utf8bom.GetBytes(sb.ToString());
+    var base64 = Convert.ToBase64String(bytes);
+    // CORREGIDO: El orden de parámetros es (base64Data, fileName, contentType)
+    await JS.InvokeVoidAsync("downloadFile", base64, $"LibroIVA_{fDesde:yyyyMMdd}_{fHasta:yyyyMMdd}.csv", "text/csv;charset=utf-8");
+  }
+
+  private async Task ExportarXlsx()
+  {
+    using var wb = new XLWorkbook();
+    
+    // Hoja Ventas
+    var wsV = wb.Worksheets.Add("Ventas");
+    wsV.Cell(1,1).Value = "Tipo"; wsV.Cell(1,2).Value = "Cond"; wsV.Cell(1,3).Value = "RUC"; wsV.Cell(1,4).Value = "Nombre";
+    wsV.Cell(1,5).Value = "Fecha"; wsV.Cell(1,6).Value = "Timbrado"; wsV.Cell(1,7).Value = "Factura";
+    wsV.Cell(1,8).Value = "Grab10"; wsV.Cell(1,9).Value = "IVA10"; wsV.Cell(1,10).Value = "Grab5"; wsV.Cell(1,11).Value = "IVA5";
+    wsV.Cell(1,12).Value = "Exenta"; wsV.Cell(1,13).Value = "Total"; wsV.Cell(1,14).Value = "Iva"; wsV.Cell(1,15).Value = "Ire"; wsV.Cell(1,16).Value = "Irp"; wsV.Cell(1,17).Value = "ID";
+    var row = 2;
+    foreach (var r in filasVentas)
+    {
+      wsV.Cell(row,1).Value = r.TipoDoc; wsV.Cell(row,2).Value = r.Condicion; wsV.Cell(row,3).Value = r.RUC; wsV.Cell(row,4).Value = r.Nombre;
+      wsV.Cell(row,5).Value = r.Fecha; wsV.Cell(row,6).Value = r.Timbrado; wsV.Cell(row,7).Value = r.NumeroFactura;
+      wsV.Cell(row,8).Value = r.Grabado10; wsV.Cell(row,9).Value = r.IVA10; wsV.Cell(row,10).Value = r.Grabado5; wsV.Cell(row,11).Value = r.IVA5;
+      wsV.Cell(row,12).Value = r.Exenta; wsV.Cell(row,13).Value = r.Total;
+      wsV.Cell(row,14).Value = r.ImputaIVA?"S":"N"; wsV.Cell(row,15).Value = r.ImputaIRE?"S":"N"; wsV.Cell(row,16).Value = r.ImputaIRP?"S":"N"; wsV.Cell(row,17).Value = r.Id;
+      row++;
+    }
+    wsV.Row(1).Style.Font.Bold = true;
+    wsV.Columns().AdjustToContents();
+
+    // Hoja NC Ventas
+    if (filasNCVentas.Any())
+    {
+      var wsNCV = wb.Worksheets.Add("NC Ventas");
+      wsNCV.Cell(1,1).Value = "Tipo"; wsNCV.Cell(1,2).Value = "Cond"; wsNCV.Cell(1,3).Value = "RUC"; wsNCV.Cell(1,4).Value = "Nombre";
+      wsNCV.Cell(1,5).Value = "Fecha"; wsNCV.Cell(1,6).Value = "Timbrado"; wsNCV.Cell(1,7).Value = "Factura";
+      wsNCV.Cell(1,8).Value = "Grab10"; wsNCV.Cell(1,9).Value = "IVA10"; wsNCV.Cell(1,10).Value = "Grab5"; wsNCV.Cell(1,11).Value = "IVA5";
+      wsNCV.Cell(1,12).Value = "Exenta"; wsNCV.Cell(1,13).Value = "Total"; wsNCV.Cell(1,14).Value = "ID";
+      row = 2;
+      foreach (var r in filasNCVentas)
+      {
+        wsNCV.Cell(row,1).Value = r.TipoDoc; wsNCV.Cell(row,2).Value = r.Condicion; wsNCV.Cell(row,3).Value = r.RUC; wsNCV.Cell(row,4).Value = r.Nombre;
+        wsNCV.Cell(row,5).Value = r.Fecha; wsNCV.Cell(row,6).Value = r.Timbrado; wsNCV.Cell(row,7).Value = r.NumeroFactura;
+        wsNCV.Cell(row,8).Value = r.Grabado10; wsNCV.Cell(row,9).Value = r.IVA10; wsNCV.Cell(row,10).Value = r.Grabado5; wsNCV.Cell(row,11).Value = r.IVA5;
+        wsNCV.Cell(row,12).Value = r.Exenta; wsNCV.Cell(row,13).Value = r.Total; wsNCV.Cell(row,14).Value = r.Id;
+        row++;
+      }
+      wsNCV.Row(1).Style.Font.Bold = true;
+      wsNCV.Columns().AdjustToContents();
+    }
+
+    // Hoja Compras
+    var wsC = wb.Worksheets.Add("Compras");
+    wsC.Cell(1,1).Value = "Tipo"; wsC.Cell(1,2).Value = "Cond"; wsC.Cell(1,3).Value = "RUC"; wsC.Cell(1,4).Value = "Proveedor";
+    wsC.Cell(1,5).Value = "Fecha"; wsC.Cell(1,6).Value = "Timbrado"; wsC.Cell(1,7).Value = "Factura";
+    wsC.Cell(1,8).Value = "Grab10"; wsC.Cell(1,9).Value = "IVA10"; wsC.Cell(1,10).Value = "Grab5"; wsC.Cell(1,11).Value = "IVA5";
+    wsC.Cell(1,12).Value = "Exenta"; wsC.Cell(1,13).Value = "Total"; wsC.Cell(1,14).Value = "Iva"; wsC.Cell(1,15).Value = "Ire"; wsC.Cell(1,16).Value = "Irp"; wsC.Cell(1,17).Value = "ID";
+    row = 2;
+    foreach (var r in filasCompras)
+    {
+      wsC.Cell(row,1).Value = r.TipoDoc; wsC.Cell(row,2).Value = r.Condicion; wsC.Cell(row,3).Value = r.RUC; wsC.Cell(row,4).Value = r.Nombre;
+      wsC.Cell(row,5).Value = r.Fecha; wsC.Cell(row,6).Value = r.Timbrado; wsC.Cell(row,7).Value = r.NumeroFactura;
+      wsC.Cell(row,8).Value = r.Grabado10; wsC.Cell(row,9).Value = r.IVA10; wsC.Cell(row,10).Value = r.Grabado5; wsC.Cell(row,11).Value = r.IVA5;
+      wsC.Cell(row,12).Value = r.Exenta; wsC.Cell(row,13).Value = r.Total;
+      wsC.Cell(row,14).Value = r.ImputaIVA?"S":"N"; wsC.Cell(row,15).Value = r.ImputaIRE?"S":"N"; wsC.Cell(row,16).Value = r.ImputaIRP?"S":"N"; wsC.Cell(row,17).Value = r.Id;
+      row++;
+    }
+    wsC.Row(1).Style.Font.Bold = true;
+    wsC.Columns().AdjustToContents();
+
+    // Hoja NC Compras
+    if (filasNCCompras.Any())
+    {
+      var wsNCC = wb.Worksheets.Add("NC Compras");
+      wsNCC.Cell(1,1).Value = "Tipo"; wsNCC.Cell(1,2).Value = "Cond"; wsNCC.Cell(1,3).Value = "RUC"; wsNCC.Cell(1,4).Value = "Proveedor";
+      wsNCC.Cell(1,5).Value = "Fecha"; wsNCC.Cell(1,6).Value = "Timbrado"; wsNCC.Cell(1,7).Value = "Factura";
+      wsNCC.Cell(1,8).Value = "Grab10"; wsNCC.Cell(1,9).Value = "IVA10"; wsNCC.Cell(1,10).Value = "Grab5"; wsNCC.Cell(1,11).Value = "IVA5";
+      wsNCC.Cell(1,12).Value = "Exenta"; wsNCC.Cell(1,13).Value = "Total"; wsNCC.Cell(1,14).Value = "ID";
+      row = 2;
+      foreach (var r in filasNCCompras)
+      {
+        wsNCC.Cell(row,1).Value = r.TipoDoc; wsNCC.Cell(row,2).Value = r.Condicion; wsNCC.Cell(row,3).Value = r.RUC; wsNCC.Cell(row,4).Value = r.Nombre;
+        wsNCC.Cell(row,5).Value = r.Fecha; wsNCC.Cell(row,6).Value = r.Timbrado; wsNCC.Cell(row,7).Value = r.NumeroFactura;
+        wsNCC.Cell(row,8).Value = r.Grabado10; wsNCC.Cell(row,9).Value = r.IVA10; wsNCC.Cell(row,10).Value = r.Grabado5; wsNCC.Cell(row,11).Value = r.IVA5;
+        wsNCC.Cell(row,12).Value = r.Exenta; wsNCC.Cell(row,13).Value = r.Total; wsNCC.Cell(row,14).Value = r.Id;
+        row++;
+      }
+      wsNCC.Row(1).Style.Font.Bold = true;
+      wsNCC.Columns().AdjustToContents();
+    }
+
+    // Hoja Resumen
+    var wsR = wb.Worksheets.Add("Resumen Fiscal");
+    wsR.Cell(1,1).Value = "RESUMEN FISCAL";
+    wsR.Cell(3,1).Value = "DÉBITO FISCAL (Ventas)";
+    wsR.Cell(4,1).Value = "IVA 10%"; wsR.Cell(4,2).Value = totalVentasIVA10;
+    wsR.Cell(5,1).Value = "IVA 5%"; wsR.Cell(5,2).Value = totalVentasIVA5;
+    wsR.Cell(6,1).Value = "(-) NC IVA 10%"; wsR.Cell(6,2).Value = -totalNCVentasIVA10;
+    wsR.Cell(7,1).Value = "(-) NC IVA 5%"; wsR.Cell(7,2).Value = -totalNCVentasIVA5;
+    var debitoFiscal = (totalVentasIVA10 + totalVentasIVA5 - totalNCVentasIVA10 - totalNCVentasIVA5);
+    wsR.Cell(8,1).Value = "TOTAL DÉBITO"; wsR.Cell(8,2).Value = debitoFiscal;
+    
+    wsR.Cell(10,1).Value = "CRÉDITO FISCAL (Compras)";
+    wsR.Cell(11,1).Value = "IVA 10%"; wsR.Cell(11,2).Value = totalComprasIVA10;
+    wsR.Cell(12,1).Value = "IVA 5%"; wsR.Cell(12,2).Value = totalComprasIVA5;
+    wsR.Cell(13,1).Value = "(-) NC IVA 10%"; wsR.Cell(13,2).Value = -totalNCComprasIVA10;
+    wsR.Cell(14,1).Value = "(-) NC IVA 5%"; wsR.Cell(14,2).Value = -totalNCComprasIVA5;
+    var creditoFiscal = (totalComprasIVA10 + totalComprasIVA5 - totalNCComprasIVA10 - totalNCComprasIVA5);
+    wsR.Cell(15,1).Value = "TOTAL CRÉDITO"; wsR.Cell(15,2).Value = creditoFiscal;
+    
+    var saldo = debitoFiscal - creditoFiscal;
+    wsR.Cell(17,1).Value = saldo >= 0 ? "SALDO A PAGAR" : "SALDO A FAVOR";
+    wsR.Cell(17,2).Value = Math.Abs(saldo);
+    wsR.Row(1).Style.Font.Bold = true;
+    wsR.Row(8).Style.Font.Bold = true;
+    wsR.Row(15).Style.Font.Bold = true;
+    wsR.Row(17).Style.Font.Bold = true;
+    wsR.Columns().AdjustToContents();
+
+    using var ms = new System.IO.MemoryStream();
+    wb.SaveAs(ms);
+    var base64 = Convert.ToBase64String(ms.ToArray());
+    // CORREGIDO: El orden de parámetros es (base64Data, fileName, contentType)
+    await JS.InvokeVoidAsync("downloadFile", base64, $"LibroIVA_{fDesde:yyyyMMdd}_{fHasta:yyyyMMdd}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  // Clase auxiliar
+  private class FilaLibroIVA
+  {
+    public int Id { get; set; }
+    public string TipoDoc { get; set; } = "";
+    public string Condicion { get; set; } = "";
+    public string RUC { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public string Timbrado { get; set; } = "";
+    public string NumeroFactura { get; set; } = "";
+    public decimal Grabado10 { get; set; }
+    public decimal IVA10 { get; set; }
+    public decimal Grabado5 { get; set; }
+    public decimal IVA5 { get; set; }
+    public decimal Exenta { get; set; }
+    public decimal Total { get; set; }
+    public bool ImputaIVA { get; set; }
+    public bool ImputaIRE { get; set; }
+    public bool ImputaIRP { get; set; }
+  }
+}

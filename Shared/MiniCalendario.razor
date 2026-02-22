@@ -1,0 +1,352 @@
+@using SistemIA.Models
+@using SistemIA.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Navigation
+
+<div class="card shadow-sm mini-calendario-card">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 px-3">
+        <button class="btn btn-sm btn-link text-white p-0" @onclick="MesAnterior">
+            <i class="bi bi-chevron-left fs-5"></i>
+        </button>
+        <span class="fw-bold fs-6">@_fechaActual.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-ES"))</span>
+        <button class="btn btn-sm btn-link text-white p-0" @onclick="MesSiguiente">
+            <i class="bi bi-chevron-right fs-5"></i>
+        </button>
+    </div>
+    <div class="card-body p-3">
+        @* Encabezados de días *@
+        <div class="mini-cal-header">
+            <div>D</div>
+            <div>L</div>
+            <div>M</div>
+            <div>M</div>
+            <div>J</div>
+            <div>V</div>
+            <div>S</div>
+        </div>
+        
+        @* Días del mes *@
+        <div class="mini-cal-body">
+            @foreach (var semana in _semanas)
+            {
+                <div class="mini-cal-semana">
+                    @foreach (var dia in semana)
+                    {
+                        var esHoy = dia.Date == DateTime.Today;
+                        var esMesActual = dia.Month == _fechaActual.Month;
+                        var tieneCitas = _diasConCitas.Contains(dia.Date);
+                        var esSeleccionado = dia.Date == _diaSeleccionado.Date;
+                        
+                        <div class="mini-cal-dia @(esHoy ? "hoy" : "") @(!esMesActual ? "otro-mes" : "") @(tieneCitas ? "con-citas" : "") @(esSeleccionado && !esHoy ? "seleccionado" : "")" 
+                             @onclick="() => SeleccionarDia(dia)"
+                             title="@(tieneCitas ? "Hay eventos este día" : "")">
+                            @dia.Day
+                            @if (tieneCitas)
+                            {
+                                <span class="mini-cal-punto"></span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        
+        @* Citas del día seleccionado *@
+        <div class="mini-cal-citas-dia mt-2">
+            <div class="text-muted small fw-bold mb-1 d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="bi bi-calendar-check me-1"></i>
+                    @if (_diaSeleccionado.Date == DateTime.Today)
+                    {
+                        <span>Hoy</span>
+                    }
+                    else
+                    {
+                        <span>@_diaSeleccionado.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-ES"))</span>
+                    }
+                </span>
+                @if (_diaSeleccionado.Date != DateTime.Today)
+                {
+                    <button class="btn btn-link btn-sm p-0 text-primary" @onclick="VolverAHoy" title="Volver a hoy">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                }
+            </div>
+            
+            @if (_citasDiaSeleccionado.Any())
+            {
+                <div class="mini-citas-lista">
+                    @foreach (var cita in _citasDiaSeleccionado)
+                    {
+                        <div class="mini-cita" @onclick="() => IrACita(cita)">
+                            <span class="mini-cita-hora">@cita.FechaHoraInicio.ToString("HH:mm")</span>
+                            <span class="mini-cita-punto" style="background: @cita.ColorFondo;"></span>
+                            <span class="mini-cita-titulo">@TruncarTexto(cita.Titulo, 18)</span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="mini-cal-sin-citas text-center text-muted small">
+                    <i class="bi bi-calendar-x me-1"></i>Sin eventos
+                </div>
+            }
+        </div>
+    </div>
+    <div class="card-footer py-2 text-center">
+        <a href="/agenda" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-calendar3 me-1"></i>Ver Agenda
+        </a>
+    </div>
+</div>
+
+<style>
+    .mini-calendario-card {
+        min-width: 340px;
+        max-width: 380px;
+    }
+    
+    .mini-cal-header {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--bar-border);
+        padding-bottom: 6px;
+        margin-bottom: 6px;
+    }
+    
+    .mini-cal-body {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+    
+    .mini-cal-semana {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 3px;
+    }
+    
+    .mini-cal-dia {
+        text-align: center;
+        padding: 8px 4px;
+        font-size: 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        position: relative;
+        transition: all 0.15s;
+    }
+    
+    .mini-cal-dia:hover {
+        background: var(--bs-primary);
+        color: white;
+    }
+    
+    .mini-cal-dia.otro-mes {
+        color: var(--text-muted);
+        opacity: 0.5;
+    }
+    
+    .mini-cal-dia.hoy {
+        background: var(--bs-primary);
+        color: white;
+        font-weight: 700;
+    }
+    
+    .mini-cal-dia.con-citas:not(.hoy):not(.seleccionado) {
+        font-weight: 600;
+        color: var(--bs-primary);
+    }
+    
+    .mini-cal-dia.seleccionado {
+        background: var(--bs-info);
+        color: white;
+        font-weight: 700;
+    }
+    
+    .mini-cal-punto {
+        position: absolute;
+        bottom: 3px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--bs-danger);
+    }
+    
+    .mini-cal-dia.hoy .mini-cal-punto {
+        background: white;
+    }
+    
+    .mini-cal-citas-hoy {
+        border-top: 1px solid var(--bar-border);
+        padding-top: 10px;
+        margin-top: 4px;
+    }
+    
+    .mini-cal-citas-dia {
+        border-top: 1px solid var(--bar-border);
+        padding-top: 10px;
+        margin-top: 4px;
+    }
+    
+    .mini-citas-lista {
+        max-height: 180px;
+        overflow-y: auto;
+    }
+    
+    .mini-cita {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: background 0.15s;
+    }
+    
+    .mini-cita:hover {
+        background: var(--bg-page);
+    }
+    
+    .mini-cita-hora {
+        font-weight: 600;
+        color: var(--text-muted);
+        min-width: 42px;
+    }
+    
+    .mini-cita-punto {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    
+    .mini-cita-titulo {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .mini-cal-sin-citas {
+        padding: 8px;
+        background: var(--bg-page);
+        border-radius: 4px;
+    }
+</style>
+
+@code {
+    private DateTime _fechaActual = DateTime.Today;
+    private DateTime _diaSeleccionado = DateTime.Today;
+    private List<List<DateTime>> _semanas = new();
+    private HashSet<DateTime> _diasConCitas = new();
+    private List<CitaAgenda> _citasDiaSeleccionado = new();
+    private List<CitaAgenda> _todasLasCitas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        GenerarCalendario();
+        await CargarCitas();
+    }
+
+    private void GenerarCalendario()
+    {
+        _semanas.Clear();
+        var primerDia = new DateTime(_fechaActual.Year, _fechaActual.Month, 1);
+        var ultimoDia = primerDia.AddMonths(1).AddDays(-1);
+
+        // Ajustar al domingo anterior
+        var inicio = primerDia.AddDays(-(int)primerDia.DayOfWeek);
+        var fin = ultimoDia.AddDays(6 - (int)ultimoDia.DayOfWeek);
+
+        var semana = new List<DateTime>();
+        for (var dia = inicio; dia <= fin; dia = dia.AddDays(1))
+        {
+            semana.Add(dia);
+            if (semana.Count == 7)
+            {
+                _semanas.Add(semana);
+                semana = new List<DateTime>();
+            }
+        }
+    }
+
+    private async Task CargarCitas()
+    {
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            
+            var primerDia = new DateTime(_fechaActual.Year, _fechaActual.Month, 1).AddDays(-7);
+            var ultimoDia = primerDia.AddMonths(2);
+
+            _todasLasCitas = await ctx.CitasAgenda
+                .Where(c => c.FechaHoraInicio >= primerDia && c.FechaHoraInicio <= ultimoDia)
+                .Where(c => c.Estado != "Cancelada")
+                .OrderBy(c => c.FechaHoraInicio)
+                .ToListAsync();
+
+            _diasConCitas = _todasLasCitas.Select(c => c.FechaHoraInicio.Date).ToHashSet();
+            CargarCitasDiaSeleccionado();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando citas: {ex.Message}");
+        }
+    }
+    
+    private void CargarCitasDiaSeleccionado()
+    {
+        _citasDiaSeleccionado = _todasLasCitas
+            .Where(c => c.FechaHoraInicio.Date == _diaSeleccionado.Date)
+            .OrderBy(c => c.FechaHoraInicio)
+            .ToList();
+    }
+
+    private async Task MesAnterior()
+    {
+        _fechaActual = _fechaActual.AddMonths(-1);
+        GenerarCalendario();
+        await CargarCitas();
+    }
+
+    private async Task MesSiguiente()
+    {
+        _fechaActual = _fechaActual.AddMonths(1);
+        GenerarCalendario();
+        await CargarCitas();
+    }
+
+    private void SeleccionarDia(DateTime dia)
+    {
+        _diaSeleccionado = dia;
+        CargarCitasDiaSeleccionado();
+    }
+    
+    private void VolverAHoy()
+    {
+        _diaSeleccionado = DateTime.Today;
+        _fechaActual = DateTime.Today;
+        GenerarCalendario();
+        CargarCitasDiaSeleccionado();
+    }
+
+    private void IrACita(CitaAgenda cita)
+    {
+        Navigation.NavigateTo($"/agenda?vista=dia&fecha={cita.FechaHoraInicio:yyyy-MM-dd}");
+    }
+
+    private string TruncarTexto(string texto, int max)
+    {
+        if (string.IsNullOrEmpty(texto)) return "";
+        return texto.Length <= max ? texto : texto.Substring(0, max - 2) + "..";
+    }
+}

@@ -82,7 +82,9 @@ builder.Services.AddScoped<PermisosService>();
 builder.Services.AddScoped<ActualizacionService>();
 builder.Services.AddScoped<DescuentoService>();
 builder.Services.AddScoped<ICorreoService, CorreoService>();
+builder.Services.AddScoped<ICorreoColaService, CorreoColaService>(); // Cola de correos pendientes (sin internet)
 builder.Services.AddScoped<IInformeCorreoService, InformeCorreoService>();
+builder.Services.AddScoped<IReservaCorreoService, ReservaCorreoService>(); // Correo confirmación reservas
 builder.Services.AddScoped<IAsistenteIAService, AsistenteIAService>();
 builder.Services.AddScoped<IHtmlToPdfService, HtmlToPdfService>();
 builder.Services.AddScoped<IInformePdfService, InformePdfService>();
@@ -90,7 +92,13 @@ builder.Services.AddScoped<IHistorialCambiosService, HistorialCambiosService>();
 builder.Services.AddScoped<ISaAuthenticationService, SaAuthenticationService>(); // Autenticación SA con memoria de 30 min
 builder.Services.AddScoped<ILoteService, LoteService>(); // Gestión de lotes FEFO para farmacia
 builder.Services.AddScoped<IEventoSifenService, EventoSifenService>(); // Eventos SIFEN (cancelación, inutilización)
+builder.Services.AddScoped<IAgendaService, AgendaService>(); // Módulo agenda/calendario con recordatorios
+builder.Services.AddScoped<IFacturacionAutomaticaService, FacturacionAutomaticaService>(); // Generación automática de facturas por suscripción
+builder.Services.AddHostedService<FacturacionAutomaticaBackgroundService>(); // Procesa suscripciones y genera facturas automáticamente
 builder.Services.AddHostedService<SifenColaService>(); // Cola de reintentos SIFEN (background service)
+builder.Services.AddHostedService<CorreoColaBackgroundService>(); // Cola de correos pendientes (background service)
+builder.Services.AddHostedService<StockMinimoAlertaBackgroundService>(); // Alertas diarias de stock bajo mínimo
+builder.Services.AddHostedService<RecordatorioAgendaBackgroundService>(); // Recordatorios automáticos de citas de agenda
 builder.Services.AddSingleton<ChatStateService>(); // Estado del chat (singleton por circuito)
 builder.Services.AddSingleton<RutasSistemaService>(); // Escaneo automático de rutas del sistema
 builder.Services.AddSingleton<ITrackingService, TrackingService>(); // Tracking de acciones del usuario
@@ -98,6 +106,10 @@ builder.Services.AddSingleton<ITrackingService, TrackingService>(); // Tracking 
 // CloudSync - Backup en la nube (Angular frontend)
 builder.Services.AddScoped<ICloudSyncService, CloudSyncService>();
 builder.Services.AddHostedService<CloudSyncBackgroundService>(); // Backups automáticos programados
+
+// VPN Connection Service - Conexión VPN automática al iniciar
+builder.Services.AddSingleton<VpnConnectionService>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<VpnConnectionService>());
 
 // Hub IA Central (futuro servicio centralizado de IA)
 builder.Services.Configure<HubIACentralSettings>(builder.Configuration.GetSection("HubIACentral"));
@@ -123,6 +135,7 @@ else
 if (OperatingSystem.IsWindows())
 {
     builder.Services.AddScoped<ImpresionDirectaService>();
+    builder.Services.AddScoped<ComandaService>();
 }
 builder.Services.AddControllers();
 // Útiles
@@ -761,72 +774,137 @@ app.MapPost("/ventas/{idVenta:int}/enviar-sifen", async (
             {
                 bool hizoCambios = false;
 
-                // 1) Si falta VentaPago, intentar construirlo desde Composición de Caja
+                // 1) Si falta VentaPago, intentar construirlo desde Composición de Caja o CuentaPorCobrar (crédito)
                 if (valid.Errores.Any(e => e.Contains("No se registró el pago (VentasPagos)")))
                 {
-                    var comp = await dbTry.ComposicionesCaja
-                        .Include(c => c.Detalles!)
-                        .FirstOrDefaultAsync(c => c.IdVenta == idVenta);
                     var venta0 = await dbTry.Ventas.FirstOrDefaultAsync(v => v.IdVenta == idVenta);
-                    if (comp != null && venta0 != null)
+                    if (venta0 != null)
                     {
-                        var vp = await dbTry.VentasPagos
-                            .Include(x => x.Detalles!)
-                            .FirstOrDefaultAsync(x => x.IdVenta == idVenta);
-                        if (vp == null)
+                        // Verificar si es venta a crédito
+                        bool esCredito = false;
+                        if (venta0.IdTipoPago.HasValue)
                         {
-                            vp = new VentaPago
+                            var tp = await dbTry.TiposPago.AsNoTracking().FirstOrDefaultAsync(t => t.IdTipoPago == venta0.IdTipoPago.Value);
+                            esCredito = tp?.EsCredito ?? false;
+                        }
+
+                        if (esCredito)
+                        {
+                            // CRÉDITO: Construir VentaPago desde CuentaPorCobrar
+                            var cxc = await dbTry.CuentasPorCobrar
+                                .FirstOrDefaultAsync(c => c.IdVenta == idVenta);
+                            var cuotasCxC = cxc != null 
+                                ? await dbTry.CuentasPorCobrarCuotas
+                                    .Where(c => c.IdCuentaPorCobrar == cxc.IdCuentaPorCobrar)
+                                    .OrderBy(c => c.NumeroCuota)
+                                    .ToListAsync()
+                                : new List<CuentaPorCobrarCuota>();
+
+                            var vpCred = new VentaPago
                             {
                                 IdVenta = idVenta,
-                                CondicionOperacion = 1,
+                                CondicionOperacion = 2, // Crédito
                                 IdMoneda = venta0.IdMoneda,
                                 TipoCambio = venta0.CambioDelDia,
                                 ImporteTotal = venta0.Total
                             };
-                            dbTry.VentasPagos.Add(vp);
+                            dbTry.VentasPagos.Add(vpCred);
                             await dbTry.SaveChangesAsync();
+
+                            if (cuotasCxC.Any())
+                            {
+                                foreach (var cuota in cuotasCxC)
+                                {
+                                    dbTry.Add(new VentaCuota
+                                    {
+                                        IdVentaPago = vpCred.IdVentaPago,
+                                        NumeroCuota = cuota.NumeroCuota,
+                                        MontoCuota = cuota.MontoCuota,
+                                        FechaVencimiento = cuota.FechaVencimiento
+                                    });
+                                }
+                            }
+                            else
+                            {
+                                // Sin CxC: generar 1 cuota con vencimiento a 30 días
+                                dbTry.Add(new VentaCuota
+                                {
+                                    IdVentaPago = vpCred.IdVentaPago,
+                                    NumeroCuota = 1,
+                                    MontoCuota = venta0.Total,
+                                    FechaVencimiento = venta0.FechaVencimiento ?? venta0.Fecha.AddDays(30)
+                                });
+                            }
+                            await dbTry.SaveChangesAsync();
+                            hizoCambios = true;
                         }
                         else
                         {
-                            if (vp.Detalles != null && vp.Detalles.Count > 0)
+                            // CONTADO: Construir VentaPago desde Composición de Caja
+                            var comp = await dbTry.ComposicionesCaja
+                                .Include(c => c.Detalles!)
+                                .FirstOrDefaultAsync(c => c.IdVenta == idVenta);
+                            if (comp != null)
                             {
-                                dbTry.VentasPagosDetalles.RemoveRange(vp.Detalles);
-                                await dbTry.SaveChangesAsync();
-                            }
-                            vp.CondicionOperacion = 1;
-                            vp.IdMoneda = venta0.IdMoneda;
-                            vp.TipoCambio = venta0.CambioDelDia;
-                            vp.ImporteTotal = venta0.Total;
-                            dbTry.VentasPagos.Update(vp);
-                            await dbTry.SaveChangesAsync();
-                        }
+                                var vp = await dbTry.VentasPagos
+                                    .Include(x => x.Detalles!)
+                                    .FirstOrDefaultAsync(x => x.IdVenta == idVenta);
+                                if (vp == null)
+                                {
+                                    vp = new VentaPago
+                                    {
+                                        IdVenta = idVenta,
+                                        CondicionOperacion = 1,
+                                        IdMoneda = venta0.IdMoneda,
+                                        TipoCambio = venta0.CambioDelDia,
+                                        ImporteTotal = venta0.Total
+                                    };
+                                    dbTry.VentasPagos.Add(vp);
+                                    await dbTry.SaveChangesAsync();
+                                }
+                                else
+                                {
+                                    if (vp.Detalles != null && vp.Detalles.Count > 0)
+                                    {
+                                        dbTry.VentasPagosDetalles.RemoveRange(vp.Detalles);
+                                        await dbTry.SaveChangesAsync();
+                                    }
+                                    vp.CondicionOperacion = 1;
+                                    vp.IdMoneda = venta0.IdMoneda;
+                                    vp.TipoCambio = venta0.CambioDelDia;
+                                    vp.ImporteTotal = venta0.Total;
+                                    dbTry.VentasPagos.Update(vp);
+                                    await dbTry.SaveChangesAsync();
+                                }
 
-                        foreach (var d in comp.Detalles ?? new List<ComposicionCajaDetalle>())
-                        {
-                            var det = new VentaPagoDetalle
-                            {
-                                IdVentaPago = vp.IdVentaPago,
-                                Medio = d.Medio,
-                                IdMoneda = d.IdMoneda,
-                                TipoCambio = d.TipoCambio,
-                                Monto = d.Monto,
-                                MontoGs = d.MontoGs,
-                                TipoTarjeta = d.TipoTarjeta,
-                                MarcaTarjeta = d.MarcaTarjeta,
-                                NombreEmisorTarjeta = d.NombreEmisorTarjeta,
-                                Ultimos4 = d.Ultimos4,
-                                NumeroAutorizacion = d.NumeroAutorizacion,
-                                BancoCheque = d.BancoCheque,
-                                NumeroCheque = d.NumeroCheque,
-                                FechaCobroCheque = d.FechaCobroCheque,
-                                BancoTransferencia = d.BancoTransferencia,
-                                NumeroComprobante = d.NumeroComprobante,
-                                Observacion = d.Observacion
-                            };
-                            dbTry.VentasPagosDetalles.Add(det);
+                                foreach (var d in comp.Detalles ?? new List<ComposicionCajaDetalle>())
+                                {
+                                    var det = new VentaPagoDetalle
+                                    {
+                                        IdVentaPago = vp.IdVentaPago,
+                                        Medio = d.Medio,
+                                        IdMoneda = d.IdMoneda,
+                                        TipoCambio = d.TipoCambio,
+                                        Monto = d.Monto,
+                                        MontoGs = d.MontoGs,
+                                        TipoTarjeta = d.TipoTarjeta,
+                                        MarcaTarjeta = d.MarcaTarjeta,
+                                        NombreEmisorTarjeta = d.NombreEmisorTarjeta,
+                                        Ultimos4 = d.Ultimos4,
+                                        NumeroAutorizacion = d.NumeroAutorizacion,
+                                        BancoCheque = d.BancoCheque,
+                                        NumeroCheque = d.NumeroCheque,
+                                        FechaCobroCheque = d.FechaCobroCheque,
+                                        BancoTransferencia = d.BancoTransferencia,
+                                        NumeroComprobante = d.NumeroComprobante,
+                                        Observacion = d.Observacion
+                                    };
+                                    dbTry.VentasPagosDetalles.Add(det);
+                                }
+                                await dbTry.SaveChangesAsync();
+                                hizoCambios = true;
+                            }
                         }
-                        await dbTry.SaveChangesAsync();
-                        hizoCambios = true;
                     }
                 }
 
@@ -3479,6 +3557,7 @@ using (var scope = app.Services.CreateScope())
     await dataInitService.InicializarDatosListasPreciosAsync();
     await dataInitService.InicializarGeografiaSifenAsync();
     await dataInitService.InicializarArticulosAsistenteIAAsync();
+    await dataInitService.InicializarConfiguracionVPNAsync();
 }
 
 // ============================================
@@ -4047,6 +4126,85 @@ app.MapGet("/debug/notascredito/{idNotaCredito:int}/sifen-data", async (
         return Results.NotFound(new { ok = false, error = $"NC {idNotaCredito} no encontrada" });
 
     return Results.Ok(new { ok = true, nc });
+});
+
+// ========== ENDPOINTS DE PRUEBA - SUSCRIPCIONES ==========
+
+// Generar factura de suscripción manualmente (para testing)
+app.MapPost("/suscripciones/{idSuscripcion:int}/generar-factura", async (
+    int idSuscripcion,
+    IFacturacionAutomaticaService facturacionService
+) =>
+{
+    try
+    {
+        var resultado = await facturacionService.GenerarFacturaAsync(idSuscripcion);
+        if (resultado.Exito)
+        {
+            return Results.Ok(new
+            {
+                ok = true,
+                mensaje = resultado.Mensaje,
+                idVenta = resultado.IdVenta,
+                numeroFactura = resultado.NumeroFactura
+            });
+        }
+        return Results.BadRequest(new { ok = false, error = resultado.Mensaje });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Procesar todas las suscripciones pendientes (fuerza el proceso independiente de la hora)
+app.MapPost("/suscripciones/procesar-pendientes", async (
+    IFacturacionAutomaticaService facturacionService
+) =>
+{
+    try
+    {
+        var resultado = await facturacionService.ProcesarSuscripcionesPendientesAsync();
+        return Results.Ok(new
+        {
+            ok = true,
+            totalProcesadas = resultado.TotalProcesadas,
+            exitosas = resultado.Exitosas,
+            conErrores = resultado.ConErrores,
+            fecha = resultado.FechaProceso
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+// Ver estado de suscripciones activas
+app.MapGet("/suscripciones/estado", async (
+    IDbContextFactory<AppDbContext> dbFactory
+) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var suscripciones = await db.SuscripcionesClientes
+        .Include(s => s.Cliente)
+        .Where(s => s.Estado == "Activa")
+        .Select(s => new
+        {
+            s.IdSuscripcion,
+            Cliente = s.Cliente != null ? s.Cliente.RazonSocial : "N/A",
+            s.IdVentaReferencia,
+            s.MontoFacturar,
+            s.FechaProximaFactura,
+            s.HoraFacturacion,
+            s.TipoPeriodo,
+            s.FacturacionActiva,
+            s.TotalFacturasGeneradas,
+            s.FechaUltimaFactura
+        })
+        .ToListAsync();
+
+    return Results.Ok(suscripciones);
 });
 
 // ============================================
@@ -4678,3 +4836,86 @@ string GenerarHtmlComprobanteA4PagoProveedor(PagoProveedor pago, Caja? caja, Suc
 
     return html;
 }
+
+// ============================================
+// ENDPOINTS: VPN - Diagnóstico y Activación
+// ============================================
+
+app.MapGet("/admin/vpn/estado", async (IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var config = await db.ConfiguracionesVPN.FirstOrDefaultAsync();
+        
+        if (config == null)
+        {
+            return Results.Json(new { 
+                existe = false, 
+                mensaje = "No existe configuración VPN en la base de datos" 
+            });
+        }
+        
+        return Results.Json(new {
+            existe = true,
+            idConfiguracion = config.IdConfiguracionVPN,
+            servidorVPN = config.ServidorVPN,
+            usuarioVPN = config.UsuarioVPN,
+            nombreConexion = config.NombreConexionWindows,
+            activo = config.Activo,
+            conectarAlIniciar = config.ConectarAlIniciar,
+            minutosVerificacion = config.MinutosVerificacion,
+            intentosReconexion = config.IntentosReconexion,
+            fechaModificacion = config.FechaModificacion
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Error: {ex.Message}");
+    }
+});
+
+app.MapPost("/admin/vpn/activar", async (IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    try
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var config = await db.ConfiguracionesVPN.FirstOrDefaultAsync();
+        
+        if (config == null)
+        {
+            // Crear configuración con valores por defecto
+            config = new SistemIA.Models.ConfiguracionVPN
+            {
+                ServidorVPN = "190.104.149.35",
+                PuertoPPTP = 1723,
+                UsuarioVPN = "nextsys",
+                ContrasenaVPN = "P3tr0l30$",
+                NombreConexionWindows = "SistemIA VPN",
+                RangoRedVPN = "192.168.89",
+                ConectarAlIniciar = true,
+                Activo = true,
+                IntentosReconexion = 3,
+                SegundosEntreIntentos = 10,
+                MinutosVerificacion = 15,
+                FechaCreacion = DateTime.Now,
+                FechaModificacion = DateTime.Now
+            };
+            db.ConfiguracionesVPN.Add(config);
+            await db.SaveChangesAsync();
+            return Results.Json(new { ok = true, mensaje = "Configuración VPN creada y activada", accion = "CREADA" });
+        }
+        
+        // Activar configuración existente
+        config.Activo = true;
+        config.ConectarAlIniciar = true;
+        config.FechaModificacion = DateTime.Now;
+        await db.SaveChangesAsync();
+        
+        return Results.Json(new { ok = true, mensaje = "VPN activada. Reinicie el sistema para aplicar cambios.", accion = "ACTIVADA" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Error: {ex.Message}");
+    }
+});

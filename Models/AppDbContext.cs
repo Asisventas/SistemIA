@@ -120,6 +120,7 @@ namespace SistemIA.Models
         // Configuración de Correo Electrónico
         public DbSet<ConfiguracionCorreo> ConfiguracionesCorreo { get; set; }
         public DbSet<DestinatarioInforme> DestinatariosInforme { get; set; }
+        public DbSet<CorreoPendiente> CorreosPendientes { get; set; }
 
         // Asistente IA
         public DbSet<SistemIA.Models.AsistenteIA.RegistroError> RegistrosErrorIA { get; set; }
@@ -143,9 +144,54 @@ namespace SistemIA.Models
         public DbSet<ConfiguracionCloudSync> ConfiguracionesCloudSync { get; set; }
         public DbSet<HistorialBackupCloud> HistorialBackupsCloud { get; set; }
 
+        // Configuración VPN para Soporte Remoto
+        public DbSet<ConfiguracionVPN> ConfiguracionesVPN { get; set; }
+
+        // Sistema de Mesas/Restaurante/Canchas
+        public DbSet<Mesa> Mesas { get; set; }
+        public DbSet<Pedido> Pedidos { get; set; }
+        public DbSet<PedidoDetalle> PedidosDetalles { get; set; }
+        public DbSet<PedidoPago> PedidosPagos { get; set; }
+        public DbSet<Reserva> Reservas { get; set; }
+        public DbSet<SenaReserva> SenasReservas { get; set; }
+
+        // Sistema de Taller Mecánico
+        public DbSet<Vehiculo> Vehiculos { get; set; }
+        public DbSet<OrdenTrabajo> OrdenesTrabajo { get; set; }
+        public DbSet<OrdenTrabajoDetalle> OrdenesTrabajoDetalles { get; set; }
+
+        // Sistema de Gimnasio (Membresías ahora usan Producto con EsMembresia=true)
+        public DbSet<SistemIA.Models.Gimnasio.MembresiaCliente> MembresiasClientes { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.AccesoGimnasio> AccesosGimnasio { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.Instructor> Instructores { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.ClaseGimnasio> ClasesGimnasio { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.HorarioClase> HorariosClases { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.ReservaClase> ReservasClases { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.RutinaGimnasio> RutinasGimnasio { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.EjercicioRutina> EjerciciosRutina { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.ProgresoCliente> ProgresosCliente { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.TarjetaPagoCliente> TarjetasPagoCliente { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.SesionEntrenamiento> SesionesEntrenamiento { get; set; }
+        public DbSet<SistemIA.Models.Gimnasio.DetalleSesionEjercicio> DetallesSesionEjercicio { get; set; }
+
+        // Sistema de Suscripciones y Facturación Automática
+        public DbSet<SistemIA.Models.Suscripciones.SuscripcionCliente> SuscripcionesClientes { get; set; }
+        public DbSet<SistemIA.Models.Suscripciones.FacturaAutomatica> FacturasAutomaticas { get; set; }
+
+        // Sistema de Agenda/Calendario
+        public DbSet<CitaAgenda> CitasAgenda { get; set; }
+        public DbSet<RecordatorioCita> RecordatoriosCitas { get; set; }
+        public DbSet<ColorClienteAgenda> ColoresClientesAgenda { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // --- Relación Reserva - SenaReserva (uno a uno) ---
+            modelBuilder.Entity<SenaReserva>()
+                .HasOne(s => s.Reserva)
+                .WithOne(r => r.SenaReservaPago)
+                .HasForeignKey<SenaReserva>(s => s.IdReserva);
 
             // --- Configuraciones de Claves Primarias (si no siguen la convención) ---
             modelBuilder.Entity<TiposDocumentosIdentidad>().HasKey(t => t.TipoDocumento);
@@ -1602,6 +1648,279 @@ namespace SistemIA.Models
                 .WithMany()
                 .HasForeignKey(d => d.IdDepositoItem)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ========== CONFIGURACIÓN SISTEMA DE MESAS/RESTAURANTE/CANCHAS ==========
+
+        // Configuración Mesa
+        modelBuilder.Entity<Mesa>(entity =>
+        {
+            entity.ToTable("Mesas");
+            entity.HasKey(m => m.IdMesa);
+            
+            entity.HasOne(m => m.Sucursal)
+                .WithMany()
+                .HasForeignKey(m => m.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configuración Pedido
+        modelBuilder.Entity<Pedido>(entity =>
+        {
+            entity.ToTable("Pedidos");
+            entity.HasKey(p => p.IdPedido);
+
+            entity.HasOne(p => p.Sucursal)
+                .WithMany()
+                .HasForeignKey(p => p.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(p => p.Caja)
+                .WithMany()
+                .HasForeignKey(p => p.IdCaja)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(p => p.Mesa)
+                .WithMany(m => m.Pedidos)
+                .HasForeignKey(p => p.IdMesa)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(p => p.Cliente)
+                .WithMany()
+                .HasForeignKey(p => p.IdCliente)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(p => p.Usuario)
+                .WithMany()
+                .HasForeignKey(p => p.IdUsuario)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Relación Pedido -> Reserva (uno a uno, Pedido es el dependiente)
+            entity.HasOne(p => p.Reserva)
+                .WithOne(r => r.Pedido)
+                .HasForeignKey<Pedido>(p => p.IdReserva)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Configuración PedidoDetalle
+        modelBuilder.Entity<PedidoDetalle>(entity =>
+        {
+            entity.ToTable("PedidoDetalles");
+            entity.HasKey(d => d.IdPedidoDetalle);
+
+            entity.HasOne(d => d.Pedido)
+                .WithMany(p => p.Detalles)
+                .HasForeignKey(d => d.IdPedido)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.Producto)
+                .WithMany()
+                .HasForeignKey(d => d.IdProducto)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configuración PedidoPago
+        modelBuilder.Entity<PedidoPago>(entity =>
+        {
+            entity.ToTable("PedidoPagos");
+            entity.HasKey(p => p.IdPedidoPago);
+
+            entity.HasOne(p => p.Pedido)
+                .WithMany(ped => ped.Pagos)
+                .HasForeignKey(p => p.IdPedido)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.Venta)
+                .WithMany()
+                .HasForeignKey(p => p.IdVenta)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(p => p.Cliente)
+                .WithMany()
+                .HasForeignKey(p => p.IdCliente)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(p => p.Usuario)
+                .WithMany()
+                .HasForeignKey(p => p.IdUsuario)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configuración Reserva
+        modelBuilder.Entity<Reserva>(entity =>
+        {
+            entity.ToTable("Reservas");
+            entity.HasKey(r => r.IdReserva);
+
+            entity.HasOne(r => r.Sucursal)
+                .WithMany()
+                .HasForeignKey(r => r.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(r => r.Mesa)
+                .WithMany(m => m.Reservas)
+                .HasForeignKey(r => r.IdMesa)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(r => r.Cliente)
+                .WithMany()
+                .HasForeignKey(r => r.IdCliente)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // La relación con Pedido ya está configurada en Pedido
+        });
+
+        // ========== CONFIGURACIÓN SISTEMA DE TALLER ==========
+        
+        // Vehículos
+        modelBuilder.Entity<Vehiculo>(entity =>
+        {
+            entity.ToTable("Vehiculos");
+            entity.HasKey(v => v.IdVehiculo);
+
+            entity.HasOne(v => v.Sucursal)
+                .WithMany()
+                .HasForeignKey(v => v.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(v => v.Cliente)
+                .WithMany()
+                .HasForeignKey(v => v.IdCliente)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(v => v.Matricula);
+            entity.HasIndex(v => new { v.IdSucursal, v.Matricula }).IsUnique();
+        });
+
+        // Órdenes de Trabajo
+        modelBuilder.Entity<OrdenTrabajo>(entity =>
+        {
+            entity.ToTable("OrdenesTrabajo");
+            entity.HasKey(o => o.IdOrdenTrabajo);
+
+            entity.HasOne(o => o.Sucursal)
+                .WithMany()
+                .HasForeignKey(o => o.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(o => o.Caja)
+                .WithMany()
+                .HasForeignKey(o => o.IdCaja)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(o => o.Bahia)
+                .WithMany()
+                .HasForeignKey(o => o.IdMesa)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(o => o.Vehiculo)
+                .WithMany(v => v.OrdenesTrabajo)
+                .HasForeignKey(o => o.IdVehiculo)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(o => o.Cliente)
+                .WithMany()
+                .HasForeignKey(o => o.IdCliente)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(o => o.Mecanico)
+                .WithMany()
+                .HasForeignKey(o => o.IdMecanico)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(o => o.Pedido)
+                .WithMany()
+                .HasForeignKey(o => o.IdPedido)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(o => o.Estado);
+            entity.HasIndex(o => new { o.AnioOrden, o.NumeroOrden }).IsUnique();
+            entity.HasIndex(o => o.FechaCreacion);
+        });
+
+        // Detalles de Órdenes de Trabajo
+        modelBuilder.Entity<OrdenTrabajoDetalle>(entity =>
+        {
+            entity.ToTable("OrdenTrabajoDetalles");
+            entity.HasKey(d => d.IdOrdenTrabajoDetalle);
+
+            entity.HasOne(d => d.OrdenTrabajo)
+                .WithMany(o => o.Detalles)
+                .HasForeignKey(d => d.IdOrdenTrabajo)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.Producto)
+                .WithMany()
+                .HasForeignKey(d => d.IdProducto)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(d => d.TipoLinea);
+            entity.HasIndex(d => d.Estado);
+        });
+
+        // ========== SISTEMA DE SUSCRIPCIONES Y FACTURACIÓN AUTOMÁTICA ==========
+        modelBuilder.Entity<SistemIA.Models.Suscripciones.SuscripcionCliente>(entity =>
+        {
+            entity.ToTable("SuscripcionesClientes");
+            entity.HasKey(s => s.IdSuscripcion);
+
+            entity.HasOne(s => s.Sucursal)
+                .WithMany()
+                .HasForeignKey(s => s.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(s => s.Cliente)
+                .WithMany()
+                .HasForeignKey(s => s.IdCliente)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(s => s.Producto)
+                .WithMany()
+                .HasForeignKey(s => s.IdProducto)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(s => s.Caja)
+                .WithMany()
+                .HasForeignKey(s => s.IdCaja)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(s => s.IdCliente);
+            entity.HasIndex(s => s.IdSucursal);
+            entity.HasIndex(s => s.Estado);
+            entity.HasIndex(s => s.FechaProximaFactura);
+        });
+
+        modelBuilder.Entity<SistemIA.Models.Suscripciones.FacturaAutomatica>(entity =>
+        {
+            entity.ToTable("FacturasAutomaticas");
+            entity.HasKey(f => f.IdFacturaAutomatica);
+
+            entity.HasOne(f => f.Suscripcion)
+                .WithMany()
+                .HasForeignKey(f => f.IdSuscripcion)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(f => f.Sucursal)
+                .WithMany()
+                .HasForeignKey(f => f.IdSucursal)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(f => f.Cliente)
+                .WithMany()
+                .HasForeignKey(f => f.IdCliente)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(f => f.Venta)
+                .WithMany()
+                .HasForeignKey(f => f.IdVenta)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(f => f.IdSuscripcion);
+            entity.HasIndex(f => f.IdCliente);
+            entity.HasIndex(f => f.EstadoFactura);
+            entity.HasIndex(f => f.EstadoCobro);
+            entity.HasIndex(f => f.FechaProgramada);
+            entity.HasIndex(f => f.FechaGeneracion);
         });
         }
     }

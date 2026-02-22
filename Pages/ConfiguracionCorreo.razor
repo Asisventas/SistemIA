@@ -1009,7 +1009,6 @@
     private bool _mostrarSecret;
     private bool _mostrarApiKey;
     private bool _mostrarAvanzadas;
-    private bool _mostrarEnvioAutomatico;
     private bool _editandoRefreshToken;
     private string? _descripcionProveedor;
     private string _placeholderServidor = "smtp.ejemplo.com";
@@ -1140,6 +1139,10 @@
 
             _config.FechaModificacion = DateTime.Now;
             _config.UsuarioModificacion = _usuarioNombre;
+            
+            // Limpiar navegación para evitar conflictos de tracking
+            _config.Sucursal = null;
+            _config.Sociedad = null;
 
             if (_config.IdConfiguracionCorreo == 0)
             {
@@ -1149,18 +1152,35 @@
             }
             else
             {
-                db.Set<Models.ConfiguracionCorreo>().Update(_config);
+                // Attach y marcar como modificado para evitar conflictos
+                db.Set<Models.ConfiguracionCorreo>().Attach(_config);
+                db.Entry(_config).State = EntityState.Modified;
             }
 
             await db.SaveChangesAsync();
+            
+            // Recargar la sucursal para la vista
+            if (_sucursalId.HasValue)
+            {
+                _config.Sucursal = await db.Sucursal.FindAsync(_sucursalId.Value);
+            }
 
             _mensaje = "Configuración guardada correctamente.";
             _esError = false;
+        }
+        catch (DbUpdateException dbEx)
+        {
+            // Error de base de datos - mostrar detalle interno
+            var innerMsg = dbEx.InnerException?.Message ?? dbEx.Message;
+            _mensaje = $"Error de base de datos: {innerMsg}";
+            _esError = true;
+            Console.WriteLine($"DbUpdateException: {dbEx}");
         }
         catch (Exception ex)
         {
             _mensaje = $"Error al guardar: {ex.Message}";
             _esError = true;
+            Console.WriteLine($"Exception: {ex}");
         }
         finally
         {

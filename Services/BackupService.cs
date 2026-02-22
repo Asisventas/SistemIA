@@ -149,6 +149,7 @@ namespace SistemIA.Services
         /// <summary>
         /// Crea backup de la BD con un nombre fijo (para sobrescribir siempre el mismo archivo)
         /// Usado para CloudSync donde se quiere mantener solo 1 copia en la nube
+        /// AHORA: Crea el backup .bak y lo comprime a .zip para reducir tamaño de subida
         /// </summary>
         public async Task<BackupResult> CrearBackupParaCloudSync()
         {
@@ -179,8 +180,7 @@ namespace SistemIA.Services
                     return result;
                 }
 
-                // 2. Usar nombre fijo para siempre sobrescribir el mismo archivo
-                // Esto facilita la sincronización y evita acumular backups
+                // 2. Crear backup .bak temporal
                 var backupFileName = $"SistemIA_CloudSync_Backup.bak";
                 var backupPath = Path.Combine(backupDir, backupFileName);
                 
@@ -197,12 +197,49 @@ namespace SistemIA.Services
                     return result;
                 }
 
+                _logger.LogInformation($"Backup .bak creado: {backupPath}");
+
+                // 3. Comprimir el backup a ZIP
+                var zipFileName = "SistemIA_CloudSync_Backup.zip";
+                var zipPath = Path.Combine(backupDir, zipFileName);
+                
+                // Eliminar ZIP anterior si existe
+                if (File.Exists(zipPath))
+                {
+                    File.Delete(zipPath);
+                }
+                
+                // Comprimir el .bak a .zip
+                _logger.LogInformation("Comprimiendo backup a ZIP...");
+                await Task.Run(() =>
+                {
+                    using var zipArchive = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+                    zipArchive.CreateEntryFromFile(backupPath, backupFileName, CompressionLevel.Optimal);
+                });
+                
+                var bakSize = new FileInfo(backupPath).Length;
+                var zipSize = new FileInfo(zipPath).Length;
+                var compresion = (1 - (double)zipSize / bakSize) * 100;
+                
+                _logger.LogInformation($"Backup comprimido: {bakSize / 1024 / 1024:F1} MB → {zipSize / 1024 / 1024:F1} MB ({compresion:F1}% reducción)");
+
+                // 4. Eliminar el .bak temporal (ya tenemos el .zip)
+                try
+                {
+                    File.Delete(backupPath);
+                    _logger.LogInformation("Archivo .bak temporal eliminado");
+                }
+                catch
+                {
+                    _logger.LogWarning("No se pudo eliminar el archivo .bak temporal");
+                }
+
                 result.Success = true;
-                result.BackupPath = backupPath;
+                result.BackupPath = zipPath; // Retornar la ruta del ZIP comprimido
                 result.DatabaseName = databaseName;
                 result.Timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 
-                _logger.LogInformation($"Backup para CloudSync creado: {backupPath}");
+                _logger.LogInformation($"Backup para CloudSync listo: {zipPath}");
                 
                 return result;
             }
